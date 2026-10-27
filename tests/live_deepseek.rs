@@ -49,6 +49,7 @@ fn ctx<'a>(
         ind: x,
         last_close: 1163.0,
         cash_available: 96_388.86,
+        target_profit_pct: None,
         headlines: h,
         window_hours: 6,
         price_window: "27 09:15 1161.20 1164.40 1160.80 1163.40 22100\n27 09:30 1163.40 1164.10 1162.50 1163.00 12500",

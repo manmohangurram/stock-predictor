@@ -366,3 +366,23 @@ Change made after the question: **no score now draws nothing.** The hollow "rule
 removed, because an empty gauge reads as "scored zero", which is a different and false claim from
 "the model never scored this". Rules-derived signals say so in words in the card footer
 ("rules-derived, no model score") and show no gauge at all.
+
+## Risk factor and a per-instrument profit expectation
+
+- `instruments.target_profit_pct` (migration 0006), editable from the instrument page
+  (`PUT /api/instruments/:symbol/target-profit`, blank clears it).
+- The prompt receives it: "Profit expected on this position: at least 15.0% (a take-profit
+  below 441.66 is rejected)", or "no minimum set" when unset.
+- The validator enforces it for BUYs: a take-profit that does not reach the expectation is
+  rejected as `TargetBelowRequirement`, so the rules/orchestrator fall back rather than
+  recommending a 4% trade on a holding meant to make 15%. Sales are not judged on it.
+- **Risk is computed, never reported by the model.** From the validated numbers: money at risk
+  (qty × |entry − stop|), risk per unit, reward:risk, profit at target, and whether the target
+  clears the owner's expectation. A model that can state its own risk can state a comfortable
+  one; arithmetic cannot.
+- UI: the risk block sits under the exit plan on each decision card, with "meets 15%" /
+  "below 15%" beside it. The expectation is editable in the rail.
+
+Verified live: with 15% set, DeepSeek's answer read "the 15% target (441.66) is far above a
+falling price; exit near cost rather than hold a losing knife" — it used the number we injected
+rather than inventing one.

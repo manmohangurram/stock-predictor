@@ -302,7 +302,7 @@ async fn budget_exhaustion_records_blocked_and_never_notifies() {
 }
 
 #[tokio::test]
-async fn no_affordable_quantity_means_no_candidate_at_all() {
+async fn with_no_affordable_quantity_the_model_is_still_asked_but_nothing_is_traded() {
     let dir = tempfile::tempdir().unwrap();
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
@@ -323,8 +323,8 @@ async fn no_affordable_quantity_means_no_candidate_at_all() {
     let market = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
     let report = poll(&pool, &market, &notifier, &cfg(), now()).await.unwrap();
-    assert_eq!(report.candidates, 0);
-    assert_eq!(report.signals, 0);
+    assert_eq!(report.candidates, 0, "no rules candidate: nothing is affordable");
+    assert_eq!(report.signals, 0, "and the model was asked on an empty queue");
     assert_eq!(notifier.count(), 0);
 }
 
@@ -393,7 +393,7 @@ async fn without_a_deepseek_key_the_model_layer_is_skipped_entirely() {
 }
 
 #[tokio::test]
-async fn unchanged_headlines_skip_the_model_and_refresh_the_price_in_place() {
+async fn a_failed_model_call_does_not_overwrite_the_standing_decision() {
     let dir = tempfile::tempdir().unwrap();
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
@@ -457,7 +457,11 @@ async fn unchanged_headlines_skip_the_model_and_refresh_the_price_in_place() {
     };
     let second = engine::poll_once(&deps2, now()).await.unwrap();
     assert_eq!(second.signals, 0, "{second:?}");
-    assert_eq!(second_transport.calls(), 0, "unchanged headlines cost nothing");
+    assert_eq!(
+        second_transport.calls(),
+        1,
+        "the model is consulted every tick now, even with nothing new"
+    );
 
     let rows: (i64, f64, Option<f64>) =
         sqlx::query_as("SELECT COUNT(*), MAX(entry), MAX(stop) FROM signals")

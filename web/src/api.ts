@@ -107,6 +107,7 @@ export interface Analysis {
     name: string;
     currency: string;
     timing_note: string;
+    target_profit_pct: number | null;
   };
   bars: BarPoint[];
   indicators: {
@@ -130,6 +131,7 @@ export interface InstrumentDetail {
     name: string;
     currency: string;
     timing_note: string;
+    target_profit_pct: number | null;
   };
   headlines: { id: number; title: string; publisher: string | null; published_at: string; url: string }[];
   signals: SignalRow[];
@@ -162,6 +164,11 @@ export const api = {
   analysis: (symbol: string) =>
     req<Analysis>(`/api/instruments/${encodeURIComponent(symbol)}/analysis`),
   search: (q: string) => req<Hit[]>(`/api/search?q=${encodeURIComponent(q)}`),
+  setTargetProfit: (symbol: string, pct: number | null) =>
+    req<{ symbol: string; target_profit_pct: number | null }>(
+      `/api/instruments/${encodeURIComponent(symbol)}/target-profit`,
+      { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ target_profit_pct: pct }) },
+    ),
   addInstrument: (code: string, name?: string, cls?: string) =>
     req<{ symbol: string }>("/api/instruments", json({ code, name, class: cls })),
   recordTrade: (

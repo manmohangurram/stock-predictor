@@ -161,6 +161,7 @@ async fn run_case(
             candidate: &c,
             available_cash: 20_000.0,
             held_qty: held,
+            target_profit_pct: None,
             headlines: &hs,
             price_window: "27 09:30 1163.00 1164.10 1162.50 1163.40 12500",
             daily_summary: "2026-10-24 1150.20, 2026-10-27 1163.00",
@@ -308,10 +309,30 @@ async fn every_response_shape_lands_where_it_should() {
             reply: chat(json!({"action":"decide","signal":{
                 "action":"BUY","entry":1163.0,"stop":1150.0,"target":1200.0,
                 "valid_until":"2030-01-01T00:00:00Z","confidence":"high",
-                "rationale":"x","cites":[1],"qty":500,"leverage":10}})),
+                "rationale":"x","cites":[1],"leverage":10,"conviction":"max"}})),
             held: 0.0,
             class: AssetClass::Stock,
             expect: |o| matches!(o, Outcome::Llm(_)),
+        },
+        Case {
+            name: "a quantity the model chooses is honoured",
+            reply: chat(json!({"action":"decide","signal":{
+                "action":"BUY","qty":5,"entry":1163.0,"stop":1150.0,"target":1200.0,
+                "valid_until":"2030-01-01T00:00:00Z","confidence":"high",
+                "rationale":"x","cites":[1]}})),
+            held: 0.0,
+            class: AssetClass::Stock,
+            expect: |o| matches!(o, Outcome::Llm(p) if p.qty == Some(5.0)),
+        },
+        Case {
+            name: "a quantity that would not fit the pot is rejected",
+            reply: chat(json!({"action":"decide","signal":{
+                "action":"BUY","qty":500,"entry":1163.0,"stop":1150.0,"target":1200.0,
+                "valid_until":"2030-01-01T00:00:00Z","confidence":"high",
+                "rationale":"x","cites":[1]}})),
+            held: 0.0,
+            class: AssetClass::Stock,
+            expect: |o| matches!(o, Outcome::Rejected { error: ValidationError::InsufficientCash, .. }),
         },
     ];
 
@@ -401,6 +422,7 @@ async fn escalate(replies: Vec<HttpReply>) -> (Outcome, FixtureTransport) {
             candidate: &c,
             available_cash: 20_000.0,
             held_qty: 0.0,
+            target_profit_pct: None,
             headlines: &hs,
             price_window: "27 09:30 1163.00 1164.10 1162.50 1163.40 12500",
             daily_summary: "2026-10-27 1163.00",

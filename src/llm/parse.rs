@@ -48,6 +48,8 @@ impl MoreRequest {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Proposal {
     pub action: Action,
+    /// Units the model wants. Optional: absent means "use the rules' sizing".
+    pub qty: Option<f64>,
     pub entry: f64,
     pub stop: Option<f64>,
     pub target: Option<f64>,
@@ -79,6 +81,8 @@ struct Envelope {
 #[derive(Deserialize)]
 struct SignalJson {
     action: String,
+    #[serde(default)]
+    qty: Option<f64>,
     entry: f64,
     stop: Option<f64>,
     target: Option<f64>,
@@ -100,6 +104,7 @@ pub fn verdict(content: &str) -> Result<LlmVerdict> {
             let s = env.signal.ok_or_else(|| anyhow!("decide without signal"))?;
             Ok(LlmVerdict::Decide(Box::new(Proposal {
                 action: Action::parse(&s.action)?,
+                qty: s.qty,
                 entry: s.entry,
                 stop: s.stop,
                 target: s.target,

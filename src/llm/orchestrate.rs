@@ -34,6 +34,8 @@ pub struct RunInput<'a> {
     pub candidate: &'a Candidate,
     pub available_cash: f64,
     pub held_qty: f64,
+    /// The owner's expected profit for this instrument, in percent.
+    pub target_profit_pct: Option<f64>,
     pub headlines: &'a [Headline],
     pub price_window: &'a str,
     pub daily_summary: &'a str,
@@ -89,6 +91,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         ind: input.ind,
         last_close: input.candidate.entry,
         cash_available: input.available_cash,
+        target_profit_pct: input.target_profit_pct,
         headlines: &headlines,
         window_hours: 6,
         price_window: input.price_window,
@@ -245,6 +248,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 held_qty: input.held_qty,
                 sent_headline_ids: &sent_ids,
                 requires_exit: input.instrument.class == crate::models::AssetClass::Stock,
+                required_profit_pct: input.target_profit_pct,
                 now: input.now,
             };
             match validate::check(&p, &ctx) {

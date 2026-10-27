@@ -22,6 +22,7 @@ Open position: {{positions}}
 Trades recorded in the last 7 days: {{recent_trades}}
 Your previous view on this instrument: {{last_decision}}
 Cash available: {{cash}} {{currency}}
+Profit expected on this position: {{target_profit}}
 How this asset class actually executes: {{class_rules}}
 
 ## Headlines
@@ -54,12 +55,13 @@ Anything beyond the above. No knowledge of events after {{now}}. You cannot see 
 - Quantities are not yours to choose. Never propose one.
 - Entry within one ATR of the last close; stop and target within 5 and 10 ATR.
 - BUY: stop below entry. SELL: stop above entry, or null.
+- The take-profit must reach the profit expectation above. A target below it is discarded.
 - **A BUY must carry both exits**: `stop` (sell if the price falls through this) and `target`
   (take profit here). A buy without both is discarded, so the person can place the whole trade
   in one go and walk away.
 - SELL only for an instrument that is actually held.
 - Mutual funds transact at NAV; IPOs are locked until allotment.
-- Cite the ids of the headlines that drove this decision.
+- Cite the ids of the headlines that drove this decision, if any were supplied.
 
 ## You may not ask again
 You have already had your one escalation. Answer now.

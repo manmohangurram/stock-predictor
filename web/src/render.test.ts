@@ -347,3 +347,46 @@ describe("confidence", () => {
     expect(without).toContain('data-stamp="sell"');
   });
 });
+
+describe("risk and profit expectation", () => {
+  const base = {
+    id: 1, symbol: "INFY.NS", class: "stock" as const, action: "BUY", qty: 10,
+    entry: 100, stop: 90, target: 120, confidence: "high",
+    valid_until: "2026-10-28T10:00:00Z", timing_note: "", reasons: [], rationale: null,
+    created_at: "2026-10-27T10:00:00Z",
+  };
+
+  test("risk is computed from the validated levels, not from the model", async () => {
+    const { riskOf } = await import("./components/risk");
+    const r = riskOf(base as never, null)!;
+    expect(r.amount).toBe(100); // 10 units x 10 of risk
+    expect(r.perUnit).toBe(10);
+    expect(r.rewardRisk).toBeCloseTo(2.0); // 20 reward / 10 risk
+    expect(r.profitPct).toBeCloseTo(20.0);
+  });
+
+  test("a target below the owner's expectation is flagged, not hidden", async () => {
+    const { riskOf } = await import("./components/risk");
+    expect(riskOf(base as never, 15)!.meetsTarget).toBe(true);
+    expect(riskOf(base as never, 25)!.meetsTarget).toBe(false);
+    expect(riskOf(base as never, null)!.meetsTarget).toBeNull();
+  });
+
+  test("no stop means no risk figure rather than a flattering one", async () => {
+    const { riskOf } = await import("./components/risk");
+    expect(riskOf({ ...base, stop: null } as never, null)).toBeNull();
+    expect(riskOf({ ...base, stop: 105 } as never, null)).toBeNull(); // stop above entry
+  });
+
+  test("the decision card shows the risk block and the expectation", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const instrument = { id: 1, symbol: "INFY.NS", class: "stock", name: "Infosys", currency: "INR", timing_note: "", target_profit_pct: 15 };
+    const analysis = { instrument, bars: [], indicators: null, checks: [], position: null, headlines: [] };
+    const detail = { instrument, headlines: [], signals: [base] };
+    const html = renderInstrument(analysis as never, detail as never, []);
+    expect(html).toContain("At risk");
+    expect(html).toContain("Reward : risk");
+    expect(html).toContain("meets 15%");
+    expect(html).toContain('name="pct"');
+  });
+});

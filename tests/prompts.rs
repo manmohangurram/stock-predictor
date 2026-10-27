@@ -55,6 +55,7 @@ fn ctx<'a>(
         ind: x,
         last_close: 1163.0,
         cash_available: 96_388.86,
+        target_profit_pct: None,
         headlines: h,
         window_hours: 6,
         price_window: WINDOW,
@@ -79,7 +80,10 @@ fn the_decide_prompt_states_its_own_limits_and_carries_the_ids() {
     assert!(t.contains("What you do not have"), "the prompt must fence its own knowledge");
     assert!(t.contains("Passing is a good answer"), "pass must be legitimised");
     assert!(t.contains("Quantities are not yours to choose"));
-    assert!(t.contains("No citation, no trade"));
+    assert!(
+        t.contains("Cite the ids of the headlines that drove the decision"),
+        "the prompt must tell the model to cite"
+    );
     assert!(t.contains("1264.50"), "a worked example keeps the schema unambiguous");
     assert!(!t.contains("BENGALURU"), "no article text may leak in");
 }

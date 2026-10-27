@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, patch, post};
+use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
@@ -70,6 +70,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/instruments/{symbol}/refresh",
             post(refresh_instrument),
+        )
+        .route(
+            "/api/instruments/{symbol}/target-profit",
+            put(set_target_profit),
         )
         .route("/api/instruments/{symbol}/analysis", get(analysis))
         .route("/api/calls", get(calls))
@@ -254,6 +258,8 @@ pub struct InstrumentRow {
     pub name: String,
     pub currency: String,
     pub timing_note: String,
+    /// The owner's expected profit, in percent. Decisions must reach it.
+    pub target_profit_pct: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -269,13 +275,14 @@ async fn instrument_detail(
     State(st): State<AppState>,
     Path(symbol): Path<String>,
 ) -> Result<Json<InstrumentDetail>, ApiError> {
-    let row: Option<(i64, String, String, String, String)> = sqlx::query_as(
-        "SELECT id, symbol, class, name, currency FROM instruments WHERE symbol = ?",
+    let row: Option<(i64, String, String, String, String, Option<f64>)> = sqlx::query_as(
+        "SELECT id, symbol, class, name, currency, target_profit_pct
+         FROM instruments WHERE symbol = ?",
     )
     .bind(&symbol)
     .fetch_optional(&st.pool)
     .await?;
-    let (id, symbol, class, name, currency) =
+    let (id, symbol, class, name, currency, target_profit_pct) =
         row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
     let class = AssetClass::parse(&class).map_err(|_| ApiError::Internal)?;
 
@@ -310,6 +317,7 @@ async fn instrument_detail(
             name,
             currency,
             timing_note: class.timing_note().to_string(),
+            target_profit_pct,
         },
         headlines,
         signals,
@@ -344,13 +352,14 @@ async fn analysis(
     State(st): State<AppState>,
     Path(symbol): Path<String>,
 ) -> Result<Json<Analysis>, ApiError> {
-    let row: Option<(i64, String, String, String, String)> = sqlx::query_as(
-        "SELECT id, symbol, class, name, currency FROM instruments WHERE symbol = ?",
+    let row: Option<(i64, String, String, String, String, Option<f64>)> = sqlx::query_as(
+        "SELECT id, symbol, class, name, currency, target_profit_pct
+         FROM instruments WHERE symbol = ?",
     )
     .bind(&symbol)
     .fetch_optional(&st.pool)
     .await?;
-    let (id, symbol, class_raw, name, currency) =
+    let (id, symbol, class_raw, name, currency, target_profit_pct) =
         row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
     let class = AssetClass::parse(&class_raw).map_err(|_| ApiError::Internal)?;
 
@@ -451,6 +460,7 @@ async fn analysis(
             name,
             currency,
             timing_note: class.timing_note().to_string(),
+            target_profit_pct,
         },
         bars: bars
             .iter()
@@ -779,7 +789,38 @@ async fn add_instrument(
         name,
         currency: "INR".into(),
         timing_note: class.timing_note().to_string(),
+        target_profit_pct: None,
     }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetTargetProfit {
+    pub target_profit_pct: Option<f64>,
+}
+
+/// Set or clear the profit expectation for an instrument.
+async fn set_target_profit(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+    Json(body): Json<SetTargetProfit>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if let Some(p) = body.target_profit_pct {
+        if !p.is_finite() || p <= 0.0 || p > 1000.0 {
+            return Err(ApiError::BadRequest(
+                "target_profit_pct must be between 0 and 1000".into(),
+            ));
+        }
+    }
+    let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
+    sqlx::query("UPDATE instruments SET target_profit_pct = ? WHERE id = ?")
+        .bind(body.target_profit_pct)
+        .bind(id)
+        .execute(&st.pool)
+        .await?;
+    Ok(Json(serde_json::json!({
+        "symbol": symbol,
+        "target_profit_pct": body.target_profit_pct,
+    })))
 }
 
 #[derive(Debug, Deserialize)]

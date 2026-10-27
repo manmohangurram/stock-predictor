@@ -32,6 +32,44 @@ async fn main() -> Result<()> {
         println!("seed: {report:?}");
     }
 
+    if let Some(i) = args.iter().position(|a| a == "--ask") {
+        let symbol = args.get(i + 1).cloned().unwrap_or_default();
+        let row: Option<(i64, String, String, String)> = sqlx::query_as(
+            "SELECT id, symbol, class, name FROM instruments WHERE symbol = ?",
+        )
+        .bind(&symbol)
+        .fetch_optional(&pool)
+        .await?;
+        let (id, symbol, class, name) =
+            row.ok_or_else(|| anyhow::anyhow!("no instrument {symbol} — add it first"))?;
+        let market = YahooSource::new()?;
+        let key = settings::deepseek_key(&pool).await?.unwrap_or_default();
+        let transport = ReqwestTransport::new(key)?;
+        let notifier = Ntfy::new(&cfg)?;
+        let instrument = stock_predicter::models::Instrument {
+            id,
+            symbol,
+            class: stock_predicter::models::AssetClass::parse(&class)?,
+            name,
+            currency: "INR".into(),
+            active: true,
+        };
+        let deps = EngineDeps {
+            pool: &pool,
+            cfg: &cfg,
+            market: &market,
+            transport: &transport,
+            notifier: &notifier,
+            rules: RuleConfig::default(),
+            force: true,
+        };
+        match stock_predicter::engine::advise(&deps, &instrument, Utc::now()).await? {
+            Some(line) => println!("ADVICE {line}"),
+            None => println!("ADVICE none"),
+        }
+        return Ok(());
+    }
+
     if flag("--poll-once") || flag("--predict") {
         let market = YahooSource::new()?;
         let key = settings::deepseek_key(&pool).await?.unwrap_or_default();

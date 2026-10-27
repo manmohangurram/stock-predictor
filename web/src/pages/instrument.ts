@@ -1,6 +1,7 @@
 import type { Analysis, InstrumentDetail, Trade } from "../api";
 import { clock, day, escapeHtml, histDate, money, units } from "../format";
 import { confidenceLabel, renderConfidence } from "../components/confidence";
+import { renderRisk } from "../components/risk";
 import { stamp } from "../components/stamp";
 
 function chart(a: Analysis): string {
@@ -77,7 +78,7 @@ export function renderTradeForm(
 </form>`;
 }
 
-function decisions(d: InstrumentDetail): string {
+function decisions(d: InstrumentDetail, targetProfitPct: number | null): string {
   if (!d.signals.length) return `<p class="empty">No decisions recorded yet.</p>`;
   return d.signals
     .map(
@@ -97,6 +98,7 @@ function decisions(d: InstrumentDetail): string {
         </div>`
       : ""
   }
+  ${renderRisk(s, targetProfitPct)}
   ${s.rationale ? `<p class="why">${escapeHtml(s.rationale)}</p>` : ""}
   ${s.reasons.length ? `<ul>${s.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul>` : ""}
   <footer>
@@ -177,7 +179,7 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
       ${renderTradeForm(a.instrument.symbol, p ? { qty: p.qty } : null)}
 
       <h2 class="sect">Decisions</h2>
-      ${decisions(d)}
+      ${decisions(d, a.instrument.target_profit_pct)}
 
       <h2 class="sect">Fills</h2>
       ${trades(list)}
@@ -188,6 +190,13 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
     <aside class="side">
       <div class="lbl">Indicators</div>
       ${facts.map(([k, v]) => `<div class="pair"><span>${k}</span><span class="num">${v}</span></div>`).join("")}
+      <div class="lbl" style="margin-top:16px">Profit expected</div>
+      <form class="target-form" data-symbol="${escapeHtml(a.instrument.symbol)}">
+        <input name="pct" type="number" min="0" step="0.5" placeholder="e.g. 15"
+               value="${a.instrument.target_profit_pct ?? ""}" aria-label="Expected profit percent" />
+        <button class="btn" type="submit">Save</button>
+      </form>
+      <p class="cites">A take-profit below this is rejected. Leave blank for no minimum.</p>
       <div class="lbl" style="margin-top:16px">Rules</div>
       ${a.checks
         .map(

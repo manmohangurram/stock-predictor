@@ -7,6 +7,7 @@ use stock_predicter::rules::indicators::atr_bands;
 fn proposal(action: Action, entry: f64, stop: Option<f64>, target: Option<f64>) -> Proposal {
     Proposal {
         action,
+        qty: None,
         entry,
         stop,
         target,
@@ -26,6 +27,7 @@ fn ctx<'a>(sent: &'a [i64]) -> ValidateCtx<'a> {
         held_qty: 0.0,
         sent_headline_ids: sent,
         requires_exit: true,
+        required_profit_pct: None,
         now: Utc::now(),
     }
 }
@@ -117,4 +119,79 @@ fn a_fund_is_not_required_to_carry_an_exit_price() {
     let mut c = ctx(&[1]);
     c.requires_exit = false;
     assert_eq!(check(&p, &c), Ok(()));
+}
+
+#[test]
+fn a_decision_about_an_instrument_with_no_headlines_needs_no_citation() {
+    let mut p = proposal(Action::Buy, 105.0, Some(101.0), Some(111.0));
+    p.cites = vec![];
+    let mut c = ctx(&[]); // nothing was sent to the model
+    c.requires_exit = true;
+    assert_eq!(check(&p, &c), Ok(()));
+}
+
+#[test]
+fn with_headlines_sent_a_citation_is_still_required() {
+    let mut p = proposal(Action::Buy, 105.0, Some(101.0), Some(111.0));
+    p.cites = vec![];
+    assert_eq!(check(&p, &ctx(&[1, 2])), Err(ValidationError::MissingCitation));
+}
+
+#[test]
+fn the_model_may_size_a_buy_and_it_is_checked_against_cash() {
+    let mut p = proposal(Action::Buy, 105.0, Some(101.0), Some(111.0));
+    p.qty = Some(50.0); // 50 * 105 = 5250, inside 10,000
+    assert_eq!(check(&p, &ctx(&[1])), Ok(()));
+
+    p.qty = Some(500.0); // 52,500, beyond the pot
+    assert_eq!(check(&p, &ctx(&[1])), Err(ValidationError::InsufficientCash));
+}
+
+#[test]
+fn the_model_may_size_a_sell_but_not_beyond_what_is_held() {
+    let mut p = proposal(Action::Sell, 105.0, Some(110.0), None);
+    let mut c = ctx(&[1]);
+    c.held_qty = 17.0;
+
+    p.qty = Some(17.0);
+    assert_eq!(check(&p, &c), Ok(()));
+    p.qty = Some(18.0);
+    assert_eq!(check(&p, &c), Err(ValidationError::TooManyUnits));
+    p.qty = Some(0.0);
+    assert_eq!(check(&p, &c), Err(ValidationError::BadQuantity));
+}
+
+#[test]
+fn no_quantity_from_the_model_leaves_the_rules_sizing_in_charge() {
+    let mut p = proposal(Action::Buy, 105.0, Some(101.0), Some(111.0));
+    p.qty = None;
+    let mut c = ctx(&[1]);
+    c.qty = 20.0; // rules sizing: 2100, fits
+    assert_eq!(check(&p, &c), Ok(()));
+    c.available_cash = 100.0; // rules sizing no longer fits
+    assert_eq!(check(&p, &c), Err(ValidationError::InsufficientCash));
+}
+
+#[test]
+fn a_take_profit_below_the_owner_expectation_is_rejected() {
+    // The band is 105 ± 2 ATR, so the entry must sit near 105.
+    let mut p = proposal(Action::Buy, 105.0, Some(101.0), Some(110.0)); // +4.8%
+    let mut c = ctx(&[1]);
+    c.required_profit_pct = Some(15.0);
+    assert_eq!(
+        check(&p, &c),
+        Err(ValidationError::TargetBelowRequirement { required_pct: 15.0 })
+    );
+
+    p.target = Some(121.0); // +15.2%, clears the bar
+    assert_eq!(check(&p, &c), Ok(()));
+}
+
+#[test]
+fn a_profit_expectation_only_governs_buys() {
+    let p = proposal(Action::Sell, 105.0, Some(110.0), None);
+    let mut c = ctx(&[1]);
+    c.required_profit_pct = Some(50.0);
+    c.held_qty = 10.0;
+    assert_eq!(check(&p, &c), Ok(()), "a sale is not judged on profit expectation");
 }

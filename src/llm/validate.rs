@@ -30,6 +30,12 @@ pub enum ValidationError {
     MissingCitation,
     #[error("a buy must carry both an exit stop and a take-profit target")]
     MissingExit,
+    #[error("quantity must be a positive, finite number")]
+    BadQuantity,
+    #[error("cannot sell more units than are held")]
+    TooManyUnits,
+    #[error("take-profit does not reach the required {required_pct}%")]
+    TargetBelowRequirement { required_pct: f64 },
 }
 
 pub struct ValidateCtx<'a> {
@@ -43,6 +49,9 @@ pub struct ValidateCtx<'a> {
     /// True when this instrument can actually be exited at a price (stocks). Funds and IPOs
     /// cannot, so requiring an exit from them would be nonsense.
     pub requires_exit: bool,
+    /// The owner's expected profit for this instrument, in percent. A take-profit below it
+    /// fails: the point of the trade is that return, not any return.
+    pub required_profit_pct: Option<f64>,
     pub now: DateTime<Utc>,
 }
 
@@ -79,6 +88,18 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
         return Err(ValidationError::PriceOutOfBand);
     }
 
+    if let Some(required_pct) = ctx.required_profit_pct {
+        if p.action == Action::Buy {
+            let target = p.target.ok_or(ValidationError::MissingExit)?;
+            let achieved = (target - p.entry) / p.entry * 100.0;
+            if achieved + 1e-9 < required_pct {
+                return Err(ValidationError::TargetBelowRequirement {
+                    required_pct,
+                });
+            }
+        }
+    }
+
     let atr = ctx.atr.max(1e-9);
     if let Some(stop) = p.stop {
         if (p.entry - stop).abs() > MAX_STOP_ATRS * atr {
@@ -91,7 +112,17 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
         }
     }
 
-    if p.action == Action::Buy && ctx.qty * p.entry > ctx.available_cash + 1e-9 {
+    // The model may size the trade; if it does, its number is what gets checked.
+    if let Some(qty) = p.qty {
+        if !qty.is_finite() || qty <= 0.0 {
+            return Err(ValidationError::BadQuantity);
+        }
+        if p.action == Action::Sell && qty > ctx.held_qty + 1e-9 {
+            return Err(ValidationError::TooManyUnits);
+        }
+    }
+    let units = p.qty.unwrap_or(ctx.qty);
+    if p.action == Action::Buy && units * p.entry > ctx.available_cash + 1e-9 {
         return Err(ValidationError::InsufficientCash);
     }
 
@@ -102,7 +133,9 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
         return Err(ValidationError::BadValidity);
     }
 
-    if p.cites.is_empty() {
+    // Cite what you were given. An instrument with no headlines has nothing to cite, so
+    // demanding one would make any decision about it impossible — which is not the intent.
+    if !ctx.sent_headline_ids.is_empty() && p.cites.is_empty() {
         return Err(ValidationError::MissingCitation);
     }
     if p.cites.iter().any(|id| !ctx.sent_headline_ids.contains(id)) {

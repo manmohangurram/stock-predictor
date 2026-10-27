@@ -52,6 +52,7 @@ fn run_input<'a>(
         candidate: c,
         available_cash: 10_000.0,
         held_qty: 0.0,
+        target_profit_pct: None,
         headlines: hs,
         price_window: "27 09:30 100.00 101.00 99.00 100.50 1000",
         daily_summary: "2026-10-24 100.00, 2026-10-27 100.50",

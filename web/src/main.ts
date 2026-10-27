@@ -38,6 +38,7 @@ async function route(): Promise<void> {
       ]);
       app.innerHTML = renderInstrument(analysis, detail, trades);
       wireTradeForm(symbol);
+      wireTargetProfit(symbol);
     } else {
       const mode = (new URLSearchParams(location.search).get("mode") as
         | "long"
@@ -174,6 +175,25 @@ function wireTradeForm(symbol: string): void {
       await route();
     } catch (e) {
       if (status) status.textContent = String(e);
+    }
+  });
+}
+
+function wireTargetProfit(symbol: string): void {
+  const form = document.querySelector<HTMLFormElement>(".target-form");
+  form?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const raw = String(new FormData(form).get("pct") ?? "").trim();
+    const pct = raw === "" ? null : Number(raw);
+    if (pct !== null && (!Number.isFinite(pct) || pct <= 0)) {
+      window.alert("Enter a positive percentage, or leave it blank.");
+      return;
+    }
+    try {
+      await api.setTargetProfit(symbol, pct);
+      await route();
+    } catch (e) {
+      window.alert(String(e));
     }
   });
 }

@@ -434,3 +434,20 @@
   .conf-word .lbl { text-transform: uppercase; }
   .conf-word .lbl { margin: 0; }
 }
+
+@layer components {
+  .risk { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: baseline;
+    margin-top: var(--space-2); padding: var(--space-2); background: var(--paper-inset);
+    border-radius: var(--radius); }
+  .risk > div { display: grid; gap: 1px; }
+  .risk b { font-size: var(--text-md); }
+  .risk-note { margin-left: auto; }
+  .ok-pill { color: var(--green); background: var(--green-bg); padding: 1px 6px;
+    border-radius: var(--radius-stamp); font-size: var(--text-xs); font-weight: 600; }
+  .warn-pill { color: var(--stamp-oxide); background: var(--stamp-oxide-bg); padding: 1px 6px;
+    border-radius: var(--radius-stamp); font-size: var(--text-xs); font-weight: 600; }
+  .target-form { display: flex; gap: var(--space-2); margin-top: var(--space-1); }
+  .target-form input { width: 90px; padding: var(--space-1) var(--space-2);
+    font-family: var(--font-ledger); background: var(--paper-inset); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: var(--radius); }
+}

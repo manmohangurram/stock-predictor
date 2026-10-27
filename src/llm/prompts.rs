@@ -22,6 +22,8 @@ pub struct PromptContext<'a> {
     pub ind: &'a Indicators,
     pub last_close: f64,
     pub cash_available: f64,
+    /// The owner's profit expectation for this instrument, if any.
+    pub target_profit_pct: Option<f64>,
     pub headlines: &'a [Headline],
     pub window_hours: u32,
     pub price_window: &'a str,
@@ -118,6 +120,16 @@ pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
         .replace("{{recent_trades}}", ctx.recent_trades)
         .replace("{{last_decision}}", ctx.last_decision)
         .replace("{{cash}}", &format!("{:.2}", ctx.cash_available))
+        .replace(
+            "{{target_profit}}",
+            &match ctx.target_profit_pct {
+                Some(p) => format!(
+                    "at least {p:.1}% (a take-profit below {:.2} is rejected)",
+                    ctx.last_close * (1.0 + p / 100.0)
+                ),
+                None => "no minimum set — choose what the setup justifies".to_string(),
+            },
+        )
         .replace("{{class_rules}}", ctx.instrument.class.timing_note())
         .replace("{{headlines}}", &headline_block)
         .replace("{{extracts}}", &extract_block)

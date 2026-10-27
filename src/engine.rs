@@ -92,6 +92,7 @@ async fn poll_instrument(
 
     let position = load_position(deps.pool, instrument.id).await?;
     let available = budget::available(deps.pool).await?;
+    let target_profit_pct = load_target_profit(deps.pool, instrument.id).await?;
 
     // Context for the model, assembled once. Prices first, then the tape, then the news.
     let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
@@ -106,45 +107,72 @@ async fn poll_instrument(
     let recent_trades = load_recent_trades(deps.pool, instrument.id, now).await?;
     let last_decision = load_last_decision(deps.pool, instrument.id).await?;
 
-    let Some(candidate) = evaluate::candidate(CandidateInput {
+    let rules_candidate = evaluate::candidate(CandidateInput {
         instrument,
         bars: &bars,
         ind: &ind,
         position: position.as_ref(),
         available_cash: available,
         cfg: deps.rules,
-    }) else {
-        return Ok(());
+    });
+
+    // The rules no longer decide whether the model is asked — they describe the setup. A held
+    // position with no fresh headlines still deserves a view on prices alone.
+    let had_rules_candidate = rules_candidate.is_some();
+    let candidate = match rules_candidate {
+        Some(c) => c,
+        None => {
+        // Say why, per instrument: "the ledger is empty" is not an answer on its own.
+        let failed: Vec<String> = evaluate::diagnose(&CandidateInput {
+            instrument,
+            bars: &bars,
+            ind: &ind,
+            position: position.as_ref(),
+            available_cash: available,
+            cfg: deps.rules,
+        })
+        .into_iter()
+        .filter(|c| !c.passed)
+        .map(|c| format!("{} — {}", c.name, c.detail))
+        .collect();
+        report.notes.push(format!(
+            "{}: rules see no entry ({}) — asking the model on prices alone",
+            instrument.symbol,
+            if failed.is_empty() {
+                "no rule fired".to_string()
+            } else {
+                failed.join("; ")
+            }
+        ));
+        Candidate {
+            instrument_id: instrument.id,
+            action: Action::Hold,
+            reasons: Vec::new(),
+            entry: bars.last().map(|b| b.close).unwrap_or_default(),
+            stop: None,
+            target: None,
+            qty: (available / bars.last().map(|b| b.close).unwrap_or(1.0).max(1e-9)).floor(),
+            timing_note: instrument.class.timing_note().into(),
+            urgent: false,
+        }
+        }
     };
-    report.candidates += 1;
+    if had_rules_candidate {
+        report.candidates += 1;
+    }
 
     // The model is paid for judgement about news, so news is what re-triggers it. Prices can
     // move all day without another call; the rules refresh them.
     let headline_fp = crate::llm::memo::fingerprint(&news);
-    if !deps.force && crate::llm::memo::unchanged(deps.pool, instrument.id, &headline_fp).await? {
-        // Same news: keep the model's decision (action, stop, target) and refresh only the
-        // entry, as long as the price is still inside the band the model's view was valid in.
-        // Outside that band the view has expired and the rules take over.
-        if reuse_model_signal(deps.pool, instrument.id, candidate.entry, ind.atr14, now).await? {
-            return Ok(());
-        }
-        let resolved = Resolved {
-            action: candidate.action,
-            entry: candidate.entry,
-            stop: candidate.stop,
-            target: candidate.target,
-            valid_until: Some((now + chrono::Duration::hours(18)).to_rfc3339()),
-            qty: candidate.qty,
-            reasons: candidate.reasons.clone(),
-            rationale: None,
-            confidence: None,
-        };
-        return finish(deps, instrument, resolved, &candidate, available, now, report).await;
-    }
+    let _ = headline_fp;
 
     // No key configured means no model layer at all — not a failed call on every tick.
     let llm_available = crate::rules::settings::deepseek_key(deps.pool).await?.is_some();
     if !llm_available {
+        report.notes.push(format!(
+            "{}: no DeepSeek key — rules only",
+            instrument.symbol
+        ));
         let resolved = Resolved {
             action: candidate.action,
             entry: candidate.entry,
@@ -156,7 +184,7 @@ async fn poll_instrument(
             rationale: None,
             confidence: None,
         };
-        return finish(deps, instrument, resolved, &candidate, available, now, report).await;
+        return finish(deps, instrument, resolved, &candidate, available, ind.atr14, now, report).await;
     }
 
     let llm_deps = LlmDeps {
@@ -173,6 +201,7 @@ async fn poll_instrument(
             candidate: &candidate,
             available_cash: available,
             held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
+            target_profit_pct,
             headlines: &news,
             price_window: &price_window,
             daily_summary: &daily_summary,
@@ -193,7 +222,95 @@ async fn poll_instrument(
         return Ok(());
     };
 
-    finish(deps, instrument, resolved, &candidate, available, now, report).await
+    finish(deps, instrument, resolved, &candidate, available, ind.atr14, now, report).await
+}
+
+/// Ask the model about one instrument on demand, bypassing the rules gate, and write nothing.
+/// This is the "second opinion" path: the rules may see no setup, but a human still wants the
+/// model's read before deciding to do nothing.
+pub async fn advise(
+    deps: &EngineDeps<'_>,
+    instrument: &Instrument,
+    now: DateTime<Utc>,
+) -> Result<Option<String>> {
+    let bars = deps.market.bars(&instrument.symbol).await?;
+    let ind = match indicators::compute(&bars) {
+        Ok(i) => i,
+        Err(e) => return Ok(Some(format!("no indicators ({e}) — not enough stored history"))),
+    };
+    let news = deps.market.news(&instrument.symbol).await.unwrap_or_default();
+    let position = load_position(deps.pool, instrument.id).await?;
+    let available = budget::available_in(deps.pool, crate::models::Mode::Long).await?;
+    let target_profit_pct = load_target_profit(deps.pool, instrument.id).await?;
+
+    let last_close = bars.last().map(|b| b.close).unwrap_or_default();
+    let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
+        Ok(b) => format_window(&b, 6, now),
+        Err(_) => "(intraday tape unavailable)".to_string(),
+    };
+
+    // A neutral stand-in: the prompt uses entry and quantity, not the rules' opinion.
+    let qty = (available / last_close.max(1e-9)).floor().max(0.0);
+    let neutral = Candidate {
+        instrument_id: instrument.id,
+        action: Action::Hold,
+        reasons: vec![],
+        entry: last_close,
+        stop: None,
+        target: None,
+        qty,
+        timing_note: instrument.class.timing_note().into(),
+        urgent: false,
+    };
+
+    let llm_deps = LlmDeps {
+        pool: deps.pool,
+        cfg: deps.cfg,
+        transport: deps.transport,
+        market: deps.market,
+    };
+    let decision = orchestrate::run(
+        &llm_deps,
+        RunInput {
+            instrument,
+            ind: &ind,
+            candidate: &neutral,
+            available_cash: available,
+            held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
+            target_profit_pct,
+            headlines: &news,
+            price_window: &price_window,
+            daily_summary: &format_daily(&bars, 10),
+            positions: &format_positions(position.as_ref(), &instrument.symbol),
+            recent_trades: &load_recent_trades(deps.pool, instrument.id, now).await?,
+            last_decision: &load_last_decision(deps.pool, instrument.id).await?,
+            now,
+        },
+    )
+    .await?;
+
+    Ok(Some(match decision.outcome {
+        Outcome::Llm(p) => format!(
+            "{} {:?} entry {:.2} stop {} target {} confidence {} · {}",
+            instrument.symbol,
+            p.action,
+            p.entry,
+            p.stop.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
+            p.target.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
+            p.confidence.as_str(),
+            p.rationale
+        ),
+        Outcome::Pass { why } => format!("{} PASS · {why}", instrument.symbol),
+        Outcome::Rejected { proposal, error } => format!(
+            "{} model proposed {:?} entry {:.2} stop {} target {} but it was rejected: {error}",
+            instrument.symbol,
+            proposal.action,
+            proposal.entry,
+            proposal.stop.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
+            proposal.target.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
+        ),
+        Outcome::Rules(_) => format!("{} no usable model answer, rules unchanged", instrument.symbol),
+    }))
 }
 
 /// Signal persistence, the budget gate and the push — shared by the LLM and rules-only paths.
@@ -203,9 +320,15 @@ async fn finish(
     resolved: Resolved,
     candidate: &Candidate,
     available: f64,
+    atr: f64,
     now: DateTime<Utc>,
     report: &mut PollReport,
 ) -> Result<()> {
+    // A HOLD is the absence of a decision, not a decision to record.
+    if !matches!(resolved.action, Action::Buy | Action::Sell) {
+        return Ok(());
+    }
+
     // The budget gate is the last word, above the LLM: a proposal that does not fit is
     // recorded as BLOCKED with the shortfall, and is never pushed.
     if resolved.action == Action::Buy {
@@ -228,6 +351,14 @@ async fn finish(
         resolved.valid_until.clone().unwrap_or_else(|| "-".into()),
         resolved.rationale.clone().unwrap_or_else(|| "rules only".into()),
     ));
+
+    // A model-derived signal that is still valid and still inside its band survives a failed
+    // model call: the rules refresh the price but must not overwrite a view they did not form.
+    if resolved.rationale.is_none()
+        && reuse_model_signal(deps.pool, instrument.id, resolved.entry, atr, now).await?
+    {
+        return Ok(());
+    }
 
     // "Prices refresh freely" means the entry may drift without a new row or a push: the
     // latest signal is updated in place. A different action, stop or target is new information
@@ -319,11 +450,12 @@ fn resolve(candidate: &Candidate, outcome: Outcome, now: DateTime<Utc>) -> Optio
 fn from_proposal(candidate: &Candidate, p: &Proposal, fallback_until: Option<String>) -> Resolved {
     Resolved {
         action: p.action,
+        // The model may size the trade; otherwise the rules' sizing stands.
+        qty: p.qty.unwrap_or(candidate.qty),
         entry: p.entry,
         stop: p.stop,
         target: p.target,
         valid_until: Some(p.valid_until.clone()).or(fallback_until),
-        qty: candidate.qty,
         reasons: candidate.reasons.clone(),
         rationale: Some(p.rationale.clone()),
         confidence: Some(p.confidence.as_str().to_string()),
@@ -348,6 +480,15 @@ async fn load_instruments(pool: &SqlitePool) -> Result<Vec<Instrument>> {
             })
         })
         .collect()
+}
+
+async fn load_target_profit(pool: &SqlitePool, instrument_id: i64) -> Result<Option<f64>> {
+    let row: Option<(Option<f64>,)> =
+        sqlx::query_as("SELECT target_profit_pct FROM instruments WHERE id = ?")
+            .bind(instrument_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.and_then(|r| r.0))
 }
 
 async fn load_position(pool: &SqlitePool, instrument_id: i64) -> Result<Option<Position>> {
