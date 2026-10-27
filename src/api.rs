@@ -1,4 +1,6 @@
-use axum::extract::{Path, State};
+use std::sync::Arc;
+
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
@@ -18,6 +20,38 @@ use crate::rules::settings::{self, SettingsError, SettingsPatch};
 pub struct AppState {
     pub pool: SqlitePool,
     pub cfg: Config,
+    /// AMFI's scheme file is ~3 MB; it is fetched at most every few hours, not per keystroke.
+    amfi: Arc<tokio::sync::Mutex<Option<(chrono::DateTime<chrono::Utc>, String)>>>,
+}
+
+impl AppState {
+    pub fn new(pool: SqlitePool, cfg: Config) -> Self {
+        Self {
+            pool,
+            cfg,
+            amfi: Arc::new(tokio::sync::Mutex::new(None)),
+        }
+    }
+
+    async fn amfi_text(&self) -> Option<String> {
+        let mut guard = self.amfi.lock().await;
+        if let Some((at, text)) = guard.as_ref() {
+            if (chrono::Utc::now() - *at) < chrono::Duration::hours(6) {
+                return Some(text.clone());
+            }
+        }
+        let client = crate::market::yahoo::client().ok()?;
+        match crate::market::amfi::fetch_nav_all(&client).await {
+            Ok(text) => {
+                *guard = Some((chrono::Utc::now(), text.clone()));
+                Some(text)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "AMFI unavailable");
+                None
+            }
+        }
+    }
 }
 
 pub fn router(state: AppState) -> Router {
@@ -25,7 +59,14 @@ pub fn router(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/dashboard", get(dashboard))
         .route("/api/settings", get(get_settings).put(put_settings))
+        .route("/api/instruments", post(add_instrument))
         .route("/api/instruments/{symbol}", get(instrument_detail))
+        .route("/api/trades", get(all_trades))
+        .route(
+            "/api/instruments/{symbol}/trades",
+            get(instrument_trades).post(record_trade),
+        )
+        .route("/api/search", get(search_instruments))
         .route("/api/instruments/{symbol}/analysis", get(analysis))
         .route("/api/calls", get(calls))
         .route("/api/positions", post(post_position))
@@ -112,6 +153,8 @@ pub struct PositionRow {
     pub class: String,
     pub qty: f64,
     pub avg_cost: f64,
+    pub ltp: Option<f64>,
+    pub value: Option<f64>,
     pub stop: Option<f64>,
     pub target: Option<f64>,
     pub state: String,
@@ -124,6 +167,7 @@ pub struct Dashboard {
     pub budget: f64,
     pub committed: f64,
     pub available: f64,
+    pub realised: f64,
     pub currency_locked: bool,
     pub positions: Vec<PositionRow>,
     pub signals: Vec<SignalRow>,
@@ -140,6 +184,7 @@ async fn dashboard(State(st): State<AppState>) -> Result<Json<Dashboard>, ApiErr
         currency: s.currency,
         budget: s.budget,
         committed: s.committed,
+        realised: crate::trades::realised_total(&st.pool).await?,
         available,
         currency_locked: s.currency_locked,
         positions,
@@ -601,6 +646,155 @@ async fn post_ipo(
     })))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HitRow {
+    pub code: String,
+    pub name: String,
+    pub class: String,
+    pub venue: String,
+    pub price: Option<f64>,
+}
+
+async fn search_instruments(
+    State(st): State<AppState>,
+    Query(q): Query<SearchQuery>,
+) -> Result<Json<Vec<HitRow>>, ApiError> {
+    let query = q.q.trim();
+    if query.len() < 2 {
+        return Ok(Json(Vec::new()));
+    }
+    let client = crate::market::yahoo::client()?;
+    let amfi = st.amfi_text().await;
+    let hits = crate::market::search(&client, query, amfi.as_deref())
+        .await
+        .unwrap_or_default();
+    Ok(Json(
+        hits.into_iter()
+            .map(|h| HitRow {
+                code: h.code,
+                name: h.name,
+                class: h.class.as_str().to_string(),
+                venue: h.venue,
+                price: h.price,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddInstrument {
+    pub code: String,
+    pub name: Option<String>,
+    /// "stock" (default) or "mutual_fund".
+    pub class: Option<String>,
+}
+
+async fn add_instrument(
+    State(st): State<AppState>,
+    Json(body): Json<AddInstrument>,
+) -> Result<Json<InstrumentRow>, ApiError> {
+    let code = body.code.trim();
+    if code.is_empty() {
+        return Err(ApiError::BadRequest("code is required".into()));
+    }
+
+    let (class, name) = match body.class.as_deref() {
+        Some("mutual_fund") => {
+            let text = st
+                .amfi_text()
+                .await
+                .ok_or_else(|| ApiError::BadRequest("AMFI scheme list unavailable".into()))?;
+            let hit = crate::market::search::amfi_by_code(&text, code)
+                .ok_or_else(|| ApiError::NotFound(format!("no scheme {code}")))?;
+            (crate::models::AssetClass::MutualFund, hit.name)
+        }
+        _ => (
+            crate::models::AssetClass::Stock,
+            body.name.unwrap_or_else(|| code.to_string()),
+        ),
+    };
+
+    sqlx::query(
+        "INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES (?, ?, ?, 'INR')",
+    )
+    .bind(code)
+    .bind(class.as_str())
+    .bind(&name)
+    .execute(&st.pool)
+    .await?;
+
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = ?")
+        .bind(code)
+        .fetch_one(&st.pool)
+        .await?;
+    Ok(Json(InstrumentRow {
+        id: id.0,
+        symbol: code.to_string(),
+        class: class.as_str().to_string(),
+        name,
+        currency: "INR".into(),
+        timing_note: class.timing_note().to_string(),
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TradeBody {
+    pub side: String,
+    pub qty: f64,
+    pub price: Option<f64>,
+    pub note: Option<String>,
+}
+
+async fn record_trade(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+    Json(body): Json<TradeBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
+    let side = crate::trades::Side::parse(&body.side)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    // A price is required; there is no "current price" for a fill that already happened.
+    let price = body
+        .price
+        .filter(|p| p.is_finite() && *p > 0.0)
+        .ok_or_else(|| ApiError::BadRequest("price is required".into()))?;
+
+    if !body.qty.is_finite() || body.qty <= 0.0 {
+        return Err(ApiError::BadRequest("qty must be positive".into()));
+    }
+
+    crate::trades::record(&st.pool, id, side, body.qty, price, body.note.as_deref())
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    let s = settings::get(&st.pool).await?;
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "cash": s.available,
+        "realised": crate::trades::realised_total(&st.pool).await?,
+    })))
+}
+
+async fn instrument_trades(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<Vec<crate::trades::Trade>>, ApiError> {
+    let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
+    Ok(Json(crate::trades::history(&st.pool, Some(id), 200).await?))
+}
+
+async fn all_trades(
+    State(st): State<AppState>,
+) -> Result<Json<Vec<crate::trades::Trade>>, ApiError> {
+    Ok(Json(crate::trades::history(&st.pool, None, 200).await?))
+}
+
 async fn instrument_id_by_symbol(pool: &SqlitePool, symbol: &str) -> Result<i64, ApiError> {
     let row: Option<(i64,)> = sqlx::query_as("SELECT id FROM instruments WHERE symbol = ?")
         .bind(symbol)
@@ -611,8 +805,11 @@ async fn instrument_id_by_symbol(pool: &SqlitePool, symbol: &str) -> Result<i64,
 }
 
 async fn load_positions(pool: &SqlitePool) -> Result<Vec<PositionRow>, ApiError> {
-    let rows: Vec<(i64, String, String, f64, f64, Option<f64>, Option<f64>, String)> = sqlx::query_as(
-        "SELECT p.id, i.symbol, i.class, p.qty, p.avg_cost, p.stop, p.target, p.state
+    let rows: Vec<(i64, String, String, f64, f64, Option<f64>, Option<f64>, String, Option<f64>)> =
+        sqlx::query_as(
+        "SELECT p.id, i.symbol, i.class, p.qty, p.avg_cost, p.stop, p.target, p.state,
+                (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
+                 ORDER BY b.ts DESC LIMIT 1)
          FROM positions p JOIN instruments i ON i.id = p.instrument_id ORDER BY p.id DESC",
     )
     .fetch_all(pool)
@@ -627,6 +824,8 @@ async fn load_positions(pool: &SqlitePool) -> Result<Vec<PositionRow>, ApiError>
                 class: class.as_str().to_string(),
                 qty: r.3,
                 avg_cost: r.4,
+                ltp: r.8,
+                value: r.8.map(|p| p * r.3),
                 stop: r.5,
                 target: r.6,
                 state: r.7,

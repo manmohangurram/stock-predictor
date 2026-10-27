@@ -166,7 +166,7 @@ pub fn diagnose(input: &CandidateInput<'_>) -> Vec<Check> {
     if let Some(pos) = input.position {
         let stop_hit = pos.stop.is_some_and(|s| close < s);
         checks.push(Check {
-            name: "stop not hit",
+            name: "stop not breached",
             passed: !stop_hit,
             detail: match pos.stop {
                 Some(s) => format!("close {close:.2} vs stop {s:.2}"),

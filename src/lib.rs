@@ -9,4 +9,5 @@ pub mod models;
 pub mod notify;
 pub mod rules;
 pub mod schedule;
+pub mod trades;
 pub mod seed;

@@ -33,7 +33,7 @@ async fn setup() -> (tempfile::TempDir, axum::Router, sqlx::SqlitePool) {
         .await
         .unwrap();
     }
-    let router = api::router(AppState { pool: pool.clone(), cfg: cfg() });
+    let router = api::router(AppState::new(pool.clone(), cfg()));
     (dir, router, pool)
 }
 
@@ -341,4 +341,111 @@ async fn settings_report_no_key_when_none_is_configured() {
     let (_d, router, _pool) = setup().await;
     let (_, v) = get(&router, "/api/settings").await;
     assert_eq!(v["deepseek_configured"], false);
+}
+
+#[tokio::test]
+async fn recording_a_buy_then_a_sell_writes_history_and_realised_pnl() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 100.0}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["realised"], 0.0);
+
+    let (_, d) = get(&router, "/api/dashboard").await;
+    assert_eq!(d["committed"], 1000.0);
+
+    // Sell half at a profit: realised = 5 * (120 - 100)
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "sell", "qty": 5.0, "price": 120.0}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["realised"], 100.0);
+
+    let (_, d) = get(&router, "/api/dashboard").await;
+    assert_eq!(d["committed"], 500.0);
+    assert_eq!(d["realised"], 100.0);
+
+    let (s, v) = get(&router, "/api/instruments/INFY/trades").await;
+    assert_eq!(s, StatusCode::OK);
+    let rows = v.as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["side"], "sell");
+    assert_eq!(rows[0]["realised"], 100.0);
+    assert_eq!(rows[1]["side"], "buy");
+}
+
+#[tokio::test]
+async fn selling_more_than_is_held_is_refused() {
+    let (_d, router, _pool) = setup().await;
+    let _ = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 2.0, "price": 100.0}),
+    )
+    .await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "sell", "qty": 5.0, "price": 100.0}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+}
+
+#[tokio::test]
+async fn a_buy_beyond_the_budget_is_refused_and_records_nothing() {
+    let (_d, router, _pool) = setup().await;
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 1000.0, "price": 200.0}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    let (_, v) = get(&router, "/api/instruments/INFY/trades").await;
+    assert_eq!(v.as_array().unwrap().len(), 0, "no half-written trade");
+}
+
+#[tokio::test]
+async fn adding_an_instrument_makes_it_visible_and_idempotent() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments",
+        json!({"code": "WIPRO.NS", "name": "Wipro"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["symbol"], "WIPRO.NS");
+    assert_eq!(v["class"], "stock");
+
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments",
+        json!({"code": "WIPRO.NS", "name": "Wipro"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "adding twice is not an error");
+}
+
+#[tokio::test]
+async fn an_empty_search_returns_nothing_without_calling_out() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = get(&router, "/api/search?q=i").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v.as_array().unwrap().len(), 0);
 }

@@ -5,6 +5,7 @@ use sqlx::SqlitePool;
 pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0001_init", include_str!("../migrations/0001_init.sql")),
     ("0002_llm_memos", include_str!("../migrations/0002_llm_memos.sql")),
+    ("0003_trades", include_str!("../migrations/0003_trades.sql")),
 ];
 
 pub fn path_of(path: &str) -> &str {

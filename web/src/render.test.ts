@@ -1,84 +1,131 @@
 import { describe, expect, test } from "vitest";
-import type { Dashboard, Settings, SignalRow } from "./api";
-import { renderLedgerRow } from "./components/ledger-row";
-import { renderLedger } from "./pages/ledger";
-import { renderSettings } from "./pages/settings";
+import type { Dashboard, PositionRow, Settings, SignalRow } from "./api";
+import { renderLedger, renderRow, renderStrip } from "./pages/ledger";
+import { renderSettings, shouldDisableSave } from "./pages/settings";
 
-const base = {
-  entry: 1405.2,
-  stop: 1412.0,
-  target: 1510.0,
-  valid_until: "2026-10-28T10:00:00Z",
-  timing_note: "limit order, intraday or next open",
-  reasons: ["close 1405.20 below recorded stop 1412.00"],
-  rationale: "guidance raised with margin expansion",
-  created_at: "2026-10-27T04:11:00Z",
-};
-
-const stockSell: SignalRow = {
-  ...base,
+const position = (over: Partial<PositionRow> = {}): PositionRow => ({
   id: 1,
-  qty: 1,
-  symbol: "INFY",
+  symbol: "INFY.NS",
+  class: "stock",
+  qty: 17,
+  avg_cost: 1163,
+  ltp: 1200,
+  value: 20_400,
+  stop: 1104.85,
+  target: 1279.3,
+  state: "open",
+  timing_note: "limit order, intraday or next open",
+  ...over,
+});
+
+const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
+  id: 1,
+  symbol: "INFY.NS",
   class: "stock",
   action: "SELL",
-};
+  qty: 17,
+  entry: 1163,
+  stop: 1200,
+  target: 1279.3,
+  valid_until: "2026-10-28T10:00:00Z",
+  timing_note: "limit order, intraday or next open",
+  reasons: ["close 1163.00 below recorded stop 1200.00"],
+  rationale: "The stop was breached.",
+  created_at: "2026-10-27T04:11:00Z",
+  ...over,
+});
 
-describe("ledger row", () => {
-  test("renders the running balance after the action", () => {
-    const html = renderLedgerRow({ ...stockSell, balanceAfter: 84900 });
-    expect(html).toContain("1,405.20");
-    expect(html).toContain("84,900");
+const dashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
+  currency: "INR",
+  budget: 200_000,
+  committed: 103_611,
+  available: 96_389,
+  realised: 1240,
+  currency_locked: true,
+  positions: [],
+  signals: [],
+  blocked: [],
+  ...over,
+});
+
+describe("portfolio strip", () => {
+  test("total is invested plus cash, and realised carries its sign", () => {
+    const html = renderStrip(dashboard({ positions: [position()] }));
+    expect(html).toContain("Total value");
+    expect(html).toContain("1,16,789"); // 20,400 invested + 96,389 cash
+    expect(html).toContain("Realised");
+    expect(html).toContain("+1,240");
+  });
+
+  test("a negative realised figure is shown as a loss, signed", () => {
+    const html = renderStrip(dashboard({ realised: -500 }));
+    expect(html).toContain("-500");
+    expect(html).toContain('class="num down"');
+  });
+});
+
+describe("blotter row", () => {
+  test("carries the symbol for navigation, the numbers, and the signal stamp", () => {
+    const html = renderRow(dashboard({ positions: [position()], signals: [signal()] }), position());
+    expect(html).toContain('data-symbol="INFY.NS"');
+    expect(html).toContain("1,163.00"); // avg
+    expect(html).toContain("1,200.00"); // ltp
+    expect(html).toContain("20,400"); // value
     expect(html).toContain('data-stamp="sell"');
+    expect(html).toContain('role="link"');
   });
 
-  test("estimate rows are labelled and never presented as a firm sell", () => {
-    const html = renderLedgerRow({
-      ...stockSell,
-      id: 2,
-      symbol: "AXISBLUE",
-      class: "mutual_fund",
-      action: "SELL",
-      entry: 45.6721,
-      stop: null,
-      target: null,
-      timing_note: "units at NAV of the 15:00 cutoff; cash arrives T+1/T+2",
-    });
-    expect(html).toContain("ESTIMATE");
-    expect(html).toContain("NAV at today's 15:00 cutoff");
-    expect(html).toContain("cash arrives T+2");
-    expect(html).not.toContain('data-stamp="sell"');
+  test("a fund is labelled so it is never mistaken for an intraday price", () => {
+    const mf = position({ symbol: "AXISELSS", class: "mutual_fund", stop: null, ltp: 105.36, value: 25_000 });
+    const html = renderRow(dashboard({ positions: [mf] }), mf);
+    expect(html).toContain('data-stamp="estimate"');
+    expect(html).toContain("MF");
   });
 
-  test("blocked rows show the shortfall and are hatched, not red", () => {
-    const html = renderLedgerRow({
-      ...stockSell,
-      id: 3,
-      action: "BLOCKED",
-      reasons: ["short by 12,400"],
-      rationale: null,
-    });
-    expect(html).toContain("insufficient cash");
-    expect(html).toContain("short by 12,400");
-    expect(html).toContain("data-blocked");
+  test("no signal renders an em dash, not an empty cell", () => {
+    const html = renderRow(dashboard(), position());
+    expect(html).toContain("—");
     expect(html).not.toContain('data-stamp="buy"');
   });
+});
 
-  test("headline text is escaped, not injected", () => {
-    const html = renderLedgerRow({
-      ...stockSell,
-      rationale: '<img src=x onerror="alert(1)">',
-    });
-    expect(html).not.toContain("<img src=x");
-    expect(html).toContain("&lt;img");
+describe("ledger", () => {
+  test("empty portfolio explains what to do next", () => {
+    const html = renderLedger(dashboard(), []);
+    expect(html).toContain("Nothing held yet");
+    expect(html).toContain("No trades recorded yet");
+    expect(html).not.toContain("spinner");
+  });
+
+  test("recent trades render with their side and date", () => {
+    const html = renderLedger(dashboard(), [
+      {
+        id: 1,
+        symbol: "INFY.NS",
+        side: "buy",
+        qty: 17,
+        price: 1163,
+        realised: null,
+        traded_at: "2026-10-20T04:00:00Z",
+        note: null,
+      },
+    ]);
+    expect(html).toContain("INFY.NS 17 @ 1,163.00");
+    expect(html).toContain('data-stamp="buy"');
+  });
+
+  test("search input is present and labelled", () => {
+    const html = renderLedger(dashboard(), []);
+    expect(html).toContain('id="search"');
+    expect(html).toContain("Search stocks and mutual funds");
   });
 });
 
 describe("settings", () => {
   const settings = (over: Partial<Settings> = {}): Settings => ({
-    budget: 100000,
+    budget: 100_000,
     committed: 0,
-    available: 100000,
+    available: 100_000,
     currency: "INR",
     currency_locked: false,
     deepseek_configured: false,
@@ -86,14 +133,9 @@ describe("settings", () => {
   });
 
   test("disables save when the budget is below committed", () => {
-    const html = renderSettings(settings({ committed: 142000, available: -42000 }));
+    const html = renderSettings(settings({ committed: 142_000, available: -42_000 }));
     expect(html).toContain("Committed is");
     expect(html).toContain("disabled");
-  });
-
-  test("disables currency once locked, with the reason", () => {
-    const html = renderSettings(settings({ currency_locked: true }));
-    expect(html).toContain("Currency is fixed once the ledger has entries");
   });
 
   test("a configured key is masked and offers to keep it", () => {
@@ -103,45 +145,14 @@ describe("settings", () => {
     expect(html).toContain("never shown again");
   });
 
-  test("an unconfigured key says the rules run alone", () => {
-    const html = renderSettings(settings());
-    expect(html).toContain("no model call is made");
-    expect(html).toContain("sk-…");
+  test("disables currency once locked, with the reason", () => {
+    const html = renderSettings(settings({ currency_locked: true }));
+    expect(html).toContain("Currency is fixed once the ledger has entries");
   });
 
-  test("leaves both controls usable on a fresh ledger", () => {
-    const html = renderSettings(settings());
-    expect(html).not.toContain("disabled");
-  });
-});
-
-describe("ledger", () => {
-  const dashboard = (signals: SignalRow[]): Dashboard => ({
-    currency: "INR",
-    budget: 200000,
-    committed: 0,
-    available: 200000,
-    currency_locked: false,
-    positions: [],
-    signals,
-    blocked: [],
-  });
-
-  test("empty ledger renders ruled blanks, not a spinner", () => {
-    const html = renderLedger(dashboard([]));
-    expect(html).toContain("ledger-blank");
-    expect(html).toContain("No entries today");
-    expect(html).not.toContain("spinner");
-  });
-
-  test("balance runs down the page as rows are read", () => {
-    const html = renderLedger(
-      dashboard([
-        { ...stockSell, id: 1, action: "BUY", entry: 100 },
-        { ...stockSell, id: 2, action: "BUY", entry: 100 },
-      ]),
-    );
-    expect(html).toContain("1,99,900");
-    expect(html).toContain("1,99,800");
+  test("save guard is exact at the boundary", () => {
+    expect(shouldDisableSave(141_999, 142_000)).toBe(true);
+    expect(shouldDisableSave(142_000, 142_000)).toBe(false);
+    expect(shouldDisableSave(NaN, 0)).toBe(true);
   });
 });

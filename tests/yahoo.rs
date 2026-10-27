@@ -62,3 +62,28 @@ fn chart_url_carries_the_symbol_as_a_path_segment() {
     // which Yahoo answers with 404 for every request.
     assert_eq!(yahoo::chart_url("INFY.NS"), "https://query1.finance.yahoo.com/v8/finance/chart/INFY.NS");
 }
+
+#[test]
+fn search_filters_opaque_yahoo_fund_codes_and_keeps_the_exchange() {
+    let body = r#"{"quotes":[
+      {"symbol":"INFY.NS","shortname":"Infosys","exchDisp":"NSE","quoteType":"EQUITY"},
+      {"symbol":"0P0000N0B6.BO","shortname":"0P0000N0B6.BO","exchDisp":"BSE","quoteType":"MUTUALFUND"}
+    ]}"#;
+    let hits = stock_predicter::market::search::parse_yahoo(body).unwrap();
+    assert_eq!(hits.len(), 1, "the fund code must be dropped");
+    assert_eq!(hits[0].code, "INFY.NS");
+    assert_eq!(hits[0].venue, "NSE");
+}
+
+#[test]
+fn amfi_search_finds_a_scheme_by_name_and_by_code() {
+    let text = include_str!("fixtures/amfi_navall.txt");
+    let by_name = stock_predicter::market::search::search_amfi(text, "axis elss", 5);
+    assert_eq!(by_name.len(), 1, "{by_name:?}");
+    assert_eq!(by_name[0].code, "120503");
+    assert_eq!(by_name[0].class, stock_predicter::models::AssetClass::MutualFund);
+    assert!(by_name[0].price.is_some());
+
+    let by_code = stock_predicter::market::search::amfi_by_code(text, "120503").unwrap();
+    assert!(by_code.name.contains("Axis ELSS"));
+}

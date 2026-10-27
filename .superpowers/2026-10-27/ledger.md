@@ -192,3 +192,25 @@ position, trades recorded in the last 7 days, and the previous view on the instr
 suggestion.
 
 Cadence 10 → 15 minutes (`POLL_SECS` default 900).
+
+## Hybrid UI, search, instrument pages, trade history
+
+Chosen from the six-direction lab (`web/design/lab.html`, served at `/lab.html`). Built:
+portfolio strip, blotter, click-through instrument page, search-and-add, full trade history.
+
+Backend:
+- `0003_trades` + first real use of the migration runner. Trades are the record; positions are
+  a projection; `realised` is computed at sale time and stored, so P&L never depends on
+  today's average cost.
+- Existing positions are backfilled as buys so history is not blank on first upgrade.
+- `trades::record` is all-or-nothing: history row, position change and cash movement.
+- `GET /api/search` merges Yahoo equities with AMFI scheme names (AMFI file cached 6h in
+  process — 3 MB, not per keystroke). Yahoo's opaque Indian fund codes (`0P0000N0B6.BO`) are
+  filtered out; AMFI is the fund source.
+- `POST /api/instruments` adds a code idempotently; `GET/POST /api/instruments/:symbol/trades`.
+- Dashboard gained `realised` and per-position `ltp`/`value` from the latest stored bar.
+
+Ruling: `exchDisp` is the Yahoo field name — my earlier `exchdisp` rename silently produced
+empty venues. Caught by looking at the search response, not by a test.
+Ruling: the "stop not hit" rule reads as "stop not breached" — with `passed=false` the UI
+showed BLOCK, which reads like a blocked trade when it is actually the sell trigger.

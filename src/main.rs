@@ -56,10 +56,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    let state = api::AppState {
-        pool: pool.clone(),
-        cfg: cfg.clone(),
-    };
+    let state = api::AppState::new(pool.clone(), cfg.clone());
     // Client-side routes must not 404 on a direct load or a refresh.
     let app = api::router(state).fallback_service(
         ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html")),

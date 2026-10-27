@@ -1,4 +1,5 @@
 pub mod amfi;
+pub mod search;
 pub mod yahoo;
 
 use std::future::Future;
@@ -28,6 +29,24 @@ pub trait MarketSource: Send + Sync {
         &'a self,
         symbol: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<Headline>>> + Send + 'a>>;
+}
+
+/// Search across both sources. Yahoo for exchange-listed instruments, AMFI for Indian funds.
+pub async fn search(client: &reqwest::Client, query: &str, amfi_text: Option<&str>) -> Result<Vec<search::Hit>> {
+    let url = "https://query1.finance.yahoo.com/v1/finance/search";
+    let body = client
+        .get(url)
+        .query(&[("q", query), ("quotesCount", "10"), ("newsCount", "0")])
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let mut hits = search::parse_yahoo(&body).unwrap_or_default();
+    if let Some(text) = amfi_text {
+        hits.extend(search::search_amfi(text, query, 5));
+    }
+    Ok(hits)
 }
 
 pub struct YahooSource {

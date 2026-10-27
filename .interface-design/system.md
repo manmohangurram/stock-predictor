@@ -299,3 +299,26 @@ disables the stamp press and row height animation entirely (content still appear
   decision.
 - 2026-10-27 — BLOCKED rows are hatched, not red. Reason: red reads as an error the user
   caused; a blocked signal is the system working correctly.
+
+---
+
+## Chosen direction — Blotter spine (agreed 2026-10-27)
+
+The passbook ledger was too thin to be a daily driver. After the six-direction lab
+(`web/design/lab.html`), the hybrid was chosen:
+
+- **Portfolio strip** pinned above everything: total value, invested, cash, realised, and a
+  two-segment exposure bar. This answers "can I afford it" without a navigation step.
+- **Blotter table** as the spine: 34px rows, mono figures, right-aligned numbers, one signal
+  stamp per row. The whole row is a link — clicking any instrument opens its record.
+- **Instrument page** carries what the old flat table could not: chart with SMA references,
+  a fill recorder, the decision stream with rationale, the full fills history, headlines, and
+  the rule checklist explaining why there is or is not a signal.
+- **Side rail** holds search-and-add (stocks from Yahoo, funds from AMFI), recent trades
+  across the portfolio, and this-week counts.
+
+Kept from the original system: paper/ink palette, IBM Plex Sans + Mono, 0.5px hairlines,
+stamps with the −1.5° rotation, `BLOCKED` as a hatch rather than red.
+
+Deliberately not built: candlesticks, day-change percentages sourced from nowhere, a chat
+window, and any pulsing "live" indicator.
