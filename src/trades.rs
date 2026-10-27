@@ -98,9 +98,10 @@ pub async fn record(
     match side {
         Side::Buy => {
             let value = qty * price;
+            let available = budget::available(pool).await?;
             ensure!(
-                budget::fits(pool, value).await?,
-                "this buy does not fit the budget"
+                value <= available + 1e-9,
+                "cost {value:.2} exceeds available cash {available:.2}"
             );
 
             match open {

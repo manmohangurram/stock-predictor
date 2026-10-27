@@ -238,3 +238,22 @@ Two gaps the backfill exposed, both fixed and tested:
 Ruling: cost basis stays weighted-average, so a backdated buy restates the average cost used
 for later realised P&L. FIFO lot accounting would be more accurate and is the upgrade path if
 per-lot P&L is ever wanted. Recorded here because it is a real approximation, not a bug.
+
+## Bug: cannot buy more than you already hold
+
+Reported as "clicking an added stock and trying quantity 10 shows an error" when holding fewer.
+
+Cause: the trade form rendered `max="<held>"` on the quantity input unconditionally. The browser
+then refused any value above the holding for a **buy** as well, with a native
+"must be less than or equal to N" message — before any request was made. Server-side was never
+wrong.
+
+Fix: the cap is applied only while `side = sell`, toggled by JS on the select
+(`qtyLimit(side, held)`), and the held quantity moved into the placeholder instead. Regression
+test asserts a buy form for a 2-unit holding contains no `max="2"`.
+
+Also made the two remaining refusals say the numbers: "cost 1000000.00 exceeds available cash
+91000.00" and "cannot sell 99, only 9 held".
+
+Verified end to end on a throwaway database: buy 2, buy 10 (now succeeds), sell 3, oversell and
+over-budget refused with the figures.

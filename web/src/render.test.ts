@@ -173,9 +173,20 @@ describe("trade form dates", () => {
     expect(html).toContain('max="2026-10-27"');
   });
 
-  test("sell quantity is capped by what is held", async () => {
+  test("a buy is never capped by the current holding", async () => {
     const { renderTradeForm } = await import("./pages/instrument");
-    expect(renderTradeForm("INFY.NS", { qty: 17 })).toContain('max="17"');
+    const html = renderTradeForm("INFY.NS", { qty: 2 });
+    // Regression: a static max="2" made the browser refuse "buy 10" of something you hold 2 of.
+    expect(html).not.toContain('max="2"');
+    expect(html).toContain('data-held="2"');
+    expect(html).toContain("held 2");
+  });
+
+  test("sell is capped by what is held, buy is not", async () => {
+    const { qtyLimit } = await import("./pages/instrument");
+    expect(qtyLimit("sell", 17)).toBe(17);
+    expect(qtyLimit("buy", 17)).toBeNull();
+    expect(qtyLimit("sell", null)).toBeNull();
   });
 });
 

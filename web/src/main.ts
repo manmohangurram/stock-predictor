@@ -1,6 +1,6 @@
 import { api, type Hit } from "./api";
 import { renderCalls } from "./pages/calls";
-import { renderInstrument } from "./pages/instrument";
+import { qtyLimit, renderInstrument } from "./pages/instrument";
 import { renderLedger } from "./pages/ledger";
 import { renderPositions } from "./pages/positions";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
@@ -134,6 +134,21 @@ function wireSearch(): void {
 function wireTradeForm(symbol: string): void {
   const form = document.querySelector<HTMLFormElement>(".trade-form");
   const status = document.querySelector<HTMLElement>("#trade-status");
+  const sideSelect = form?.querySelector<HTMLSelectElement>('select[name="side"]');
+  const qtyInput = form?.querySelector<HTMLInputElement>('input[name="qty"]');
+
+  // Cap the quantity only while selling. Applying it to a buy made the browser reject any
+  // purchase larger than the current holding before the request was ever sent.
+  const syncLimit = () => {
+    if (!sideSelect || !qtyInput) return;
+    const held = qtyInput.dataset.held ? Number(qtyInput.dataset.held) : null;
+    const limit = qtyLimit(sideSelect.value as "buy" | "sell", held);
+    if (limit === null) qtyInput.removeAttribute("max");
+    else qtyInput.max = String(limit);
+    qtyInput.setCustomValidity("");
+  };
+  sideSelect?.addEventListener("change", syncLimit);
+  syncLimit();
   form?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const data = new FormData(form);
