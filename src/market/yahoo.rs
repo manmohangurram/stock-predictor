@@ -21,7 +21,7 @@ pub fn client() -> Result<Client> {
 
 fn rfc3339(secs: i64) -> String {
     DateTime::from_timestamp(secs, 0)
-        .unwrap_or_else(|| DateTime::<Utc>::UNIX_EPOCH)
+        .unwrap_or(DateTime::<Utc>::UNIX_EPOCH)
         .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
@@ -167,7 +167,11 @@ pub fn news_query(symbol: &str) -> &str {
 pub async fn fetch_news(client: &Client, symbol: &str) -> Result<Vec<Headline>> {
     let body = client
         .get(SEARCH_URL)
-        .query(&[("q", news_query(symbol)), ("newsCount", "20"), ("quotesCount", "0")])
+        .query(&[
+            ("q", news_query(symbol)),
+            ("newsCount", "20"),
+            ("quotesCount", "0"),
+        ])
         .send()
         .await
         .context("news: request")?

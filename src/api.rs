@@ -16,12 +16,14 @@ use crate::rules::evaluate::{self, CandidateInput, RuleConfig};
 use crate::rules::indicators;
 use crate::rules::settings::{self, SettingsError, SettingsPatch};
 
+type AmfiCache = Arc<tokio::sync::Mutex<Option<(chrono::DateTime<chrono::Utc>, String)>>>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: SqlitePool,
     pub cfg: Config,
     /// AMFI's scheme file is ~3 MB; it is fetched at most every few hours, not per keystroke.
-    amfi: Arc<tokio::sync::Mutex<Option<(chrono::DateTime<chrono::Utc>, String)>>>,
+    amfi: AmfiCache,
 }
 
 impl AppState {
@@ -135,6 +137,37 @@ impl IntoResponse for ApiError {
 
 async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({"ok": true}))
+}
+
+/// Mirrors the joined query one-to-one, so a column order mistake is a compile error rather
+/// than a TEXT-decoded-as-REAL at runtime. Two such bugs already shipped from positional tuples.
+#[derive(sqlx::FromRow)]
+struct SignalDbRow {
+    id: i64,
+    symbol: String,
+    class: String,
+    action: String,
+    qty: Option<f64>,
+    confidence: Option<String>,
+    entry: Option<f64>,
+    stop: Option<f64>,
+    target: Option<f64>,
+    valid_until: Option<String>,
+    reason_json: Option<String>,
+    created_at: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct PositionDbRow {
+    id: i64,
+    symbol: String,
+    class: String,
+    qty: f64,
+    avg_cost: f64,
+    ltp: Option<f64>,
+    stop: Option<f64>,
+    target: Option<f64>,
+    state: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -286,22 +319,23 @@ async fn instrument_detail(
         row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
     let class = AssetClass::parse(&class).map_err(|_| ApiError::Internal)?;
 
-    let headlines: Vec<HeadlineRow> = sqlx::query_as::<_, (i64, String, Option<String>, String, String)>(
-        "SELECT id, title, publisher, published_at, url FROM news
+    let headlines: Vec<HeadlineRow> =
+        sqlx::query_as::<_, (i64, String, Option<String>, String, String)>(
+            "SELECT id, title, publisher, published_at, url FROM news
          WHERE instrument_id = ? ORDER BY published_at DESC LIMIT 20",
-    )
-    .bind(id)
-    .fetch_all(&st.pool)
-    .await?
-    .into_iter()
-    .map(|r| HeadlineRow {
-        id: r.0,
-        title: r.1,
-        publisher: r.2,
-        published_at: r.3,
-        url: r.4,
-    })
-    .collect();
+        )
+        .bind(id)
+        .fetch_all(&st.pool)
+        .await?
+        .into_iter()
+        .map(|r| HeadlineRow {
+            id: r.0,
+            title: r.1,
+            publisher: r.2,
+            published_at: r.3,
+            url: r.4,
+        })
+        .collect();
 
     let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long)
         .await?
@@ -497,27 +531,40 @@ pub struct CallRow {
     pub error: Option<String>,
 }
 
+#[derive(sqlx::FromRow)]
+struct CallDbRow {
+    id: i64,
+    ts: String,
+    endpoint: String,
+    purpose: Option<String>,
+    round: Option<i64>,
+    prompt_tokens: Option<i64>,
+    completion_tokens: Option<i64>,
+    validator_verdict: Option<String>,
+    error: Option<String>,
+}
+
 async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiError> {
-    let rows: Vec<(i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<String>)> =
-        sqlx::query_as(
-            "SELECT id, ts, endpoint, purpose, round, prompt_tokens, completion_tokens,
-                    validator_verdict, error
-             FROM api_calls ORDER BY id DESC LIMIT 100",
-        )
-        .fetch_all(&st.pool)
-        .await?;
+    let rows: Vec<CallDbRow> = sqlx::query_as(
+        "SELECT id AS id, ts AS ts, endpoint AS endpoint, purpose AS purpose, round AS round,
+                prompt_tokens AS prompt_tokens, completion_tokens AS completion_tokens,
+                validator_verdict AS validator_verdict, error AS error
+         FROM api_calls ORDER BY id DESC LIMIT 100",
+    )
+    .fetch_all(&st.pool)
+    .await?;
     Ok(Json(
         rows.into_iter()
             .map(|r| CallRow {
-                id: r.0,
-                ts: r.1,
-                endpoint: r.2,
-                purpose: r.3,
-                round: r.4,
-                prompt_tokens: r.5,
-                completion_tokens: r.6,
-                validator_verdict: r.7,
-                error: r.8,
+                id: r.id,
+                ts: r.ts,
+                endpoint: r.endpoint,
+                purpose: r.purpose,
+                round: r.round,
+                prompt_tokens: r.prompt_tokens,
+                completion_tokens: r.completion_tokens,
+                validator_verdict: r.validator_verdict,
+                error: r.error,
             })
             .collect(),
     ))
@@ -536,9 +583,14 @@ async fn post_position(
     State(st): State<AppState>,
     Json(body): Json<NewPosition>,
 ) -> Result<Json<PositionRow>, ApiError> {
-    if !body.qty.is_finite() || body.qty <= 0.0 || !body.avg_cost.is_finite() || body.avg_cost <= 0.0
+    if !body.qty.is_finite()
+        || body.qty <= 0.0
+        || !body.avg_cost.is_finite()
+        || body.avg_cost <= 0.0
     {
-        return Err(ApiError::BadRequest("qty and avg_cost must be positive".into()));
+        return Err(ApiError::BadRequest(
+            "qty and avg_cost must be positive".into(),
+        ));
     }
     let id = instrument_id_by_symbol(&st.pool, &body.symbol).await?;
     let cost = budget::cost(body.qty, body.avg_cost, AssetClass::Stock);
@@ -656,7 +708,9 @@ async fn post_ipo(
     Json(body): Json<NewIpo>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if !body.qty.is_finite() || body.qty <= 0.0 || !body.price.is_finite() || body.price <= 0.0 {
-        return Err(ApiError::BadRequest("qty and price must be positive".into()));
+        return Err(ApiError::BadRequest(
+            "qty and price must be positive".into(),
+        ));
     }
     let id = instrument_id_by_symbol(&st.pool, &body.symbol).await?;
     let cost = budget::cost(body.qty, body.price, AssetClass::Ipo);
@@ -841,8 +895,8 @@ async fn record_trade(
     Json(body): Json<TradeBody>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
-    let side = crate::trades::Side::parse(&body.side)
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let side =
+        crate::trades::Side::parse(&body.side).map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     // A price is required; there is no "current price" for a fill that already happened.
     let price = body
@@ -898,9 +952,7 @@ async fn refresh_instrument(
     let (bars, news) = crate::store::refresh(&st.pool, id, &symbol, &market)
         .await
         .map_err(|e| ApiError::BadRequest(format!("{symbol} ({class}): {e}")))?;
-    Ok(Json(
-        serde_json::json!({ "bars": bars, "headlines": news }),
-    ))
+    Ok(Json(serde_json::json!({ "bars": bars, "headlines": news })))
 }
 
 async fn instrument_trades(
@@ -926,33 +978,37 @@ async fn instrument_id_by_symbol(pool: &SqlitePool, symbol: &str) -> Result<i64,
         .ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))
 }
 
-async fn load_positions(pool: &SqlitePool, mode: crate::models::Mode) -> Result<Vec<PositionRow>, ApiError> {
-    let rows: Vec<(i64, String, String, f64, f64, Option<f64>, Option<f64>, String, Option<f64>)> =
-        sqlx::query_as(
-        "SELECT p.id, i.symbol, i.class, p.qty, p.avg_cost, p.stop, p.target, p.state,
+async fn load_positions(
+    pool: &SqlitePool,
+    mode: crate::models::Mode,
+) -> Result<Vec<PositionRow>, ApiError> {
+    let rows: Vec<PositionDbRow> = sqlx::query_as(
+        "SELECT p.id AS id, i.symbol AS symbol, i.class AS class, p.qty AS qty,
+                p.avg_cost AS avg_cost, p.stop AS stop, p.target AS target, p.state AS state,
                 (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
-                 ORDER BY b.ts DESC LIMIT 1)
+                 ORDER BY b.ts DESC LIMIT 1) AS ltp
          FROM positions p JOIN instruments i ON i.id = p.instrument_id
          WHERE p.mode = ? ORDER BY p.id DESC",
     )
     .bind(mode.as_str())
     .fetch_all(pool)
     .await?;
+
     Ok(rows
         .into_iter()
         .map(|r| {
-            let class = AssetClass::parse(&r.2).unwrap_or(AssetClass::Stock);
+            let class = AssetClass::parse(&r.class).unwrap_or(AssetClass::Stock);
             PositionRow {
-                id: r.0,
-                symbol: r.1,
+                id: r.id,
+                symbol: r.symbol,
                 class: class.as_str().to_string(),
-                qty: r.3,
-                avg_cost: r.4,
-                ltp: r.8,
-                value: r.8.map(|p| p * r.3),
-                stop: r.5,
-                target: r.6,
-                state: r.7,
+                qty: r.qty,
+                avg_cost: r.avg_cost,
+                ltp: r.ltp,
+                value: r.ltp.map(|price| price * r.qty),
+                stop: r.stop,
+                target: r.target,
+                state: r.state,
                 timing_note: class.timing_note().to_string(),
             }
         })
@@ -969,36 +1025,24 @@ async fn load_signals(
     } else {
         "s.action <> 'BLOCKED'"
     };
-    let rows: Vec<(
-        i64,
-        String,
-        String,
-        String,
-        Option<f64>,
-        Option<f64>,
-        Option<f64>,
-        Option<f64>,
-        Option<String>,
-        Option<String>,
-        String,
-        Option<String>,
-    )> =
-        sqlx::query_as(&format!(
-            "SELECT s.id, i.symbol, i.class, s.action, s.qty, s.entry, s.stop, s.target,
-                    s.valid_until, s.reason_json, s.created_at, s.confidence
-             FROM signals s JOIN instruments i ON i.id = s.instrument_id
-             WHERE {predicate} AND s.mode = ? ORDER BY s.id DESC LIMIT 50"
-        ))
-        .bind(mode.as_str())
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<SignalDbRow> = sqlx::query_as(&format!(
+        "SELECT s.id AS id, i.symbol AS symbol, i.class AS class, s.action AS action,
+                s.qty AS qty, s.confidence AS confidence, s.entry AS entry, s.stop AS stop,
+                s.target AS target, s.valid_until AS valid_until,
+                s.reason_json AS reason_json, s.created_at AS created_at
+         FROM signals s JOIN instruments i ON i.id = s.instrument_id
+         WHERE {predicate} AND s.mode = ? ORDER BY s.id DESC LIMIT 50"
+    ))
+    .bind(mode.as_str())
+    .fetch_all(pool)
+    .await?;
 
     Ok(rows
         .into_iter()
         .map(|r| {
-            let class = AssetClass::parse(&r.2).unwrap_or(AssetClass::Stock);
+            let class = AssetClass::parse(&r.class).unwrap_or(AssetClass::Stock);
             let reason: serde_json::Value = r
-                .9
+                .reason_json
                 .as_deref()
                 .and_then(|j| serde_json::from_str(j).ok())
                 .unwrap_or(serde_json::json!({}));
@@ -1012,23 +1056,23 @@ async fn load_signals(
                 })
                 .unwrap_or_default();
             SignalRow {
-                id: r.0,
-                symbol: r.1,
+                id: r.id,
+                symbol: r.symbol,
                 class: class.as_str().to_string(),
-                action: r.3,
-                qty: r.4,
-                confidence: r.11,
-                entry: r.5,
-                stop: r.6,
-                target: r.7,
-                valid_until: r.8,
+                action: r.action,
+                qty: r.qty,
+                confidence: r.confidence,
+                entry: r.entry,
+                stop: r.stop,
+                target: r.target,
+                valid_until: r.valid_until,
                 timing_note: class.timing_note().to_string(),
                 reasons,
                 rationale: reason
                     .get("rationale")
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
-                created_at: r.10,
+                created_at: r.created_at,
             }
         })
         .collect())

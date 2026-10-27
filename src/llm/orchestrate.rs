@@ -180,11 +180,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
             let history = if more.price_history {
                 match deps
                     .market
-                    .intraday(
-                        &input.instrument.symbol,
-                        "60m",
-                        &history_range(),
-                    )
+                    .intraday(&input.instrument.symbol, "60m", &history_range())
                     .await
                 {
                     Ok(bars) => format_history(&bars),
@@ -259,10 +255,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 Err(error) => {
                     tracing::warn!(%error, "llm proposal rejected");
                     Ok(Decision {
-                        outcome: Outcome::Rejected {
-                            proposal: p,
-                            error,
-                        },
+                        outcome: Outcome::Rejected { proposal: p, error },
                         conversation_id,
                     })
                 }

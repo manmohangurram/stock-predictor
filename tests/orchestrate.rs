@@ -16,8 +16,13 @@ impl stock_predicter::market::MarketSource for FakeMarket {
     fn bars<'a>(
         &'a self,
         _s: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Bar>>> + Send + 'a>>
-    {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Bar>>>
+                + Send
+                + 'a,
+        >,
+    > {
         let b = self.bars.clone();
         Box::pin(async move { Ok(b) })
     }
@@ -26,16 +31,26 @@ impl stock_predicter::market::MarketSource for FakeMarket {
         _s: &'a str,
         _i: &'a str,
         _r: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Bar>>> + Send + 'a>>
-    {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Bar>>>
+                + Send
+                + 'a,
+        >,
+    > {
         let b = self.bars.clone();
         Box::pin(async move { Ok(b) })
     }
     fn news<'a>(
         &'a self,
         _s: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Headline>>> + Send + 'a>>
-    {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Headline>>>
+                + Send
+                + 'a,
+        >,
+    > {
         Box::pin(async move { Ok(vec![]) })
     }
 }
@@ -170,7 +185,9 @@ fn cfg(cap: u32) -> Config {
 async fn pool() -> (tempfile::TempDir, sqlx::SqlitePool) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("t.db");
-    let pool = db::connect_and_migrate(path.to_str().unwrap()).await.unwrap();
+    let pool = db::connect_and_migrate(path.to_str().unwrap())
+        .await
+        .unwrap();
     (dir, pool)
 }
 
@@ -216,14 +233,15 @@ async fn need_more_triggers_exactly_one_fetch_round() {
         transport: &t,
         market: &market,
     };
-    let decision = orchestrate::run(
-        &deps,
-        run_input(&i, &x, &c, &hs),
-    )
-    .await
-    .unwrap();
+    let decision = orchestrate::run(&deps, run_input(&i, &x, &c, &hs))
+        .await
+        .unwrap();
 
-    assert!(matches!(decision.outcome, Outcome::Llm(_)), "{:?}", decision.outcome);
+    assert!(
+        matches!(decision.outcome, Outcome::Llm(_)),
+        "{:?}",
+        decision.outcome
+    );
     assert_eq!(endpoints(&pool).await, vec!["chat", "fetch", "chat"]);
 }
 
@@ -247,14 +265,18 @@ async fn second_need_more_becomes_pass() {
         transport: &t,
         market: &market,
     };
-    let d = orchestrate::run(
-        &deps,
-        run_input(&i, &x, &c, &hs),
-    )
-    .await
-    .unwrap();
+    let d = orchestrate::run(&deps, run_input(&i, &x, &c, &hs))
+        .await
+        .unwrap();
     assert!(matches!(d.outcome, Outcome::Pass { .. }), "{:?}", d.outcome);
-    assert_eq!(endpoints(&pool).await.iter().filter(|e| *e == "chat").count(), 2);
+    assert_eq!(
+        endpoints(&pool)
+            .await
+            .iter()
+            .filter(|e| *e == "chat")
+            .count(),
+        2
+    );
 }
 
 #[tokio::test]
@@ -279,13 +301,17 @@ async fn more_than_three_requests_are_truncated() {
         transport: &t,
         market: &market,
     };
-    let _ = orchestrate::run(
-        &deps,
-        run_input(&i, &x, &c, &hs),
-    )
-    .await
-    .unwrap();
-    assert_eq!(endpoints(&pool).await.iter().filter(|e| *e == "fetch").count(), 3);
+    let _ = orchestrate::run(&deps, run_input(&i, &x, &c, &hs))
+        .await
+        .unwrap();
+    assert_eq!(
+        endpoints(&pool)
+            .await
+            .iter()
+            .filter(|e| *e == "fetch")
+            .count(),
+        3
+    );
 }
 
 #[tokio::test]
@@ -310,12 +336,9 @@ async fn article_bodies_are_truncated_and_total_is_capped() {
         transport: &t,
         market: &market,
     };
-    let _ = orchestrate::run(
-        &deps,
-        run_input(&i, &x, &c, &hs),
-    )
-    .await
-    .unwrap();
+    let _ = orchestrate::run(&deps, run_input(&i, &x, &c, &hs))
+        .await
+        .unwrap();
 
     let p = prompts(&pool).await;
     let round2 = &p[1];
@@ -360,12 +383,9 @@ async fn daily_cap_exhausted_degrades_to_rules_without_a_call() {
         transport: &t,
         market: &market,
     };
-    let d = orchestrate::run(
-        &deps,
-        run_input(&i, &x, &c, &hs),
-    )
-    .await
-    .unwrap();
+    let d = orchestrate::run(&deps, run_input(&i, &x, &c, &hs))
+        .await
+        .unwrap();
     assert!(matches!(d.outcome, Outcome::Rules(_)));
     assert_eq!(t.calls(), 0);
     assert!(endpoints(&pool).await.is_empty());
@@ -388,12 +408,9 @@ async fn invalid_proposal_degrades_to_rules_numbers() {
         transport: &t,
         market: &market,
     };
-    let d = orchestrate::run(
-        &deps,
-        run_input(&i, &x, &c, &hs),
-    )
-    .await
-    .unwrap();
+    let d = orchestrate::run(&deps, run_input(&i, &x, &c, &hs))
+        .await
+        .unwrap();
     // The orchestrator reports the rejection; the engine decides the consequence.
     match d.outcome {
         Outcome::Rejected { error, .. } => assert_eq!(
@@ -420,11 +437,8 @@ async fn unparseable_phase_one_degrades_to_rules() {
         transport: &t,
         market: &market,
     };
-    let d = orchestrate::run(
-        &deps,
-        run_input(&i, &x, &c, &hs),
-    )
-    .await
-    .unwrap();
+    let d = orchestrate::run(&deps, run_input(&i, &x, &c, &hs))
+        .await
+        .unwrap();
     assert!(matches!(d.outcome, Outcome::Rules(_)));
 }

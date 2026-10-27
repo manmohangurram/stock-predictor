@@ -46,11 +46,14 @@ pub async fn run(pool: &SqlitePool, with_positions: bool) -> Result<SeedReport> 
                 let close = bars.last().unwrap().close;
                 let qty = (SPEND_PER_STOCK / close).floor();
                 if qty < 1.0 {
-                    report.skipped.push(format!("{symbol}: price too high for the stake"));
+                    report
+                        .skipped
+                        .push(format!("{symbol}: price too high for the stake"));
                     continue;
                 }
                 if !budget::fits(pool, qty * close).await? {
-                    report.skipped
+                    report
+                        .skipped
                         .push(format!("{symbol}: does not fit the budget"));
                     continue;
                 }
@@ -83,8 +86,13 @@ pub async fn run(pool: &SqlitePool, with_positions: bool) -> Result<SeedReport> 
     }
 
     // One real mutual fund, priced from AMFI's daily file rather than invented.
-    let added = insert_instrument(pool, "AXISELSS", AssetClass::MutualFund, "Axis ELSS Tax Saver")
-        .await?;
+    let added = insert_instrument(
+        pool,
+        "AXISELSS",
+        AssetClass::MutualFund,
+        "Axis ELSS Tax Saver",
+    )
+    .await?;
     report.instruments_added += added;
     if with_positions {
         let id = instrument_id(pool, "AXISELSS").await?;
@@ -155,11 +163,10 @@ async fn instrument_id(pool: &SqlitePool, symbol: &str) -> Result<i64> {
 }
 
 async fn has_position(pool: &SqlitePool, instrument_id: i64) -> Result<bool> {
-    let row: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM positions WHERE instrument_id = ? AND state = 'open'",
-    )
-    .bind(instrument_id)
-    .fetch_one(pool)
-    .await?;
+    let row: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM positions WHERE instrument_id = ? AND state = 'open'")
+            .bind(instrument_id)
+            .fetch_one(pool)
+            .await?;
     Ok(row.0 > 0)
 }

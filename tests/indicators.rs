@@ -28,7 +28,10 @@ fn computes_sma_on_known_series() {
 #[test]
 fn too_few_bars_is_an_error_not_nan() {
     let err = indicators::compute(&series(&[10.0, 11.0], 2)).unwrap_err();
-    assert!(matches!(err, indicators::IndicatorError::InsufficientBars(2)));
+    assert!(matches!(
+        err,
+        indicators::IndicatorError::InsufficientBars(2)
+    ));
 }
 
 #[test]

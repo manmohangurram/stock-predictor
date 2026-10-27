@@ -195,10 +195,9 @@ pub async fn seed(
     }
 
     if !seed_currency.trim().is_empty() {
-        let rows: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM settings WHERE key = 'currency'")
-                .fetch_one(pool)
-                .await?;
+        let rows: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM settings WHERE key = 'currency'")
+            .fetch_one(pool)
+            .await?;
         if rows.0 == 0 {
             put_setting(pool, "currency", seed_currency).await?;
         }
@@ -224,9 +223,8 @@ async fn currency(pool: &SqlitePool) -> Result<String> {
 }
 
 async fn ledger_has_entries(pool: &SqlitePool) -> Result<bool> {
-    let row: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM cash_ledger WHERE kind <> 'budget'")
-            .fetch_one(pool)
-            .await?;
+    let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cash_ledger WHERE kind <> 'budget'")
+        .fetch_one(pool)
+        .await?;
     Ok(row.0 > 0)
 }

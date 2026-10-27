@@ -66,7 +66,8 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
                 return Err(ValidationError::MissingExit);
             }
             if let Some(stop) = p.stop {
-                if !(stop < p.entry) {
+                // Written as a positive test so a NaN stop fails instead of slipping through.
+                if !stop.is_finite() || stop >= p.entry {
                     return Err(ValidationError::StopOnWrongSide);
                 }
             }
@@ -76,7 +77,7 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
                 return Err(ValidationError::NotHeld);
             }
             if let Some(stop) = p.stop {
-                if !(stop > p.entry) {
+                if !stop.is_finite() || stop <= p.entry {
                     return Err(ValidationError::StopOnWrongSide);
                 }
             }
@@ -93,9 +94,7 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
             let target = p.target.ok_or(ValidationError::MissingExit)?;
             let achieved = (target - p.entry) / p.entry * 100.0;
             if achieved + 1e-9 < required_pct {
-                return Err(ValidationError::TargetBelowRequirement {
-                    required_pct,
-                });
+                return Err(ValidationError::TargetBelowRequirement { required_pct });
             }
         }
     }

@@ -56,13 +56,12 @@ pub async fn budget_total(pool: &SqlitePool) -> Result<f64> {
 }
 
 pub async fn budget_total_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
-    let row: (Option<f64>,) = sqlx::query_as(
-        "SELECT SUM(amount) FROM cash_ledger WHERE kind = 'budget' AND mode = ?",
-    )
-    .bind(mode.as_str())
-    .fetch_one(pool)
-    .await
-    .context("sum budget")?;
+    let row: (Option<f64>,) =
+        sqlx::query_as("SELECT SUM(amount) FROM cash_ledger WHERE kind = 'budget' AND mode = ?")
+            .bind(mode.as_str())
+            .fetch_one(pool)
+            .await
+            .context("sum budget")?;
     Ok(row.0.unwrap_or(0.0))
 }
 

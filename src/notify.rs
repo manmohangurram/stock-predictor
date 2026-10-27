@@ -47,7 +47,11 @@ impl Notification {
                 Priority::High,
             ),
             Action::Buy => (
-                format!("BUY · {symbol} {} units · limit {:.2}", fmt_qty(c.qty), c.entry),
+                format!(
+                    "BUY · {symbol} {} units · limit {:.2}",
+                    fmt_qty(c.qty),
+                    c.entry
+                ),
                 Priority::Default,
             ),
             _ => unreachable!(),
@@ -147,7 +151,14 @@ impl Notifier for Ntfy {
                 .post(&self.url)
                 .header("Title", encode_header(&n.title))
                 .header("Priority", n.priority.as_ntfy())
-                .header("Tags", if n.priority == Priority::High { "rotating_light" } else { "chart_with_upwards_trend" })
+                .header(
+                    "Tags",
+                    if n.priority == Priority::High {
+                        "rotating_light"
+                    } else {
+                        "chart_with_upwards_trend"
+                    },
+                )
                 .body(n.body.clone())
                 .send()
                 .await

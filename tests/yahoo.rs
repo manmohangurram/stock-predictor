@@ -15,7 +15,9 @@ fn parses_chart_fixture_into_bars() {
 #[test]
 fn empty_chart_yields_empty_vec_not_error() {
     assert_eq!(
-        yahoo::parse_chart(r#"{"chart":{"result":[]}}"#).unwrap().len(),
+        yahoo::parse_chart(r#"{"chart":{"result":[]}}"#)
+            .unwrap()
+            .len(),
         0
     );
 }
@@ -60,7 +62,10 @@ fn news_query_strips_the_exchange_suffix() {
 fn chart_url_carries_the_symbol_as_a_path_segment() {
     // Regression: the client once sent /v8/finance/chart?range=1y with no symbol at all,
     // which Yahoo answers with 404 for every request.
-    assert_eq!(yahoo::chart_url("INFY.NS"), "https://query1.finance.yahoo.com/v8/finance/chart/INFY.NS");
+    assert_eq!(
+        yahoo::chart_url("INFY.NS"),
+        "https://query1.finance.yahoo.com/v8/finance/chart/INFY.NS"
+    );
 }
 
 #[test]
@@ -81,7 +86,10 @@ fn amfi_search_finds_a_scheme_by_name_and_by_code() {
     let by_name = stock_predicter::market::search::search_amfi(text, "axis elss", 5);
     assert_eq!(by_name.len(), 1, "{by_name:?}");
     assert_eq!(by_name[0].code, "120503");
-    assert_eq!(by_name[0].class, stock_predicter::models::AssetClass::MutualFund);
+    assert_eq!(
+        by_name[0].class,
+        stock_predicter::models::AssetClass::MutualFund
+    );
     assert!(by_name[0].price.is_some());
 
     let by_code = stock_predicter::market::search::amfi_by_code(text, "120503").unwrap();

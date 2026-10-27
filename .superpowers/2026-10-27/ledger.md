@@ -404,3 +404,30 @@ rather than inventing one.
 Ruling found by an existing test: the price gate initially also suppressed calls when headlines
 had changed, which is exactly the wrong time to stay quiet. Headline change is now an override,
 not something the gate has to consider separately.
+
+## Cleanup pass: duplication, dead code, typed rows, benchmarks
+
+- `engine::gather` — `poll_instrument` and `advise` had copies of the same ten-step gathering
+  and had already drifted (`budget::available` vs `available_in`). One helper now, both callers.
+- One `tests/common/FakeMarket` replaces four copies that had diverged; ~150 lines of test
+  scaffolding gone.
+- `#[derive(sqlx::FromRow)]` structs replace positional tuples in `api::{signals,positions,calls}`
+  and `trades::history` and the engine's three row reads. Two shipped bugs came from positional
+  column order (TEXT decoded as REAL); a named field cannot.
+- Dead code removed: `schedule::off_hours_interval` (main computes it inline).
+- Clippy: 11 warnings → 0. The important one was `!(stop < entry)`, which is **false for NaN**,
+  so an unparseable stop used to pass validation. Now a positive finite test, plus a regression
+  test.
+
+## Benchmarks (`cargo bench --bench hot_paths`)
+
+| Path | Before | After |
+|---|---|---|
+| indicators/250 bars | 2.75 µs | 2.75 µs (unchanged, already fine) |
+| prompt render, 20 headlines | 21 µs | 21 µs |
+| bar write, 250 rows (cold) | **68 ms** | 18.5 ms |
+| bar write, one new bar (warm) | 68 ms worth | **0.18 ms** |
+
+The 68 ms was real: `store::bars` inserted row-by-row in autocommit. Now one transaction per
+batch, WAL + synchronous=NORMAL, and — the bigger win — only bars at or after the newest stored
+timestamp are written, because a poll re-fetches a year but only the tail is new.

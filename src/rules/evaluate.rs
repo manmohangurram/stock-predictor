@@ -86,8 +86,14 @@ pub fn candidate(input: CandidateInput<'_>) -> Option<Candidate> {
         return None;
     }
 
-    reasons.push(format!("close {close:.2} above SMA50 {:.2} and SMA200 {:.2}", ind.sma50, ind.sma200));
-    reasons.push(format!("RSI {:.1} below buy ceiling {:.1}", ind.rsi14, input.cfg.rsi_buy_ceiling));
+    reasons.push(format!(
+        "close {close:.2} above SMA50 {:.2} and SMA200 {:.2}",
+        ind.sma50, ind.sma200
+    ));
+    reasons.push(format!(
+        "RSI {:.1} below buy ceiling {:.1}",
+        ind.rsi14, input.cfg.rsi_buy_ceiling
+    ));
 
     let (stop, target) = match class {
         AssetClass::Stock => (
@@ -161,7 +167,10 @@ pub fn diagnose(input: &CandidateInput<'_>) -> Vec<Check> {
     checks.push(Check {
         name: "affordable",
         passed: qty >= 1.0 && input.instrument.class != AssetClass::MutualFund || qty > 0.0,
-        detail: format!("{qty} units at {close:.2} against {:.2} available", input.available_cash),
+        detail: format!(
+            "{qty} units at {close:.2} against {:.2} available",
+            input.available_cash
+        ),
     });
     if let Some(pos) = input.position {
         let stop_hit = pos.stop.is_some_and(|s| close < s);

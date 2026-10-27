@@ -99,7 +99,10 @@ pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
         .replace("{{class}}", ctx.instrument.class.as_str())
         .replace("{{currency}}", &ctx.instrument.currency)
         .replace("{{last_close}}", &format!("{:.2}", ctx.last_close))
-        .replace("{{now}}", &ctx.now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+        .replace(
+            "{{now}}",
+            &ctx.now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        )
         .replace(
             "{{indicators}}",
             &format!(

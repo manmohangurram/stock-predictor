@@ -19,7 +19,9 @@ fn candidate(action: Action, urgent: bool) -> Candidate {
 async fn pool() -> (tempfile::TempDir, sqlx::SqlitePool) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("t.db");
-    let pool = db::connect_and_migrate(path.to_str().unwrap()).await.unwrap();
+    let pool = db::connect_and_migrate(path.to_str().unwrap())
+        .await
+        .unwrap();
     (dir, pool)
 }
 
@@ -66,7 +68,9 @@ async fn notifier_failure_returns_err_and_leaves_no_row() {
 async fn failed_send_is_retried_on_the_next_tick() {
     let (_d, pool) = pool().await;
     let n = Notification::from_candidate("INFY", "INR", &candidate(Action::Buy, false)).unwrap();
-    assert!(notify::dispatch(&pool, &FakeNotifier::failing(), &n).await.is_err());
+    assert!(notify::dispatch(&pool, &FakeNotifier::failing(), &n)
+        .await
+        .is_err());
     let ok = FakeNotifier::default();
     assert!(notify::dispatch(&pool, &ok, &n).await.unwrap());
     assert_eq!(ok.count(), 1);

@@ -62,12 +62,11 @@ pub async fn should_call(
     if headlines_changed {
         return Ok(true);
     }
-    let row: Option<(Option<f64>, Option<String>)> = sqlx::query_as(
-        "SELECT last_price, last_call_at FROM llm_memos WHERE instrument_id = ?",
-    )
-    .bind(instrument_id)
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<(Option<f64>, Option<String>)> =
+        sqlx::query_as("SELECT last_price, last_call_at FROM llm_memos WHERE instrument_id = ?")
+            .bind(instrument_id)
+            .fetch_optional(pool)
+            .await?;
 
     let Some((last_price, last_call_at)) = row else {
         return Ok(true); // never asked: ask

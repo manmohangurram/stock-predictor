@@ -1,69 +1,15 @@
-use std::future::Future;
-use std::pin::Pin;
-
-use anyhow::Result;
 use chrono::{DateTime, TimeZone, Utc};
 use serde_json::json;
 use stock_predicter::config::Config;
 use stock_predicter::db;
-use stock_predicter::engine::{self, EngineDeps, MarketSource};
+use stock_predicter::engine::{self, EngineDeps};
 use stock_predicter::llm::deepseek::{FixtureTransport, HttpReply};
-use stock_predicter::models::{Bar, Headline};
 use stock_predicter::notify::FakeNotifier;
 use stock_predicter::rules::evaluate::RuleConfig;
 use stock_predicter::rules::settings;
 
-struct FakeMarket(Vec<Bar>);
-
-impl MarketSource for FakeMarket {
-    fn bars<'a>(
-        &'a self,
-        _symbol: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Bar>>> + Send + 'a>> {
-        let b = self.0.clone();
-        Box::pin(async move { Ok(b) })
-    }
-    fn intraday<'a>(
-        &'a self,
-        _symbol: &'a str,
-        _interval: &'a str,
-        _range: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Bar>>> + Send + 'a>> {
-        let b = self.0.clone();
-        Box::pin(async move { Ok(b) })
-    }
-
-    fn news<'a>(
-        &'a self,
-        _symbol: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Headline>>> + Send + 'a>> {
-        Box::pin(async move {
-            Ok(vec![Headline {
-                id: 0,
-                title: "Infosys guidance raised".into(),
-                publisher: "Reuters".into(),
-                published_at: "2026-10-25T00:00:00Z".into(),
-                url: "https://example.com/infy".into(),
-            }])
-        })
-    }
-}
-
-fn bars() -> Vec<Bar> {
-    (0..250)
-        .map(|i| {
-            let c = 95.0 + (i % 10) as f64 * 0.5 + i as f64 * 0.02;
-            Bar {
-                ts: format!("2026-01-01T00:00:{}Z", i % 60),
-                open: c,
-                high: c + 0.8,
-                low: c - 0.8,
-                close: c,
-                volume: 10_000,
-            }
-        })
-        .collect()
-}
+mod common;
+use common::{rising_bars as bars, FakeMarket};
 
 fn chat(content: serde_json::Value) -> HttpReply {
     HttpReply {
@@ -105,9 +51,9 @@ fn cfg() -> Config {
             ("LLM_DAILY_CAP", "50"),
             ("NTFY_TOPIC", "test-topic"),
         ]
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect(),
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect(),
     )
     .unwrap()
 }
@@ -117,7 +63,9 @@ async fn setup() -> (tempfile::TempDir, sqlx::SqlitePool) {
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
-    settings::seed(&pool, 200_000.0, "INR", "test-key").await.unwrap();
+    settings::seed(&pool, 200_000.0, "INR", "test-key")
+        .await
+        .unwrap();
     sqlx::query(
         "INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY', 'stock', 'Infosys', 'INR')",
     )
@@ -135,10 +83,14 @@ fn now() -> DateTime<Utc> {
 async fn full_cycle_signals_once_then_stays_quiet() {
     let (_d, pool) = setup().await;
     let cfg = cfg();
-    let market = FakeMarket(bars());
+    let market = FakeMarket::ok(bars(250));
     let notifier = FakeNotifier::default();
 
-    let poll1 = FixtureTransport::new(vec![chat(need_more()), fetch_ok(), chat(decide(103.5, 102.0))]);
+    let poll1 = FixtureTransport::new(vec![
+        chat(need_more()),
+        fetch_ok(),
+        chat(decide(103.5, 102.0)),
+    ]);
     let deps1 = EngineDeps {
         pool: &pool,
         cfg: &cfg,
@@ -182,7 +134,10 @@ async fn full_cycle_signals_once_then_stays_quiet() {
         .await
         .unwrap();
     assert_eq!(n, 1, "the signal was refreshed in place, not duplicated");
-    assert!((entry - 104.48).abs() < 1e-6, "entry refreshed to the live price");
+    assert!(
+        (entry - 104.48).abs() < 1e-6,
+        "entry refreshed to the live price"
+    );
 
     let calls: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
         .fetch_one(&pool)
@@ -196,7 +151,7 @@ async fn full_cycle_signals_once_then_stays_quiet() {
 async fn hallucinated_stop_falls_back_to_the_rules_numbers() {
     let (_d, pool) = setup().await;
     let cfg = cfg();
-    let market = FakeMarket(bars());
+    let market = FakeMarket::ok(bars(250));
     let notifier = FakeNotifier::default();
     // stop above entry for a BUY: the validator must refuse this outright.
     let transport = FixtureTransport::new(vec![chat(decide(106.0, 120.0))]);
@@ -218,12 +173,18 @@ async fn hallucinated_stop_falls_back_to_the_rules_numbers() {
             .await
             .unwrap();
     let reason: serde_json::Value = serde_json::from_str(&reason).unwrap();
-    assert!((entry - 104.48).abs() < 1e-6, "rules entry used, got {entry}");
+    assert!(
+        (entry - 104.48).abs() < 1e-6,
+        "rules entry used, got {entry}"
+    );
     assert!(stop < entry, "rules stop is below entry, got {stop}");
     assert!(
         (stop - (entry - 2.0 * 1.6)).abs() < 1.0,
         "stop should be the rules' 2-ATR level, not the model's 120.00: {stop}"
     );
-    assert!(reason["reasons"].is_array(), "rules reasons are still recorded");
+    assert!(
+        reason["reasons"].is_array(),
+        "rules reasons are still recorded"
+    );
     assert_eq!(notifier.count(), 1);
 }

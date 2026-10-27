@@ -6,11 +6,11 @@ use crate::config::Config;
 use crate::llm::deepseek::Transport;
 use crate::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
 use crate::llm::parse::Proposal;
-use crate::models::{Action, AssetClass, Bar, Candidate, Instrument, Position};
+use crate::models::{Action, AssetClass, Bar, Candidate, Headline, Instrument, Position};
 use crate::notify::{self, Notification, Notifier};
 use crate::rules::budget;
 use crate::rules::evaluate::{self, CandidateInput, RuleConfig};
-use crate::rules::indicators::{self, atr_bands};
+use crate::rules::indicators::{self, atr_bands, Indicators};
 
 // Re-exported so tests and callers keep importing them from the engine.
 pub use crate::market::{MarketSource, YahooSource};
@@ -60,14 +60,77 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
     for instrument in instruments {
         match poll_instrument(deps, &instrument, now, &mut report).await {
             Ok(()) => {}
-            Err(e) => report
-                .errors
-                .push(format!("{}: {e:#}", instrument.symbol)),
+            Err(e) => report.errors.push(format!("{}: {e:#}", instrument.symbol)),
         }
     }
 
     report.llm_calls = orchestrate::daily_chat_calls(deps.pool).await.unwrap_or(0);
     Ok(report)
+}
+
+/// Everything one instrument's decision needs, gathered once. \`poll_instrument\` and \`advise\`
+/// shared this logic by copy before, and had already drifted apart.
+struct Gathered {
+    bars: Vec<Bar>,
+    news: Vec<Headline>,
+    ind: Indicators,
+    position: Option<Position>,
+    available: f64,
+    target_profit_pct: Option<f64>,
+    price_window: String,
+    daily_summary: String,
+    positions_text: String,
+    recent_trades: String,
+    last_decision: String,
+}
+
+impl Gathered {
+    fn last_close(&self) -> f64 {
+        self.bars.last().map(|b| b.close).unwrap_or_default()
+    }
+}
+
+async fn gather(
+    deps: &EngineDeps<'_>,
+    instrument: &Instrument,
+    now: DateTime<Utc>,
+) -> Result<Option<Gathered>> {
+    let bars = deps.market.bars(&instrument.symbol).await?;
+    let Ok(ind) = indicators::compute(&bars) else {
+        tracing::debug!(symbol = %instrument.symbol, "not enough history for indicators");
+        return Ok(None);
+    };
+    let news = deps
+        .market
+        .news(&instrument.symbol)
+        .await
+        .unwrap_or_default();
+    crate::store::bars(deps.pool, instrument.id, &bars).await?;
+    crate::store::headlines(deps.pool, instrument.id, &news).await?;
+
+    let position = load_position(deps.pool, instrument.id).await?;
+    let available = budget::available_in(deps.pool, crate::models::Mode::Long).await?;
+    let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
+        Ok(tape) => format_window(&tape, 6, now),
+        Err(e) => {
+            tracing::debug!(symbol = %instrument.symbol, error = %e, "no intraday tape");
+            "(intraday tape unavailable)".to_string()
+        }
+    };
+
+    Ok(Some(Gathered {
+        daily_summary: format_daily(&bars, 10),
+        positions_text: format_positions(position.as_ref(), &instrument.symbol),
+        recent_trades: load_recent_trades(deps.pool, instrument.id, now).await?,
+        last_decision: load_last_decision(deps.pool, instrument.id).await?,
+        target_profit_pct: load_target_profit(deps.pool, instrument.id).await?,
+        bars,
+        news,
+        ind,
+        position,
+        available,
+        price_window,
+    }))
 }
 
 async fn poll_instrument(
@@ -76,41 +139,16 @@ async fn poll_instrument(
     now: DateTime<Utc>,
     report: &mut PollReport,
 ) -> Result<()> {
-    let bars = deps.market.bars(&instrument.symbol).await?;
-    let news = deps.market.news(&instrument.symbol).await.unwrap_or_default();
-    crate::store::headlines(deps.pool, instrument.id, &news).await?;
-
-    crate::store::bars(deps.pool, instrument.id, &bars).await?;
-
-    let ind = match indicators::compute(&bars) {
-        Ok(i) => i,
-        Err(e) => {
-            tracing::debug!(symbol = %instrument.symbol, error = %e, "no indicators, skipping");
-            return Ok(());
-        }
+    let Some(g) = gather(deps, instrument, now).await? else {
+        return Ok(());
     };
-
-    let position = load_position(deps.pool, instrument.id).await?;
-    let available = budget::available(deps.pool).await?;
-    let target_profit_pct = load_target_profit(deps.pool, instrument.id).await?;
-
-    // Context for the model, assembled once. Prices first, then the tape, then the news.
-    let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
-        Ok(bars) => format_window(&bars, 6, now),
-        Err(e) => {
-            tracing::debug!(symbol = %instrument.symbol, error = %e, "no intraday tape");
-            "(intraday tape unavailable)".to_string()
-        }
-    };
-    let daily_summary = format_daily(&bars, 10);
-    let positions_text = format_positions(position.as_ref(), &instrument.symbol);
-    let recent_trades = load_recent_trades(deps.pool, instrument.id, now).await?;
-    let last_decision = load_last_decision(deps.pool, instrument.id).await?;
+    let (bars, news, ind) = (&g.bars, &g.news, &g.ind);
+    let (position, available, target_profit_pct) = (&g.position, g.available, g.target_profit_pct);
 
     let rules_candidate = evaluate::candidate(CandidateInput {
         instrument,
-        bars: &bars,
-        ind: &ind,
+        bars,
+        ind,
         position: position.as_ref(),
         available_cash: available,
         cfg: deps.rules,
@@ -122,39 +160,39 @@ async fn poll_instrument(
     let candidate = match rules_candidate {
         Some(c) => c,
         None => {
-        // Say why, per instrument: "the ledger is empty" is not an answer on its own.
-        let failed: Vec<String> = evaluate::diagnose(&CandidateInput {
-            instrument,
-            bars: &bars,
-            ind: &ind,
-            position: position.as_ref(),
-            available_cash: available,
-            cfg: deps.rules,
-        })
-        .into_iter()
-        .filter(|c| !c.passed)
-        .map(|c| format!("{} — {}", c.name, c.detail))
-        .collect();
-        report.notes.push(format!(
-            "{}: rules see no entry ({}) — asking the model on prices alone",
-            instrument.symbol,
-            if failed.is_empty() {
-                "no rule fired".to_string()
-            } else {
-                failed.join("; ")
+            // Say why, per instrument: "the ledger is empty" is not an answer on its own.
+            let failed: Vec<String> = evaluate::diagnose(&CandidateInput {
+                instrument,
+                bars,
+                ind,
+                position: position.as_ref(),
+                available_cash: available,
+                cfg: deps.rules,
+            })
+            .into_iter()
+            .filter(|c| !c.passed)
+            .map(|c| format!("{} — {}", c.name, c.detail))
+            .collect();
+            report.notes.push(format!(
+                "{}: rules see no entry ({}) — asking the model on prices alone",
+                instrument.symbol,
+                if failed.is_empty() {
+                    "no rule fired".to_string()
+                } else {
+                    failed.join("; ")
+                }
+            ));
+            Candidate {
+                instrument_id: instrument.id,
+                action: Action::Hold,
+                reasons: Vec::new(),
+                entry: bars.last().map(|b| b.close).unwrap_or_default(),
+                stop: None,
+                target: None,
+                qty: (available / bars.last().map(|b| b.close).unwrap_or(1.0).max(1e-9)).floor(),
+                timing_note: instrument.class.timing_note().into(),
+                urgent: false,
             }
-        ));
-        Candidate {
-            instrument_id: instrument.id,
-            action: Action::Hold,
-            reasons: Vec::new(),
-            entry: bars.last().map(|b| b.close).unwrap_or_default(),
-            stop: None,
-            target: None,
-            qty: (available / bars.last().map(|b| b.close).unwrap_or(1.0).max(1e-9)).floor(),
-            timing_note: instrument.class.timing_note().into(),
-            urgent: false,
-        }
         }
     };
     if had_rules_candidate {
@@ -163,7 +201,7 @@ async fn poll_instrument(
 
     // The model is paid for judgement about news, so news is what re-triggers it. Prices can
     // move all day without another call; the rules refresh them.
-    let headline_fp = crate::llm::memo::fingerprint(&news);
+    let headline_fp = crate::llm::memo::fingerprint(news);
     let headlines_changed = !crate::llm::memo::unchanged(deps.pool, instrument.id, &headline_fp)
         .await
         .unwrap_or(true);
@@ -197,7 +235,9 @@ async fn poll_instrument(
     }
 
     // No key configured means no model layer at all — not a failed call on every tick.
-    let llm_available = crate::rules::settings::deepseek_key(deps.pool).await?.is_some();
+    let llm_available = crate::rules::settings::deepseek_key(deps.pool)
+        .await?
+        .is_some();
     if !llm_available {
         report.notes.push(format!(
             "{}: no DeepSeek key — rules only",
@@ -214,7 +254,19 @@ async fn poll_instrument(
             rationale: None,
             confidence: None,
         };
-        return finish(deps, instrument, resolved, &candidate, available, ind.atr14, now, report).await;
+        return finish(
+            deps,
+            instrument,
+            resolved,
+            &candidate,
+            Sizing {
+                available,
+                atr: ind.atr14,
+            },
+            now,
+            report,
+        )
+        .await;
     }
 
     let llm_deps = LlmDeps {
@@ -227,17 +279,17 @@ async fn poll_instrument(
         &llm_deps,
         RunInput {
             instrument,
-            ind: &ind,
+            ind,
             candidate: &candidate,
             available_cash: available,
             held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
             target_profit_pct,
-            headlines: &news,
-            price_window: &price_window,
-            daily_summary: &daily_summary,
-            positions: &positions_text,
-            recent_trades: &recent_trades,
-            last_decision: &last_decision,
+            headlines: news,
+            price_window: &g.price_window,
+            daily_summary: &g.daily_summary,
+            positions: &g.positions_text,
+            recent_trades: &g.recent_trades,
+            last_decision: &g.last_decision,
             now,
         },
     )
@@ -256,7 +308,19 @@ async fn poll_instrument(
         return Ok(());
     };
 
-    finish(deps, instrument, resolved, &candidate, available, ind.atr14, now, report).await
+    finish(
+        deps,
+        instrument,
+        resolved,
+        &candidate,
+        Sizing {
+            available,
+            atr: ind.atr14,
+        },
+        now,
+        report,
+    )
+    .await
 }
 
 /// Ask the model about one instrument on demand, bypassing the rules gate, and write nothing.
@@ -267,32 +331,19 @@ pub async fn advise(
     instrument: &Instrument,
     now: DateTime<Utc>,
 ) -> Result<Option<String>> {
-    let bars = deps.market.bars(&instrument.symbol).await?;
-    let ind = match indicators::compute(&bars) {
-        Ok(i) => i,
-        Err(e) => return Ok(Some(format!("no indicators ({e}) — not enough stored history"))),
-    };
-    let news = deps.market.news(&instrument.symbol).await.unwrap_or_default();
-    let position = load_position(deps.pool, instrument.id).await?;
-    let available = budget::available_in(deps.pool, crate::models::Mode::Long).await?;
-    let target_profit_pct = load_target_profit(deps.pool, instrument.id).await?;
-
-    let last_close = bars.last().map(|b| b.close).unwrap_or_default();
-    let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
-        Ok(b) => format_window(&b, 6, now),
-        Err(_) => "(intraday tape unavailable)".to_string(),
+    let Some(g) = gather(deps, instrument, now).await? else {
+        return Ok(Some("not enough stored history for indicators".to_string()));
     };
 
     // A neutral stand-in: the prompt uses entry and quantity, not the rules' opinion.
-    let qty = (available / last_close.max(1e-9)).floor().max(0.0);
     let neutral = Candidate {
         instrument_id: instrument.id,
         action: Action::Hold,
-        reasons: vec![],
-        entry: last_close,
+        reasons: Vec::new(),
+        entry: g.last_close(),
         stop: None,
         target: None,
-        qty,
+        qty: (g.available / g.last_close().max(1e-9)).floor().max(0.0),
         timing_note: instrument.class.timing_note().into(),
         urgent: false,
     };
@@ -307,17 +358,17 @@ pub async fn advise(
         &llm_deps,
         RunInput {
             instrument,
-            ind: &ind,
+            ind: &g.ind,
             candidate: &neutral,
-            available_cash: available,
-            held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
-            target_profit_pct,
-            headlines: &news,
-            price_window: &price_window,
-            daily_summary: &format_daily(&bars, 10),
-            positions: &format_positions(position.as_ref(), &instrument.symbol),
-            recent_trades: &load_recent_trades(deps.pool, instrument.id, now).await?,
-            last_decision: &load_last_decision(deps.pool, instrument.id).await?,
+            available_cash: g.available,
+            held_qty: g.position.as_ref().map(|p| p.qty).unwrap_or(0.0),
+            target_profit_pct: g.target_profit_pct,
+            headlines: &g.news,
+            price_window: &g.price_window,
+            daily_summary: &g.daily_summary,
+            positions: &g.positions_text,
+            recent_trades: &g.recent_trades,
+            last_decision: &g.last_decision,
             now,
         },
     )
@@ -329,8 +380,12 @@ pub async fn advise(
             instrument.symbol,
             p.action,
             p.entry,
-            p.stop.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
-            p.target.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
+            p.stop
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".into()),
+            p.target
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".into()),
             p.confidence.as_str(),
             p.rationale
         ),
@@ -340,21 +395,36 @@ pub async fn advise(
             instrument.symbol,
             proposal.action,
             proposal.entry,
-            proposal.stop.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
-            proposal.target.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
+            proposal
+                .stop
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".into()),
+            proposal
+                .target
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".into()),
         ),
-        Outcome::Rules(_) => format!("{} no usable model answer, rules unchanged", instrument.symbol),
+        Outcome::Rules(_) => format!(
+            "{} no usable model answer, rules unchanged",
+            instrument.symbol
+        ),
     }))
 }
 
 /// Signal persistence, the budget gate and the push — shared by the LLM and rules-only paths.
+/// Price context the gate and the risk checks both need.
+#[derive(Debug, Clone, Copy)]
+struct Sizing {
+    available: f64,
+    atr: f64,
+}
+
 async fn finish(
     deps: &EngineDeps<'_>,
     instrument: &Instrument,
     resolved: Resolved,
     candidate: &Candidate,
-    available: f64,
-    atr: f64,
+    sizing: Sizing,
     now: DateTime<Utc>,
     report: &mut PollReport,
 ) -> Result<()> {
@@ -362,6 +432,8 @@ async fn finish(
     if !matches!(resolved.action, Action::Buy | Action::Sell) {
         return Ok(());
     }
+
+    let available = sizing.available;
 
     // The budget gate is the last word, above the LLM: a proposal that does not fit is
     // recorded as BLOCKED with the shortfall, and is never pushed.
@@ -380,16 +452,25 @@ async fn finish(
         resolved.action.as_str(),
         resolved.qty,
         resolved.entry,
-        resolved.stop.map(|v| format!("{v:.2}")).unwrap_or_else(|| "-".into()),
-        resolved.target.map(|v| format!("{v:.2}")).unwrap_or_else(|| "-".into()),
+        resolved
+            .stop
+            .map(|v| format!("{v:.2}"))
+            .unwrap_or_else(|| "-".into()),
+        resolved
+            .target
+            .map(|v| format!("{v:.2}"))
+            .unwrap_or_else(|| "-".into()),
         resolved.valid_until.clone().unwrap_or_else(|| "-".into()),
-        resolved.rationale.clone().unwrap_or_else(|| "rules only".into()),
+        resolved
+            .rationale
+            .clone()
+            .unwrap_or_else(|| "rules only".into()),
     ));
 
     // A model-derived signal that is still valid and still inside its band survives a failed
     // model call: the rules refresh the price but must not overwrite a view they did not form.
     if resolved.rationale.is_none()
-        && reuse_model_signal(deps.pool, instrument.id, resolved.entry, atr, now).await?
+        && reuse_model_signal(deps.pool, instrument.id, resolved.entry, sizing.atr, now).await?
     {
         return Ok(());
     }
@@ -403,7 +484,10 @@ async fn finish(
                 && stop_round(prev.stop) == stop_round(resolved.stop)
                 && stop_round(prev.target) == stop_round(resolved.target);
             if same_shape {
-                if prev.entry.is_some_and(|e| (e - resolved.entry).abs() >= 0.005) {
+                if prev
+                    .entry
+                    .is_some_and(|e| (e - resolved.entry).abs() >= 0.005)
+                {
                     sqlx::query("UPDATE signals SET entry = ? WHERE id = ?")
                         .bind(resolved.entry)
                         .bind(prev.id)
@@ -430,11 +514,9 @@ async fn finish(
     if deps.cfg.ntfy_topic.is_empty() {
         return Ok(());
     }
-    if let Some(mut n) = Notification::from_candidate(
-        &instrument.symbol,
-        &instrument.currency,
-        &as_candidate,
-    ) {
+    if let Some(mut n) =
+        Notification::from_candidate(&instrument.symbol, &instrument.currency, &as_candidate)
+    {
         n.signal_id = Some(signal_id);
         if notify::dispatch(deps.pool, deps.notifier, &n).await? {
             report.notifications += 1;
@@ -461,11 +543,10 @@ fn resolve(candidate: &Candidate, outcome: Outcome, now: DateTime<Utc>) -> Optio
         Outcome::Llm(p) => Some(from_proposal(candidate, &p, valid_until)),
         // An over-budget proposal is NOT re-sized down to something that fits: it is carried
         // through to the budget gate, which records it as BLOCKED with the shortfall.
-        Outcome::Rejected { proposal, error }
-            if error == crate::llm::validate::ValidationError::InsufficientCash =>
-        {
-            Some(from_proposal(candidate, &proposal, valid_until))
-        }
+        Outcome::Rejected {
+            proposal,
+            error: crate::llm::validate::ValidationError::InsufficientCash,
+        } => Some(from_proposal(candidate, &proposal, valid_until)),
         Outcome::Rejected { .. } => Some(Resolved {
             action: candidate.action,
             entry: candidate.entry,
@@ -525,22 +606,34 @@ async fn load_target_profit(pool: &SqlitePool, instrument_id: i64) -> Result<Opt
     Ok(row.and_then(|r| r.0))
 }
 
+#[derive(sqlx::FromRow)]
+struct PositionDbRow {
+    id: i64,
+    instrument_id: i64,
+    qty: f64,
+    avg_cost: f64,
+    stop: Option<f64>,
+    target: Option<f64>,
+    state: String,
+}
+
 async fn load_position(pool: &SqlitePool, instrument_id: i64) -> Result<Option<Position>> {
-    let row: Option<(i64, i64, f64, f64, Option<f64>, Option<f64>, String)> = sqlx::query_as(
-        "SELECT id, instrument_id, qty, avg_cost, stop, target, state
+    let row: Option<PositionDbRow> = sqlx::query_as(
+        "SELECT id AS id, instrument_id AS instrument_id, qty AS qty, avg_cost AS avg_cost,
+                stop AS stop, target AS target, state AS state
          FROM positions WHERE instrument_id = ? AND state = 'open' ORDER BY id DESC LIMIT 1",
     )
     .bind(instrument_id)
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|r| Position {
-        id: r.0,
-        instrument_id: r.1,
-        qty: r.2,
-        avg_cost: r.3,
-        stop: r.4,
-        target: r.5,
-        state: r.6,
+        id: r.id,
+        instrument_id: r.instrument_id,
+        qty: r.qty,
+        avg_cost: r.avg_cost,
+        stop: r.stop,
+        target: r.target,
+        state: r.state,
     }))
 }
 
@@ -553,18 +646,28 @@ async fn reuse_model_signal(
     atr: f64,
     now: DateTime<Utc>,
 ) -> Result<bool> {
-    let row: Option<(i64, Option<f64>, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT id, entry, valid_until, reason_json FROM signals
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        id: i64,
+        entry: Option<f64>,
+        valid_until: Option<String>,
+        reason_json: Option<String>,
+    }
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT id AS id, entry AS entry, valid_until AS valid_until,
+                reason_json AS reason_json FROM signals
          WHERE instrument_id = ? AND action <> 'BLOCKED' ORDER BY id DESC LIMIT 1",
     )
     .bind(instrument_id)
     .fetch_optional(pool)
     .await?;
 
-    let Some((id, entry, valid_until, reason)) = row else {
+    let Some(row) = row else {
         return Ok(false);
     };
-    let from_model = reason
+    let (id, entry, valid_until) = (row.id, row.entry, row.valid_until);
+    let from_model = row
+        .reason_json
         .as_deref()
         .and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
         .and_then(|v| v.get("rationale").cloned())
@@ -593,6 +696,7 @@ fn stop_round(v: Option<f64>) -> Option<i64> {
     v.map(|x| (x * 100.0).round() as i64)
 }
 
+#[derive(sqlx::FromRow)]
 struct LastSignal {
     id: i64,
     action: String,
@@ -602,20 +706,14 @@ struct LastSignal {
 }
 
 async fn latest_signal(pool: &SqlitePool, instrument_id: i64) -> Result<Option<LastSignal>> {
-    let row: Option<(i64, String, Option<f64>, Option<f64>, Option<f64>)> = sqlx::query_as(
-        "SELECT id, action, entry, stop, target FROM signals
-         WHERE instrument_id = ? ORDER BY id DESC LIMIT 1",
+    let row: Option<LastSignal> = sqlx::query_as(
+        "SELECT id AS id, action AS action, entry AS entry, stop AS stop, target AS target
+         FROM signals WHERE instrument_id = ? ORDER BY id DESC LIMIT 1",
     )
     .bind(instrument_id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(id, action, entry, stop, target)| LastSignal {
-        id,
-        action,
-        entry,
-        stop,
-        target,
-    }))
+    Ok(row)
 }
 
 async fn insert_signal(
@@ -744,8 +842,12 @@ fn format_positions(position: Option<&Position>, symbol: &str) -> String {
             symbol,
             p.qty,
             p.avg_cost,
-            p.stop.map(|v| format!("{v:.2}")).unwrap_or_else(|| "none".into()),
-            p.target.map(|v| format!("{v:.2}")).unwrap_or_else(|| "none".into()),
+            p.stop
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "none".into()),
+            p.target
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "none".into()),
         ),
     }
 }
@@ -796,12 +898,18 @@ async fn load_last_decision(pool: &SqlitePool, instrument_id: i64) -> Result<Str
             let rationale = reason
                 .as_deref()
                 .and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
-                .and_then(|v| v.get("rationale").and_then(|r| r.as_str()).map(str::to_string));
+                .and_then(|v| {
+                    v.get("rationale")
+                        .and_then(|r| r.as_str())
+                        .map(str::to_string)
+                });
             format!(
                 "{} {} @ {} — {}",
                 &at[..10.min(at.len())],
                 action,
-                entry.map(|e| format!("{e:.2}")).unwrap_or_else(|| "-".into()),
+                entry
+                    .map(|e| format!("{e:.2}"))
+                    .unwrap_or_else(|| "-".into()),
                 rationale.unwrap_or_else(|| "rules only".into())
             )
         }

@@ -45,9 +45,8 @@ async fn call(router: &axum::Router, req: Request<Body>) -> (StatusCode, Value) 
     let value = if bytes.is_empty() {
         Value::Null
     } else {
-        serde_json::from_slice(&bytes).unwrap_or_else(|_| {
-            Value::String(String::from_utf8_lossy(&bytes).to_string())
-        })
+        serde_json::from_slice(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).to_string()))
     };
     (status, value)
 }
@@ -201,7 +200,10 @@ async fn instrument_route_returns_headlines_without_bodies() {
         !v.to_string().contains("SECRET BODY"),
         "article bodies must never leave the server"
     );
-    assert_eq!(v["instrument"]["timing_note"], "limit order, intraday or next open");
+    assert_eq!(
+        v["instrument"]["timing_note"],
+        "limit order, intraday or next open"
+    );
 }
 
 #[tokio::test]
@@ -300,7 +302,10 @@ async fn analysis_explains_why_there_is_no_signal() {
         .filter(|c| c["passed"] == false)
         .map(|c| c["name"].as_str().unwrap())
         .collect();
-    assert!(failed.contains(&"trend"), "flat series must fail the trend rule: {failed:?}");
+    assert!(
+        failed.contains(&"trend"),
+        "flat series must fail the trend rule: {failed:?}"
+    );
     assert_eq!(v["indicators"]["sma50"], 100.0);
 }
 
@@ -310,7 +315,10 @@ async fn analysis_of_an_instrument_with_no_bars_says_so() {
     let (s, v) = get(&router, "/api/instruments/TCS/analysis").await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert!(v["indicators"].is_null());
-    assert!(v["checks"][0]["detail"].as_str().unwrap().contains("need 200"));
+    assert!(v["checks"][0]["detail"]
+        .as_str()
+        .unwrap()
+        .contains("need 200"));
 }
 
 #[tokio::test]
@@ -333,7 +341,10 @@ async fn deepseek_key_can_be_set_from_the_ui_and_never_comes_back() {
     let (s, v) = get(&router, "/api/settings").await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(v["deepseek_configured"], true);
-    assert!(!v.to_string().contains("sk-live"), "GET leaked the key: {v}");
+    assert!(
+        !v.to_string().contains("sk-live"),
+        "GET leaked the key: {v}"
+    );
 }
 
 #[tokio::test]
@@ -486,7 +497,10 @@ async fn an_rfc3339_timestamp_is_accepted_to_the_second() {
     .await;
     assert_eq!(s, StatusCode::OK);
     let (_, rows) = get(&router, "/api/instruments/INFY/trades").await;
-    assert!(rows[0]["traded_at"].as_str().unwrap().starts_with("2026-08-03T09:41:00"));
+    assert!(rows[0]["traded_at"]
+        .as_str()
+        .unwrap()
+        .starts_with("2026-08-03T09:41:00"));
 }
 
 #[tokio::test]
@@ -543,7 +557,10 @@ async fn a_sell_cannot_be_dated_before_the_position_was_opened() {
     )
     .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
-    assert!(v["error"].as_str().unwrap_or_default().contains("before the position"));
+    assert!(v["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("before the position"));
 
     // The same sale, dated after the buy, is fine.
     let (s, _) = send(
@@ -591,7 +608,13 @@ async fn a_backfilled_buy_moves_the_position_start_date_backwards() {
 async fn the_two_pots_never_draw_on_each_other() {
     let (_d, router, _pool) = setup().await;
     // Give trading its own pot.
-    let (s, v) = send(&router, "PUT", "/api/settings", json!({"trading_budget": 20000.0})).await;
+    let (s, v) = send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"trading_budget": 20000.0}),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK, "{v}");
 
     // Spend the whole trading pot.
@@ -631,7 +654,13 @@ async fn the_two_pots_never_draw_on_each_other() {
 #[tokio::test]
 async fn the_same_symbol_can_be_held_in_both_pots_separately() {
     let (_d, router, _pool) = setup().await;
-    let _ = send(&router, "PUT", "/api/settings", json!({"trading_budget": 50_000.0})).await;
+    let _ = send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"trading_budget": 50_000.0}),
+    )
+    .await;
     let _ = send(
         &router,
         "POST",

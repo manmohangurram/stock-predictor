@@ -38,7 +38,9 @@ fn non_numeric_budget_is_an_error() {
 async fn migrations_create_the_settings_and_ledger_tables() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("t.db");
-    let pool = db::connect_and_migrate(path.to_str().unwrap()).await.unwrap();
+    let pool = db::connect_and_migrate(path.to_str().unwrap())
+        .await
+        .unwrap();
 
     let tables: Vec<(String,)> =
         sqlx::query_as("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")

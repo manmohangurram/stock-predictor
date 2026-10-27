@@ -6,7 +6,9 @@ use stock_predicter::rules::settings::{self, SettingsError, SettingsPatch};
 async fn fresh(budget: f64) -> (tempfile::TempDir, sqlx::SqlitePool, i64) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("t.db");
-    let pool = db::connect_and_migrate(path.to_str().unwrap()).await.unwrap();
+    let pool = db::connect_and_migrate(path.to_str().unwrap())
+        .await
+        .unwrap();
     settings::seed(&pool, budget, "INR", "").await.unwrap();
     let id: (i64,) = sqlx::query_as(
         "INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY', 'stock', 'Infosys', 'INR') RETURNING id",
@@ -149,7 +151,7 @@ async fn negative_or_infinite_budget_is_rejected() {
             SettingsPatch {
                 budget: Some(bad),
                 currency: None,
-            deepseek_key: None,
+                deepseek_key: None,
                 trading_budget: None,
             },
         )
@@ -183,7 +185,10 @@ async fn the_deepseek_key_is_stored_but_never_serialised() {
     assert!(s.deepseek_configured);
     let json = serde_json::to_string(&s).unwrap();
     assert!(!json.contains("sk-secret-value"), "the key leaked: {json}");
-    assert!(!json.contains("deepseek_key\""), "no key field in the payload: {json}");
+    assert!(
+        !json.contains("deepseek_key\""),
+        "no key field in the payload: {json}"
+    );
 }
 
 #[tokio::test]
@@ -224,7 +229,9 @@ async fn a_key_seeded_from_env_is_used_once_and_then_owned_by_the_settings_table
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
-    settings::seed(&pool, 1000.0, "INR", "sk-from-env").await.unwrap();
+    settings::seed(&pool, 1000.0, "INR", "sk-from-env")
+        .await
+        .unwrap();
     assert_eq!(
         settings::deepseek_key(&pool).await.unwrap().as_deref(),
         Some("sk-from-env")
@@ -242,7 +249,9 @@ async fn a_key_seeded_from_env_is_used_once_and_then_owned_by_the_settings_table
     .await
     .unwrap();
     // Re-seeding must not overwrite what the UI set.
-    settings::seed(&pool, 1000.0, "INR", "sk-from-env").await.unwrap();
+    settings::seed(&pool, 1000.0, "INR", "sk-from-env")
+        .await
+        .unwrap();
     assert_eq!(
         settings::deepseek_key(&pool).await.unwrap().as_deref(),
         Some("sk-from-ui")

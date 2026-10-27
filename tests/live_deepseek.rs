@@ -39,11 +39,7 @@ fn cfg() -> Config {
     .unwrap()
 }
 
-fn ctx<'a>(
-    i: &'a Instrument,
-    x: &'a Indicators,
-    h: &'a [Headline],
-) -> PromptContext<'a> {
+fn ctx<'a>(i: &'a Instrument, x: &'a Indicators, h: &'a [Headline]) -> PromptContext<'a> {
     PromptContext {
         instrument: i,
         ind: x,
@@ -119,12 +115,18 @@ async fn deepseek_returns_a_response_the_system_can_use() {
     .await
     .expect("the API answered");
 
-    println!("\n--- raw response ---\n{}\n--------------------", reply.content);
+    println!(
+        "\n--- raw response ---\n{}\n--------------------",
+        reply.content
+    );
 
     let verdict = parse::verdict(&reply.content).expect("response matches the agreed shape");
     match verdict {
         LlmVerdict::Decide(p) => {
-            println!("decided: {:?} entry {} stop {:?} target {:?}", p.action, p.entry, p.stop, p.target);
+            println!(
+                "decided: {:?} entry {} stop {:?} target {:?}",
+                p.action, p.entry, p.stop, p.target
+            );
             if p.action == stock_predicter::models::Action::Buy {
                 assert!(p.stop.is_some(), "a BUY must carry a stop");
                 assert!(p.target.is_some(), "a BUY must carry a take-profit");
@@ -212,7 +214,10 @@ async fn deepseek_buy_carries_both_exits() {
     .await
     .expect("the API answered");
 
-    println!("\n--- raw response ---\n{}\n--------------------", reply.content);
+    println!(
+        "\n--- raw response ---\n{}\n--------------------",
+        reply.content
+    );
     let verdict = parse::verdict(&reply.content).expect("shape");
 
     match verdict {
@@ -224,8 +229,16 @@ async fn deepseek_buy_carries_both_exits() {
             if p.action == stock_predicter::models::Action::Buy {
                 let stop = p.stop.expect("BUY must carry a stop");
                 let target = p.target.expect("BUY must carry a take-profit");
-                assert!(stop < p.entry, "stop {stop} must be below entry {}", p.entry);
-                assert!(target > p.entry, "target {target} must be above entry {}", p.entry);
+                assert!(
+                    stop < p.entry,
+                    "stop {stop} must be below entry {}",
+                    p.entry
+                );
+                assert!(
+                    target > p.entry,
+                    "target {target} must be above entry {}",
+                    p.entry
+                );
                 assert!(
                     (p.entry - 1200.0).abs() <= x.atr14,
                     "entry {} must sit within one ATR of the close",
@@ -233,7 +246,10 @@ async fn deepseek_buy_carries_both_exits() {
                 );
             }
             assert_eq!(p.cites, vec![1], "must cite the headline that drove it");
-            assert!(p.rationale.split_whitespace().count() < 120, "rationale should be short");
+            assert!(
+                p.rationale.split_whitespace().count() < 120,
+                "rationale should be short"
+            );
         }
         // Passing on a clean setup is allowed by the contract; the exit requirement is enforced
         // by the validator either way. Recorded loudly so the run is not mistaken for a BUY.

@@ -47,7 +47,10 @@ pub struct Trade {
 /// move together or not at all.
 /// When a fill happened. A bare `YYYY-MM-DD` means that trading day, stamped at the 15:30 IST
 /// close, so a backfilled record sorts after the morning and before the next day.
-pub fn parse_when(input: &str, now: chrono::DateTime<chrono::Utc>) -> Result<chrono::DateTime<chrono::Utc>> {
+pub fn parse_when(
+    input: &str,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<chrono::DateTime<chrono::Utc>> {
     let raw = input.trim();
     if raw.is_empty() {
         return Ok(now);
@@ -147,7 +150,18 @@ pub async fn record(
                 }
             }
 
-            insert_trade(pool, instrument_id, side, qty, price, None, &now, note, mode).await?;
+            insert_trade(
+                pool,
+                instrument_id,
+                side,
+                qty,
+                price,
+                None,
+                &now,
+                note,
+                mode,
+            )
+            .await?;
             budget::record_at_mode(
                 pool,
                 NewCashEntry {
@@ -244,28 +258,38 @@ async fn insert_trade(
     Ok(())
 }
 
-pub async fn history(pool: &SqlitePool, instrument_id: Option<i64>, limit: i64) -> Result<Vec<Trade>> {
-    let select = "SELECT t.id, i.symbol, t.side, t.qty, t.price, t.realised, t.traded_at, t.note, t.mode,
-                         (SELECT b.close FROM bars b
-                          WHERE b.instrument_id = t.instrument_id
-                            AND substr(b.ts, 1, 10) = substr(t.traded_at, 1, 10)
-                          ORDER BY b.ts DESC LIMIT 1)
-                  FROM trades t JOIN instruments i ON i.id = t.instrument_id";
-    let rows: Vec<(
-        i64,
-        String,
-        String,
-        f64,
-        f64,
-        Option<f64>,
-        String,
-        Option<String>,
-        String,
-        Option<f64>,
-    )> = match instrument_id {
+#[derive(sqlx::FromRow)]
+struct TradeRow {
+    id: i64,
+    symbol: String,
+    side: String,
+    qty: f64,
+    price: f64,
+    realised: Option<f64>,
+    traded_at: String,
+    note: Option<String>,
+    mode: String,
+    market_close: Option<f64>,
+}
+
+pub async fn history(
+    pool: &SqlitePool,
+    instrument_id: Option<i64>,
+    limit: i64,
+) -> Result<Vec<Trade>> {
+    const SELECT: &str = "SELECT t.id AS id, i.symbol AS symbol, t.side AS side, t.qty AS qty,
+            t.price AS price, t.realised AS realised, t.traded_at AS traded_at, t.note AS note,
+            t.mode AS mode,
+            (SELECT b.close FROM bars b
+             WHERE b.instrument_id = t.instrument_id
+               AND substr(b.ts, 1, 10) = substr(t.traded_at, 1, 10)
+             ORDER BY b.ts DESC LIMIT 1) AS market_close
+        FROM trades t JOIN instruments i ON i.id = t.instrument_id";
+
+    let rows: Vec<TradeRow> = match instrument_id {
         Some(id) => {
             sqlx::query_as(&format!(
-                "{select} WHERE t.instrument_id = ? ORDER BY t.traded_at DESC LIMIT ?"
+                "{SELECT} WHERE t.instrument_id = ? ORDER BY t.traded_at DESC LIMIT ?"
             ))
             .bind(id)
             .bind(limit)
@@ -273,7 +297,7 @@ pub async fn history(pool: &SqlitePool, instrument_id: Option<i64>, limit: i64) 
             .await?
         }
         None => {
-            sqlx::query_as(&format!("{select} ORDER BY t.traded_at DESC LIMIT ?"))
+            sqlx::query_as(&format!("{SELECT} ORDER BY t.traded_at DESC LIMIT ?"))
                 .bind(limit)
                 .fetch_all(pool)
                 .await?
@@ -283,16 +307,16 @@ pub async fn history(pool: &SqlitePool, instrument_id: Option<i64>, limit: i64) 
     Ok(rows
         .into_iter()
         .map(|r| Trade {
-            id: r.0,
-            symbol: r.1,
-            side: r.2,
-            qty: r.3,
-            price: r.4,
-            realised: r.5,
-            traded_at: r.6,
-            note: r.7,
-            mode: r.8,
-            market_close: r.9,
+            id: r.id,
+            symbol: r.symbol,
+            side: r.side,
+            qty: r.qty,
+            price: r.price,
+            realised: r.realised,
+            traded_at: r.traded_at,
+            note: r.note,
+            mode: r.mode,
+            market_close: r.market_close,
         })
         .collect())
 }
@@ -302,11 +326,10 @@ pub async fn realised_total(pool: &SqlitePool) -> Result<f64> {
 }
 
 pub async fn realised_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
-    let row: (Option<f64>,) = sqlx::query_as(
-        "SELECT SUM(realised) FROM trades WHERE side = 'sell' AND mode = ?",
-    )
-    .bind(mode.as_str())
-    .fetch_one(pool)
-    .await?;
+    let row: (Option<f64>,) =
+        sqlx::query_as("SELECT SUM(realised) FROM trades WHERE side = 'sell' AND mode = ?")
+            .bind(mode.as_str())
+            .fetch_one(pool)
+            .await?;
     Ok(row.0.unwrap_or(0.0))
 }

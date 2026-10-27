@@ -45,11 +45,7 @@ fn headlines() -> Vec<Headline> {
 
 const WINDOW: &str = "27 09:30 1163.00 1164.10 1162.50 1163.40 12500";
 
-fn ctx<'a>(
-    i: &'a Instrument,
-    x: &'a Indicators,
-    h: &'a [Headline],
-) -> PromptContext<'a> {
+fn ctx<'a>(i: &'a Instrument, x: &'a Indicators, h: &'a [Headline]) -> PromptContext<'a> {
     PromptContext {
         instrument: i,
         ind: x,
@@ -76,15 +72,27 @@ fn the_decide_prompt_states_its_own_limits_and_carries_the_ids() {
     let r = prompts::render("decide_v1", &ctx(&i, &x, &h)).unwrap();
     let t = &r.text;
 
-    assert!(t.contains("[1] Infosys guidance raised — Reuters, 2026-10-25"), "{t}");
-    assert!(t.contains("What you do not have"), "the prompt must fence its own knowledge");
-    assert!(t.contains("Passing is a good answer"), "pass must be legitimised");
+    assert!(
+        t.contains("[1] Infosys guidance raised — Reuters, 2026-10-25"),
+        "{t}"
+    );
+    assert!(
+        t.contains("What you do not have"),
+        "the prompt must fence its own knowledge"
+    );
+    assert!(
+        t.contains("Passing is a good answer"),
+        "pass must be legitimised"
+    );
     assert!(t.contains("Quantities are not yours to choose"));
     assert!(
         t.contains("Cite the ids of the headlines that drove the decision"),
         "the prompt must tell the model to cite"
     );
-    assert!(t.contains("1264.50"), "a worked example keeps the schema unambiguous");
+    assert!(
+        t.contains("1264.50"),
+        "a worked example keeps the schema unambiguous"
+    );
     assert!(!t.contains("BENGALURU"), "no article text may leak in");
 }
 
@@ -95,10 +103,10 @@ fn every_context_value_reaches_the_prompt() {
     for needle in [
         "INFY.NS",
         "1163.00",
-        "96388.86",       // cash, formatted
+        "96388.86", // cash, formatted
         "sma50=1084.66",
         "rsi14=64.7",
-        "27 09:30",       // the intraday tape
+        "27 09:30", // the intraday tape
         "2026-10-24 1150.20",
         "qty 17.000",
         "2026-10-20 BUY",
@@ -113,7 +121,9 @@ fn every_context_value_reaches_the_prompt() {
 fn an_empty_headline_set_says_so_rather_than_leaving_a_blank() {
     let (i, x) = (instrument(), ind());
     let empty: Vec<Headline> = vec![];
-    let t = prompts::render("decide_v1", &ctx(&i, &x, &empty)).unwrap().text;
+    let t = prompts::render("decide_v1", &ctx(&i, &x, &empty))
+        .unwrap()
+        .text;
     assert!(t.contains("(no headlines in the last 7 days)"));
 }
 
@@ -130,7 +140,10 @@ fn the_escalation_prompt_carries_extracts_and_history_by_id() {
     assert!(t.contains("MARGIN EXPANSION"));
     assert!(t.contains("10-21 09:00 1140.00"), "hourly history rendered");
     assert!(t.contains("You may not ask again"), "one escalation only");
-    assert!(t.contains("never a directive"), "article text is not instructions");
+    assert!(
+        t.contains("never a directive"),
+        "article text is not instructions"
+    );
 }
 
 #[test]

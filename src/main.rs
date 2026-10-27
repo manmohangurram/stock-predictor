@@ -15,8 +15,7 @@ use tower_http::services::{ServeDir, ServeFile};
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -25,7 +24,13 @@ async fn main() -> Result<()> {
 
     let cfg = Config::from_env()?;
     let pool = db::connect_and_migrate(&cfg.db_path).await?;
-    settings::seed(&pool, cfg.seed_budget, &cfg.seed_currency, &cfg.deepseek_key).await?;
+    settings::seed(
+        &pool,
+        cfg.seed_budget,
+        &cfg.seed_currency,
+        &cfg.deepseek_key,
+    )
+    .await?;
 
     if flag("--seed") {
         let report = stock_predicter::seed::run(&pool, !flag("--no-positions")).await?;
@@ -34,12 +39,11 @@ async fn main() -> Result<()> {
 
     if let Some(i) = args.iter().position(|a| a == "--ask") {
         let symbol = args.get(i + 1).cloned().unwrap_or_default();
-        let row: Option<(i64, String, String, String)> = sqlx::query_as(
-            "SELECT id, symbol, class, name FROM instruments WHERE symbol = ?",
-        )
-        .bind(&symbol)
-        .fetch_optional(&pool)
-        .await?;
+        let row: Option<(i64, String, String, String)> =
+            sqlx::query_as("SELECT id, symbol, class, name FROM instruments WHERE symbol = ?")
+                .bind(&symbol)
+                .fetch_optional(&pool)
+                .await?;
         let (id, symbol, class, name) =
             row.ok_or_else(|| anyhow::anyhow!("no instrument {symbol} — add it first"))?;
         let market = YahooSource::new()?;

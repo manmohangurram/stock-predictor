@@ -1,8 +1,8 @@
+use crate::models::AssetClass;
+use crate::models::Instrument;
 use crate::models::{Action, Bar};
 use crate::rules::evaluate::{self, CandidateInput, RuleConfig};
 use crate::rules::indicators;
-use crate::models::AssetClass;
-use crate::models::Instrument;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BacktestReport {

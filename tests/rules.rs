@@ -193,7 +193,10 @@ fn diagnose_agrees_with_the_candidate() {
         cfg: RuleConfig::default(),
     };
     assert!(candidate(CandidateInput { ..input }).is_some());
-    assert!(diagnose(&input).iter().all(|c| c.passed), "all checks should pass");
+    assert!(
+        diagnose(&input).iter().all(|c| c.passed),
+        "all checks should pass"
+    );
 
     // Same input, overbought: the candidate disappears and exactly one check explains it.
     let x2 = ind(100.0, 90.0, 78.0, 2.0);

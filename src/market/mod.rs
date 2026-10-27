@@ -32,7 +32,11 @@ pub trait MarketSource: Send + Sync {
 }
 
 /// Search across both sources. Yahoo for exchange-listed instruments, AMFI for Indian funds.
-pub async fn search(client: &reqwest::Client, query: &str, amfi_text: Option<&str>) -> Result<Vec<search::Hit>> {
+pub async fn search(
+    client: &reqwest::Client,
+    query: &str,
+    amfi_text: Option<&str>,
+) -> Result<Vec<search::Hit>> {
     let url = "https://query1.finance.yahoo.com/v1/finance/search";
     let body = client
         .get(url)

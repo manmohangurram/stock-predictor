@@ -1,45 +1,17 @@
 //! Table-driven check of the prompt contract: what DeepSeek returns, and what the system does
 //! with it. Every case is dummy data — no network, no key, no cost.
 
-use std::future::Future;
-use std::pin::Pin;
-
-use anyhow::Result;
 use serde_json::json;
 use stock_predicter::config::Config;
 use stock_predicter::db;
 use stock_predicter::llm::deepseek::{FixtureTransport, HttpReply};
 use stock_predicter::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
 use stock_predicter::llm::validate::ValidationError;
-use stock_predicter::market::MarketSource;
-use stock_predicter::models::{Action, AssetClass, Bar, Candidate, Headline, Instrument};
+use stock_predicter::models::{Action, AssetClass, Candidate, Headline, Instrument};
 use stock_predicter::rules::indicators::Indicators;
 
-struct FakeMarket {
-    bars: Vec<Bar>,
-}
-
-impl MarketSource for FakeMarket {
-    fn bars<'a>(&'a self, _s: &'a str) -> Pin<Box<dyn Future<Output = Result<Vec<Bar>>> + Send + 'a>> {
-        let b = self.bars.clone();
-        Box::pin(async move { Ok(b) })
-    }
-    fn intraday<'a>(
-        &'a self,
-        _s: &'a str,
-        _i: &'a str,
-        _r: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Bar>>> + Send + 'a>> {
-        let b = self.bars.clone();
-        Box::pin(async move { Ok(b) })
-    }
-    fn news<'a>(
-        &'a self,
-        _s: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Headline>>> + Send + 'a>> {
-        Box::pin(async move { Ok(vec![]) })
-    }
-}
+mod common;
+use common::FakeMarket;
 
 fn instrument(class: AssetClass) -> Instrument {
     Instrument {
@@ -115,7 +87,12 @@ fn chat_raw(content: &str) -> HttpReply {
     }
 }
 
-fn decide_json(action: &str, entry: f64, stop: serde_json::Value, target: serde_json::Value) -> serde_json::Value {
+fn decide_json(
+    action: &str,
+    entry: f64,
+    stop: serde_json::Value,
+    target: serde_json::Value,
+) -> serde_json::Value {
     json!({
         "action": "decide",
         "signal": {
@@ -131,16 +108,12 @@ fn decide_json(action: &str, entry: f64, stop: serde_json::Value, target: serde_
     })
 }
 
-async fn run_case(
-    reply: HttpReply,
-    held: f64,
-    class: AssetClass,
-) -> (Outcome, FixtureTransport) {
+async fn run_case(reply: HttpReply, held: f64, class: AssetClass) -> (Outcome, FixtureTransport) {
     let dir = tempfile::tempdir().unwrap();
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
-    let market = FakeMarket { bars: vec![] };
+    let market = FakeMarket::ok(vec![]);
     let t = FixtureTransport::new(vec![reply]);
     let cfg = cfg();
     let deps = LlmDeps {
@@ -151,7 +124,11 @@ async fn run_case(
     };
     let i = instrument(class);
     let x = indicators();
-    let c = candidate(if held > 0.0 { Action::Sell } else { Action::Buy });
+    let c = candidate(if held > 0.0 {
+        Action::Sell
+    } else {
+        Action::Buy
+    });
     let hs = headlines();
     let d = orchestrate::run(
         &deps,
@@ -353,7 +330,10 @@ async fn escalation_shapes_are_bounded() {
     // Articles only.
     let (outcome, t) = escalate(vec![
         chat(json!({"action":"need_more","headlines":[{"id":1,"why":"guidance detail"}]})),
-        HttpReply { status: 200, body: json!({"title":"t","content":"Guidance raised"}).to_string() },
+        HttpReply {
+            status: 200,
+            body: json!({"title":"t","content":"Guidance raised"}).to_string(),
+        },
         chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1200.0))),
     ])
     .await;
@@ -367,12 +347,19 @@ async fn escalation_shapes_are_bounded() {
     ])
     .await;
     assert!(matches!(outcome, Outcome::Llm(_)), "{outcome:?}");
-    assert_eq!(t.calls(), 2, "history comes from the market, not a fetch call");
+    assert_eq!(
+        t.calls(),
+        2,
+        "history comes from the market, not a fetch call"
+    );
 
     // Both at once.
     let (outcome, t) = escalate(vec![
         chat(json!({"action":"need_more","headlines":[{"id":1,"why":"x"}],"price_history":true})),
-        HttpReply { status: 200, body: json!({"title":"t","content":"body"}).to_string() },
+        HttpReply {
+            status: 200,
+            body: json!({"title":"t","content":"body"}).to_string(),
+        },
         chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1200.0))),
     ])
     .await;
@@ -397,19 +384,15 @@ async fn escalate(replies: Vec<HttpReply>) -> (Outcome, FixtureTransport) {
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
-    let market = FakeMarket {
-        bars: vec![Bar {
-            ts: "2026-10-21T05:00:00Z".into(),
-            open: 1140.0,
-            high: 1145.0,
-            low: 1138.0,
-            close: 1142.0,
-            volume: 9000,
-        }],
-    };
+    let market = FakeMarket::ok(vec![common::bar("2026-10-21T05:00:00Z", 1142.0)]);
     let t = FixtureTransport::new(replies);
     let cfg = cfg();
-    let deps = LlmDeps { pool: &pool, cfg: &cfg, transport: &t, market: &market };
+    let deps = LlmDeps {
+        pool: &pool,
+        cfg: &cfg,
+        transport: &t,
+        market: &market,
+    };
     let i = instrument(AssetClass::Stock);
     let x = indicators();
     let c = candidate(Action::Buy);

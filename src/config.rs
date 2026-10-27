@@ -47,7 +47,9 @@ impl Config {
             llm_min_price_move: num("LLM_MIN_PRICE_MOVE", 2.0)?,
             llm_max_silence_secs: num("LLM_MAX_SILENCE_SECS", 3600.0)? as i64,
             off_hours_secs: num("OFF_HOURS_SECS", 7200.0)? as u64,
-            ntfy_url: get("NTFY_BASE_URL").unwrap_or("https://ntfy.sh").to_string(),
+            ntfy_url: get("NTFY_BASE_URL")
+                .unwrap_or("https://ntfy.sh")
+                .to_string(),
             ntfy_topic: get("NTFY_TOPIC").unwrap_or_default().to_string(),
             deepseek_key: get("DEEPSEEK_API_KEY").unwrap_or_default().to_string(),
             deepseek_base: get("DEEPSEEK_BASE_URL")

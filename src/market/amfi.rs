@@ -92,7 +92,7 @@ fn iso_date(d: &str) -> Result<String> {
 }
 
 pub async fn fetch_nav_all(client: &Client) -> Result<String> {
-    Ok(client
+    client
         .get(NAV_ALL_URL)
         .send()
         .await
@@ -101,5 +101,5 @@ pub async fn fetch_nav_all(client: &Client) -> Result<String> {
         .context("amfi: http status")?
         .text()
         .await
-        .context("amfi: read body")?)
+        .context("amfi: read body")
 }

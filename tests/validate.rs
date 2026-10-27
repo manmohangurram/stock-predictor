@@ -81,7 +81,10 @@ fn past_valid_until_is_rejected() {
 fn cited_headline_id_never_sent_is_rejected() {
     let mut p = proposal(Action::Buy, 105.0, Some(101.0), Some(111.0));
     p.cites = vec![7];
-    assert_eq!(check(&p, &ctx(&[1, 2])), Err(ValidationError::UnknownHeadlineId));
+    assert_eq!(
+        check(&p, &ctx(&[1, 2])),
+        Err(ValidationError::UnknownHeadlineId)
+    );
 }
 
 #[test]
@@ -95,9 +98,14 @@ fn decision_without_any_citation_is_rejected() {
 fn parsed_shapes_round_trip_and_truncated_json_is_an_error() {
     use stock_predicter::llm::parse::verdict;
     let ok = r#"{"action":"decide","signal":{"action":"BUY","entry":105.0,"stop":101.0,"target":111.0,"valid_until":"2030-01-01T00:00:00Z","confidence":"high","rationale":"r","cites":[1]}}"#;
-    assert!(matches!(verdict(ok).unwrap(), stock_predicter::llm::parse::LlmVerdict::Decide(_)));
+    assert!(matches!(
+        verdict(ok).unwrap(),
+        stock_predicter::llm::parse::LlmVerdict::Decide(_)
+    ));
     assert!(verdict(r#"{"action":"decide","signal":{"action":"BU"#).is_err());
-    assert!(verdict(r#"{"action":"need_more","requests":[{"headline_id":2,"why":"margin"}]}"#).is_ok());
+    assert!(
+        verdict(r#"{"action":"need_more","requests":[{"headline_id":2,"why":"margin"}]}"#).is_ok()
+    );
     assert!(verdict(r#"{"action":"pass","why":"nothing"}"#).is_ok());
 }
 
@@ -134,7 +142,10 @@ fn a_decision_about_an_instrument_with_no_headlines_needs_no_citation() {
 fn with_headlines_sent_a_citation_is_still_required() {
     let mut p = proposal(Action::Buy, 105.0, Some(101.0), Some(111.0));
     p.cites = vec![];
-    assert_eq!(check(&p, &ctx(&[1, 2])), Err(ValidationError::MissingCitation));
+    assert_eq!(
+        check(&p, &ctx(&[1, 2])),
+        Err(ValidationError::MissingCitation)
+    );
 }
 
 #[test]
@@ -144,7 +155,10 @@ fn the_model_may_size_a_buy_and_it_is_checked_against_cash() {
     assert_eq!(check(&p, &ctx(&[1])), Ok(()));
 
     p.qty = Some(500.0); // 52,500, beyond the pot
-    assert_eq!(check(&p, &ctx(&[1])), Err(ValidationError::InsufficientCash));
+    assert_eq!(
+        check(&p, &ctx(&[1])),
+        Err(ValidationError::InsufficientCash)
+    );
 }
 
 #[test]
@@ -193,5 +207,17 @@ fn a_profit_expectation_only_governs_buys() {
     let mut c = ctx(&[1]);
     c.required_profit_pct = Some(50.0);
     c.held_qty = 10.0;
-    assert_eq!(check(&p, &c), Ok(()), "a sale is not judged on profit expectation");
+    assert_eq!(
+        check(&p, &c),
+        Ok(()),
+        "a sale is not judged on profit expectation"
+    );
+}
+
+#[test]
+fn a_nan_stop_is_rejected_rather_than_slipping_through() {
+    // Clippy's neg_cmp_op_on_partial_ord warning pointed at a real hole: `!(stop < entry)`
+    // is false for NaN, so an unparseable stop used to pass.
+    let p = proposal(Action::Buy, 105.0, Some(f64::NAN), Some(111.0));
+    assert_eq!(check(&p, &ctx(&[1])), Err(ValidationError::StopOnWrongSide));
 }

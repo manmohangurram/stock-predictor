@@ -109,9 +109,7 @@ impl Transport for FixtureTransport {
                 Some(q.remove(0))
             }
         };
-        Box::pin(async move {
-            next.ok_or_else(|| anyhow!("fixture transport: no reply queued"))
-        })
+        Box::pin(async move { next.ok_or_else(|| anyhow!("fixture transport: no reply queued")) })
     }
 }
 
@@ -178,7 +176,10 @@ pub async fn chat(
         temperature: 0.2,
     })?;
 
-    let url = format!("{}/chat/completions", cfg.deepseek_base.trim_end_matches('/'));
+    let url = format!(
+        "{}/chat/completions",
+        cfg.deepseek_base.trim_end_matches('/')
+    );
     let started = Instant::now();
     let reply = transport.post(&url, &body).await;
     let latency = started.elapsed().as_millis() as i64;
@@ -232,7 +233,10 @@ fn parse_chat(reply: Result<HttpReply>, row: &mut ApiCallRow) -> Result<ChatRepl
         })?
         .to_string();
 
-    let prompt_tokens = v.pointer("/usage/prompt_tokens").and_then(|t| t.as_i64()).unwrap_or(0);
+    let prompt_tokens = v
+        .pointer("/usage/prompt_tokens")
+        .and_then(|t| t.as_i64())
+        .unwrap_or(0);
     let completion_tokens = v
         .pointer("/usage/completion_tokens")
         .and_then(|t| t.as_i64())
@@ -259,7 +263,10 @@ pub async fn search(
         "need_content": false,
     })
     .to_string();
-    let url = format!("{}/v1/tools/search", cfg.deepseek_base.trim_end_matches('/'));
+    let url = format!(
+        "{}/v1/tools/search",
+        cfg.deepseek_base.trim_end_matches('/')
+    );
     let started = Instant::now();
     let reply = transport.post(&url, &body).await;
     let latency = started.elapsed().as_millis() as i64;
@@ -297,7 +304,11 @@ pub async fn search(
             .map(|r| SearchHit {
                 title: r.get("title").and_then(|x| x.as_str()).unwrap_or("").into(),
                 url: r.get("url").and_then(|x| x.as_str()).unwrap_or("").into(),
-                summary: r.get("summary").and_then(|x| x.as_str()).unwrap_or("").into(),
+                summary: r
+                    .get("summary")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .into(),
                 date: r.get("date").and_then(|x| x.as_str()).map(str::to_string),
             })
             .collect())
