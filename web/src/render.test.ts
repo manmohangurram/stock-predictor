@@ -81,6 +81,7 @@ describe("settings", () => {
     available: 100000,
     currency: "INR",
     currency_locked: false,
+    deepseek_configured: false,
     ...over,
   });
 
@@ -93,6 +94,19 @@ describe("settings", () => {
   test("disables currency once locked, with the reason", () => {
     const html = renderSettings(settings({ currency_locked: true }));
     expect(html).toContain("Currency is fixed once the ledger has entries");
+  });
+
+  test("a configured key is masked and offers to keep it", () => {
+    const html = renderSettings(settings({ deepseek_configured: true }));
+    expect(html).toContain('type="password"');
+    expect(html).toContain("leave blank to keep");
+    expect(html).toContain("never shown again");
+  });
+
+  test("an unconfigured key says the rules run alone", () => {
+    const html = renderSettings(settings());
+    expect(html).toContain("no model call is made");
+    expect(html).toContain("sk-…");
   });
 
   test("leaves both controls usable on a fresh ledger", () => {

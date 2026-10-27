@@ -22,7 +22,7 @@ async fn setup() -> (tempfile::TempDir, axum::Router, sqlx::SqlitePool) {
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
-    settings::seed(&pool, 100_000.0, "INR").await.unwrap();
+    settings::seed(&pool, 100_000.0, "INR", "").await.unwrap();
     for sym in ["INFY", "TCS", "XYZIPO"] {
         sqlx::query(
             "INSERT INTO instruments (symbol, class, name, currency) VALUES (?, 'stock', ?, 'INR')",
@@ -311,4 +311,34 @@ async fn analysis_of_an_instrument_with_no_bars_says_so() {
     assert_eq!(s, StatusCode::OK, "{v}");
     assert!(v["indicators"].is_null());
     assert!(v["checks"][0]["detail"].as_str().unwrap().contains("need 200"));
+}
+
+#[tokio::test]
+async fn deepseek_key_can_be_set_from_the_ui_and_never_comes_back() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"deepseek_key": "sk-live-abcdef123456"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["deepseek_configured"], true);
+    assert!(
+        !v.to_string().contains("sk-live-abcdef123456"),
+        "the PUT response leaked the key: {v}"
+    );
+
+    let (s, v) = get(&router, "/api/settings").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["deepseek_configured"], true);
+    assert!(!v.to_string().contains("sk-live"), "GET leaked the key: {v}");
+}
+
+#[tokio::test]
+async fn settings_report_no_key_when_none_is_configured() {
+    let (_d, router, _pool) = setup().await;
+    let (_, v) = get(&router, "/api/settings").await;
+    assert_eq!(v["deepseek_configured"], false);
 }

@@ -174,6 +174,22 @@ async fn poll_instrument(
         return Ok(());
     }
 
+    // No key configured means no model layer at all — not a failed call on every tick.
+    let llm_available = crate::rules::settings::deepseek_key(deps.pool).await?.is_some();
+    if !llm_available {
+        let resolved = Resolved {
+            action: candidate.action,
+            entry: candidate.entry,
+            stop: candidate.stop,
+            target: candidate.target,
+            valid_until: Some((now + chrono::Duration::hours(18)).to_rfc3339()),
+            qty: candidate.qty,
+            reasons: candidate.reasons.clone(),
+            rationale: None,
+        };
+        return finish(deps, instrument, resolved, &candidate, available, now, report).await;
+    }
+
     let llm_deps = LlmDeps {
         pool: deps.pool,
         cfg: deps.cfg,
@@ -197,12 +213,25 @@ async fn poll_instrument(
         return Ok(());
     };
 
+    finish(deps, instrument, resolved, &candidate, available, now, report).await
+}
+
+/// Signal persistence, the budget gate and the push — shared by the LLM and rules-only paths.
+async fn finish(
+    deps: &EngineDeps<'_>,
+    instrument: &Instrument,
+    resolved: Resolved,
+    candidate: &Candidate,
+    available: f64,
+    now: DateTime<Utc>,
+    report: &mut PollReport,
+) -> Result<()> {
     // The budget gate is the last word, above the LLM: a proposal that does not fit is
     // recorded as BLOCKED with the shortfall, and is never pushed.
     if resolved.action == Action::Buy {
         let cost = resolved.qty * resolved.entry;
         if !budget::fits(deps.pool, cost).await? {
-            record_blocked(deps.pool, instrument, &resolved, &candidate, available, now).await?;
+            record_blocked(deps.pool, instrument, &resolved, candidate, available, now).await?;
             report.blocked += 1;
             return Ok(());
         }
@@ -212,7 +241,7 @@ async fn poll_instrument(
         return Ok(());
     }
 
-    let signal_id = insert_signal(deps.pool, instrument.id, &resolved, &candidate, now).await?;
+    let signal_id = insert_signal(deps.pool, instrument.id, &resolved, candidate, now).await?;
     report.signals += 1;
 
     let mut as_candidate = candidate.clone();

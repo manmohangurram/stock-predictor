@@ -140,3 +140,25 @@ Added while making the UI legible:
 Observation from the real data (2026-10-27): INFY 1163 vs SMA200 1222, TCS 2497 vs 2443 with
 RSI 81, HDFCBANK 680 vs 794, RELIANCE 1196 vs 1335. Nothing passes `close > SMA50 > SMA200`,
 so the ledger is correctly empty. The SELL path was exercised by setting a stop above market.
+
+## DeepSeek key in settings
+
+The key moved from env-only to the `settings` table, editable from `/settings`, with three
+rules that matter more than the field itself:
+
+1. **Never returned.** `Settings` carries `deepseek_configured: bool` only. This server has no
+   auth, so anything serialised is readable by anyone on the LAN. Tests assert the key string
+   appears in neither the PUT response nor the GET body.
+2. **Blank does not wipe.** The field is a masked password; saving the form with it empty
+   keeps the stored key. A separate test pins that, because the alternative loses a working
+   key to an accidental save.
+3. **No key means no call, not a failed call.** The engine checks `settings::deepseek_key`
+   before orchestrating and goes straight to rules. Without that gate every tick would write
+   an `api_calls` error row and burn the daily cap on requests that cannot succeed.
+
+Env `DEEPSEEK_API_KEY` is now a first-boot seed like `BUDGET`/`CURRENCY`; a re-seed never
+overwrites a key set from the UI. `main` reads the key per tick, so changing it in the UI takes
+effect on the next poll without a restart.
+
+Risk to state plainly: the key is stored in plaintext in `stock-predicter.db`. Anyone with
+read access to that file, or to the LAN this server listens on, has your key.

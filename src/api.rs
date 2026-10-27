@@ -156,6 +156,7 @@ async fn get_settings(State(st): State<AppState>) -> Result<Json<settings::Setti
 pub struct PutSettings {
     pub budget: Option<f64>,
     pub currency: Option<String>,
+    pub deepseek_key: Option<String>,
 }
 
 async fn put_settings(
@@ -167,6 +168,7 @@ async fn put_settings(
         SettingsPatch {
             budget: body.budget,
             currency: body.currency,
+            deepseek_key: body.deepseek_key,
         },
     )
     .await

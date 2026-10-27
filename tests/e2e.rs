@@ -107,7 +107,7 @@ async fn setup() -> (tempfile::TempDir, sqlx::SqlitePool) {
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
-    settings::seed(&pool, 200_000.0, "INR").await.unwrap();
+    settings::seed(&pool, 200_000.0, "INR", "test-key").await.unwrap();
     sqlx::query(
         "INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY', 'stock', 'Infosys', 'INR')",
     )

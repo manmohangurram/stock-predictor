@@ -98,7 +98,11 @@ fn cfg() -> Config {
 }
 
 async fn seed(pool: &sqlx::SqlitePool, symbols: &[&str]) {
-    settings::seed(pool, 200_000.0, "INR").await.unwrap();
+    seed_with_key(pool, symbols, "test-key").await
+}
+
+async fn seed_with_key(pool: &sqlx::SqlitePool, symbols: &[&str], key: &str) {
+    settings::seed(pool, 200_000.0, "INR", key).await.unwrap();
     for s in symbols {
         sqlx::query(
             "INSERT INTO instruments (symbol, class, name, currency) VALUES (?, 'stock', ?, 'INR')",
@@ -292,6 +296,7 @@ async fn no_affordable_quantity_means_no_candidate_at_all() {
         stock_predicter::rules::settings::SettingsPatch {
             budget: Some(100.0),
             currency: None,
+            deepseek_key: None,
         },
     )
     .await
@@ -346,4 +351,25 @@ async fn an_unset_topic_skips_the_push_but_still_records_the_signal() {
     assert_eq!(report.notifications, 0);
     assert!(report.errors.is_empty(), "{report:?}");
     assert_eq!(notifier.count(), 0);
+}
+
+#[tokio::test]
+async fn without_a_deepseek_key_the_model_layer_is_skipped_entirely() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed_with_key(&pool, &["INFY"], "").await;
+
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+    let report = poll(&pool, &market, &notifier, &cfg(), now()).await.unwrap();
+
+    assert_eq!(report.signals, 1, "{report:?}");
+    assert!(report.errors.is_empty(), "{report:?}");
+    let calls: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(calls.0, 0, "no key must mean no outbound call, not a failed one");
 }

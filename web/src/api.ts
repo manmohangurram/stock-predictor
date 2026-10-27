@@ -43,6 +43,7 @@ export interface Settings {
   available: number;
   currency: string;
   currency_locked: boolean;
+  deepseek_configured: boolean;
 }
 
 export interface BarPoint {
@@ -96,7 +97,9 @@ export const api = {
   calls: () => get<CallRow[]>("/api/calls"),
   analysis: (symbol: string) =>
     get<Analysis>("/api/instruments/" + encodeURIComponent(symbol) + "/analysis"),
-  putSettings: async (patch: Partial<Pick<Settings, "budget" | "currency">>) => {
+  putSettings: async (
+    patch: Partial<Pick<Settings, "budget" | "currency">> & { deepseek_key?: string },
+  ) => {
     const r = await fetch("/api/settings", {
       method: "PUT",
       headers: { "content-type": "application/json" },

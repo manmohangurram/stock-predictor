@@ -13,12 +13,18 @@ pub struct Settings {
     pub available: f64,
     pub currency: String,
     pub currency_locked: bool,
+    /// Only ever a boolean. The key itself is never serialised — this server has no auth,
+    /// so anything returned here is readable by anyone on the network.
+    pub deepseek_configured: bool,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SettingsPatch {
     pub budget: Option<f64>,
     pub currency: Option<String>,
+    /// Empty or whitespace is ignored rather than clearing: a masked field saves the form
+    /// without wiping a working key.
+    pub deepseek_key: Option<String>,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -36,12 +42,14 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
     let committed = budget::committed(pool).await?;
     let currency = currency(pool).await?;
     let locked = ledger_has_entries(pool).await?;
+    let deepseek_configured = deepseek_key(pool).await?.is_some();
     Ok(Settings {
         budget,
         committed,
         available: budget - committed,
         currency,
         currency_locked: locked,
+        deepseek_configured,
     })
 }
 
@@ -92,11 +100,47 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
         .map_err(|_| SettingsError::InvalidAmount)?;
     }
 
+    if let Some(key) = patch.deepseek_key {
+        let key = key.trim();
+        if !key.is_empty() {
+            put_setting(pool, "deepseek_key", key)
+                .await
+                .map_err(|_| SettingsError::InvalidAmount)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// The key itself, for the client that actually calls DeepSeek. Never exposed over HTTP.
+pub async fn deepseek_key(pool: &SqlitePool) -> Result<Option<String>> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = 'deepseek_key'")
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.map(|r| r.0).filter(|k| !k.trim().is_empty()))
+}
+
+async fn put_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+    .bind(key)
+    .bind(value)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
 /// First boot only: seed the ceiling and the currency from env, then never read env again.
-pub async fn seed(pool: &SqlitePool, seed_budget: f64, seed_currency: &str) -> Result<()> {
+pub async fn seed(
+    pool: &SqlitePool,
+    seed_budget: f64,
+    seed_currency: &str,
+    seed_deepseek_key: &str,
+) -> Result<()> {
     let budget_rows: (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM cash_ledger WHERE kind = 'budget'")
             .fetch_one(pool)
@@ -113,16 +157,23 @@ pub async fn seed(pool: &SqlitePool, seed_budget: f64, seed_currency: &str) -> R
         .await?;
     }
 
-    let currency_rows: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM settings WHERE key = 'currency'")
-            .fetch_one(pool)
-            .await?;
-    if currency_rows.0 == 0 {
-        sqlx::query("INSERT INTO settings (key, value, updated_at) VALUES ('currency', ?, ?)")
-            .bind(seed_currency)
-            .bind(chrono::Utc::now().to_rfc3339())
-            .execute(pool)
-            .await?;
+    if !seed_currency.trim().is_empty() {
+        let rows: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM settings WHERE key = 'currency'")
+                .fetch_one(pool)
+                .await?;
+        if rows.0 == 0 {
+            put_setting(pool, "currency", seed_currency).await?;
+        }
+    }
+    if !seed_deepseek_key.trim().is_empty() {
+        let rows: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM settings WHERE key = 'deepseek_key'")
+                .fetch_one(pool)
+                .await?;
+        if rows.0 == 0 {
+            put_setting(pool, "deepseek_key", seed_deepseek_key.trim()).await?;
+        }
     }
     Ok(())
 }

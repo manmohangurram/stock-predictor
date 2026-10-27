@@ -33,6 +33,18 @@ export function renderSettings(s: Settings): string {
             : `<div class="help">Locked permanently after the first recorded transaction.</div>`
         }
       </div>
+      <div class="field">
+        <label class="label" for="deepseek_key">DeepSeek API key</label>
+        <input id="deepseek_key" name="deepseek_key" type="password" autocomplete="off"
+               placeholder="${s.deepseek_configured ? "•••••••• configured — leave blank to keep" : "sk-…"}" />
+        <div class="help">
+          ${
+            s.deepseek_configured
+              ? "Configured. The key is never shown again, here or over the API."
+              : "Without a key the rules run alone and no model call is made."
+          }
+        </div>
+      </div>
       <button class="btn" type="submit" ${below ? "disabled" : ""}>Save</button>
     </form>
   </section>

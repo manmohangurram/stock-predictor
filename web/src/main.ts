@@ -46,9 +46,15 @@ function wireSettings(): void {
     const data = new FormData(form);
     const budget = Number(data.get("budget"));
     const currency = String(data.get("currency"));
-    const res = await api.putSettings({ budget, currency });
+    const key = String(data.get("deepseek_key") ?? "").trim();
+    // Blank means "keep the stored key": the field is masked, so an empty save is not a wipe.
+    const res = await api.putSettings(key ? { budget, currency, deepseek_key: key } : { budget, currency });
     if (!res.ok) {
-      window.alert(res.body.error === "below_committed" ? `Committed is ${res.body.committed} — the budget cannot go below it.` : String(res.body.error));
+      window.alert(
+        res.body.error === "below_committed"
+          ? `Committed is ${res.body.committed} — the budget cannot go below it.`
+          : String(res.body.error),
+      );
       return;
     }
     await route();
