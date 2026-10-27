@@ -16,6 +16,7 @@ use stock_predicter::schedule;
 struct FakeMarket {
     bars: Result<Vec<Bar>, String>,
     fail_symbols: Vec<String>,
+    news_title: String,
 }
 
 impl FakeMarket {
@@ -23,12 +24,14 @@ impl FakeMarket {
         Self {
             bars: Ok(bars),
             fail_symbols: vec![],
+            news_title: "headline".into(),
         }
     }
     fn with_failure(sym: &str, bars: Vec<Bar>) -> Self {
         Self {
             bars: Ok(bars),
             fail_symbols: vec![sym.to_string()],
+            news_title: "headline".into(),
         }
     }
     fn too_short() -> Self {
@@ -50,6 +53,19 @@ impl MarketSource for FakeMarket {
         Box::pin(async move { out })
     }
 
+    fn intraday<'a>(
+        &'a self,
+        _symbol: &'a str,
+        _interval: &'a str,
+        _range: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Bar>>> + Send + 'a>> {
+        let out = match &self.bars {
+            Ok(b) => Ok(b.clone()),
+            Err(e) => Err(anyhow::anyhow!(e.clone())),
+        };
+        Box::pin(async move { out })
+    }
+
     fn news<'a>(
         &'a self,
         _symbol: &'a str,
@@ -57,7 +73,7 @@ impl MarketSource for FakeMarket {
         Box::pin(async move {
             Ok(vec![Headline {
                 id: 0,
-                title: "headline".into(),
+                title: self.news_title.clone(),
                 publisher: "Reuters".into(),
                 published_at: "2026-10-25T00:00:00Z".into(),
                 url: "https://example.com/h".into(),
@@ -141,6 +157,7 @@ async fn poll_with(
         transport: &t,
         notifier,
         rules: RuleConfig::default(),
+        force: false,
     };
     engine::poll_once(&deps, now).await
 }
@@ -372,4 +389,118 @@ async fn without_a_deepseek_key_the_model_layer_is_skipped_entirely() {
         .await
         .unwrap();
     assert_eq!(calls.0, 0, "no key must mean no outbound call, not a failed one");
+}
+
+#[tokio::test]
+async fn unchanged_headlines_skip_the_model_and_refresh_the_price_in_place() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY"]).await;
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+    let c = cfg();
+
+    // Poll 1: a real model answer, so the headline set gets remembered.
+    let decided = serde_json::json!({
+        "choices": [{"message": {"content": serde_json::json!({
+            "action": "decide",
+            "signal": {
+                "action": "BUY",
+                "entry": 103.5,
+                "stop": 100.0,
+                "target": 108.0,
+                "valid_until": "2030-01-01T00:00:00Z",
+                "confidence": "medium",
+                "rationale": "guidance raised",
+                "cites": [1]
+            }
+        }).to_string()}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+    })
+    .to_string();
+    let first_transport = FixtureTransport::new(vec![stock_predicter::llm::deepseek::HttpReply {
+        status: 200,
+        body: decided,
+    }]);
+    let deps1 = EngineDeps {
+        pool: &pool,
+        cfg: &c,
+        market: &market,
+        transport: &first_transport,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: false,
+    };
+    let first = engine::poll_once(&deps1, now()).await.unwrap();
+    assert_eq!(first.signals, 1, "{first:?}");
+    assert_eq!(first_transport.calls(), 1);
+
+    let memos: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM llm_memos")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(memos.0, 1, "the headline set is remembered");
+
+    // Poll 2: identical headlines, so no model call at all — the entry refreshes in place.
+    let second_transport = FixtureTransport::new(vec![]);
+    let deps2 = EngineDeps {
+        pool: &pool,
+        cfg: &c,
+        market: &market,
+        transport: &second_transport,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: false,
+    };
+    let second = engine::poll_once(&deps2, now()).await.unwrap();
+    assert_eq!(second.signals, 0, "{second:?}");
+    assert_eq!(second_transport.calls(), 0, "unchanged headlines cost nothing");
+
+    let rows: (i64, f64, Option<f64>) =
+        sqlx::query_as("SELECT COUNT(*), MAX(entry), MAX(stop) FROM signals")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(rows.0, 1, "refreshed in place, not duplicated");
+    assert!(
+        (rows.1 - 104.48).abs() < 1e-6,
+        "the entry follows the live price: {}",
+        rows.1
+    );
+    assert_eq!(
+        rows.2,
+        Some(100.0),
+        "the model's stop is kept — a stop is a decision, not a price"
+    );
+}
+
+#[tokio::test]
+async fn new_headlines_earn_a_new_model_call() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY"]).await;
+
+    let mut source = FakeMarket::ok(bars_n(250));
+    source.news_title = "headline".into();
+    let notifier = FakeNotifier::default();
+    let c = cfg();
+    let _ = poll(&pool, &source, &notifier, &c, now()).await.unwrap();
+    let first: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // One new headline is new information.
+    let mut moved = FakeMarket::ok(bars_n(250));
+    moved.news_title = "guidance raised 200bps".into();
+    let _ = poll(&pool, &moved, &notifier, &c, now()).await.unwrap();
+    let second: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(second.0 > first.0, "a changed headline set must reach the model");
 }

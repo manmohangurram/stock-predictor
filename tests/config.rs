@@ -21,7 +21,7 @@ fn config_defaults_poll_and_cap() {
     .unwrap();
     assert_eq!(cfg.seed_budget, 200_000.0);
     assert_eq!(cfg.seed_currency, "INR");
-    assert_eq!(cfg.poll_secs, 600);
+    assert_eq!(cfg.poll_secs, 900);
     assert_eq!(cfg.llm_daily_cap, 50);
 }
 

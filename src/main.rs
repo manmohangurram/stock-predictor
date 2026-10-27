@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
         println!("seed: {report:?}");
     }
 
-    if flag("--poll-once") {
+    if flag("--poll-once") || flag("--predict") {
         let market = YahooSource::new()?;
         let key = settings::deepseek_key(&pool).await?.unwrap_or_default();
         let transport = ReqwestTransport::new(key)?;
@@ -44,8 +44,12 @@ async fn main() -> Result<()> {
             transport: &transport,
             notifier: &notifier,
             rules: RuleConfig::default(),
+            force: flag("--predict"),
         };
         let report = engine::poll_once(&deps, Utc::now()).await?;
+        for note in &report.notes {
+            println!("DECISION {note}");
+        }
         println!("poll: {report:#?}");
         if !flag("--serve") {
             return Ok(());
@@ -95,6 +99,7 @@ async fn main() -> Result<()> {
                 transport: &transport,
                 notifier: &notifier,
                 rules: RuleConfig::default(),
+                force: false,
             };
             match engine::poll_once(&deps, now).await {
                 Ok(r) => tracing::info!(?r, "poll complete"),

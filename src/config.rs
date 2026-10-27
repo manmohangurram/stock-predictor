@@ -36,7 +36,7 @@ impl Config {
         Ok(Self {
             seed_budget: num("BUDGET", 0.0)?,
             seed_currency: get("CURRENCY").unwrap_or("INR").to_string(),
-            poll_secs: num("POLL_SECS", 600.0)? as u64,
+            poll_secs: num("POLL_SECS", 900.0)? as u64,
             llm_daily_cap: num("LLM_DAILY_CAP", 50.0)? as u32,
             ntfy_url: get("NTFY_BASE_URL").unwrap_or("https://ntfy.sh").to_string(),
             ntfy_topic: get("NTFY_TOPIC").unwrap_or_default().to_string(),

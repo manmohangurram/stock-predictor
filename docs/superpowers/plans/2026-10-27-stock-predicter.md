@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A self-hosted Rust server that polls Yahoo/AMFI every 10 minutes, runs a rules pre-filter plus a two-phase DeepSeek judgement with server-side validation, tracks holdings against a hard cash budget, and pushes a single ntfy notification per actionable change.
+**Goal:** A self-hosted Rust server that polls Yahoo/AMFI every 15 minutes, runs a rules pre-filter plus a two-phase DeepSeek judgement with server-side validation, tracks holdings against a hard cash budget, and pushes a single ntfy notification per actionable change.
 
-**Architecture:** axum serves both JSON and the built Vite bundle from one process. A tokio scheduler ticks every 10 minutes during market hours. Each tick: fetch bars/news → cheap rules candidate → only if a candidate exists, DeepSeek phase 1 (headline ids) → optional phase 2 (fetched article extracts) → validator → persisted signal → deduped notification. sqlite holds instruments, bars, news, signals, positions, cash ledger, IPO reservations, and an append-only `api_calls` audit trail.
+**Architecture:** axum serves both JSON and the built Vite bundle from one process. A tokio scheduler ticks every 15 minutes during market hours. Each tick: fetch bars/news → cheap rules candidate → only if a candidate exists, DeepSeek phase 1 (headline ids) → optional phase 2 (fetched article extracts) → validator → persisted signal → deduped notification. sqlite holds instruments, bars, news, signals, positions, cash ledger, IPO reservations, and an append-only `api_calls` audit trail.
 
 **Tech Stack:** Rust (axum, tokio, reqwest, serde, sqlx + sqlite, chrono, sha2, anyhow, thiserror), Vite + TypeScript, DeepSeek chat + `/v1/tools/search` + `/v1/tools/fetch`, ntfy.
 
@@ -14,7 +14,7 @@
 
 - Budget ceiling lives in the `settings` table and is edited from the UI; `BUDGET`/`CURRENCY` env values seed it on first boot only. `available = budget − committed`, where committed includes open stock cost, MF cost, and **cash reserved by pending IPO applications**. A budget cannot be set below `committed`; currency is locked once the ledger has entries.
 - No authentication. Bind `127.0.0.1` or LAN only. Never port-forward.
-- Stock polling window 09:10–15:35 IST on trading days, every 10 minutes. One daily pass after 19:00 for AMFI NAV + IPO status.
+- Stock polling window 09:10–15:35 IST on trading days, every 15 minutes. One daily pass after 19:00 for AMFI NAV + IPO status.
 - MF sells are labeled estimates with T+1/T+2 cash arrival. IPO cash is a reservation, not a purchase.
 - LLM escalation caps: 1 escalation round (2 chat calls max), 3 headlines per escalation, 4,000 chars per article, 10,000 chars total fetched, daily call cap from config.
 - Every DeepSeek chat/search/fetch call is one append-only `api_calls` row. Rows are never updated or deleted.
@@ -70,7 +70,7 @@ Expected: FAIL — `Config` not defined.
 
 - [ ] **Step 3: Implement**
 
-`Config::from_map` reads a `&BTreeMap<String,String>` so tests need no env mutation; `from_env` delegates to it. `BUDGET` and `CURRENCY` are **seed values only** — named `seed_budget` / `seed_currency` in the struct to make that unmissable — written into `settings` on first boot if absent, and never read again afterward. Defaults: `CURRENCY=INR`, `poll_secs=600`, `llm_daily_cap=50`, `NTFY_BASE_URL=https://ntfy.sh`. `migrations/0001_init.sql` creates `settings`, `instruments`, `bars`, `news`, `signals`, `positions`, `cash_ledger`, `ipo_applications`, `notifications`, `api_calls`, `search_results` exactly as named in the spec's data model, plus `CREATE UNIQUE INDEX` on `news.url`, on `notifications.dedupe_key`, and `(instrument_id, ts)` on `bars`.
+`Config::from_map` reads a `&BTreeMap<String,String>` so tests need no env mutation; `from_env` delegates to it. `BUDGET` and `CURRENCY` are **seed values only** — named `seed_budget` / `seed_currency` in the struct to make that unmissable — written into `settings` on first boot if absent, and never read again afterward. Defaults: `CURRENCY=INR`, `poll_secs=900`, `llm_daily_cap=50`, `NTFY_BASE_URL=https://ntfy.sh`. `migrations/0001_init.sql` creates `settings`, `instruments`, `bars`, `news`, `signals`, `positions`, `cash_ledger`, `ipo_applications`, `notifications`, `api_calls`, `search_results` exactly as named in the spec's data model, plus `CREATE UNIQUE INDEX` on `news.url`, on `notifications.dedupe_key`, and `(instrument_id, ts)` on `bars`.
 
 - [ ] **Step 4: Run tests, expect pass**
 

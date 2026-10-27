@@ -1,6 +1,3 @@
-use std::future::Future;
-use std::pin::Pin;
-
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
@@ -9,50 +6,14 @@ use crate::config::Config;
 use crate::llm::deepseek::Transport;
 use crate::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
 use crate::llm::parse::Proposal;
-use crate::models::{Action, AssetClass, Bar, Candidate, Headline, Instrument, Position};
+use crate::models::{Action, AssetClass, Bar, Candidate, Instrument, Position};
 use crate::notify::{self, Notification, Notifier};
 use crate::rules::budget;
 use crate::rules::evaluate::{self, CandidateInput, RuleConfig};
 use crate::rules::indicators::{self, atr_bands};
 
-pub trait MarketSource: Send + Sync {
-    fn bars<'a>(
-        &'a self,
-        symbol: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Bar>>> + Send + 'a>>;
-    fn news<'a>(
-        &'a self,
-        symbol: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Headline>>> + Send + 'a>>;
-}
-
-pub struct YahooSource {
-    client: reqwest::Client,
-}
-
-impl YahooSource {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
-            client: crate::market::yahoo::client()?,
-        })
-    }
-}
-
-impl MarketSource for YahooSource {
-    fn bars<'a>(
-        &'a self,
-        symbol: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Bar>>> + Send + 'a>> {
-        Box::pin(async move { crate::market::yahoo::fetch_bars(&self.client, symbol).await })
-    }
-
-    fn news<'a>(
-        &'a self,
-        symbol: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Headline>>> + Send + 'a>> {
-        Box::pin(async move { crate::market::yahoo::fetch_news(&self.client, symbol).await })
-    }
-}
+// Re-exported so tests and callers keep importing them from the engine.
+pub use crate::market::{MarketSource, YahooSource};
 
 pub struct EngineDeps<'a> {
     pub pool: &'a SqlitePool,
@@ -61,10 +22,15 @@ pub struct EngineDeps<'a> {
     pub transport: &'a dyn Transport,
     pub notifier: &'a dyn Notifier,
     pub rules: RuleConfig,
+    /// Skip the quiet-tick dedupe. Used by \`--predict\`, where a human asked for an answer
+    /// right now and "nothing changed since last time" is not an answer.
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PollReport {
+    /// One human-readable line per decision, for \`--predict\`.
+    pub notes: Vec<String>,
     pub candidates: usize,
     pub llm_calls: i64,
     pub signals: usize,
@@ -156,6 +122,19 @@ async fn poll_instrument(
     let position = load_position(deps.pool, instrument.id).await?;
     let available = budget::available(deps.pool).await?;
 
+    // Context for the model, assembled once. Prices first, then the tape, then the news.
+    let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
+        Ok(bars) => format_window(&bars, 6, now),
+        Err(e) => {
+            tracing::debug!(symbol = %instrument.symbol, error = %e, "no intraday tape");
+            "(intraday tape unavailable)".to_string()
+        }
+    };
+    let daily_summary = format_daily(&bars, 10);
+    let positions_text = format_positions(position.as_ref(), &instrument.symbol);
+    let recent_trades = load_recent_trades(deps.pool, instrument.id, now).await?;
+    let last_decision = load_last_decision(deps.pool, instrument.id).await?;
+
     let Some(candidate) = evaluate::candidate(CandidateInput {
         instrument,
         bars: &bars,
@@ -168,10 +147,27 @@ async fn poll_instrument(
     };
     report.candidates += 1;
 
-    // Cost gate: if the rules layer proposes exactly what it proposed last time, the model
-    // would be asked the same question again for the same answer. Skip the call.
-    if is_same_candidate(deps.pool, instrument.id, &candidate).await? {
-        return Ok(());
+    // The model is paid for judgement about news, so news is what re-triggers it. Prices can
+    // move all day without another call; the rules refresh them.
+    let headline_fp = crate::llm::memo::fingerprint(&news);
+    if !deps.force && crate::llm::memo::unchanged(deps.pool, instrument.id, &headline_fp).await? {
+        // Same news: keep the model's decision (action, stop, target) and refresh only the
+        // entry, as long as the price is still inside the band the model's view was valid in.
+        // Outside that band the view has expired and the rules take over.
+        if reuse_model_signal(deps.pool, instrument.id, candidate.entry, ind.atr14, now).await? {
+            return Ok(());
+        }
+        let resolved = Resolved {
+            action: candidate.action,
+            entry: candidate.entry,
+            stop: candidate.stop,
+            target: candidate.target,
+            valid_until: Some((now + chrono::Duration::hours(18)).to_rfc3339()),
+            qty: candidate.qty,
+            reasons: candidate.reasons.clone(),
+            rationale: None,
+        };
+        return finish(deps, instrument, resolved, &candidate, available, now, report).await;
     }
 
     // No key configured means no model layer at all — not a failed call on every tick.
@@ -194,6 +190,7 @@ async fn poll_instrument(
         pool: deps.pool,
         cfg: deps.cfg,
         transport: deps.transport,
+        market: deps.market,
     };
     let decision = orchestrate::run(
         &llm_deps,
@@ -204,10 +201,20 @@ async fn poll_instrument(
             available_cash: available,
             held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
             headlines: &news,
-            search_summaries: &[],
+            price_window: &price_window,
+            daily_summary: &daily_summary,
+            positions: &positions_text,
+            recent_trades: &recent_trades,
+            last_decision: &last_decision,
+            now,
         },
     )
     .await?;
+
+    // The model answered for this headline set; do not ask it about the same news again.
+    if !matches!(decision.outcome, Outcome::Rules(_)) {
+        crate::llm::memo::remember(deps.pool, instrument.id, &headline_fp).await?;
+    }
 
     let Some(resolved) = resolve(&candidate, decision.outcome, now) else {
         return Ok(());
@@ -237,8 +244,37 @@ async fn finish(
         }
     }
 
-    if is_duplicate(deps.pool, instrument.id, &resolved).await? {
-        return Ok(());
+    report.notes.push(format!(
+        "{} {} qty {} entry {:.2} stop {} target {} until {} :: {}",
+        instrument.symbol,
+        resolved.action.as_str(),
+        resolved.qty,
+        resolved.entry,
+        resolved.stop.map(|v| format!("{v:.2}")).unwrap_or_else(|| "-".into()),
+        resolved.target.map(|v| format!("{v:.2}")).unwrap_or_else(|| "-".into()),
+        resolved.valid_until.clone().unwrap_or_else(|| "-".into()),
+        resolved.rationale.clone().unwrap_or_else(|| "rules only".into()),
+    ));
+
+    // "Prices refresh freely" means the entry may drift without a new row or a push: the
+    // latest signal is updated in place. A different action, stop or target is new information
+    // and gets its own row.
+    if !deps.force {
+        if let Some(prev) = latest_signal(deps.pool, instrument.id).await? {
+            let same_shape = prev.action == resolved.action.as_str()
+                && stop_round(prev.stop) == stop_round(resolved.stop)
+                && stop_round(prev.target) == stop_round(resolved.target);
+            if same_shape {
+                if prev.entry.is_some_and(|e| (e - resolved.entry).abs() >= 0.005) {
+                    sqlx::query("UPDATE signals SET entry = ? WHERE id = ?")
+                        .bind(resolved.entry)
+                        .bind(prev.id)
+                        .execute(deps.pool)
+                        .await?;
+                }
+                return Ok(());
+            }
+        }
     }
 
     let signal_id = insert_signal(deps.pool, instrument.id, &resolved, candidate, now).await?;
@@ -357,55 +393,78 @@ async fn load_position(pool: &SqlitePool, instrument_id: i64) -> Result<Option<P
     }))
 }
 
-async fn is_duplicate(pool: &SqlitePool, instrument_id: i64, r: &Resolved) -> Result<bool> {
-    let last: Option<(String, Option<f64>, Option<f64>)> = sqlx::query_as(
-        "SELECT action, entry, stop FROM signals WHERE instrument_id = ? ORDER BY id DESC LIMIT 1",
+/// Refresh the entry on the last signal when it is still a live model decision. Returns
+/// false when the stored signal was rules-only, has expired, or the price left the band.
+async fn reuse_model_signal(
+    pool: &SqlitePool,
+    instrument_id: i64,
+    price: f64,
+    atr: f64,
+    now: DateTime<Utc>,
+) -> Result<bool> {
+    let row: Option<(i64, Option<f64>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT id, entry, valid_until, reason_json FROM signals
+         WHERE instrument_id = ? AND action <> 'BLOCKED' ORDER BY id DESC LIMIT 1",
     )
     .bind(instrument_id)
     .fetch_optional(pool)
     .await?;
 
-    Ok(match last {
-        Some((action, entry, stop)) => {
-            action == r.action.as_str()
-                && entry.is_some_and(|e| (e - r.entry).abs() < 0.005)
-                && stop_round(stop) == stop_round(r.stop)
-        }
-        None => false,
-    })
+    let Some((id, entry, valid_until, reason)) = row else {
+        return Ok(false);
+    };
+    let from_model = reason
+        .as_deref()
+        .and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
+        .and_then(|v| v.get("rationale").cloned())
+        .is_some();
+    let still_valid = valid_until
+        .as_deref()
+        .and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok())
+        .map(|d| d.with_timezone(&Utc) > now)
+        .unwrap_or(false);
+    let inside_band = entry
+        .map(|e| (price - e).abs() <= atr.abs().max(1e-9))
+        .unwrap_or(false);
+
+    if from_model && still_valid && inside_band {
+        sqlx::query("UPDATE signals SET entry = ? WHERE id = ?")
+            .bind(price)
+            .bind(id)
+            .execute(pool)
+            .await?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 fn stop_round(v: Option<f64>) -> Option<i64> {
     v.map(|x| (x * 100.0).round() as i64)
 }
 
-fn fingerprint(c: &Candidate) -> serde_json::Value {
-    serde_json::json!({
-        "rules_action": c.action.as_str(),
-        "rules_entry": (c.entry * 100.0).round() / 100.0,
-        "rules_stop": c.stop.map(|s| (s * 100.0).round() / 100.0),
-    })
+struct LastSignal {
+    id: i64,
+    action: String,
+    entry: Option<f64>,
+    stop: Option<f64>,
+    target: Option<f64>,
 }
 
-async fn is_same_candidate(
-    pool: &SqlitePool,
-    instrument_id: i64,
-    c: &Candidate,
-) -> Result<bool> {
-    let last: Option<(Option<String>,)> = sqlx::query_as(
-        "SELECT reason_json FROM signals WHERE instrument_id = ? ORDER BY id DESC LIMIT 1",
+async fn latest_signal(pool: &SqlitePool, instrument_id: i64) -> Result<Option<LastSignal>> {
+    let row: Option<(i64, String, Option<f64>, Option<f64>, Option<f64>)> = sqlx::query_as(
+        "SELECT id, action, entry, stop, target FROM signals
+         WHERE instrument_id = ? ORDER BY id DESC LIMIT 1",
     )
     .bind(instrument_id)
     .fetch_optional(pool)
     .await?;
-    let Some((Some(json),)) = last else {
-        return Ok(false);
-    };
-    let prev: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
-    let want = fingerprint(c);
-    Ok(prev.get("rules_action") == want.get("rules_action")
-        && prev.get("rules_entry") == want.get("rules_entry")
-        && prev.get("rules_stop") == want.get("rules_stop"))
+    Ok(row.map(|(id, action, entry, stop, target)| LastSignal {
+        id,
+        action,
+        entry,
+        stop,
+        target,
+    }))
 }
 
 async fn insert_signal(
@@ -415,16 +474,12 @@ async fn insert_signal(
     candidate: &Candidate,
     now: DateTime<Utc>,
 ) -> Result<i64> {
-    let mut reason = serde_json::json!({
+    let _ = candidate;
+    let reason = serde_json::json!({
         "reasons": r.reasons,
         "rationale": r.rationale,
-    });
-    if let (Some(dst), Some(src)) = (reason.as_object_mut(), fingerprint(candidate).as_object()) {
-        for (k, v) in src {
-            dst.insert(k.clone(), v.clone());
-        }
-    }
-    let reason = reason.to_string();
+    })
+    .to_string();
     let row: (i64,) = sqlx::query_as(
         "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until, reason_json, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
@@ -453,19 +508,15 @@ async fn record_blocked(
 ) -> Result<()> {
     let cost = r.qty * r.entry;
     let shortfall = cost - available;
-    let mut reason = serde_json::json!({
+    let _ = candidate;
+    let reason = serde_json::json!({
         "blocked": "insufficient_cash",
         "cost": cost,
         "available": available,
         "shortfall": shortfall,
         "reasons": r.reasons,
-    });
-    if let (Some(dst), Some(src)) = (reason.as_object_mut(), fingerprint(candidate).as_object()) {
-        for (k, v) in src {
-            dst.insert(k.clone(), v.clone());
-        }
-    }
-    let reason = reason.to_string();
+    })
+    .to_string();
     sqlx::query(
         "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until, reason_json, created_at)
          VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?)",
@@ -486,4 +537,119 @@ async fn record_blocked(
 /// Half-width of the validator band, surfaced for the UI's chart rules.
 pub fn band_for(last_close: f64, atr14: f64) -> indicators::Bands {
     atr_bands(last_close, atr14)
+}
+
+/// 15-minute tape, oldest first, timestamps in IST.
+fn format_window(bars: &[Bar], hours: u32, now: DateTime<Utc>) -> String {
+    let cutoff = now - chrono::Duration::hours(hours as i64);
+    let ist = chrono::FixedOffset::east_opt(330 * 60).unwrap();
+    let lines: Vec<String> = bars
+        .iter()
+        .filter(|b| {
+            chrono::DateTime::parse_from_rfc3339(&b.ts)
+                .map(|d| d.with_timezone(&Utc) >= cutoff)
+                .unwrap_or(false)
+        })
+        .map(|b| {
+            let t = chrono::DateTime::parse_from_rfc3339(&b.ts)
+                .map(|d| d.with_timezone(&ist).format("%d %H:%M").to_string())
+                .unwrap_or_else(|_| b.ts.clone());
+            format!(
+                "{} {:.2} {:.2} {:.2} {:.2} {}",
+                t, b.open, b.high, b.low, b.close, b.volume
+            )
+        })
+        .collect();
+    if lines.is_empty() {
+        "(no bars in the last window)".into()
+    } else {
+        lines.join("\n")
+    }
+}
+
+fn format_daily(bars: &[Bar], days: usize) -> String {
+    let tail: Vec<String> = bars
+        .iter()
+        .rev()
+        .take(days)
+        .rev()
+        .map(|b| format!("{} {:.2}", &b.ts[..10.min(b.ts.len())], b.close))
+        .collect();
+    if tail.is_empty() {
+        "(none)".into()
+    } else {
+        tail.join(", ")
+    }
+}
+
+fn format_positions(position: Option<&Position>, symbol: &str) -> String {
+    match position {
+        None => format!("{symbol}: not held"),
+        Some(p) => format!(
+            "{} qty {:.3} at cost {:.2}, stop {}, target {}",
+            symbol,
+            p.qty,
+            p.avg_cost,
+            p.stop.map(|v| format!("{v:.2}")).unwrap_or_else(|| "none".into()),
+            p.target.map(|v| format!("{v:.2}")).unwrap_or_else(|| "none".into()),
+        ),
+    }
+}
+
+async fn load_recent_trades(
+    pool: &SqlitePool,
+    instrument_id: i64,
+    now: DateTime<Utc>,
+) -> Result<String> {
+    let cutoff = (now - chrono::Duration::days(7)).to_rfc3339();
+    let rows: Vec<(f64, f64, String, String)> = sqlx::query_as(
+        "SELECT qty, avg_cost, opened_at, state FROM positions
+         WHERE instrument_id = ? AND opened_at >= ? ORDER BY opened_at DESC",
+    )
+    .bind(instrument_id)
+    .bind(cutoff)
+    .fetch_all(pool)
+    .await?;
+    if rows.is_empty() {
+        return Ok("none in the last 7 days".into());
+    }
+    Ok(rows
+        .into_iter()
+        .map(|(qty, cost, at, state)| {
+            format!(
+                "{} BUY {:.3} @ {:.2} ({})",
+                &at[..10.min(at.len())],
+                qty,
+                cost,
+                state
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; "))
+}
+
+async fn load_last_decision(pool: &SqlitePool, instrument_id: i64) -> Result<String> {
+    let row: Option<(String, Option<f64>, String, Option<String>)> = sqlx::query_as(
+        "SELECT action, entry, created_at, reason_json FROM signals
+         WHERE instrument_id = ? ORDER BY id DESC LIMIT 1",
+    )
+    .bind(instrument_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(match row {
+        None => "none".into(),
+        Some((action, entry, at, reason)) => {
+            let rationale = reason
+                .as_deref()
+                .and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
+                .and_then(|v| v.get("rationale").and_then(|r| r.as_str()).map(str::to_string));
+            format!(
+                "{} {} @ {} — {}",
+                &at[..10.min(at.len())],
+                action,
+                entry.map(|e| format!("{e:.2}")).unwrap_or_else(|| "-".into()),
+                rationale.unwrap_or_else(|| "rules only".into())
+            )
+        }
+    })
 }

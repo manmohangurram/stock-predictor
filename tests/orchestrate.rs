@@ -6,6 +6,62 @@ use stock_predicter::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
 use stock_predicter::models::{Action, AssetClass, Candidate, Headline, Instrument};
 use stock_predicter::rules::indicators::Indicators;
 
+/// Bars the escalation can ask for. Timestamps are fixed so the rendered history is stable.
+#[derive(Default)]
+struct FakeMarket {
+    bars: Vec<stock_predicter::models::Bar>,
+}
+
+impl stock_predicter::market::MarketSource for FakeMarket {
+    fn bars<'a>(
+        &'a self,
+        _s: &'a str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Bar>>> + Send + 'a>>
+    {
+        let b = self.bars.clone();
+        Box::pin(async move { Ok(b) })
+    }
+    fn intraday<'a>(
+        &'a self,
+        _s: &'a str,
+        _i: &'a str,
+        _r: &'a str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Bar>>> + Send + 'a>>
+    {
+        let b = self.bars.clone();
+        Box::pin(async move { Ok(b) })
+    }
+    fn news<'a>(
+        &'a self,
+        _s: &'a str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Headline>>> + Send + 'a>>
+    {
+        Box::pin(async move { Ok(vec![]) })
+    }
+}
+
+fn run_input<'a>(
+    i: &'a Instrument,
+    x: &'a Indicators,
+    c: &'a Candidate,
+    hs: &'a [Headline],
+) -> RunInput<'a> {
+    RunInput {
+        instrument: i,
+        ind: x,
+        candidate: c,
+        available_cash: 10_000.0,
+        held_qty: 0.0,
+        headlines: hs,
+        price_window: "27 09:30 100.00 101.00 99.00 100.50 1000",
+        daily_summary: "2026-10-24 100.00, 2026-10-27 100.50",
+        positions: "not held",
+        recent_trades: "none in the last 7 days",
+        last_decision: "none",
+        now: chrono::Utc::now(),
+    }
+}
+
 fn instrument() -> Instrument {
     Instrument {
         id: 1,
@@ -152,22 +208,16 @@ async fn need_more_triggers_exactly_one_fetch_round() {
     let x = ind();
     let c = candidate();
     let cfg = cfg(10);
+    let market = FakeMarket::default();
     let deps = LlmDeps {
         pool: &pool,
         cfg: &cfg,
         transport: &t,
+        market: &market,
     };
     let decision = orchestrate::run(
         &deps,
-        RunInput {
-            instrument: &i,
-            ind: &x,
-            candidate: &c,
-            available_cash: 10_000.0,
-            held_qty: 0.0,
-            headlines: &hs,
-            search_summaries: &[],
-        },
+        run_input(&i, &x, &c, &hs),
     )
     .await
     .unwrap();
@@ -189,18 +239,16 @@ async fn second_need_more_becomes_pass() {
     let x = ind();
     let c = candidate();
     let cfg = cfg(10);
-    let deps = LlmDeps { pool: &pool, cfg: &cfg, transport: &t };
+    let market = FakeMarket::default();
+    let deps = LlmDeps {
+        pool: &pool,
+        cfg: &cfg,
+        transport: &t,
+        market: &market,
+    };
     let d = orchestrate::run(
         &deps,
-        RunInput {
-            instrument: &i,
-            ind: &x,
-            candidate: &c,
-            available_cash: 10_000.0,
-            held_qty: 0.0,
-            headlines: &hs,
-            search_summaries: &[],
-        },
+        run_input(&i, &x, &c, &hs),
     )
     .await
     .unwrap();
@@ -223,18 +271,16 @@ async fn more_than_three_requests_are_truncated() {
     let x = ind();
     let c = candidate();
     let cfg = cfg(10);
-    let deps = LlmDeps { pool: &pool, cfg: &cfg, transport: &t };
+    let market = FakeMarket::default();
+    let deps = LlmDeps {
+        pool: &pool,
+        cfg: &cfg,
+        transport: &t,
+        market: &market,
+    };
     let _ = orchestrate::run(
         &deps,
-        RunInput {
-            instrument: &i,
-            ind: &x,
-            candidate: &c,
-            available_cash: 10_000.0,
-            held_qty: 0.0,
-            headlines: &hs,
-            search_summaries: &[],
-        },
+        run_input(&i, &x, &c, &hs),
     )
     .await
     .unwrap();
@@ -256,18 +302,16 @@ async fn article_bodies_are_truncated_and_total_is_capped() {
     let x = ind();
     let c = candidate();
     let cfg = cfg(10);
-    let deps = LlmDeps { pool: &pool, cfg: &cfg, transport: &t };
+    let market = FakeMarket::default();
+    let deps = LlmDeps {
+        pool: &pool,
+        cfg: &cfg,
+        transport: &t,
+        market: &market,
+    };
     let _ = orchestrate::run(
         &deps,
-        RunInput {
-            instrument: &i,
-            ind: &x,
-            candidate: &c,
-            available_cash: 10_000.0,
-            held_qty: 0.0,
-            headlines: &hs,
-            search_summaries: &[],
-        },
+        run_input(&i, &x, &c, &hs),
     )
     .await
     .unwrap();
@@ -308,18 +352,16 @@ async fn daily_cap_exhausted_degrades_to_rules_without_a_call() {
     let x = ind();
     let c = candidate();
     let cfg = cfg(0);
-    let deps = LlmDeps { pool: &pool, cfg: &cfg, transport: &t };
+    let market = FakeMarket::default();
+    let deps = LlmDeps {
+        pool: &pool,
+        cfg: &cfg,
+        transport: &t,
+        market: &market,
+    };
     let d = orchestrate::run(
         &deps,
-        RunInput {
-            instrument: &i,
-            ind: &x,
-            candidate: &c,
-            available_cash: 10_000.0,
-            held_qty: 0.0,
-            headlines: &hs,
-            search_summaries: &[],
-        },
+        run_input(&i, &x, &c, &hs),
     )
     .await
     .unwrap();
@@ -338,18 +380,16 @@ async fn invalid_proposal_degrades_to_rules_numbers() {
     let x = ind();
     let c = candidate();
     let cfg = cfg(10);
-    let deps = LlmDeps { pool: &pool, cfg: &cfg, transport: &t };
+    let market = FakeMarket::default();
+    let deps = LlmDeps {
+        pool: &pool,
+        cfg: &cfg,
+        transport: &t,
+        market: &market,
+    };
     let d = orchestrate::run(
         &deps,
-        RunInput {
-            instrument: &i,
-            ind: &x,
-            candidate: &c,
-            available_cash: 10_000.0,
-            held_qty: 0.0,
-            headlines: &hs,
-            search_summaries: &[],
-        },
+        run_input(&i, &x, &c, &hs),
     )
     .await
     .unwrap();
@@ -372,18 +412,16 @@ async fn unparseable_phase_one_degrades_to_rules() {
     let x = ind();
     let c = candidate();
     let cfg = cfg(10);
-    let deps = LlmDeps { pool: &pool, cfg: &cfg, transport: &t };
+    let market = FakeMarket::default();
+    let deps = LlmDeps {
+        pool: &pool,
+        cfg: &cfg,
+        transport: &t,
+        market: &market,
+    };
     let d = orchestrate::run(
         &deps,
-        RunInput {
-            instrument: &i,
-            ind: &x,
-            candidate: &c,
-            available_cash: 10_000.0,
-            held_qty: 0.0,
-            headlines: &hs,
-            search_summaries: &[],
-        },
+        run_input(&i, &x, &c, &hs),
     )
     .await
     .unwrap();

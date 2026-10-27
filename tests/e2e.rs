@@ -23,6 +23,16 @@ impl MarketSource for FakeMarket {
         let b = self.0.clone();
         Box::pin(async move { Ok(b) })
     }
+    fn intraday<'a>(
+        &'a self,
+        _symbol: &'a str,
+        _interval: &'a str,
+        _range: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Bar>>> + Send + 'a>> {
+        let b = self.0.clone();
+        Box::pin(async move { Ok(b) })
+    }
+
     fn news<'a>(
         &'a self,
         _symbol: &'a str,
@@ -136,6 +146,7 @@ async fn full_cycle_signals_once_then_stays_quiet() {
         transport: &poll1,
         notifier: &notifier,
         rules: RuleConfig::default(),
+        force: false,
     };
     let r1 = engine::poll_once(&deps1, now()).await.unwrap();
     assert_eq!(r1.signals, 1, "{r1:?}");
@@ -159,11 +170,19 @@ async fn full_cycle_signals_once_then_stays_quiet() {
         transport: &poll2,
         notifier: &notifier,
         rules: RuleConfig::default(),
+        force: false,
     };
     let r2 = engine::poll_once(&deps2, now()).await.unwrap();
-    assert_eq!(r2.signals, 0);
+    assert_eq!(r2.signals, 0, "no new row for a price refresh");
     assert_eq!(r2.notifications, 0);
-    assert_eq!(poll2.calls(), 0, "an unchanged candidate must not cost a model call");
+    assert_eq!(poll2.calls(), 0, "unchanged headlines must not cost a model call");
+
+    let (n, entry): (i64, f64) = sqlx::query_as("SELECT COUNT(*), MAX(entry) FROM signals")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(n, 1, "the signal was refreshed in place, not duplicated");
+    assert!((entry - 104.48).abs() < 1e-6, "entry refreshed to the live price");
 
     let calls: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
         .fetch_one(&pool)
@@ -188,6 +207,7 @@ async fn hallucinated_stop_falls_back_to_the_rules_numbers() {
         transport: &transport,
         notifier: &notifier,
         rules: RuleConfig::default(),
+        force: false,
     };
     let report = engine::poll_once(&deps, now()).await.unwrap();
     assert_eq!(report.signals, 1);
@@ -200,11 +220,10 @@ async fn hallucinated_stop_falls_back_to_the_rules_numbers() {
     let reason: serde_json::Value = serde_json::from_str(&reason).unwrap();
     assert!((entry - 104.48).abs() < 1e-6, "rules entry used, got {entry}");
     assert!(stop < entry, "rules stop is below entry, got {stop}");
-    let rules_stop = reason["rules_stop"].as_f64().unwrap();
-    // rules_stop in the fingerprint is rounded to 2dp for dedupe; the stored price is exact.
     assert!(
-        (stop - rules_stop).abs() < 0.01,
-        "the rules stop is what got stored: {stop} vs {rules_stop}"
+        (stop - (entry - 2.0 * 1.6)).abs() < 1.0,
+        "stop should be the rules' 2-ATR level, not the model's 120.00: {stop}"
     );
+    assert!(reason["reasons"].is_array(), "rules reasons are still recorded");
     assert_eq!(notifier.count(), 1);
 }

@@ -120,10 +120,30 @@ pub fn chart_url(symbol: &str) -> String {
 /// A missing chart is normal for mutual funds, which Yahoo does not carry for India.
 /// The caller decides whether that is an error (stocks) or expected (funds).
 pub async fn fetch_bars(client: &Client, symbol: &str) -> Result<Vec<Bar>> {
+    fetch_chart(client, symbol, "1d", "1y").await
+}
+
+/// Intraday tape. Yahoo's intervals that actually exist: 1m, 5m, 15m, 30m, 60m, 90m, 1h.
+/// There is no 3-hour interval; anything coarser has to be aggregated by us.
+pub async fn fetch_intraday(
+    client: &Client,
+    symbol: &str,
+    interval: &str,
+    range: &str,
+) -> Result<Vec<Bar>> {
+    fetch_chart(client, symbol, interval, range).await
+}
+
+async fn fetch_chart(
+    client: &Client,
+    symbol: &str,
+    interval: &str,
+    range: &str,
+) -> Result<Vec<Bar>> {
     let url = chart_url(symbol);
     let body = client
         .get(url)
-        .query(&[("range", "1y"), ("interval", "1d")])
+        .query(&[("range", range), ("interval", interval)])
         .send()
         .await
         .context("chart: request")?

@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Result};
+use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 
-use crate::models::{Action, Candidate, Headline, Instrument};
+use crate::models::{Headline, Instrument};
 use crate::rules::indicators::Indicators;
 
 pub const DECIDE_V1: &str = include_str!("../../prompts/decide_v1.md");
@@ -14,16 +15,26 @@ pub struct RenderedPrompt {
     pub template: String,
 }
 
+/// Everything the model is allowed to see, assembled by the caller. Nothing reaches the
+/// prompt that is not in here — which is what keeps article bodies off the wire until asked.
 pub struct PromptContext<'a> {
     pub instrument: &'a Instrument,
     pub ind: &'a Indicators,
-    pub headlines: &'a [Headline],
-    pub candidate: &'a Candidate,
+    pub last_close: f64,
     pub cash_available: f64,
-    pub class_rules: &'a str,
-    pub search_summaries: &'a [String],
-    /// Phase 2 only: extracted article text, already truncated by the caller.
+    pub headlines: &'a [Headline],
+    pub window_hours: u32,
+    pub price_window: &'a str,
+    pub daily_days: u32,
+    pub daily_summary: &'a str,
+    pub positions: &'a str,
+    pub recent_trades: &'a str,
+    pub last_decision: &'a str,
+    pub now: DateTime<Utc>,
+    /// Phase 2 only.
     pub extracts: &'a [(i64, String)],
+    /// Phase 2 only: 7-day hourly bars, already clamped.
+    pub price_history: &'a str,
 }
 
 pub fn template(name: &str) -> Result<&'static str> {
@@ -37,41 +48,36 @@ pub fn template(name: &str) -> Result<&'static str> {
 /// SHA-256 of the template file — not of the rendered text — so a signal can be traced to
 /// the prompt version that produced it.
 pub fn template_hash(name: &str) -> Result<String> {
-    let t = template(name)?;
     let mut h = Sha256::new();
-    h.update(t.as_bytes());
+    h.update(template(name)?.as_bytes());
     Ok(format!("{:x}", h.finalize()))
 }
 
 pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
-    let tpl = template(name)?;
-    let headline_block = ctx
-        .headlines
-        .iter()
-        .map(|h| {
-            format!(
-                "[{}] {} — {}, {}",
-                h.id,
-                h.title,
-                if h.publisher.is_empty() {
-                    "unknown"
-                } else {
-                    &h.publisher
-                },
-                h.published_at
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let search_block = if ctx.search_summaries.is_empty() {
-        "(none)".to_string()
+    let headline_block = if ctx.headlines.is_empty() {
+        "(no headlines in the last 7 days)".to_string()
     } else {
-        ctx.search_summaries.join("\n---\n")
+        ctx.headlines
+            .iter()
+            .map(|h| {
+                format!(
+                    "[{}] {} — {}, {}",
+                    h.id,
+                    h.title,
+                    if h.publisher.is_empty() {
+                        "unknown"
+                    } else {
+                        &h.publisher
+                    },
+                    &h.published_at[..10.min(h.published_at.len())]
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     };
 
     let extract_block = if ctx.extracts.is_empty() {
-        "(none)".to_string()
+        "(none requested)".to_string()
     } else {
         ctx.extracts
             .iter()
@@ -80,53 +86,46 @@ pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
             .join("\n\n")
     };
 
-    let candidate_block = format!(
-        "action={}, entry={:.2}, stop={}, target={}, qty={}, urgent={}",
-        ctx.candidate.action.as_str(),
-        ctx.candidate.entry,
-        ctx.candidate
-            .stop
-            .map(|v| format!("{v:.2}"))
-            .unwrap_or_else(|| "n/a".into()),
-        ctx.candidate
-            .target
-            .map(|v| format!("{v:.2}"))
-            .unwrap_or_else(|| "n/a".into()),
-        ctx.candidate.qty,
-        ctx.candidate.urgent
-    );
+    let history_block = if ctx.price_history.trim().is_empty() {
+        "(not requested)".to_string()
+    } else {
+        ctx.price_history.to_string()
+    };
 
-    let mut text = tpl
+    let text = template(name)?
         .replace("{{symbol}}", &ctx.instrument.symbol)
         .replace("{{class}}", ctx.instrument.class.as_str())
-        .replace(
-            "{{last_close}}",
-            &format!("{:.2}", ctx.candidate.entry),
-        )
+        .replace("{{currency}}", &ctx.instrument.currency)
+        .replace("{{last_close}}", &format!("{:.2}", ctx.last_close))
+        .replace("{{now}}", &ctx.now.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
         .replace(
             "{{indicators}}",
             &format!(
-                "sma50={:.2} sma200={:.2} rsi14={:.1} atr14={:.2} high52={:.2} low52={:.2}",
-                ctx.ind.sma50, ctx.ind.sma200, ctx.ind.rsi14, ctx.ind.atr14, ctx.ind.high52, ctx.ind.low52
+                "sma50={:.2}  sma200={:.2}  rsi14={:.1}  atr14={:.2}  52w low={:.2}  high={:.2}",
+                ctx.ind.sma50,
+                ctx.ind.sma200,
+                ctx.ind.rsi14,
+                ctx.ind.atr14,
+                ctx.ind.low52,
+                ctx.ind.high52
             ),
         )
-        .replace("{{headlines}}", &headline_block)
-        .replace("{{candidate}}", &candidate_block)
+        .replace("{{window_hours}}", &ctx.window_hours.to_string())
+        .replace("{{price_window}}", ctx.price_window)
+        .replace("{{daily_days}}", &ctx.daily_days.to_string())
+        .replace("{{daily_summary}}", ctx.daily_summary)
+        .replace("{{positions}}", ctx.positions)
+        .replace("{{recent_trades}}", ctx.recent_trades)
+        .replace("{{last_decision}}", ctx.last_decision)
         .replace("{{cash}}", &format!("{:.2}", ctx.cash_available))
-        .replace("{{class_rules}}", ctx.class_rules)
-        .replace("{{search_summaries}}", &search_block)
-        .replace("{{extracts}}", &extract_block);
-
-    text.push_str(&format!("\n\n[reasons: {}]", ctx.candidate.reasons.join("; ")));
+        .replace("{{class_rules}}", ctx.instrument.class.timing_note())
+        .replace("{{headlines}}", &headline_block)
+        .replace("{{extracts}}", &extract_block)
+        .replace("{{price_history}}", &history_block);
 
     Ok(RenderedPrompt {
         text,
         hash: template_hash(name)?,
         template: name.to_string(),
     })
-}
-
-/// Kept so the caller can render an empty-headline prompt without constructing a Vec.
-pub fn empty_reasons(action: Action) -> String {
-    format!("no rule reasons (action={})", action.as_str())
 }

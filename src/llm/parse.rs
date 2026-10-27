@@ -17,6 +17,20 @@ pub struct HeadlineRequest {
     pub why: String,
 }
 
+/// What the model asked for in its one escalation: specific article bodies, the coarser price
+/// history, or both.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MoreRequest {
+    pub headlines: Vec<HeadlineRequest>,
+    pub price_history: bool,
+}
+
+impl MoreRequest {
+    pub fn is_empty(&self) -> bool {
+        self.headlines.is_empty() && !self.price_history
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Proposal {
     pub action: Action,
@@ -32,7 +46,7 @@ pub struct Proposal {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LlmVerdict {
     Decide(Box<Proposal>),
-    NeedMore(Vec<HeadlineRequest>),
+    NeedMore(MoreRequest),
     Pass { why: String },
 }
 
@@ -40,7 +54,11 @@ pub enum LlmVerdict {
 struct Envelope {
     action: String,
     signal: Option<SignalJson>,
-    requests: Option<Vec<HeadlineRequest>>,
+    /// `headlines` is what the prompt asks for; `requests` is accepted for older transcripts.
+    #[serde(alias = "requests")]
+    headlines: Option<Vec<HeadlineRequest>>,
+    #[serde(default)]
+    price_history: Option<serde_json::Value>,
     why: Option<String>,
 }
 
@@ -78,11 +96,20 @@ pub fn verdict(content: &str) -> Result<LlmVerdict> {
             })))
         }
         "need_more" => {
-            let reqs = env.requests.unwrap_or_default();
-            if reqs.is_empty() {
-                return Err(anyhow!("need_more with no requests"));
+            let more = MoreRequest {
+                headlines: env.headlines.unwrap_or_default(),
+                // Models like to send `true`, `"7d"` or 7 here; any truthy value means yes.
+                price_history: match env.price_history {
+                    Some(serde_json::Value::Bool(b)) => b,
+                    Some(serde_json::Value::String(s)) => !s.is_empty() && s != "false",
+                    Some(serde_json::Value::Number(n)) => n.as_f64().unwrap_or(0.0) > 0.0,
+                    _ => false,
+                },
+            };
+            if more.is_empty() {
+                return Err(anyhow!("need_more with nothing requested"));
             }
-            Ok(LlmVerdict::NeedMore(reqs))
+            Ok(LlmVerdict::NeedMore(more))
         }
         "pass" => Ok(LlmVerdict::Pass {
             why: env.why.unwrap_or_else(|| "no reason given".into()),

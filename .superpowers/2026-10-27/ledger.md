@@ -162,3 +162,33 @@ effect on the next poll without a restart.
 
 Risk to state plainly: the key is stored in plaintext in `stock-predicter.db`. Anyone with
 read access to that file, or to the LAN this server listens on, has your key.
+
+## Headline-triggered model calls, intraday context, rewritten prompts
+
+Trigger moved from "the price-derived candidate changed" to **"the headline set changed"**.
+`llm_memos` (migration 0002, first real migration runner in `db::migrate`) stores a
+title+url fingerprint per instrument. Same news → no call; the model's action/stop/target are
+kept and only the entry is refreshed, and only while the price stays within one ATR of the
+entry it decided at and `valid_until` has not passed. Outside that band the view has expired
+and the rules take over.
+
+Ruling: a model *failure* (401/429) does not write the memo, so the next tick retries. That
+means a bad key costs one call per tick until the daily cap stops it — deliberate, because a
+transient failure should not blind the system until new news arrives. Cost is bounded by
+`llm_daily_cap`.
+
+Ruling: signals are refreshed **in place** when (action, stop, target) are unchanged and only
+the entry moved. Without this, "prices refresh freely" would have written a new signal and
+pushed a notification every 15 minutes.
+
+Prompts rewritten from scratch around a decision procedure (position → materiality →
+technicals → prices → their own recent losses), an explicit "what you do not have" fence, a
+legitimate `pass`, per-field hard rules tied to the validator, and worked JSON examples.
+`{{headlines}}` ids are the only way to cite; article bodies stay off the wire until asked.
+
+Context added to every prompt: 15-minute tape for 6 hours, last 10 daily closes, the open
+position, trades recorded in the last 7 days, and the previous view on the instrument. The
+7-day ceiling on any history the model can trigger is a constant (`MAX_HISTORY_DAYS`), not a
+suggestion.
+
+Cadence 10 → 15 minutes (`POLL_SECS` default 900).

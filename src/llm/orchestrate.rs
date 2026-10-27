@@ -1,23 +1,31 @@
 use anyhow::Result;
 use sqlx::SqlitePool;
 
-use super::deepseek::{self, ChatRequest};
+use super::deepseek::{self, ChatRequest, Transport};
 use super::parse::{self, LlmVerdict, Proposal};
 use super::prompts::{self, PromptContext};
 use super::validate::{self, ValidateCtx};
-use super::deepseek::Transport;
 use crate::config::Config;
+use crate::market::MarketSource;
 use crate::models::{Candidate, Headline, Instrument};
 use crate::rules::indicators::{atr_bands, Indicators};
 
 pub const MAX_HEADLINES_PER_ESCALATION: usize = 3;
 pub const MAX_CHARS_PER_ARTICLE: usize = 4_000;
 pub const MAX_TOTAL_FETCHED_CHARS: usize = 10_000;
+/// Hard ceiling on any historical window the model can trigger. Requests above this are
+/// clamped, never honoured — 7 days is the most the prompt will ever carry.
+pub const MAX_HISTORY_DAYS: u32 = 7;
+
+pub fn history_range() -> String {
+    format!("{MAX_HISTORY_DAYS}d")
+}
 
 pub struct LlmDeps<'a> {
     pub pool: &'a SqlitePool,
     pub cfg: &'a Config,
     pub transport: &'a dyn Transport,
+    pub market: &'a dyn MarketSource,
 }
 
 pub struct RunInput<'a> {
@@ -27,16 +35,20 @@ pub struct RunInput<'a> {
     pub available_cash: f64,
     pub held_qty: f64,
     pub headlines: &'a [Headline],
-    pub search_summaries: &'a [String],
+    pub price_window: &'a str,
+    pub daily_summary: &'a str,
+    pub positions: &'a str,
+    pub recent_trades: &'a str,
+    pub last_decision: &'a str,
+    pub now: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
     Llm(Proposal),
     Rules(Candidate),
-    /// The model answered, but the proposal failed validation. Carried back with the reason
-    /// because the caller decides the consequence: over-budget becomes BLOCKED, everything
-    /// else falls back to the rules numbers.
+    /// The model answered, but the proposal failed validation. The caller decides the
+    /// consequence: over-budget becomes BLOCKED, everything else falls back to rules.
     Rejected {
         proposal: Box<Proposal>,
         error: validate::ValidationError,
@@ -56,7 +68,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
     let conversation_id = format!(
         "{}-{}",
         input.instrument.symbol,
-        chrono::Utc::now().timestamp_millis()
+        input.now.timestamp_millis()
     );
 
     if daily_chat_calls(deps.pool).await? >= deps.cfg.llm_daily_cap as i64 {
@@ -66,25 +78,31 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         });
     }
 
-    // Stable ids for this conversation: 1..=n in list order.
     let mut headlines: Vec<Headline> = input.headlines.to_vec();
     for (idx, h) in headlines.iter_mut().enumerate() {
         h.id = idx as i64 + 1;
     }
     let sent_ids: Vec<i64> = headlines.iter().map(|h| h.id).collect();
 
-    let ctx = PromptContext {
+    let base = PromptContext {
         instrument: input.instrument,
         ind: input.ind,
-        headlines: &headlines,
-        candidate: input.candidate,
+        last_close: input.candidate.entry,
         cash_available: input.available_cash,
-        class_rules: input.instrument.class.timing_note(),
-        search_summaries: input.search_summaries,
+        headlines: &headlines,
+        window_hours: 6,
+        price_window: input.price_window,
+        daily_days: 10,
+        daily_summary: input.daily_summary,
+        positions: input.positions,
+        recent_trades: input.recent_trades,
+        last_decision: input.last_decision,
+        now: input.now,
         extracts: &[],
+        price_history: "",
     };
-    let rendered = prompts::render("decide_v1", &ctx)?;
 
+    let rendered = prompts::render("decide_v1", &base)?;
     let reply = deepseek::chat(
         deps.pool,
         deps.cfg,
@@ -104,21 +122,14 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(error = %e, "phase 1 failed, using rules numbers");
-            return Ok(Decision {
-                outcome: Outcome::Rules(input.candidate.clone()),
-                conversation_id,
-            });
+            return Ok(rules_only(&input, conversation_id));
         }
     };
-
     let verdict = match parse::verdict(&first.content) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(error = %e, "phase 1 unparseable, using rules numbers");
-            return Ok(Decision {
-                outcome: Outcome::Rules(input.candidate.clone()),
-                conversation_id,
-            });
+            return Ok(rules_only(&input, conversation_id));
         }
     };
 
@@ -130,27 +141,14 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 conversation_id,
             })
         }
-        LlmVerdict::NeedMore(requests) => {
-            if requests.is_empty() {
-                return Ok(Decision {
-                    outcome: Outcome::Pass {
-                        why: "asked for more, then asked for nothing".into(),
-                    },
-                    conversation_id,
-                });
-            }
-            let wanted: Vec<i64> = requests
+        LlmVerdict::NeedMore(more) => {
+            let wanted: Vec<i64> = more
+                .headlines
                 .iter()
                 .take(MAX_HEADLINES_PER_ESCALATION)
                 .map(|r| r.headline_id)
                 .filter(|id| sent_ids.contains(id))
                 .collect();
-            if wanted.is_empty() {
-                return Ok(Decision {
-                    outcome: Outcome::Rules(input.candidate.clone()),
-                    conversation_id,
-                });
-            }
 
             let mut extracts: Vec<(i64, String)> = Vec::new();
             let mut budget_chars = MAX_TOTAL_FETCHED_CHARS;
@@ -158,15 +156,14 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 let Some(h) = headlines.iter().find(|h| h.id == id) else {
                     continue;
                 };
-                let text = match deepseek::fetch_page(deps.pool, deps.cfg, deps.transport, &h.url)
-                    .await
-                {
-                    Ok(t) => t,
-                    Err(e) => {
-                        tracing::warn!(error = %e, headline = id, "fetch failed");
-                        continue;
-                    }
-                };
+                let text =
+                    match deepseek::fetch_page(deps.pool, deps.cfg, deps.transport, &h.url).await {
+                        Ok(t) => t,
+                        Err(e) => {
+                            tracing::warn!(error = %e, headline = id, "fetch failed");
+                            continue;
+                        }
+                    };
                 let cap = MAX_CHARS_PER_ARTICLE.min(budget_chars);
                 if cap == 0 {
                     break;
@@ -176,17 +173,40 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 extracts.push((id, truncated));
             }
 
-            if extracts.is_empty() {
+            // The second tier of the data pyramid: hourly bars, never more than 7 days.
+            let history = if more.price_history {
+                match deps
+                    .market
+                    .intraday(
+                        &input.instrument.symbol,
+                        "60m",
+                        &history_range(),
+                    )
+                    .await
+                {
+                    Ok(bars) => format_history(&bars),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "price history unavailable");
+                        "(unavailable)".to_string()
+                    }
+                }
+            } else {
+                String::new()
+            };
+
+            if extracts.is_empty() && history.is_empty() {
                 return Ok(Decision {
-                    outcome: Outcome::Rules(input.candidate.clone()),
+                    outcome: Outcome::Pass {
+                        why: "asked for more, then received nothing usable".into(),
+                    },
                     conversation_id,
                 });
             }
 
             let ctx2 = PromptContext {
-                headlines: &headlines,
                 extracts: &extracts,
-                ..ctx
+                price_history: &history,
+                ..base
             };
             let rendered2 = prompts::render("escalate_v1", &ctx2)?;
             let reply2 = deepseek::chat(
@@ -206,7 +226,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
 
             match reply2.ok().and_then(|r| parse::verdict(&r.content).ok()) {
                 Some(LlmVerdict::Decide(p)) => LlmVerdict::Decide(p),
-                // A second request for articles is treated as a pass: one escalation only.
+                // One escalation only; a second request is treated as a pass.
                 Some(LlmVerdict::NeedMore(_)) | None => LlmVerdict::Pass {
                     why: "escalation did not resolve to a decision".into(),
                 },
@@ -224,7 +244,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 qty: input.candidate.qty,
                 held_qty: input.held_qty,
                 sent_headline_ids: &sent_ids,
-                now: chrono::Utc::now(),
+                now: input.now,
             };
             match validate::check(&p, &ctx) {
                 Ok(()) => Ok(Decision {
@@ -247,11 +267,35 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
             outcome: Outcome::Pass { why },
             conversation_id,
         }),
-        LlmVerdict::NeedMore(_) => Ok(Decision {
-            outcome: Outcome::Rules(input.candidate.clone()),
-            conversation_id,
-        }),
+        LlmVerdict::NeedMore(_) => Ok(rules_only(&input, conversation_id)),
     }
+}
+
+fn rules_only(input: &RunInput<'_>, conversation_id: String) -> Decision {
+    Decision {
+        outcome: Outcome::Rules(input.candidate.clone()),
+        conversation_id,
+    }
+}
+
+/// Hourly bars rendered compactly: one line per bar, oldest first.
+pub fn format_history(bars: &[crate::models::Bar]) -> String {
+    bars.iter()
+        .map(|b| {
+            let ts = chrono::DateTime::parse_from_rfc3339(&b.ts)
+                .map(|d| {
+                    d.with_timezone(&chrono::FixedOffset::east_opt(330 * 60).unwrap())
+                        .format("%m-%d %H:%M")
+                        .to_string()
+                })
+                .unwrap_or_else(|_| b.ts.clone());
+            format!(
+                "{} {:.2} {:.2} {:.2} {:.2} {}",
+                ts, b.open, b.high, b.low, b.close, b.volume
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub async fn daily_chat_calls(pool: &SqlitePool) -> Result<i64> {
