@@ -353,9 +353,13 @@ async fn invalid_proposal_degrades_to_rules_numbers() {
     )
     .await
     .unwrap();
+    // The orchestrator reports the rejection; the engine decides the consequence.
     match d.outcome {
-        Outcome::Rules(rules) => assert_eq!(rules.stop, Some(101.0)),
-        other => panic!("expected rules fallback, got {other:?}"),
+        Outcome::Rejected { error, .. } => assert_eq!(
+            error,
+            stock_predicter::llm::validate::ValidationError::StopOnWrongSide
+        ),
+        other => panic!("expected a rejection, got {other:?}"),
     }
 }
 

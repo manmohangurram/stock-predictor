@@ -114,7 +114,18 @@ async fn poll(
     cfg: &Config,
     now: DateTime<Utc>,
 ) -> Result<PollReport> {
-    let t = FixtureTransport::new(vec![]);
+    poll_with(pool, market, notifier, cfg, now, vec![]).await
+}
+
+async fn poll_with(
+    pool: &sqlx::SqlitePool,
+    market: &dyn MarketSource,
+    notifier: &dyn stock_predicter::notify::Notifier,
+    cfg: &Config,
+    now: DateTime<Utc>,
+    replies: Vec<stock_predicter::llm::deepseek::HttpReply>,
+) -> Result<PollReport> {
+    let t = FixtureTransport::new(replies);
     let deps = EngineDeps {
         pool,
         cfg,
@@ -218,10 +229,63 @@ async fn budget_exhaustion_records_blocked_and_never_notifies() {
         .await
         .unwrap();
     seed(&pool, &["INFY"]).await;
-    // Lower the ceiling to something the trade cannot fit.
-    settings::set(
+
+    // The rules layer sizes the trade from the last close, so it can never overspend on its
+    // own. The LLM can: a higher entry inside the band pushes the same quantity over budget.
+    let decided = serde_json::json!({
+        "choices": [{"message": {"content": serde_json::json!({
+            "action": "decide",
+            "signal": {
+                "action": "BUY",
+                "entry": 106.0,
+                "stop": 104.0,
+                "target": 110.0,
+                "valid_until": "2030-01-01T00:00:00Z",
+                "confidence": "high",
+                "rationale": "momentum",
+                "cites": [1]
+            }
+        }).to_string()}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+    })
+    .to_string();
+
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+    let report = poll_with(
         &pool,
-        settings::SettingsPatch {
+        &market,
+        &notifier,
+        &cfg(),
+        now(),
+        vec![stock_predicter::llm::deepseek::HttpReply {
+            status: 200,
+            body: decided,
+        }],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.blocked, 1, "{report:?}");
+    assert_eq!(report.signals, 0);
+    assert_eq!(notifier.count(), 0, "a blocked signal must never be pushed");
+    let action: (String,) = sqlx::query_as("SELECT action FROM signals")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(action.0, "BLOCKED");
+}
+
+#[tokio::test]
+async fn no_affordable_quantity_means_no_candidate_at_all() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY"]).await;
+    stock_predicter::rules::settings::set(
+        &pool,
+        stock_predicter::rules::settings::SettingsPatch {
             budget: Some(100.0),
             currency: None,
         },
@@ -232,12 +296,9 @@ async fn budget_exhaustion_records_blocked_and_never_notifies() {
     let market = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
     let report = poll(&pool, &market, &notifier, &cfg(), now()).await.unwrap();
-
-    // qty floors to 0 at this price, so the rules layer refuses the trade outright.
+    assert_eq!(report.candidates, 0);
     assert_eq!(report.signals, 0);
     assert_eq!(notifier.count(), 0);
-    assert_eq!(report.blocked, 0);
-    assert_eq!(report.candidates, 0);
 }
 
 #[test]

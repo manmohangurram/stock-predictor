@@ -223,6 +223,23 @@ fn resolve(candidate: &Candidate, outcome: Outcome, now: DateTime<Utc>) -> Optio
             rationale: None,
         }),
         Outcome::Llm(p) => Some(from_proposal(candidate, &p, valid_until)),
+        // An over-budget proposal is NOT re-sized down to something that fits: it is carried
+        // through to the budget gate, which records it as BLOCKED with the shortfall.
+        Outcome::Rejected { proposal, error }
+            if error == crate::llm::validate::ValidationError::InsufficientCash =>
+        {
+            Some(from_proposal(candidate, &proposal, valid_until))
+        }
+        Outcome::Rejected { .. } => Some(Resolved {
+            action: candidate.action,
+            entry: candidate.entry,
+            stop: candidate.stop,
+            target: candidate.target,
+            valid_until,
+            qty: candidate.qty,
+            reasons: candidate.reasons.clone(),
+            rationale: None,
+        }),
         Outcome::Pass { .. } => None,
     }
 }

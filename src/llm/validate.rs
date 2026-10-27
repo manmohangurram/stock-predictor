@@ -10,7 +10,7 @@ use crate::rules::indicators::Bands;
 pub const MAX_STOP_ATRS: f64 = 5.0;
 pub const MAX_TARGET_ATRS: f64 = 10.0;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub enum ValidationError {
     #[error("stop on the wrong side of entry")]
     StopOnWrongSide,

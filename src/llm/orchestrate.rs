@@ -34,7 +34,16 @@ pub struct RunInput<'a> {
 pub enum Outcome {
     Llm(Proposal),
     Rules(Candidate),
-    Pass { why: String },
+    /// The model answered, but the proposal failed validation. Carried back with the reason
+    /// because the caller decides the consequence: over-budget becomes BLOCKED, everything
+    /// else falls back to the rules numbers.
+    Rejected {
+        proposal: Box<Proposal>,
+        error: validate::ValidationError,
+    },
+    Pass {
+        why: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -222,10 +231,13 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                     outcome: Outcome::Llm(*p),
                     conversation_id,
                 }),
-                Err(e) => {
-                    tracing::warn!(error = %e, "llm proposal rejected, using rules numbers");
+                Err(error) => {
+                    tracing::warn!(%error, "llm proposal rejected");
                     Ok(Decision {
-                        outcome: Outcome::Rules(input.candidate.clone()),
+                        outcome: Outcome::Rejected {
+                            proposal: p,
+                            error,
+                        },
                         conversation_id,
                     })
                 }
