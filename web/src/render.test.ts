@@ -199,3 +199,43 @@ describe("history dates", () => {
     expect(histDate(null, now)).toBe("—");
   });
 });
+
+describe("fills against the market", () => {
+  test("shows the close on the fill date and the difference", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const analysis = {
+      instrument: { id: 1, symbol: "INFY.NS", class: "stock", name: "Infosys", currency: "INR", timing_note: "limit order" },
+      bars: [{ ts: "2026-10-27T03:45:00Z", close: 1163 }],
+      indicators: null,
+      checks: [],
+      position: null,
+      headlines: [],
+    };
+    const detail = { instrument: analysis.instrument, headlines: [], signals: [] };
+    const list = [
+      {
+        id: 1, symbol: "INFY.NS", side: "buy" as const, qty: 17, price: 1200,
+        realised: null, traded_at: "2026-10-27T10:00:00Z", note: null, market_close: 1163,
+      },
+    ];
+    const html = renderInstrument(analysis as never, detail as never, list);
+    expect(html).toContain("Close that day");
+    expect(html).toContain("1,163.00");
+    expect(html).toContain("+3.18%"); // paid 1200 against a 1163 close
+  });
+
+  test("a missing close is an em dash, never a zero", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const analysis = {
+      instrument: { id: 1, symbol: "X.NS", class: "stock", name: "X", currency: "INR", timing_note: "" },
+      bars: [], indicators: null, checks: [], position: null, headlines: [],
+    };
+    const list = [
+      { id: 1, symbol: "X.NS", side: "buy" as const, qty: 1, price: 100, realised: null,
+        traded_at: "2019-01-01T10:00:00Z", note: null, market_close: null },
+    ];
+    const html = renderInstrument(analysis as never, { instrument: analysis.instrument, headlines: [], signals: [] } as never, list);
+    expect(html).toContain("—");
+    expect(html).not.toContain("0.00%");
+  });
+});

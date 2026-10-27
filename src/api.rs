@@ -732,6 +732,22 @@ async fn add_instrument(
         .bind(code)
         .fetch_one(&st.pool)
         .await?;
+
+    // A newly added symbol should have a chart and headlines on first open, not tomorrow
+    // morning. Mutual funds have no Yahoo series, so they are skipped deliberately.
+    if class == crate::models::AssetClass::Stock {
+        if let Ok(market) = crate::market::YahooSource::new() {
+            let fetch = crate::store::refresh(&st.pool, id.0, code, &market);
+            match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
+                Ok(Ok((bars, news))) => {
+                    tracing::info!(symbol = code, bars, news, "prices and headlines stored")
+                }
+                Ok(Err(e)) => tracing::warn!(symbol = code, error = %e, "refresh failed"),
+                Err(_) => tracing::warn!(symbol = code, "refresh timed out"),
+            }
+        }
+    }
+
     Ok(Json(InstrumentRow {
         id: id.0,
         symbol: code.to_string(),

@@ -96,8 +96,18 @@ function decisions(d: InstrumentDetail): string {
 
 function trades(list: Trade[]): string {
   if (!list.length) return `<p class="empty">No fills recorded for this instrument.</p>`;
+  const vsClose = (t: Trade): string => {
+    if (t.market_close === null) return `<span class="muted">—</span>`;
+    const diff = (t.price - t.market_close) / t.market_close;
+    const cls = diff > 0.0005 ? "up" : diff < -0.0005 ? "down" : "";
+    return `<span class="num ${cls}">${diff >= 0 ? "+" : ""}${(diff * 100).toFixed(2)}%</span>`;
+  };
   return `<table class="blotter compact">
-    <thead><tr><th scope="col">Date</th><th scope="col">Side</th><th scope="col">Qty</th><th scope="col">Price</th><th scope="col">Realised</th></tr></thead>
+    <thead><tr>
+      <th scope="col">Date</th><th scope="col">Side</th><th scope="col">Qty</th>
+      <th scope="col">Your price</th><th scope="col">Close that day</th>
+      <th scope="col">Vs close</th><th scope="col">Realised</th>
+    </tr></thead>
     <tbody>${list
       .map(
         (t) => `<tr>
@@ -105,6 +115,8 @@ function trades(list: Trade[]): string {
       <td>${stamp(t.side === "buy" ? "buy" : "sell", t.side)}</td>
       <td class="num">${units(t.qty)}</td>
       <td class="num">${money(t.price)}</td>
+      <td class="num">${t.market_close === null ? "—" : money(t.market_close)}</td>
+      <td>${vsClose(t)}</td>
       <td class="num ${(t.realised ?? 0) < 0 ? "down" : (t.realised ?? 0) > 0 ? "up" : ""}">${t.realised === null ? "—" : `${t.realised >= 0 ? "+" : ""}${money(t.realised, 0)}`}</td>
     </tr>`,
       )

@@ -76,40 +76,9 @@ async fn poll_instrument(
 ) -> Result<()> {
     let bars = deps.market.bars(&instrument.symbol).await?;
     let news = deps.market.news(&instrument.symbol).await.unwrap_or_default();
-    for h in &news {
-        sqlx::query(
-            "INSERT OR IGNORE INTO news (instrument_id, published_at, title, publisher, url)
-             VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(instrument.id)
-        .bind(&h.published_at)
-        .bind(&h.title)
-        .bind(&h.publisher)
-        .bind(&h.url)
-        .execute(deps.pool)
-        .await?;
-    }
+    crate::store::headlines(deps.pool, instrument.id, &news).await?;
 
-    // Bars are stored so the UI can chart what the decision was made from, and so a
-    // backtest can be run later on exactly what the engine saw.
-    for b in &bars {
-        sqlx::query(
-            "INSERT INTO bars (instrument_id, ts, open, high, low, close, volume)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(instrument_id, ts) DO UPDATE SET
-               open = excluded.open, high = excluded.high, low = excluded.low,
-               close = excluded.close, volume = excluded.volume",
-        )
-        .bind(instrument.id)
-        .bind(&b.ts)
-        .bind(b.open)
-        .bind(b.high)
-        .bind(b.low)
-        .bind(b.close)
-        .bind(b.volume)
-        .execute(deps.pool)
-        .await?;
-    }
+    crate::store::bars(deps.pool, instrument.id, &bars).await?;
 
     let ind = match indicators::compute(&bars) {
         Ok(i) => i,

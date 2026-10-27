@@ -49,6 +49,7 @@ export interface Trade {
   realised: number | null;
   traded_at: string;
   note: string | null;
+  market_close: number | null;
 }
 
 export interface Hit {

@@ -257,3 +257,22 @@ Also made the two remaining refusals say the numbers: "cost 1000000.00 exceeds a
 
 Verified end to end on a throwaway database: buy 2, buy 10 (now succeeds), sell 3, oversell and
 over-budget refused with the figures.
+
+## Prices and headlines on add; close-on-the-day for fills
+
+- `store::{bars, headlines, refresh}` extracted from the poll loop so both paths persist
+  identically. `POST /api/instruments` now fetches the 1-year daily series and the headlines
+  before returning (20s timeout), so a newly added symbol has a chart on first open instead of
+  waiting for the next 15-minute tick. A failed fetch still returns the instrument — the add
+  succeeded, the data did not.
+- Mutual funds are skipped deliberately: Yahoo carries no Indian fund series, and their price
+  comes from AMFI at add time.
+- Fills now carry `market_close`: the close on the day the fill happened, from the stored
+  daily bar, plus a "vs close" percentage. A backfilled record can therefore be judged against
+  what the market actually did that day. No bar for that date (older than a year) renders an
+  em dash, never a zero.
+
+Observed while verifying: `TCS.NS` returns **zero** headlines from Yahoo for every query shape
+("TCS", "TCS.NS", "Tata Consultancy Services"), while "Infosys" returns five. So headline
+coverage is a property of Yahoo's feed, not of our query. Recorded because it is the weakest
+link in the chain and the next thing to fix.

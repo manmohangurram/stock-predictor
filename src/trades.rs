@@ -37,6 +37,8 @@ pub struct Trade {
     pub realised: Option<f64>,
     pub traded_at: String,
     pub note: Option<String>,
+    /// The close on the day the fill happened, so the fill can be read against the market.
+    pub market_close: Option<f64>,
 }
 
 /// Records a real fill: the history row, the position projection, and the cash movement all
@@ -231,30 +233,39 @@ async fn insert_trade(
 }
 
 pub async fn history(pool: &SqlitePool, instrument_id: Option<i64>, limit: i64) -> Result<Vec<Trade>> {
-    let rows: Vec<(i64, String, String, f64, f64, Option<f64>, String, Option<String>)> =
-        match instrument_id {
-            Some(id) => {
-                sqlx::query_as(
-                    "SELECT t.id, i.symbol, t.side, t.qty, t.price, t.realised, t.traded_at, t.note
-                     FROM trades t JOIN instruments i ON i.id = t.instrument_id
-                     WHERE t.instrument_id = ? ORDER BY t.traded_at DESC LIMIT ?",
-                )
-                .bind(id)
+    let select = "SELECT t.id, i.symbol, t.side, t.qty, t.price, t.realised, t.traded_at, t.note,
+                         (SELECT b.close FROM bars b
+                          WHERE b.instrument_id = t.instrument_id
+                            AND substr(b.ts, 1, 10) = substr(t.traded_at, 1, 10)
+                          ORDER BY b.ts DESC LIMIT 1)
+                  FROM trades t JOIN instruments i ON i.id = t.instrument_id";
+    let rows: Vec<(
+        i64,
+        String,
+        String,
+        f64,
+        f64,
+        Option<f64>,
+        String,
+        Option<String>,
+        Option<f64>,
+    )> = match instrument_id {
+        Some(id) => {
+            sqlx::query_as(&format!(
+                "{select} WHERE t.instrument_id = ? ORDER BY t.traded_at DESC LIMIT ?"
+            ))
+            .bind(id)
+            .bind(limit)
+            .fetch_all(pool)
+            .await?
+        }
+        None => {
+            sqlx::query_as(&format!("{select} ORDER BY t.traded_at DESC LIMIT ?"))
                 .bind(limit)
                 .fetch_all(pool)
                 .await?
-            }
-            None => {
-                sqlx::query_as(
-                    "SELECT t.id, i.symbol, t.side, t.qty, t.price, t.realised, t.traded_at, t.note
-                     FROM trades t JOIN instruments i ON i.id = t.instrument_id
-                     ORDER BY t.traded_at DESC LIMIT ?",
-                )
-                .bind(limit)
-                .fetch_all(pool)
-                .await?
-            }
-        };
+        }
+    };
 
     Ok(rows
         .into_iter()
@@ -267,6 +278,7 @@ pub async fn history(pool: &SqlitePool, instrument_id: Option<i64>, limit: i64) 
             realised: r.5,
             traded_at: r.6,
             note: r.7,
+            market_close: r.8,
         })
         .collect())
 }
