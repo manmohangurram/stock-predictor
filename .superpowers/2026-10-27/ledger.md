@@ -32,3 +32,10 @@ Mode: inline (executing-plans), backend → notifications → UI
   ledger already gives the history. `settings` stores only `currency`. Cost if wrong: one
   query instead of one read; no migration needed to change back.
   Ruling: currency changes are refused when any non-budget ledger row exists.
+- Task 6 ✅ evaluate, 7 tests.
+  Ruling (plan deviation): `Candidate.stop`/`target` are `Option<f64>`, not `f64`. The plan
+  also demanded MF/IPO never carry an intraday stop, which a bare f64 cannot express without
+  a 0.0 sentinel that downstream code would read as a real price. Cost if wrong: a few match
+  arms, no behaviour change.
+  Ruling: added `urgent` to Candidate so a stop-hit can take ntfy priority without the
+  notifier re-deriving it.
