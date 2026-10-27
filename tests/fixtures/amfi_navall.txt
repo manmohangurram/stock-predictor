@@ -1,0 +1,3 @@
+Scheme Code;Scheme Name;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Net Asset Value;Date
+120503;Axis Bluechip Fund - Growth;INF846K01EW2;-;45.6721;24-Oct-2026
+119551;Parag Parikh Flexi Cap - Direct Growth;INF879O01019;-;78.9540;24-Oct-2026
