@@ -147,6 +147,12 @@ async fn poll_instrument(
     };
     report.candidates += 1;
 
+    // Cost gate: if the rules layer proposes exactly what it proposed last time, the model
+    // would be asked the same question again for the same answer. Skip the call.
+    if is_same_candidate(deps.pool, instrument.id, &candidate).await? {
+        return Ok(());
+    }
+
     let llm_deps = LlmDeps {
         pool: deps.pool,
         cfg: deps.cfg,
@@ -175,7 +181,7 @@ async fn poll_instrument(
     if resolved.action == Action::Buy {
         let cost = resolved.qty * resolved.entry;
         if !budget::fits(deps.pool, cost).await? {
-            record_blocked(deps.pool, instrument, &resolved, available, now).await?;
+            record_blocked(deps.pool, instrument, &resolved, &candidate, available, now).await?;
             report.blocked += 1;
             return Ok(());
         }
@@ -185,7 +191,7 @@ async fn poll_instrument(
         return Ok(());
     }
 
-    let signal_id = insert_signal(deps.pool, instrument.id, &resolved, now).await?;
+    let signal_id = insert_signal(deps.pool, instrument.id, &resolved, &candidate, now).await?;
     report.signals += 1;
 
     let mut as_candidate = candidate.clone();
@@ -318,17 +324,52 @@ fn stop_round(v: Option<f64>) -> Option<i64> {
     v.map(|x| (x * 100.0).round() as i64)
 }
 
+fn fingerprint(c: &Candidate) -> serde_json::Value {
+    serde_json::json!({
+        "rules_action": c.action.as_str(),
+        "rules_entry": (c.entry * 100.0).round() / 100.0,
+        "rules_stop": c.stop.map(|s| (s * 100.0).round() / 100.0),
+    })
+}
+
+async fn is_same_candidate(
+    pool: &SqlitePool,
+    instrument_id: i64,
+    c: &Candidate,
+) -> Result<bool> {
+    let last: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT reason_json FROM signals WHERE instrument_id = ? ORDER BY id DESC LIMIT 1",
+    )
+    .bind(instrument_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((Some(json),)) = last else {
+        return Ok(false);
+    };
+    let prev: serde_json::Value = serde_json::from_str(&json).unwrap_or_default();
+    let want = fingerprint(c);
+    Ok(prev.get("rules_action") == want.get("rules_action")
+        && prev.get("rules_entry") == want.get("rules_entry")
+        && prev.get("rules_stop") == want.get("rules_stop"))
+}
+
 async fn insert_signal(
     pool: &SqlitePool,
     instrument_id: i64,
     r: &Resolved,
+    candidate: &Candidate,
     now: DateTime<Utc>,
 ) -> Result<i64> {
-    let reason = serde_json::json!({
+    let mut reason = serde_json::json!({
         "reasons": r.reasons,
         "rationale": r.rationale,
-    })
-    .to_string();
+    });
+    if let (Some(dst), Some(src)) = (reason.as_object_mut(), fingerprint(candidate).as_object()) {
+        for (k, v) in src {
+            dst.insert(k.clone(), v.clone());
+        }
+    }
+    let reason = reason.to_string();
     let row: (i64,) = sqlx::query_as(
         "INSERT INTO signals (instrument_id, action, entry, stop, target, valid_until, reason_json, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
@@ -350,19 +391,25 @@ async fn record_blocked(
     pool: &SqlitePool,
     instrument: &Instrument,
     r: &Resolved,
+    candidate: &Candidate,
     available: f64,
     now: DateTime<Utc>,
 ) -> Result<()> {
     let cost = r.qty * r.entry;
     let shortfall = cost - available;
-    let reason = serde_json::json!({
+    let mut reason = serde_json::json!({
         "blocked": "insufficient_cash",
         "cost": cost,
         "available": available,
         "shortfall": shortfall,
         "reasons": r.reasons,
-    })
-    .to_string();
+    });
+    if let (Some(dst), Some(src)) = (reason.as_object_mut(), fingerprint(candidate).as_object()) {
+        for (k, v) in src {
+            dst.insert(k.clone(), v.clone());
+        }
+    }
+    let reason = reason.to_string();
     sqlx::query(
         "INSERT INTO signals (instrument_id, action, entry, stop, target, valid_until, reason_json, created_at)
          VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?)",

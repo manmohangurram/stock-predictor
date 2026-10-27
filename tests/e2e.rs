@@ -1,0 +1,206 @@
+use std::future::Future;
+use std::pin::Pin;
+
+use anyhow::Result;
+use chrono::{DateTime, TimeZone, Utc};
+use serde_json::json;
+use stock_predicter::config::Config;
+use stock_predicter::db;
+use stock_predicter::engine::{self, EngineDeps, MarketSource};
+use stock_predicter::llm::deepseek::{FixtureTransport, HttpReply};
+use stock_predicter::models::{Bar, Headline};
+use stock_predicter::notify::FakeNotifier;
+use stock_predicter::rules::evaluate::RuleConfig;
+use stock_predicter::rules::settings;
+
+struct FakeMarket(Vec<Bar>);
+
+impl MarketSource for FakeMarket {
+    fn bars<'a>(
+        &'a self,
+        _symbol: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Bar>>> + Send + 'a>> {
+        let b = self.0.clone();
+        Box::pin(async move { Ok(b) })
+    }
+    fn news<'a>(
+        &'a self,
+        _symbol: &'a str,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<Headline>>> + Send + 'a>> {
+        Box::pin(async move {
+            Ok(vec![Headline {
+                id: 0,
+                title: "Infosys guidance raised".into(),
+                publisher: "Reuters".into(),
+                published_at: "2026-10-25T00:00:00Z".into(),
+                url: "https://example.com/infy".into(),
+            }])
+        })
+    }
+}
+
+fn bars() -> Vec<Bar> {
+    (0..250)
+        .map(|i| {
+            let c = 95.0 + (i % 10) as f64 * 0.5 + i as f64 * 0.02;
+            Bar {
+                ts: format!("2026-01-01T00:00:{}Z", i % 60),
+                open: c,
+                high: c + 0.8,
+                low: c - 0.8,
+                close: c,
+                volume: 10_000,
+            }
+        })
+        .collect()
+}
+
+fn chat(content: serde_json::Value) -> HttpReply {
+    HttpReply {
+        status: 200,
+        body: json!({
+            "choices": [{"message": {"content": content.to_string()}}],
+            "usage": {"prompt_tokens": 300, "completion_tokens": 40}
+        })
+        .to_string(),
+    }
+}
+
+fn fetch_ok() -> HttpReply {
+    HttpReply {
+        status: 200,
+        body: json!({"title": "t", "content": "Guidance raised by 200bps."}).to_string(),
+    }
+}
+
+fn need_more() -> serde_json::Value {
+    json!({"action": "need_more", "requests": [{"headline_id": 1, "why": "guidance detail"}]})
+}
+
+fn decide(entry: f64, stop: f64) -> serde_json::Value {
+    json!({
+        "action": "decide",
+        "signal": {
+            "action": "BUY", "entry": entry, "stop": stop, "target": entry + 5.0,
+            "valid_until": "2030-01-01T00:00:00Z", "confidence": "high",
+            "rationale": "guidance raised with margin expansion", "cites": [1]
+        }
+    })
+}
+
+fn cfg() -> Config {
+    Config::from_map(
+        &[("DEEPSEEK_API_KEY", "k"), ("LLM_DAILY_CAP", "50")]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+    )
+    .unwrap()
+}
+
+async fn setup() -> (tempfile::TempDir, sqlx::SqlitePool) {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    settings::seed(&pool, 200_000.0, "INR").await.unwrap();
+    sqlx::query(
+        "INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY', 'stock', 'Infosys', 'INR')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    (dir, pool)
+}
+
+fn now() -> DateTime<Utc> {
+    Utc.with_ymd_and_hms(2026, 10, 27, 5, 0, 0).unwrap()
+}
+
+#[tokio::test]
+async fn full_cycle_signals_once_then_stays_quiet() {
+    let (_d, pool) = setup().await;
+    let cfg = cfg();
+    let market = FakeMarket(bars());
+    let notifier = FakeNotifier::default();
+
+    let poll1 = FixtureTransport::new(vec![chat(need_more()), fetch_ok(), chat(decide(103.5, 102.0))]);
+    let deps1 = EngineDeps {
+        pool: &pool,
+        cfg: &cfg,
+        market: &market,
+        transport: &poll1,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+    };
+    let r1 = engine::poll_once(&deps1, now()).await.unwrap();
+    assert_eq!(r1.signals, 1, "{r1:?}");
+    assert_eq!(r1.notifications, 1, "{r1:?}");
+
+    let endpoints: Vec<(String,)> = sqlx::query_as("SELECT endpoint FROM api_calls ORDER BY id")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    let endpoints: Vec<String> = endpoints.into_iter().map(|e| e.0).collect();
+    assert_eq!(endpoints, vec!["chat", "fetch", "chat"]);
+    assert_eq!(notifier.count(), 1);
+
+    // Second tick: identical market data. No new signal, no notification, and — because the
+    // rules fingerprint is unchanged — no new LLM spend either.
+    let poll2 = FixtureTransport::new(vec![]);
+    let deps2 = EngineDeps {
+        pool: &pool,
+        cfg: &cfg,
+        market: &market,
+        transport: &poll2,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+    };
+    let r2 = engine::poll_once(&deps2, now()).await.unwrap();
+    assert_eq!(r2.signals, 0);
+    assert_eq!(r2.notifications, 0);
+    assert_eq!(poll2.calls(), 0, "an unchanged candidate must not cost a model call");
+
+    let calls: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(calls.0, 3, "audit trail unchanged on the quiet tick");
+    assert_eq!(notifier.count(), 1);
+}
+
+#[tokio::test]
+async fn hallucinated_stop_falls_back_to_the_rules_numbers() {
+    let (_d, pool) = setup().await;
+    let cfg = cfg();
+    let market = FakeMarket(bars());
+    let notifier = FakeNotifier::default();
+    // stop above entry for a BUY: the validator must refuse this outright.
+    let transport = FixtureTransport::new(vec![chat(decide(106.0, 120.0))]);
+    let deps = EngineDeps {
+        pool: &pool,
+        cfg: &cfg,
+        market: &market,
+        transport: &transport,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+    };
+    let report = engine::poll_once(&deps, now()).await.unwrap();
+    assert_eq!(report.signals, 1);
+
+    let (entry, stop, reason): (f64, f64, String) =
+        sqlx::query_as("SELECT entry, stop, reason_json FROM signals WHERE action = 'BUY'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let reason: serde_json::Value = serde_json::from_str(&reason).unwrap();
+    assert!((entry - 104.48).abs() < 1e-6, "rules entry used, got {entry}");
+    assert!(stop < entry, "rules stop is below entry, got {stop}");
+    let rules_stop = reason["rules_stop"].as_f64().unwrap();
+    // rules_stop in the fingerprint is rounded to 2dp for dedupe; the stored price is exact.
+    assert!(
+        (stop - rules_stop).abs() < 0.01,
+        "the rules stop is what got stored: {stop} vs {rules_stop}"
+    );
+    assert_eq!(notifier.count(), 1);
+}
