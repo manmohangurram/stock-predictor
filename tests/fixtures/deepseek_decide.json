@@ -1,0 +1,1 @@
+{"id":"x","choices":[{"index":0,"message":{"role":"assistant","content":"{\"action\":\"pass\",\"why\":\"nothing material\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":812,"completion_tokens":18,"total_tokens":830}}
