@@ -39,3 +39,8 @@ Mode: inline (executing-plans), backend → notifications → UI
   arms, no behaviour change.
   Ruling: added `urgent` to Candidate so a stop-hit can take ntfy priority without the
   notifier re-deriving it.
+- Task 7 ✅ prompts, 4 tests. Prompt text typed into a template file, hash = sha256(template).
+- Task 8 ✅ deepseek client, 5 tests. One `Transport` seam; the fixture impl is in the
+  crate (cfg-free) so every later test can drive multi-round conversations.
+  Ruling: FixtureTransport serves replies FIFO, not LIFO — a two-round escalation test in
+  LIFO order would silently test the wrong round.
