@@ -297,22 +297,53 @@ describe("confidence", () => {
     expect(low.match(/data-on="true"/g)?.length).toBe(1);
   });
 
-  test("a rules-only signal is labelled as having no model judgement", async () => {
-    const { renderConfidence, confidenceLabel } = await import("./components/confidence");
+  test("no score draws nothing at all — never an empty gauge", async () => {
+    const { renderConfidence, confidenceLabel, hasConfidence } = await import(
+      "./components/confidence"
+    );
     for (const missing of [null, undefined, "", "certain"]) {
-      const html = renderConfidence(missing as never);
-      expect(html).toContain('data-level="rules"');
-      expect(html).toContain("no model judgement");
-      expect(confidenceLabel(missing as never)).toBe("rules only");
+      expect(renderConfidence(missing as never)).toBe("");
+      expect(confidenceLabel(missing as never)).toBe("");
+      expect(hasConfidence(missing as never)).toBe(false);
     }
   });
 
-  test("the blotter row and the decision card both show it", async () => {
+  test("a rules-derived signal says so in words, not as a score", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const analysis = {
+      instrument: { id: 1, symbol: "X.NS", class: "stock", name: "X", currency: "INR", timing_note: "" },
+      bars: [], indicators: null, checks: [], position: null, headlines: [],
+    };
+    const detail = {
+      instrument: analysis.instrument,
+      headlines: [],
+      signals: [
+        {
+          id: 1, symbol: "X.NS", class: "stock", action: "SELL", qty: 1, confidence: null,
+          entry: 100, stop: 110, target: null, valid_until: "2026-10-28T10:00:00Z",
+          timing_note: "", reasons: ["stop breached"], rationale: null,
+          created_at: "2026-10-27T10:00:00Z",
+        },
+      ],
+    };
+    const html = renderInstrument(analysis as never, detail as never, []);
+    expect(html).not.toContain('class="conf"');
+    expect(html).toContain("rules-derived, no model score");
+  });
+
+  test("the blotter row shows it only when the model gave a score", async () => {
     const { renderRow } = await import("./pages/ledger");
-    const row = renderRow(
+    const withScore = renderRow(
       dashboard({ positions: [position()], signals: [signal({ confidence: "high" })] }),
       position(),
     );
-    expect(row).toContain('aria-label="Confidence: high"');
+    expect(withScore).toContain('aria-label="Confidence: high"');
+
+    const without = renderRow(
+      dashboard({ positions: [position()], signals: [signal({ confidence: null })] }),
+      position(),
+    );
+    expect(without).not.toContain('class="conf"');
+    expect(without).toContain('data-stamp="sell"');
   });
 });

@@ -86,7 +86,7 @@ function decisions(d: InstrumentDetail): string {
     <span class="stamp" data-stamp="${s.action === "SELL" ? "sell" : s.action === "BUY" ? "buy" : "blocked"}">${s.action}</span>
     <b class="num">${s.entry === null ? "—" : money(s.entry)}</b>
     ${s.qty === null ? "" : `<span class="lbl">${units(s.qty)} units</span>`}
-    <span class="conf-word">${renderConfidence(s.confidence)}<span class="lbl">${confidenceLabel(s.confidence)}</span></span>
+    ${renderConfidence(s.confidence) ? `<span class="conf-word">${renderConfidence(s.confidence)}<span class="lbl">${confidenceLabel(s.confidence)}</span></span>` : ""}
     <time class="lbl">${day(s.created_at)} ${clock(s.created_at)}</time>
   </header>
   ${
@@ -102,6 +102,7 @@ function decisions(d: InstrumentDetail): string {
   <footer>
     stop ${s.stop === null ? "—" : money(s.stop)} · target ${s.target === null ? "—" : money(s.target)}
     ${s.valid_until ? ` · valid until ${day(s.valid_until)}` : ""}
+    ${s.confidence === null ? " · rules-derived, no model score" : ""}
   </footer>
 </article>`,
     )

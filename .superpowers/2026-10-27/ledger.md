@@ -355,3 +355,14 @@ judgement`). Shown in the blotter row and, with words, on the decision card.
 Two layout defects fixed while looking at it: the chart repeated SMA50/SMA200 as labels that
 collided with the same numbers in the rail (labels moved inside the plot, one copy only), and
 the trade form's six controls were clipped under the rail at 1280px (now wraps).
+
+## Confidence appears only where a signal is, and only when it exists
+
+Checked placement: `renderConfidence` is used in exactly two places, both signal displays — the
+Signal column of the blotter and the decision card. Not on the strip, positions, settings or
+headlines.
+
+Change made after the question: **no score now draws nothing.** The hollow "rules only" bars were
+removed, because an empty gauge reads as "scored zero", which is a different and false claim from
+"the model never scored this". Rules-derived signals say so in words in the card footer
+("rules-derived, no model score") and show no gauge at all.
