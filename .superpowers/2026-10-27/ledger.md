@@ -69,3 +69,9 @@ Mode: inline (executing-plans), backend → notifications → UI
   every other rejection to the rules fallback. Cost if wrong: none, both paths are tested.
   Note: BLOCKED rows are re-inserted on each poll (no dedupe). They are never pushed, so the
   phone stays quiet; the table grows by a few rows a day in the worst case.
+- Task 13 ✅ api, 12 tests. Added \`available\` as a serialised field on Settings (computed
+  once in \`get\`) — the UI needs it and deriving it in two places invites drift.
+  Ruling: a malformed JSON body is answered by axum's own rejection (client error) rather
+  than a hand-rolled 400; the test asserts client-error class, not the exact code.
+  Note: two test helper bugs were mine, not the code's — the patched position was closed
+  (so committed correctly dropped to 0) and the shape of Settings was assumed wrong.

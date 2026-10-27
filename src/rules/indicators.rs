@@ -6,7 +6,7 @@ use crate::models::Bar;
 /// `atr_bands` and the LLM proposal validator so the two can never drift apart.
 pub const BAND_MULT: f64 = 1.0;
 
-const MIN_BARS: usize = 200;
+pub const MIN_BARS: usize = 200;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Indicators {

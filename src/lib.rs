@@ -1,4 +1,5 @@
 pub mod api;
+pub mod backtest;
 pub mod config;
 pub mod db;
 pub mod llm;
