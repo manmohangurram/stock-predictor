@@ -51,3 +51,10 @@ Mode: inline (executing-plans), backend → notifications → UI
   only**; stop/target get a distance sanity check (5 and 10 ATR). Cost if wrong: a wild but
   correctly-signed stop could pass; the max-distance check bounds it.
   Ruling: added MissingCitation as its own error instead of overloading UnknownHeadlineId.
+- Task 10 ✅ orchestrate, 7 tests.
+  Ruling: `run` takes a `RunInput` struct instead of the plan's `CandidateInput` — it needs
+  held_qty and search summaries, which CandidateInput does not carry.
+  Ruling: any phase-1 transport error, parse error, or validation failure falls back to the
+  rules candidate. Every path is covered by a test, including an unparseable response.
+  Note: the char-cap test counts runs >= 100 because the JSON envelope contributes a few
+  stray single letters; measuring the article run is the actual invariant.
