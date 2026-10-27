@@ -31,12 +31,9 @@ async function route(): Promise<void> {
       app.innerHTML = renderCalls(await api.calls());
     } else if (path.startsWith("/i/")) {
       const symbol = decodeURIComponent(path.slice(3));
-      const [analysis, detail, trades] = await Promise.all([
-        api.analysis(symbol),
-        api.instrument(symbol),
-        api.instrumentTrades(symbol),
-      ]);
-      app.innerHTML = renderInstrument(analysis, detail, trades);
+      // One request: the analysis payload carries the instrument, its signals and its fills.
+      const analysis = await api.analysis(symbol);
+      app.innerHTML = renderInstrument(analysis, analysis, analysis.trades);
       wireTradeForm(symbol);
       wireTargetProfit(symbol);
     } else {
@@ -44,8 +41,9 @@ async function route(): Promise<void> {
         | "long"
         | "trade"
         | null) ?? "long";
-      const [d, trades] = await Promise.all([api.dashboard(mode), api.trades()]);
-      app.innerHTML = nav + renderLedger(d, trades);
+      // One request: the dashboard payload carries the rail's recent fills.
+      const d = await api.dashboard(mode);
+      app.innerHTML = nav + renderLedger(d, d.recent_trades);
       wireRows();
       wireSearch();
     }

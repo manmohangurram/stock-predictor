@@ -431,3 +431,34 @@ not something the gate has to consider separately.
 The 68 ms was real: `store::bars` inserted row-by-row in autocommit. Now one transaction per
 batch, WAL + synchronous=NORMAL, and — the bigger win — only bars at or after the newest stored
 timestamp are written, because a poll re-fetches a year but only the tail is new.
+
+## Database, request and token optimisations
+
+### Indexes (migration 0008)
+EXPLAIN QUERY PLAN showed four full scans on live paths. After:
+
+| query | before | after |
+|---|---|---|
+| latest signal for an instrument | SCAN signals | SEARCH signals_by_instrument |
+| signals by mode | SCAN s | SEARCH signals_by_mode |
+| headlines for an instrument | SCAN news + temp b-tree | SEARCH news_by_instrument |
+| open position | SCAN positions | COVERING INDEX positions_by_instrument |
+| chat calls today | SCAN api_calls | COVERING INDEX api_calls_by_endpoint_ts |
+
+`daily_chat_calls` used `substr(ts,1,10) = ?`, which no index can serve; it is now a half-open
+range `ts >= 'YYYY-MM-DD'`.
+
+### API calls per page
+- Ledger: 2 requests -> 1 (`/api/dashboard` now carries `recent_trades`).
+- Instrument: 3 requests -> 1 (`/api/instruments/:symbol/analysis` carries `signals` and
+  `trades`).
+- `/api/trades` and `/api/instruments/:symbol/trades` stay for API consumers.
+
+### Prompt tokens
+- Templates reordered so the ~700-token static block is a **prefix** and the variable data comes
+  last. DeepSeek caches matching prefixes, so the repeated part is billed at the cache rate.
+- Boilerplate tightened: 6887 -> 5921 characters on the same context, about 1721 -> 1480 tokens
+  (−14%) before cache effects.
+- Render cost itself fell 21 µs -> 17.4 µs.
+- Remaining big item: the 24-bar intraday tape is ~260 tokens. `window_hours` is the knob if a
+  shorter tape ever looks sufficient.

@@ -297,11 +297,11 @@ pub fn format_history(bars: &[crate::models::Bar]) -> String {
 }
 
 pub async fn daily_chat_calls(pool: &SqlitePool) -> Result<i64> {
-    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let start = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let row: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM api_calls WHERE endpoint = 'chat' AND substr(ts, 1, 10) = ?",
+        "SELECT COUNT(*) FROM api_calls WHERE endpoint = 'chat' AND ts >= ?",
     )
-    .bind(today)
+    .bind(start)
     .fetch_one(pool)
     .await?;
     Ok(row.0)

@@ -42,6 +42,7 @@ export interface Dashboard {
   positions: PositionRow[];
   signals: SignalRow[];
   blocked: SignalRow[];
+  recent_trades: Trade[];
 }
 
 export interface Trade {
@@ -121,6 +122,8 @@ export interface Analysis {
   checks: CheckRow[];
   position: PositionRow | null;
   headlines: { id: number; title: string; publisher: string | null; published_at: string; url: string }[];
+  signals: SignalRow[];
+  trades: Trade[];
 }
 
 export interface InstrumentDetail {

@@ -215,6 +215,8 @@ pub struct Dashboard {
     pub positions: Vec<PositionRow>,
     pub signals: Vec<SignalRow>,
     pub blocked: Vec<SignalRow>,
+    /// The rail's recent fills: one request per page instead of two.
+    pub recent_trades: Vec<crate::trades::Trade>,
 }
 
 async fn dashboard(
@@ -239,6 +241,7 @@ async fn dashboard(
         positions,
         signals,
         blocked,
+        recent_trades: crate::trades::history(&st.pool, None, 20).await?,
     }))
 }
 
@@ -379,6 +382,9 @@ pub struct Analysis {
     pub checks: Vec<CheckRow>,
     pub position: Option<PositionRow>,
     pub headlines: Vec<HeadlineRow>,
+    /// Everything below saves two extra round trips on the instrument page.
+    pub signals: Vec<SignalRow>,
+    pub trades: Vec<crate::trades::Trade>,
 }
 
 /// "Why is there no signal?" answered with the same predicates the engine used.
@@ -486,6 +492,13 @@ async fn analysis(
         })
         .collect();
 
+    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long)
+        .await?
+        .into_iter()
+        .filter(|s| s.symbol == symbol)
+        .collect();
+    let trades = crate::trades::history(&st.pool, Some(id), 200).await?;
+
     Ok(Json(Analysis {
         instrument: InstrumentRow {
             id,
@@ -515,6 +528,8 @@ async fn analysis(
         checks,
         position,
         headlines,
+        signals,
+        trades,
     }))
 }
 

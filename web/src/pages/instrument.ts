@@ -140,6 +140,7 @@ function trades(list: Trade[]): string {
       .join("")}</tbody></table>`;
 }
 
+/** \`d\` may be the analysis payload itself: the API now returns the whole page in one call. */
 export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]): string {
   const p = a.position;
   const ltp = a.bars.length ? a.bars[a.bars.length - 1].close : (p?.avg_cost ?? null);

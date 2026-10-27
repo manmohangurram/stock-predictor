@@ -390,3 +390,50 @@ describe("risk and profit expectation", () => {
     expect(html).toContain('name="pct"');
   });
 });
+
+describe("one request per page", () => {
+  test("the ledger gets its recent fills from the dashboard payload", async () => {
+    const { renderLedger } = await import("./pages/ledger");
+    const d = {
+      ...dashboard({ positions: [position()] }),
+      recent_trades: [
+        {
+          id: 1, symbol: "INFY.NS", side: "buy" as const, qty: 17, price: 1163,
+          realised: null, traded_at: "2026-10-20T04:00:00Z", note: null,
+          market_close: null, mode: "long" as const,
+        },
+      ],
+    };
+    const html = renderLedger(d, d.recent_trades);
+    expect(html).toContain("INFY.NS 17 @ 1,163.00");
+    expect(html).toContain("Recent trades");
+  });
+
+  test("the instrument page renders from the analysis payload alone", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const instrument = {
+      id: 1, symbol: "INFY.NS", class: "stock", name: "Infosys", currency: "INR",
+      timing_note: "", target_profit_pct: null,
+    };
+    const payload = {
+      instrument,
+      bars: [], indicators: null, checks: [], position: null, headlines: [],
+      signals: [
+        {
+          id: 1, symbol: "INFY.NS", class: "stock", action: "SELL", qty: 1, confidence: "high",
+          entry: 100, stop: 110, target: null, valid_until: "2026-10-28T10:00:00Z",
+          timing_note: "", reasons: [], rationale: null, created_at: "2026-10-27T10:00:00Z",
+        },
+      ],
+      trades: [
+        {
+          id: 1, symbol: "INFY.NS", side: "buy", qty: 1, price: 100, realised: null,
+          traded_at: "2026-10-20T04:00:00Z", note: null, market_close: 101, mode: "long",
+        },
+      ],
+    };
+    const html = renderInstrument(payload as never, payload as never, payload.trades as never);
+    expect(html).toContain("SELL");
+    expect(html).toContain("Close that day");
+  });
+});
