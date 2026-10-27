@@ -1,0 +1,46 @@
+# stock-predicter — agent notes
+
+## Reading code: never open a whole file to inspect one function
+
+Cheapest first. Two lookups, then one narrow read.
+
+**1. Locate.** Never guess a path:
+
+```sh
+semble search "<what you're hunting>" --max-snippet-lines 0 --top-k 5
+```
+
+Returns `{file_path, start_line, end_line, score}`. Works with no setup.
+
+**2. Resolve a symbol to its exact range** (once `graphify-out/graph.json` exists):
+
+```sh
+python3 ~/.pi/agent/skills/code-read/scripts/read-ranges.py <Symbol>          # path:start-end
+python3 ~/.pi/agent/skills/code-read/scripts/read-ranges.py <Symbol> --show   # and print it
+python3 ~/.pi/agent/skills/code-read/scripts/read-ranges.py --file src/llm/orchestrate.rs
+```
+
+**3. Build / refresh the graph** (needed after the first Rust files land):
+
+```sh
+graphify . && python3 ~/.pi/agent/skills/code-read/scripts/add-end-lines.py
+# after any rebuild — `graphify --update` wipes end lines, so always re-enrich:
+graphify . --update && python3 ~/.pi/agent/skills/code-read/scripts/add-end-lines.py
+```
+
+**4. Read only those ranges**, batched into one turn. Read a whole file only if it is under
+~120 lines or the question genuinely spans it. `grep`/`rg` confirms an exact literal — then
+read the range around the hit.
+
+Semble indexes source files only; markdown (docs, specs, `.interface-design/`) is not
+searchable there, so read those directly.
+
+## Project facts worth not rediscovering
+
+- Spec: `docs/superpowers/specs/2026-10-27-stock-predicter-design.md` (binding).
+- Plan: `docs/superpowers/plans/2026-10-27-stock-predicter.md` (binding, task by task).
+- Design system: `.interface-design/system.md` (binding for all front-end work).
+- No test may hit the network. Fixtures only.
+- `api_calls` and `cash_ledger` are append-only. Nothing updates or deletes those rows.
+- The budget ceiling lives in the `settings` table and is edited from the UI; `BUDGET` /
+  `CURRENCY` env values seed it on first boot and are then ignored.
