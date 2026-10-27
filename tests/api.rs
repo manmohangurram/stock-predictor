@@ -449,3 +449,140 @@ async fn an_empty_search_returns_nothing_without_calling_out() {
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(v.as_array().unwrap().len(), 0);
 }
+
+#[tokio::test]
+async fn a_backfilled_trade_keeps_the_date_it_happened() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 90.0, "at": "2026-07-14"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let (_, rows) = get(&router, "/api/instruments/INFY/trades").await;
+    let at = rows[0]["traded_at"].as_str().unwrap();
+    assert!(at.starts_with("2026-07-14"), "date preserved, got {at}");
+    // YYYY-MM-DD means that session's 15:30 IST close.
+    assert!(at.contains("10:00:00"), "stamped at the close, got {at}");
+
+    // The position must carry the same date, or history sorts wrong.
+    let (_, d) = get(&router, "/api/dashboard").await;
+    assert_eq!(d["positions"][0]["symbol"], "INFY");
+    assert_eq!(d["committed"], 900.0);
+}
+
+#[tokio::test]
+async fn an_rfc3339_timestamp_is_accepted_to_the_second() {
+    let (_d, router, _pool) = setup().await;
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 1.0, "price": 100.0, "at": "2026-08-03T09:41:00Z"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, rows) = get(&router, "/api/instruments/INFY/trades").await;
+    assert!(rows[0]["traded_at"].as_str().unwrap().starts_with("2026-08-03T09:41:00"));
+}
+
+#[tokio::test]
+async fn a_future_or_unparseable_date_is_refused() {
+    let (_d, router, _pool) = setup().await;
+    for bad in ["2099-01-01", "yesterday", "2026-13-45"] {
+        let (s, v) = send(
+            &router,
+            "POST",
+            "/api/instruments/INFY/trades",
+            json!({"side": "buy", "qty": 1.0, "price": 100.0, "at": bad}),
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{bad} should be refused: {v}");
+    }
+    let (_, rows) = get(&router, "/api/instruments/INFY/trades").await;
+    assert_eq!(rows.as_array().unwrap().len(), 0, "nothing half-written");
+}
+
+#[tokio::test]
+async fn an_omitted_date_still_means_now() {
+    let (_d, router, _pool) = setup().await;
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 1.0, "price": 100.0}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, rows) = get(&router, "/api/instruments/INFY/trades").await;
+    let at = rows[0]["traded_at"].as_str().unwrap();
+    assert!(at.starts_with(&chrono::Utc::now().format("%Y-%m-%d").to_string()));
+}
+
+#[tokio::test]
+async fn a_sell_cannot_be_dated_before_the_position_was_opened() {
+    let (_d, router, _pool) = setup().await;
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 100.0, "at": "2026-08-01"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+
+    // Selling in July something bought in August is a history that runs backwards.
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "sell", "qty": 5.0, "price": 120.0, "at": "2026-07-01"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap_or_default().contains("before the position"));
+
+    // The same sale, dated after the buy, is fine.
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "sell", "qty": 5.0, "price": 120.0, "at": "2026-09-01"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_backfilled_buy_moves_the_position_start_date_backwards() {
+    let (_d, router, _pool) = setup().await;
+    let _ = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 100.0}),
+    )
+    .await;
+    // Entered later, happened earlier.
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 5.0, "price": 90.0, "at": "2026-06-10"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+
+    // A sale between the backfilled buy and today is now legal.
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "sell", "qty": 5.0, "price": 120.0, "at": "2026-07-01"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+}

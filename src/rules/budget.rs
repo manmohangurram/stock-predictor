@@ -88,8 +88,14 @@ pub async fn fits(pool: &SqlitePool, cost: f64) -> Result<bool> {
 }
 
 pub async fn record(pool: &SqlitePool, entry: NewCashEntry) -> Result<()> {
+    record_at(pool, entry, &chrono::Utc::now().to_rfc3339()).await
+}
+
+/// The same row, stamped with when it actually happened. Backfilled trades must not land at
+/// the top of the ledger just because they were entered today.
+pub async fn record_at(pool: &SqlitePool, entry: NewCashEntry, ts: &str) -> Result<()> {
     sqlx::query("INSERT INTO cash_ledger (ts, kind, amount, ref) VALUES (?, ?, ?, ?)")
-        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(ts)
         .bind(entry.kind.as_str())
         .bind(entry.amount)
         .bind(entry.reference)

@@ -748,6 +748,8 @@ pub struct TradeBody {
     pub qty: f64,
     pub price: Option<f64>,
     pub note: Option<String>,
+    /// `YYYY-MM-DD` or RFC3339. Omitted means "now".
+    pub at: Option<String>,
 }
 
 async fn record_trade(
@@ -769,9 +771,20 @@ async fn record_trade(
         return Err(ApiError::BadRequest("qty must be positive".into()));
     }
 
-    crate::trades::record(&st.pool, id, side, body.qty, price, body.note.as_deref())
-        .await
+    let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    crate::trades::record(
+        &st.pool,
+        id,
+        side,
+        body.qty,
+        price,
+        body.note.as_deref(),
+        Some(when),
+    )
+    .await
+    .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     let s = settings::get(&st.pool).await?;
     Ok(Json(serde_json::json!({

@@ -156,3 +156,35 @@ describe("settings", () => {
     expect(shouldDisableSave(NaN, 0)).toBe(true);
   });
 });
+
+describe("trade form dates", () => {
+  test("offers a date field defaulting to today, so old fills can be backfilled", async () => {
+    const { renderTradeForm, today } = await import("./pages/instrument");
+    const html = renderTradeForm("INFY.NS", { qty: 17 }, new Date("2026-10-27T12:00:00Z"));
+    expect(html).toContain('name="at"');
+    expect(html).toContain('type="date"');
+    expect(html).toContain(`value="${today(new Date("2026-10-27T12:00:00Z"))}"`);
+    expect(html).toContain("backfill an older fill");
+  });
+
+  test("caps the date at today — a fill cannot be in the future", async () => {
+    const { renderTradeForm } = await import("./pages/instrument");
+    const html = renderTradeForm("INFY.NS", null, new Date("2026-10-27T12:00:00Z"));
+    expect(html).toContain('max="2026-10-27"');
+  });
+
+  test("sell quantity is capped by what is held", async () => {
+    const { renderTradeForm } = await import("./pages/instrument");
+    expect(renderTradeForm("INFY.NS", { qty: 17 })).toContain('max="17"');
+  });
+});
+
+describe("history dates", () => {
+  test("includes the year once the fill is not from the current one", async () => {
+    const { histDate } = await import("./format");
+    const now = new Date("2026-10-27T12:00:00Z");
+    expect(histDate("2026-08-20T10:00:00Z", now)).not.toContain("2026");
+    expect(histDate("2025-08-20T10:00:00Z", now)).toContain("2025");
+    expect(histDate(null, now)).toBe("—");
+  });
+});

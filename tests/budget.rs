@@ -239,3 +239,24 @@ async fn a_key_seeded_from_env_is_used_once_and_then_owned_by_the_settings_table
         Some("sk-from-ui")
     );
 }
+
+#[tokio::test]
+async fn a_backdated_cash_entry_keeps_its_own_timestamp() {
+    let (_d, pool, _) = fresh(1000.0).await;
+    budget::record_at(
+        &pool,
+        NewCashEntry {
+            kind: CashKind::Buy,
+            amount: -100.0,
+            reference: "old buy".into(),
+        },
+        "2026-03-02T10:00:00+00:00",
+    )
+    .await
+    .unwrap();
+    let ts: (String,) = sqlx::query_as("SELECT ts FROM cash_ledger WHERE kind = 'buy'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(ts.0.starts_with("2026-03-02"), "got {}", ts.0);
+}

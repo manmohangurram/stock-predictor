@@ -156,10 +156,16 @@ export const api = {
   search: (q: string) => req<Hit[]>(`/api/search?q=${encodeURIComponent(q)}`),
   addInstrument: (code: string, name?: string, cls?: string) =>
     req<{ symbol: string }>("/api/instruments", json({ code, name, class: cls })),
-  recordTrade: (symbol: string, side: "buy" | "sell", qty: number, price: number) =>
+  recordTrade: (
+    symbol: string,
+    side: "buy" | "sell",
+    qty: number,
+    price: number,
+    at?: string,
+  ) =>
     req<{ ok: boolean; cash: number; realised: number }>(
       `/api/instruments/${encodeURIComponent(symbol)}/trades`,
-      json({ side, qty, price }),
+      json({ side, qty, price, at }),
     ),
   putSettings: async (
     patch: Partial<Pick<Settings, "budget" | "currency">> & { deepseek_key?: string },

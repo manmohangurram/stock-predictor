@@ -373,7 +373,7 @@
 
   .trade-form { border: 1px solid var(--rule-subtle); border-radius: var(--radius); padding: var(--space-3);
     background: var(--paper-raised); display: grid; gap: var(--space-2); }
-  .trade-form .row { display: grid; grid-template-columns: 100px 1fr 1fr auto; gap: var(--space-2); }
+  .trade-form .row { display: grid; grid-template-columns: 100px 1fr 1fr 150px auto; gap: var(--space-2); }
   .trade-form select, .trade-form input { padding: var(--space-2); font-family: var(--font-ledger);
     background: var(--paper-inset); color: var(--ink); border: 1px solid var(--rule); border-radius: var(--radius); }
 

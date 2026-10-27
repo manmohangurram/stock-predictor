@@ -41,6 +41,38 @@ pub struct Trade {
 
 /// Records a real fill: the history row, the position projection, and the cash movement all
 /// move together or not at all.
+/// When a fill happened. A bare `YYYY-MM-DD` means that trading day, stamped at the 15:30 IST
+/// close, so a backfilled record sorts after the morning and before the next day.
+pub fn parse_when(input: &str, now: chrono::DateTime<chrono::Utc>) -> Result<chrono::DateTime<chrono::Utc>> {
+    let raw = input.trim();
+    if raw.is_empty() {
+        return Ok(now);
+    }
+
+    let parsed = if let Ok(full) = chrono::DateTime::parse_from_rfc3339(raw) {
+        full.with_timezone(&chrono::Utc)
+    } else {
+        let date = chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d")
+            .map_err(|_| anyhow::anyhow!("date must be YYYY-MM-DD or RFC3339, got {raw:?}"))?;
+        let close = date
+            .and_hms_opt(15, 30, 0)
+            .ok_or_else(|| anyhow::anyhow!("bad time"))?;
+        // 15:30 IST == 10:00 UTC; NSE has no DST, so a fixed offset is exact.
+        chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+            close - chrono::Duration::minutes(330),
+            chrono::Utc,
+        )
+    };
+
+    if parsed > now + chrono::Duration::days(1) {
+        anyhow::bail!("cannot record a fill in the future");
+    }
+    if parsed < chrono::DateTime::parse_from_rfc3339("1990-01-01T00:00:00Z").unwrap() {
+        anyhow::bail!("that date is before any market this app knows about");
+    }
+    Ok(parsed)
+}
+
 pub async fn record(
     pool: &SqlitePool,
     instrument_id: i64,
@@ -48,13 +80,15 @@ pub async fn record(
     qty: f64,
     price: f64,
     note: Option<&str>,
+    at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<()> {
     ensure!(qty.is_finite() && qty > 0.0, "qty must be positive");
     ensure!(price.is_finite() && price > 0.0, "price must be positive");
 
-    let now = chrono::Utc::now().to_rfc3339();
-    let open: Option<(i64, f64, f64)> = sqlx::query_as(
-        "SELECT id, qty, avg_cost FROM positions
+    let when = at.unwrap_or_else(chrono::Utc::now);
+    let now = when.to_rfc3339();
+    let open: Option<(i64, f64, f64, String)> = sqlx::query_as(
+        "SELECT id, qty, avg_cost, opened_at FROM positions
          WHERE instrument_id = ? AND state = 'open' ORDER BY id DESC LIMIT 1",
     )
     .bind(instrument_id)
@@ -70,15 +104,24 @@ pub async fn record(
             );
 
             match open {
-                Some((id, held, cost)) => {
+                Some((id, held, cost, opened_at)) => {
                     let new_qty = held + qty;
                     let new_cost = (held * cost + value) / new_qty;
-                    sqlx::query("UPDATE positions SET qty = ?, avg_cost = ? WHERE id = ?")
-                        .bind(new_qty)
-                        .bind(new_cost)
-                        .bind(id)
-                        .execute(pool)
-                        .await?;
+                    // A backfilled buy moves the position's start date backwards, otherwise a
+                    // later-dated sale of it would be refused as "before the position opened".
+                    let opened = chrono::DateTime::parse_from_rfc3339(&opened_at)
+                        .map(|d| d.with_timezone(&chrono::Utc))
+                        .unwrap_or(when);
+                    let started = opened.min(when).to_rfc3339();
+                    sqlx::query(
+                        "UPDATE positions SET qty = ?, avg_cost = ?, opened_at = ? WHERE id = ?",
+                    )
+                    .bind(new_qty)
+                    .bind(new_cost)
+                    .bind(started)
+                    .bind(id)
+                    .execute(pool)
+                    .await?;
                 }
                 None => {
                     sqlx::query(
@@ -95,20 +138,28 @@ pub async fn record(
             }
 
             insert_trade(pool, instrument_id, side, qty, price, None, &now, note).await?;
-            budget::record(
+            budget::record_at(
                 pool,
                 NewCashEntry {
                     kind: CashKind::Buy,
                     amount: -value,
                     reference: format!("buy {qty} @ {price}"),
                 },
+                &now,
             )
             .await?;
         }
         Side::Sell => {
-            let (id, held, cost) =
+            let (id, held, cost, opened_at) =
                 open.ok_or_else(|| anyhow::anyhow!("nothing is held to sell"))?;
             ensure!(qty <= held + 1e-9, "cannot sell {qty}, only {held} held");
+            if let Ok(opened) = chrono::DateTime::parse_from_rfc3339(&opened_at) {
+                ensure!(
+                    when >= opened.with_timezone(&chrono::Utc),
+                    "sell date is before the position was opened ({})",
+                    opened_at
+                );
+            }
 
             let realised = qty * (price - cost);
             let remaining = held - qty;
@@ -136,13 +187,14 @@ pub async fn record(
                 note,
             )
             .await?;
-            budget::record(
+            budget::record_at(
                 pool,
                 NewCashEntry {
                     kind: CashKind::Sell,
                     amount: qty * price,
                     reference: format!("sell {qty} @ {price}"),
                 },
+                &now,
             )
             .await?;
         }

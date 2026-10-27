@@ -1,5 +1,5 @@
 import type { Dashboard, Trade } from "../api";
-import { day, escapeHtml, money, units } from "../format";
+import { escapeHtml, histDate, money, units } from "../format";
 import { stamp } from "../components/stamp";
 
 /** The portfolio strip: the four numbers that decide whether anything is affordable. */
@@ -55,7 +55,7 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
         .map(
           (t) => `<div class="hist"><span class="stamp" data-stamp="${t.side === "buy" ? "buy" : "sell"}">${t.side}</span>
         <span>${escapeHtml(t.symbol)} ${units(t.qty)} @ ${money(t.price)}</span>
-        <span class="lbl">${day(t.traded_at)}</span></div>`,
+        <span class="lbl">${histDate(t.traded_at)}</span></div>`,
         )
         .join("")
     : `<p class="empty">No trades recorded yet.</p>`;

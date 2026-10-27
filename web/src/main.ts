@@ -140,13 +140,14 @@ function wireTradeForm(symbol: string): void {
     const side = String(data.get("side")) as "buy" | "sell";
     const qty = Number(data.get("qty"));
     const price = Number(data.get("price"));
+    const at = String(data.get("at") ?? "").trim();
     if (!(qty > 0) || !(price > 0)) {
       if (status) status.textContent = "Quantity and price must be positive.";
       return;
     }
     if (status) status.textContent = "Recording…";
     try {
-      const res = await api.recordTrade(symbol, side, qty, price);
+      const res = await api.recordTrade(symbol, side, qty, price, at || undefined);
       if (status) {
         status.textContent = `Recorded. Cash ${Math.round(res.cash)}, realised ${Math.round(res.realised)}.`;
       }

@@ -214,3 +214,27 @@ Ruling: `exchDisp` is the Yahoo field name — my earlier `exchdisp` rename sile
 empty venues. Caught by looking at the search response, not by a test.
 Ruling: the "stop not hit" rule reads as "stop not breached" — with `passed=false` the UI
 showed BLOCK, which reads like a blocked trade when it is actually the sell trigger.
+
+## Dated fills (backfilling old records)
+
+Trades can now carry the date they actually happened, so the portfolio can be filled in
+retroactively rather than starting from today.
+
+- `side`, `qty`, `price`, `note`, and **`at`** on `POST /api/instruments/:symbol/trades`.
+  `YYYY-MM-DD` or full RFC3339; omitted means now.
+- A bare date means that NSE session's close (15:30 IST = 10:00 UTC), so a backfilled fill
+  sorts after the morning and before the next day.
+- The date is propagated, not just stored on the trade: position `opened_at`, and the
+  `cash_ledger` row (new `budget::record_at`). Otherwise a July fill would appear at the top
+  of a ledger of October entries.
+- The trade form has a date field defaulting to today, capped at today.
+
+Two gaps the backfill exposed, both fixed and tested:
+1. Nothing stopped a sale dated before the position existed — a history running backwards.
+2. A backfilled *buy* did not move `opened_at`, so any older sale was then refused. A buy now
+   moves the position's start date backwards (min of existing and the fill), which is what
+   makes entering history in any order work.
+
+Ruling: cost basis stays weighted-average, so a backdated buy restates the average cost used
+for later realised P&L. FIFO lot accounting would be more accurate and is the upgrade path if
+per-lot P&L is ever wanted. Recorded here because it is a real approximation, not a bug.

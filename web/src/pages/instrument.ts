@@ -1,5 +1,5 @@
 import type { Analysis, InstrumentDetail, Trade } from "../api";
-import { clock, day, escapeHtml, money, units } from "../format";
+import { clock, day, escapeHtml, histDate, money, units } from "../format";
 import { stamp } from "../components/stamp";
 
 function chart(a: Analysis): string {
@@ -34,7 +34,17 @@ function chart(a: Analysis): string {
   </figure>`;
 }
 
-export function renderTradeForm(symbol: string, position: { qty: number } | null): string {
+/** Today in the user's own timezone, as the date input expects. */
+export function today(now = new Date()): string {
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+export function renderTradeForm(
+  symbol: string,
+  position: { qty: number } | null,
+  now = new Date(),
+): string {
   const max = position ? `max="${position.qty}"` : "";
   return `<form class="trade-form" data-symbol="${escapeHtml(symbol)}">
   <label class="lbl" for="side">Record a fill</label>
@@ -45,9 +55,14 @@ export function renderTradeForm(symbol: string, position: { qty: number } | null
     </select>
     <input name="qty" type="number" min="0" step="any" ${max} placeholder="Qty" required aria-label="Quantity" />
     <input name="price" type="number" min="0" step="any" placeholder="Price" required aria-label="Price" />
+    <input name="at" type="date" value="${today(now)}" max="${today(now)}"
+           aria-label="Trade date" title="Change this to backfill an older fill" />
     <button class="btn" type="submit">Record</button>
   </div>
-  <p class="help" id="trade-status" role="status">Records history, updates the position, and moves cash.</p>
+  <p class="help" id="trade-status" role="status">
+    Defaults to today — change the date to backfill an older fill. Records history, updates the
+    position, and moves cash on that date.
+  </p>
 </form>`;
 }
 
@@ -80,7 +95,7 @@ function trades(list: Trade[]): string {
     <tbody>${list
       .map(
         (t) => `<tr>
-      <td class="num">${day(t.traded_at)}</td>
+      <td class="num">${histDate(t.traded_at)}</td>
       <td>${stamp(t.side === "buy" ? "buy" : "sell", t.side)}</td>
       <td class="num">${units(t.qty)}</td>
       <td class="num">${money(t.price)}</td>

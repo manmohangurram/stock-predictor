@@ -23,5 +23,18 @@ export const day = (iso: string | null): string => {
     : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
 };
 
+/** History needs the year once it is not the current one; "14 Jul" is ambiguous by March. */
+export const histDate = (iso: string | null, now = new Date()): string => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.valueOf())) return "—";
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+};
+
 export const escapeHtml = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
