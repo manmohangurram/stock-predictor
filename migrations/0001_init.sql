@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS signals (
     id            INTEGER PRIMARY KEY,
     instrument_id INTEGER NOT NULL REFERENCES instruments(id),
     action        TEXT NOT NULL,
+    qty           REAL,
     entry         REAL,
     stop          REAL,
     target        REAL,

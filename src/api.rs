@@ -90,6 +90,7 @@ pub struct SignalRow {
     pub symbol: String,
     pub class: String,
     pub action: String,
+    pub qty: Option<f64>,
     pub entry: Option<f64>,
     pub stop: Option<f64>,
     pub target: Option<f64>,
@@ -477,9 +478,9 @@ async fn load_signals(pool: &SqlitePool, blocked: bool) -> Result<Vec<SignalRow>
     } else {
         "s.action <> 'BLOCKED'"
     };
-    let rows: Vec<(i64, String, String, String, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<String>, String)> =
+    let rows: Vec<(i64, String, String, String, Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<String>, String)> =
         sqlx::query_as(&format!(
-            "SELECT s.id, i.symbol, i.class, s.action, s.entry, s.stop, s.target,
+            "SELECT s.id, i.symbol, i.class, s.action, s.qty, s.entry, s.stop, s.target,
                     s.valid_until, s.reason_json, s.created_at
              FROM signals s JOIN instruments i ON i.id = s.instrument_id
              WHERE {predicate} ORDER BY s.id DESC LIMIT 50"
@@ -492,7 +493,7 @@ async fn load_signals(pool: &SqlitePool, blocked: bool) -> Result<Vec<SignalRow>
         .map(|r| {
             let class = AssetClass::parse(&r.2).unwrap_or(AssetClass::Stock);
             let reason: serde_json::Value = r
-                .8
+                .9
                 .as_deref()
                 .and_then(|j| serde_json::from_str(j).ok())
                 .unwrap_or(serde_json::json!({}));
@@ -510,17 +511,18 @@ async fn load_signals(pool: &SqlitePool, blocked: bool) -> Result<Vec<SignalRow>
                 symbol: r.1,
                 class: class.as_str().to_string(),
                 action: r.3,
-                entry: r.4,
-                stop: r.5,
-                target: r.6,
-                valid_until: r.7,
+                qty: r.4,
+                entry: r.5,
+                stop: r.6,
+                target: r.7,
+                valid_until: r.8,
                 timing_note: class.timing_note().to_string(),
                 reasons,
                 rationale: reason
                     .get("rationale")
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
-                created_at: r.9,
+                created_at: r.10,
             }
         })
         .collect())

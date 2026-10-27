@@ -75,3 +75,30 @@ Mode: inline (executing-plans), backend → notifications → UI
   than a hand-rolled 400; the test asserts client-error class, not the exact code.
   Note: two test helper bugs were mine, not the code's — the patched position was closed
   (so committed correctly dropped to 0) and the shape of Settings was assumed wrong.
+- Task 15 ✅ backtest, 3 tests.
+- Task 16 ✅ e2e, 2 tests.
+  Ruling: added a **pre-LLM** dedupe on the rules fingerprint (action/entry/stop, 2dp)
+  stored in reason_json. Without it the plan's own e2e expectation ("0 new chat rows on the
+  second poll") is impossible and every quiet tick would re-buy the same answer. Cost if
+  wrong: a genuinely changed LLM view on unchanged rules data is not re-asked until the rules
+  fingerprint moves — that is the intended trade (cost control over churn).
+- Backend done: 88 tests passing, zero network in tests.
+- Task 14 ✅ UI, 10 vitest tests, verified by screenshot at 1440 and 390.
+  Three defects only rendering could find, all fixed:
+  1. `signals` had no `qty` column — the ledger literally could not say how many units. Added
+     the column, bound it in the engine, exposed it in the API. Caught by looking at the page.
+  2. `/settings` returned 404 on direct load: ServeDir had no SPA fallback. Now unknown paths
+     fall through to `index.html`; `/api/*` still returns JSON.
+  3. The save-guard compared against `form.dataset.committed`, which was never set, so the
+     button never disabled. Extracted `shouldDisableSave()` and tested it.
+  Also: detail rows now start collapsed, BLOCKED rows have their own "Not actionable" table,
+  and mobile rows are stacked label/value pairs (the first attempt squeezed the table and
+  overlapped rows — the fixed 32px row height had to become auto).
+  Ruling: dropped the Target column from the main table (kept in the expanded row) so the
+  identity column has room; two 96px figure columns plus an auto column does not fit at 1080.
+
+## Final state
+- 88 Rust tests, 10 UI tests, all green. No test touches the network.
+- Backend complete (tasks 1-13, 15, 16). UI complete (task 14).
+- Not wired yet, by design and stated in the spec: AMFI NAV ingestion is written but the
+  daily pass does not call it yet; IPO data entry is manual via POST /api/ipo.

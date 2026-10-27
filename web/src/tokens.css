@@ -1,0 +1,83 @@
+@layer tokens, base, components;
+
+@layer tokens {
+  :root {
+    /* paper */
+    --paper: oklch(0.985 0.006 85);
+    --paper-raised: oklch(1 0 0);
+    --paper-inset: oklch(0.965 0.008 85);
+    --paper-settled: oklch(0.955 0.02 155);
+
+    /* ink */
+    --ink: oklch(0.22 0.012 60);
+    --ink-secondary: oklch(0.44 0.012 60);
+    --ink-tertiary: oklch(0.58 0.01 60);
+    --ink-muted: oklch(0.7 0.008 60);
+
+    /* rules */
+    --rule-subtle: oklch(0.22 0.012 60 / 0.08);
+    --rule: oklch(0.22 0.012 60 / 0.14);
+    --rule-strong: oklch(0.22 0.012 60 / 0.24);
+    --rule-focus: oklch(0.42 0.12 262);
+
+    /* stamps — always ink on tint */
+    --stamp-ink: oklch(0.42 0.12 262);
+    --stamp-ink-bg: oklch(0.93 0.03 262);
+    --stamp-oxide: oklch(0.42 0.15 35);
+    --stamp-oxide-bg: oklch(0.93 0.035 35);
+    --stamp-amber: oklch(0.45 0.1 70);
+    --stamp-amber-bg: oklch(0.95 0.05 85);
+    --stamp-graphite: oklch(0.4 0.006 60);
+    --stamp-graphite-bg: oklch(0.94 0.004 60);
+
+    --font-form: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --font-ledger: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
+
+    --text-xs: 0.6875rem;
+    --text-sm: 0.8125rem;
+    --text-base: 0.875rem;
+    --text-md: 1rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.625rem;
+    --text-2xl: 2.125rem;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-12: 48px;
+
+    --radius: 3px;
+    --radius-stamp: 2px;
+    --row-h: 32px;
+    --row-h-touch: 44px;
+
+    color-scheme: light dark;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: oklch(0.16 0.008 85);
+      --paper-raised: oklch(0.2 0.008 85);
+      --paper-inset: oklch(0.13 0.008 85);
+      --paper-settled: oklch(0.22 0.02 155);
+      --ink: oklch(0.92 0.008 85);
+      --ink-secondary: oklch(0.72 0.008 85);
+      --ink-tertiary: oklch(0.58 0.008 85);
+      --ink-muted: oklch(0.45 0.008 85);
+      --rule-subtle: oklch(1 0 0 / 0.07);
+      --rule: oklch(1 0 0 / 0.12);
+      --rule-strong: oklch(1 0 0 / 0.2);
+      --stamp-ink: oklch(0.78 0.1 262);
+      --stamp-ink-bg: oklch(0.3 0.05 262);
+      --stamp-oxide: oklch(0.76 0.13 35);
+      --stamp-oxide-bg: oklch(0.3 0.05 35);
+      --stamp-amber: oklch(0.82 0.09 70);
+      --stamp-amber-bg: oklch(0.32 0.04 70);
+      --stamp-graphite: oklch(0.8 0.005 60);
+      --stamp-graphite-bg: oklch(0.26 0.004 60);
+    }
+  }
+}

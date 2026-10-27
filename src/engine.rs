@@ -371,11 +371,12 @@ async fn insert_signal(
     }
     let reason = reason.to_string();
     let row: (i64,) = sqlx::query_as(
-        "INSERT INTO signals (instrument_id, action, entry, stop, target, valid_until, reason_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until, reason_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
     )
     .bind(instrument_id)
     .bind(r.action.as_str())
+    .bind(r.qty)
     .bind(r.entry)
     .bind(r.stop)
     .bind(r.target)
@@ -411,10 +412,11 @@ async fn record_blocked(
     }
     let reason = reason.to_string();
     sqlx::query(
-        "INSERT INTO signals (instrument_id, action, entry, stop, target, valid_until, reason_json, created_at)
-         VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until, reason_json, created_at)
+         VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(instrument.id)
+    .bind(r.qty)
     .bind(r.entry)
     .bind(r.stop)
     .bind(r.target)

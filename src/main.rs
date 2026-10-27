@@ -12,7 +12,7 @@ use stock_predicter::rules::evaluate::RuleConfig;
 use stock_predicter::rules::settings;
 use stock_predicter::schedule;
 use tokio::net::TcpListener;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,7 +31,11 @@ async fn main() -> Result<()> {
         pool: pool.clone(),
         cfg: cfg.clone(),
     };
-    let app = api::router(state).fallback_service(ServeDir::new("web/dist"));
+    // Client-side routes (/settings, /positions, /calls) must not 404 on a direct load or
+    // a refresh, so unknown paths fall through to the SPA shell.
+    let app = api::router(state).fallback_service(
+        ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html")),
+    );
 
     // The poll loop owns its own clients; rebuild them per tick-free lifetime.
     let poll_cfg = cfg.clone();
