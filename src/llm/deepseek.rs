@@ -101,7 +101,14 @@ impl Transport for FixtureTransport {
         _body: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<HttpReply>> + Send + 'a>> {
         self.urls.lock().unwrap().push(url.to_string());
-        let next = self.replies.lock().unwrap().pop();
+        let next = {
+            let mut q = self.replies.lock().unwrap();
+            if q.is_empty() {
+                None
+            } else {
+                Some(q.remove(0))
+            }
+        };
         Box::pin(async move {
             next.ok_or_else(|| anyhow!("fixture transport: no reply queued"))
         })

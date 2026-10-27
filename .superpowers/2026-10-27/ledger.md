@@ -44,3 +44,10 @@ Mode: inline (executing-plans), backend → notifications → UI
   crate (cfg-free) so every later test can drive multi-round conversations.
   Ruling: FixtureTransport serves replies FIFO, not LIFO — a two-round escalation test in
   LIFO order would silently test the wrong round.
+- Task 9 ✅ parse + validate, 10 tests.
+  Ruling (plan defect): the plan said entry/stop/target must all sit inside the ATR band,
+  but the band is ±1 ATR and the rules' own stop is 2 ATR — every legitimate stop would be
+  rejected, including the fallback the e2e test expects. The band now applies to **entry
+  only**; stop/target get a distance sanity check (5 and 10 ATR). Cost if wrong: a wild but
+  correctly-signed stop could pass; the max-distance check bounds it.
+  Ruling: added MissingCitation as its own error instead of overloading UnknownHeadlineId.
