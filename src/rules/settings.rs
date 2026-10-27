@@ -1,21 +1,18 @@
 use anyhow::{Context, Result};
+use serde::Serialize;
 use sqlx::SqlitePool;
 use thiserror::Error;
 
 use super::budget::{self, CashKind, NewCashEntry};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Settings {
     pub budget: f64,
-    pub currency: String,
     pub committed: f64,
+    /// Serialised too: the UI and the API both need it, and deriving it twice invites drift.
+    pub available: f64,
+    pub currency: String,
     pub currency_locked: bool,
-}
-
-impl Settings {
-    pub fn available(&self) -> f64 {
-        self.budget - self.committed
-    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -41,8 +38,9 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
     let locked = ledger_has_entries(pool).await?;
     Ok(Settings {
         budget,
-        currency,
         committed,
+        available: budget - committed,
+        currency,
         currency_locked: locked,
     })
 }

@@ -61,3 +61,11 @@ Mode: inline (executing-plans), backend → notifications → UI
 - Task 11 ✅ notify, 6 tests. Dedupe row is inserted only after a 2xx, so an outage retries.
   Ruling: ntfy header values are folded to ASCII (the copy uses '·'); reqwest would reject a
   non-latin-1 header at send time and the user would lose the alert entirely.
+- Task 12 ✅ engine + schedule, 7 tests.
+  BUG FOUND by the blocked-path test: the validator rejected an over-budget proposal as
+  InsufficientCash and orchestrate then fell back to the rules numbers — which fit — so the
+  trade was silently down-sized, the exact anti-goal in the spec. Fixed by adding
+  Outcome::Rejected{proposal, error}: the engine maps InsufficientCash to a BLOCKED record and
+  every other rejection to the rules fallback. Cost if wrong: none, both paths are tested.
+  Note: BLOCKED rows are re-inserted on each poll (no dedupe). They are never pushed, so the
+  phone stays quiet; the table grows by a few rows a day in the worst case.
