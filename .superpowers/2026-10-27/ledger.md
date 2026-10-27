@@ -102,3 +102,9 @@ Mode: inline (executing-plans), backend → notifications → UI
 - Backend complete (tasks 1-13, 15, 16). UI complete (task 14).
 - Not wired yet, by design and stated in the spec: AMFI NAV ingestion is written but the
   daily pass does not call it yet; IPO data entry is manual via POST /api/ipo.
+
+## Hygiene
+- `target/` (6,911 files) and `web/node_modules` were committed before `.gitignore` existed.
+  Rewrote the 17-commit history with `filter-branch` to drop them: .git went 2.6G → 312K,
+  74 tracked files. Nothing had been pushed, so this cost only local history. Tests re-run
+  green after the rewrite.
