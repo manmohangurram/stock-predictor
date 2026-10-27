@@ -26,3 +26,9 @@ Mode: inline (executing-plans), backend → notifications → UI
   known-series test used 60 — contradictory. Kept the 200-bar floor (a NaN SMA200 would
   leak into rules) and made the test series 250 bars, whose mean is still exactly 3.0.
   Cost if wrong: a symbol with <200 daily bars gets no signal, which is the safe direction.
+- Task 5 ✅ budget + settings, 9 tests.
+  Ruling: the ceiling is derived as SUM(cash_ledger WHERE kind='budget'), not stored in
+  `settings.budget`. Spec said settings holds it; two sources for one number drift, and the
+  ledger already gives the history. `settings` stores only `currency`. Cost if wrong: one
+  query instead of one read; no migration needed to change back.
+  Ruling: currency changes are refused when any non-budget ledger row exists.

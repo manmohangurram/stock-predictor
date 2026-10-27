@@ -57,3 +57,69 @@ pub struct Headline {
     pub published_at: String,
     pub url: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Instrument {
+    pub id: i64,
+    pub symbol: String,
+    pub class: AssetClass,
+    pub name: String,
+    pub currency: String,
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Position {
+    pub id: i64,
+    pub instrument_id: i64,
+    pub qty: f64,
+    pub avg_cost: f64,
+    pub stop: Option<f64>,
+    pub target: Option<f64>,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Action {
+    Buy,
+    Sell,
+    Hold,
+    None,
+}
+
+impl Action {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Action::Buy => "BUY",
+            Action::Sell => "SELL",
+            Action::Hold => "HOLD",
+            Action::None => "NONE",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.trim().to_uppercase().as_str() {
+            "BUY" => Ok(Action::Buy),
+            "SELL" => Ok(Action::Sell),
+            "HOLD" => Ok(Action::Hold),
+            "NONE" | "PASS" => Ok(Action::None),
+            other => Err(anyhow!("unknown action {other:?}")),
+        }
+    }
+}
+
+/// What the cheap rules layer proposes. `stop`/`target` are `None` for classes that have no
+/// intraday price (mutual funds, IPOs) — a 0.0 sentinel would read as a real price.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Candidate {
+    pub instrument_id: i64,
+    pub action: Action,
+    pub reasons: Vec<String>,
+    pub entry: f64,
+    pub stop: Option<f64>,
+    pub target: Option<f64>,
+    pub qty: f64,
+    pub timing_note: String,
+    pub urgent: bool,
+}
