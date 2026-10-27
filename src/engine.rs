@@ -124,6 +124,27 @@ async fn poll_instrument(
         .await?;
     }
 
+    // Bars are stored so the UI can chart what the decision was made from, and so a
+    // backtest can be run later on exactly what the engine saw.
+    for b in &bars {
+        sqlx::query(
+            "INSERT INTO bars (instrument_id, ts, open, high, low, close, volume)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(instrument_id, ts) DO UPDATE SET
+               open = excluded.open, high = excluded.high, low = excluded.low,
+               close = excluded.close, volume = excluded.volume",
+        )
+        .bind(instrument.id)
+        .bind(&b.ts)
+        .bind(b.open)
+        .bind(b.high)
+        .bind(b.low)
+        .bind(b.close)
+        .bind(b.volume)
+        .execute(deps.pool)
+        .await?;
+    }
+
     let ind = match indicators::compute(&bars) {
         Ok(i) => i,
         Err(e) => {
@@ -201,6 +222,11 @@ async fn poll_instrument(
     as_candidate.target = resolved.target;
     as_candidate.qty = resolved.qty;
 
+    // No topic configured means no push channel; the signal is still recorded, and not
+    // attempting the call keeps the poll's error list about the market, not the config.
+    if deps.cfg.ntfy_topic.is_empty() {
+        return Ok(());
+    }
     if let Some(mut n) = Notification::from_candidate(
         &instrument.symbol,
         &instrument.currency,

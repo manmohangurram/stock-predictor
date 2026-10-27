@@ -274,3 +274,41 @@ async fn malformed_json_is_a_400_not_a_panic() {
     .await;
     assert!(s.is_client_error(), "got {s}");
 }
+
+#[tokio::test]
+async fn analysis_explains_why_there_is_no_signal() {
+    let (_d, router, pool) = setup().await;
+    // 200 flat bars: enough to compute indicators, no trend, so nothing fires.
+    for i in 0..200 {
+        sqlx::query(
+            "INSERT INTO bars (instrument_id, ts, open, high, low, close, volume)
+             VALUES (1, ?, 100.0, 101.0, 99.0, 100.0, 1000)",
+        )
+        .bind(format!("2026-01-{:03}T00:00:00Z", i))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let (s, v) = get(&router, "/api/instruments/INFY/analysis").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["bars"].as_array().unwrap().len(), 120);
+    let checks = v["checks"].as_array().unwrap();
+    assert!(checks.len() >= 4);
+    let failed: Vec<&str> = checks
+        .iter()
+        .filter(|c| c["passed"] == false)
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert!(failed.contains(&"trend"), "flat series must fail the trend rule: {failed:?}");
+    assert_eq!(v["indicators"]["sma50"], 100.0);
+}
+
+#[tokio::test]
+async fn analysis_of_an_instrument_with_no_bars_says_so() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = get(&router, "/api/instruments/TCS/analysis").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert!(v["indicators"].is_null());
+    assert!(v["checks"][0]["detail"].as_str().unwrap().contains("need 200"));
+}

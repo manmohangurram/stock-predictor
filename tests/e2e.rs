@@ -90,7 +90,11 @@ fn decide(entry: f64, stop: f64) -> serde_json::Value {
 
 fn cfg() -> Config {
     Config::from_map(
-        &[("DEEPSEEK_API_KEY", "k"), ("LLM_DAILY_CAP", "50")]
+        &[
+            ("DEEPSEEK_API_KEY", "k"),
+            ("LLM_DAILY_CAP", "50"),
+            ("NTFY_TOPIC", "test-topic"),
+        ]
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect(),

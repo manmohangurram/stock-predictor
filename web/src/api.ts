@@ -45,6 +45,33 @@ export interface Settings {
   currency_locked: boolean;
 }
 
+export interface BarPoint {
+  ts: string;
+  close: number;
+}
+
+export interface CheckRow {
+  name: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface Analysis {
+  instrument: { id: number; symbol: string; class: string; name: string; currency: string; timing_note: string };
+  bars: BarPoint[];
+  indicators: {
+    sma50: number;
+    sma200: number;
+    rsi14: number;
+    atr14: number;
+    high52: number;
+    low52: number;
+  } | null;
+  checks: CheckRow[];
+  position: PositionRow | null;
+  headlines: { id: number; title: string; publisher: string | null; published_at: string; url: string }[];
+}
+
 export interface CallRow {
   id: number;
   ts: string;
@@ -67,6 +94,8 @@ export const api = {
   dashboard: () => get<Dashboard>("/api/dashboard"),
   settings: () => get<Settings>("/api/settings"),
   calls: () => get<CallRow[]>("/api/calls"),
+  analysis: (symbol: string) =>
+    get<Analysis>("/api/instruments/" + encodeURIComponent(symbol) + "/analysis"),
   putSettings: async (patch: Partial<Pick<Settings, "budget" | "currency">>) => {
     const r = await fetch("/api/settings", {
       method: "PUT",

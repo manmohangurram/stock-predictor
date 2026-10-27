@@ -176,3 +176,33 @@ fn nan_price_produces_no_candidate() {
     })
     .is_none());
 }
+
+#[test]
+fn diagnose_agrees_with_the_candidate() {
+    use stock_predicter::rules::evaluate::diagnose;
+
+    let i = instrument(AssetClass::Stock);
+    let bars = vec![bar(105.0)];
+    let x = ind(100.0, 90.0, 55.0, 2.0);
+    let input = CandidateInput {
+        instrument: &i,
+        bars: &bars,
+        ind: &x,
+        position: None,
+        available_cash: 10_000.0,
+        cfg: RuleConfig::default(),
+    };
+    assert!(candidate(CandidateInput { ..input }).is_some());
+    assert!(diagnose(&input).iter().all(|c| c.passed), "all checks should pass");
+
+    // Same input, overbought: the candidate disappears and exactly one check explains it.
+    let x2 = ind(100.0, 90.0, 78.0, 2.0);
+    let input2 = CandidateInput { ind: &x2, ..input };
+    assert!(candidate(CandidateInput { ..input2 }).is_none());
+    let failed: Vec<&str> = diagnose(&input2)
+        .iter()
+        .filter(|c| !c.passed)
+        .map(|c| c.name)
+        .collect();
+    assert_eq!(failed, vec!["not overbought"]);
+}

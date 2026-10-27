@@ -2,15 +2,12 @@ use std::time::Duration;
 
 use anyhow::Result;
 use chrono::Utc;
-use stock_predicter::api;
-use stock_predicter::config::Config;
-use stock_predicter::db;
 use stock_predicter::engine::{self, EngineDeps, YahooSource};
 use stock_predicter::llm::deepseek::ReqwestTransport;
 use stock_predicter::notify::Ntfy;
 use stock_predicter::rules::evaluate::RuleConfig;
 use stock_predicter::rules::settings;
-use stock_predicter::schedule;
+use stock_predicter::{api, config::Config, db, schedule};
 use tokio::net::TcpListener;
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -23,21 +20,46 @@ async fn main() -> Result<()> {
         )
         .init();
 
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let flag = |name: &str| args.iter().any(|a| a == name);
+
     let cfg = Config::from_env()?;
     let pool = db::connect_and_migrate(&cfg.db_path).await?;
     settings::seed(&pool, cfg.seed_budget, &cfg.seed_currency).await?;
+
+    if flag("--seed") {
+        let report = stock_predicter::seed::run(&pool, !flag("--no-positions")).await?;
+        println!("seed: {report:?}");
+    }
+
+    if flag("--poll-once") {
+        let market = YahooSource::new()?;
+        let transport = ReqwestTransport::new(cfg.deepseek_key.clone())?;
+        let notifier = Ntfy::new(&cfg)?;
+        let deps = EngineDeps {
+            pool: &pool,
+            cfg: &cfg,
+            market: &market,
+            transport: &transport,
+            notifier: &notifier,
+            rules: RuleConfig::default(),
+        };
+        let report = engine::poll_once(&deps, Utc::now()).await?;
+        println!("poll: {report:#?}");
+        if !flag("--serve") {
+            return Ok(());
+        }
+    }
 
     let state = api::AppState {
         pool: pool.clone(),
         cfg: cfg.clone(),
     };
-    // Client-side routes (/settings, /positions, /calls) must not 404 on a direct load or
-    // a refresh, so unknown paths fall through to the SPA shell.
+    // Client-side routes must not 404 on a direct load or a refresh.
     let app = api::router(state).fallback_service(
         ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html")),
     );
 
-    // The poll loop owns its own clients; rebuild them per tick-free lifetime.
     let poll_cfg = cfg.clone();
     let poll_pool = pool.clone();
     tokio::spawn(async move {
@@ -48,24 +70,14 @@ async fn main() -> Result<()> {
             if !(schedule::in_stock_window(now) || schedule::is_daily_pass(now)) {
                 continue;
             }
-            let market = match YahooSource::new() {
-                Ok(m) => m,
-                Err(e) => {
-                    tracing::error!(error = %e, "market source unavailable");
-                    continue;
-                }
-            };
-            let transport = match ReqwestTransport::new(poll_cfg.deepseek_key.clone()) {
-                Ok(t) => t,
-                Err(e) => {
-                    tracing::error!(error = %e, "deepseek client unavailable");
-                    continue;
-                }
-            };
-            let notifier = match Ntfy::new(&poll_cfg) {
-                Ok(n) => n,
-                Err(e) => {
-                    tracing::error!(error = %e, "notifier unavailable");
+            let (market, transport, notifier) = match (
+                YahooSource::new(),
+                ReqwestTransport::new(poll_cfg.deepseek_key.clone()),
+                Ntfy::new(&poll_cfg),
+            ) {
+                (Ok(m), Ok(t), Ok(n)) => (m, t, n),
+                _ => {
+                    tracing::error!("clients unavailable, skipping tick");
                     continue;
                 }
             };
@@ -85,7 +97,7 @@ async fn main() -> Result<()> {
     });
 
     let listener = TcpListener::bind(&cfg.bind).await?;
-    tracing::info!(bind = %cfg.bind, "listening");
+    tracing::info!(bind = %cfg.bind, "listening on http://{}", cfg.bind);
     axum::serve(listener, app).await?;
     Ok(())
 }

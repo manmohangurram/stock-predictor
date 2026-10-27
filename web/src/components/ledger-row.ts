@@ -38,7 +38,7 @@ export function renderLedgerRow(s: SignalView): string {
   return `<tr class="row-main${isBlocked ? " blocked-row" : ""}"${blockedAttr}>
   <td class="time num">${clock(s.created_at)}</td>
   <td class="identity">
-    <span class="symbol">${escapeHtml(s.symbol)}</span>
+    <a class="symbol" href="/i/${encodeURIComponent(s.symbol)}">${escapeHtml(s.symbol)}</a>
     <span class="class-chip">${s.class.replace("_", " ")}</span>
     ${isEstimate ? `<span class="estimate">${timingText(s)}</span>` : ""}
   </td>

@@ -8,7 +8,10 @@ use sqlx::SqlitePool;
 
 use crate::config::Config;
 use crate::models::AssetClass;
+use crate::models::Bar;
 use crate::rules::budget::{self, CashKind, NewCashEntry};
+use crate::rules::evaluate::{self, CandidateInput, RuleConfig};
+use crate::rules::indicators;
 use crate::rules::settings::{self, SettingsError, SettingsPatch};
 
 #[derive(Clone)]
@@ -23,6 +26,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/dashboard", get(dashboard))
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/instruments/{symbol}", get(instrument_detail))
+        .route("/api/instruments/{symbol}/analysis", get(analysis))
         .route("/api/calls", get(calls))
         .route("/api/positions", post(post_position))
         .route("/api/positions/{id}", patch(patch_position))
@@ -248,6 +252,164 @@ async fn instrument_detail(
         },
         headlines,
         signals,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct BarPoint {
+    pub ts: String,
+    pub close: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckRow {
+    pub name: String,
+    pub passed: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Analysis {
+    pub instrument: InstrumentRow,
+    pub bars: Vec<BarPoint>,
+    pub indicators: Option<serde_json::Value>,
+    pub checks: Vec<CheckRow>,
+    pub position: Option<PositionRow>,
+    pub headlines: Vec<HeadlineRow>,
+}
+
+/// "Why is there no signal?" answered with the same predicates the engine used.
+async fn analysis(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<Analysis>, ApiError> {
+    let row: Option<(i64, String, String, String, String)> = sqlx::query_as(
+        "SELECT id, symbol, class, name, currency FROM instruments WHERE symbol = ?",
+    )
+    .bind(&symbol)
+    .fetch_optional(&st.pool)
+    .await?;
+    let (id, symbol, class_raw, name, currency) =
+        row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
+    let class = AssetClass::parse(&class_raw).map_err(|_| ApiError::Internal)?;
+
+    let rows: Vec<(String, f64, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT ts, COALESCE(open, close), COALESCE(high, close), COALESCE(low, close), close,
+                COALESCE(volume, 0)
+         FROM bars WHERE instrument_id = ? ORDER BY ts DESC LIMIT 400",
+    )
+    .bind(id)
+    .fetch_all(&st.pool)
+    .await?;
+    let mut bars: Vec<Bar> = rows
+        .into_iter()
+        .map(|(ts, open, high, low, close, volume)| Bar {
+            ts,
+            open,
+            high,
+            low,
+            close,
+            volume,
+        })
+        .collect();
+    bars.reverse();
+    bars.dedup_by(|a, b| a.ts == b.ts);
+
+    let position = load_positions(&st.pool)
+        .await?
+        .into_iter()
+        .find(|p| p.symbol == symbol && p.state == "open");
+    let available = budget::available(&st.pool).await?;
+    let instrument = crate::models::Instrument {
+        id,
+        symbol: symbol.clone(),
+        class,
+        name: name.clone(),
+        currency: currency.clone(),
+        active: true,
+    };
+
+    let ind = indicators::compute(&bars).ok();
+    let checks = match ind {
+        Some(ref ind) => {
+            let model = position.as_ref().map(|p| crate::models::Position {
+                id: p.id,
+                instrument_id: id,
+                qty: p.qty,
+                avg_cost: p.avg_cost,
+                stop: p.stop,
+                target: p.target,
+                state: p.state.clone(),
+            });
+            evaluate::diagnose(&CandidateInput {
+                instrument: &instrument,
+                bars: &bars,
+                ind,
+                position: model.as_ref(),
+                available_cash: available,
+                cfg: RuleConfig::default(),
+            })
+            .into_iter()
+            .map(|c| CheckRow {
+                name: c.name.to_string(),
+                passed: c.passed,
+                detail: c.detail,
+            })
+            .collect()
+        }
+        None => vec![CheckRow {
+            name: "price data".into(),
+            passed: false,
+            detail: format!("{} stored bars — the rules need 200", bars.len()),
+        }],
+    };
+
+    let headlines: Vec<HeadlineRow> =
+        sqlx::query_as::<_, (i64, String, Option<String>, String, String)>(
+            "SELECT id, title, publisher, published_at, url FROM news
+             WHERE instrument_id = ? ORDER BY published_at DESC LIMIT 10",
+        )
+        .bind(id)
+        .fetch_all(&st.pool)
+        .await?
+        .into_iter()
+        .map(|r| HeadlineRow {
+            id: r.0,
+            title: r.1,
+            publisher: r.2,
+            published_at: r.3,
+            url: r.4,
+        })
+        .collect();
+
+    Ok(Json(Analysis {
+        instrument: InstrumentRow {
+            id,
+            symbol,
+            class: class.as_str().to_string(),
+            name,
+            currency,
+            timing_note: class.timing_note().to_string(),
+        },
+        bars: bars
+            .iter()
+            .rev()
+            .take(120)
+            .rev()
+            .map(|b| BarPoint {
+                ts: b.ts.clone(),
+                close: b.close,
+            })
+            .collect(),
+        indicators: ind.map(|i| {
+            serde_json::json!({
+                "sma50": i.sma50, "sma200": i.sma200, "rsi14": i.rsi14,
+                "atr14": i.atr14, "high52": i.high52, "low52": i.low52
+            })
+        }),
+        checks,
+        position,
+        headlines,
     }))
 }
 

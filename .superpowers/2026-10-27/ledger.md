@@ -108,3 +108,35 @@ Mode: inline (executing-plans), backend → notifications → UI
   Rewrote the 17-commit history with `filter-branch` to drop them: .git went 2.6G → 312K,
   74 tracked files. Nothing had been pushed, so this cost only local history. Tests re-run
   green after the rewrite.
+
+## Live-data session (real Yahoo + AMFI)
+
+Ran the server against real endpoints for the first time. Five bugs, none of which any test
+or screenshot could have caught:
+
+1. `fetch_bars` never put the symbol in the URL: every request was
+   `/v8/finance/chart?range=1y` → 404 for every symbol. Added `chart_url()` + regression test.
+2. Yahoo's search returns 0 news for `INFY.NS` and 5+ for `INFY`. Added `news_query()` to
+   strip the exchange suffix (`.NS`/`.BO` only — `BRK.B` must survive) + test.
+3. AMFI moved: `www.amfiindia.com` now redirects to `portal.amfiindia.com`.
+4. AMFI changed its column layout: 8 columns (`Net Asset Value` at index 6, `Date` at 7),
+   CRLF line endings, new `Plan`/`Option` columns. The parser read index 4/5 and would have
+   parsed the *plan* as the NAV. Now header-driven with a legacy fallback, plus a CRLF test.
+   Fixture replaced with a real capture from 2026-10-27.
+5. The engine never wrote to `bars` — the data model had the table, nothing filled it. Bars
+   are now upserted, which is what makes the instrument page and a future backtest possible.
+
+Added while making the UI legible:
+- `evaluate::diagnose()` returns the same predicates as `candidate()` plus the numbers, so the
+  UI can answer "why is the ledger empty?" instead of just showing nothing. Guarded by a test
+  that asserts diagnose and candidate agree.
+- `GET /api/instruments/{symbol}/analysis` + `/i/{symbol}` page: 120-session ink chart, rule
+  checklist, real headlines.
+- `--seed` (real closes from Yahoo, real NAV from AMFI, never an invented price) and
+  `--poll-once` (run a poll outside market hours).
+- Empty `NTFY_TOPIC` now skips the push instead of logging a failed notification as a poll
+  error. Test added.
+
+Observation from the real data (2026-10-27): INFY 1163 vs SMA200 1222, TCS 2497 vs 2443 with
+RSI 81, HDFCBANK 680 vs 794, RELIANCE 1196 vs 1335. Nothing passes `close > SMA50 > SMA200`,
+so the ledger is correctly empty. The SELL path was exercised by setting a stop above market.

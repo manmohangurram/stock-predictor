@@ -85,7 +85,11 @@ fn bars_n(n: usize) -> Vec<Bar> {
 
 fn cfg() -> Config {
     Config::from_map(
-        &[("DEEPSEEK_API_KEY", "k"), ("LLM_DAILY_CAP", "50")]
+        &[
+            ("DEEPSEEK_API_KEY", "k"),
+            ("LLM_DAILY_CAP", "50"),
+            ("NTFY_TOPIC", "test-topic"),
+        ]
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect(),
@@ -322,4 +326,24 @@ fn market_window_respects_ist_hours_and_skips_weekends() {
     assert!(schedule::is_daily_pass(
         Utc.with_ymd_and_hms(2026, 10, 27, 13, 35, 0).unwrap() // 19:05 IST
     ));
+}
+
+#[tokio::test]
+async fn an_unset_topic_skips_the_push_but_still_records_the_signal() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY"]).await;
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+    // No NTFY_TOPIC: there is nowhere to push to, which must not look like a market error.
+    let mut c = cfg();
+    c.ntfy_topic = String::new();
+
+    let report = poll(&pool, &market, &notifier, &c, now()).await.unwrap();
+    assert_eq!(report.signals, 1, "{report:?}");
+    assert_eq!(report.notifications, 0);
+    assert!(report.errors.is_empty(), "{report:?}");
+    assert_eq!(notifier.count(), 0);
 }

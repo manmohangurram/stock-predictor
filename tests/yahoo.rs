@@ -47,3 +47,18 @@ fn news_parser_keeps_headlines_and_never_a_body() {
 fn news_shape_change_is_an_error() {
     assert!(yahoo::parse_news(r#"{"items":[]}"#).is_err());
 }
+
+#[test]
+fn news_query_strips_the_exchange_suffix() {
+    assert_eq!(yahoo::news_query("INFY.NS"), "INFY");
+    assert_eq!(yahoo::news_query("HDFCBANK.BO"), "HDFCBANK");
+    assert_eq!(yahoo::news_query("INFY"), "INFY");
+    assert_eq!(yahoo::news_query("BRK.B"), "BRK.B");
+}
+
+#[test]
+fn chart_url_carries_the_symbol_as_a_path_segment() {
+    // Regression: the client once sent /v8/finance/chart?range=1y with no symbol at all,
+    // which Yahoo answers with 404 for every request.
+    assert_eq!(yahoo::chart_url("INFY.NS"), "https://query1.finance.yahoo.com/v8/finance/chart/INFY.NS");
+}

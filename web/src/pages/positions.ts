@@ -12,7 +12,7 @@ export function renderPositions(d: Dashboard): string {
   const rows = d.positions
     .map(
       (p) => `<tr>
-  <td><span class="symbol">${p.symbol}</span> <span class="class-chip">${p.class.replace("_", " ")}</span></td>
+  <td><a class="symbol" href="/i/${encodeURIComponent(p.symbol)}">${p.symbol}</a> <span class="class-chip">${p.class.replace("_", " ")}</span></td>
   <td class="num right">${units(p.qty)}</td>
   <td class="num right">${money(p.avg_cost)}</td>
   <td class="num right">${money(p.qty * p.avg_cost, 0)}</td>

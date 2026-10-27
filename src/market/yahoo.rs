@@ -113,9 +113,16 @@ pub fn parse_news(body: &str) -> Result<Vec<Headline>> {
     Ok(out)
 }
 
+pub fn chart_url(symbol: &str) -> String {
+    format!("{CHART_URL}/{symbol}")
+}
+
+/// A missing chart is normal for mutual funds, which Yahoo does not carry for India.
+/// The caller decides whether that is an error (stocks) or expected (funds).
 pub async fn fetch_bars(client: &Client, symbol: &str) -> Result<Vec<Bar>> {
+    let url = chart_url(symbol);
     let body = client
-        .get(CHART_URL)
+        .get(url)
         .query(&[("range", "1y"), ("interval", "1d")])
         .send()
         .await
@@ -128,10 +135,19 @@ pub async fn fetch_bars(client: &Client, symbol: &str) -> Result<Vec<Bar>> {
     parse_chart(&body).with_context(|| format!("chart: parse {symbol}"))
 }
 
+/// Yahoo's search endpoint returns nothing for an exchange-qualified ticker
+/// (`INFY.NS` → 0 results), but finds the company by bare symbol (`INFY` → 5+).
+pub fn news_query(symbol: &str) -> &str {
+    match symbol.rsplit_once('.') {
+        Some((bare, "NS")) | Some((bare, "BO")) => bare,
+        _ => symbol,
+    }
+}
+
 pub async fn fetch_news(client: &Client, symbol: &str) -> Result<Vec<Headline>> {
     let body = client
         .get(SEARCH_URL)
-        .query(&[("q", symbol), ("newsCount", "20"), ("quotesCount", "0")])
+        .query(&[("q", news_query(symbol)), ("newsCount", "20"), ("quotesCount", "0")])
         .send()
         .await
         .context("news: request")?

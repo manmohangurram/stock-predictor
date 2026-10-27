@@ -110,3 +110,70 @@ pub fn candidate(input: CandidateInput<'_>) -> Option<Candidate> {
         urgent: false,
     })
 }
+
+/// One named rule and whether it passed, with the numbers that decided it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Check {
+    pub name: &'static str,
+    pub passed: bool,
+    pub detail: String,
+}
+
+/// The same predicates `candidate` applies, but reported instead of collapsed into
+/// `Option`. This is what lets the UI answer "why is the ledger empty?".
+pub fn diagnose(input: &CandidateInput<'_>) -> Vec<Check> {
+    let mut checks = Vec::new();
+    let Some(last) = input.bars.last() else {
+        return vec![Check {
+            name: "price data",
+            passed: false,
+            detail: "no bars stored".into(),
+        }];
+    };
+    let close = last.close;
+    let ind = input.ind;
+
+    checks.push(Check {
+        name: "price data",
+        passed: true,
+        detail: format!("{} bars, last close {close:.2}", input.bars.len()),
+    });
+    checks.push(Check {
+        name: "trend",
+        passed: close > ind.sma50 && ind.sma50 > ind.sma200,
+        detail: format!(
+            "close {close:.2} vs SMA50 {:.2} vs SMA200 {:.2}",
+            ind.sma50, ind.sma200
+        ),
+    });
+    checks.push(Check {
+        name: "not overbought",
+        passed: ind.rsi14 < input.cfg.rsi_buy_ceiling,
+        detail: format!(
+            "RSI {:.1} must be below {:.0}",
+            ind.rsi14, input.cfg.rsi_buy_ceiling
+        ),
+    });
+    let qty = match input.instrument.class {
+        AssetClass::MutualFund => budget::units_floor(input.available_cash / close.max(1e-9)),
+        _ => (input.available_cash / close.max(1e-9)).floor(),
+    };
+    checks.push(Check {
+        name: "affordable",
+        passed: qty >= 1.0 && input.instrument.class != AssetClass::MutualFund || qty > 0.0,
+        detail: format!("{qty} units at {close:.2} against {:.2} available", input.available_cash),
+    });
+    if let Some(pos) = input.position {
+        let stop_hit = pos.stop.is_some_and(|s| close < s);
+        checks.push(Check {
+            name: "stop not hit",
+            passed: !stop_hit,
+            detail: match pos.stop {
+                Some(s) => format!("close {close:.2} vs stop {s:.2}"),
+                None => "no stop recorded".into(),
+            },
+        });
+    }
+
+    checks
+}

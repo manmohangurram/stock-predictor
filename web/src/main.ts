@@ -1,5 +1,6 @@
 import { api } from "./api";
 import { renderCalls } from "./pages/calls";
+import { renderInstrument } from "./pages/instrument";
 import { renderLedger } from "./pages/ledger";
 import { renderPositions } from "./pages/positions";
 import { renderSettings } from "./pages/settings";
@@ -14,6 +15,8 @@ async function route(): Promise<void> {
       wireSettings();
     } else if (path === "/positions") {
       app.innerHTML = renderPositions(await api.dashboard());
+    } else if (path.startsWith("/i/")) {
+      app.innerHTML = renderInstrument(await api.analysis(decodeURIComponent(path.slice(3))));
     } else if (path === "/calls") {
       app.innerHTML = renderCalls(await api.calls());
     } else {
