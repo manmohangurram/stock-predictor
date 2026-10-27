@@ -155,6 +155,27 @@ const json = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+/**
+ * Conditional dashboard fetch. The backend answers 304 when nothing changed, so a quiet poll
+ * costs no body and — more visibly — no re-render, which would otherwise collapse any row the
+ * user had expanded.
+ */
+export async function dashboardCached(
+  mode: Mode,
+  etag: string | null,
+): Promise<{ notModified: boolean; data?: Dashboard; etag?: string }> {
+  const headers: Record<string, string> = {};
+  if (etag) headers["if-none-match"] = etag;
+  const r = await fetch(`/api/dashboard?mode=${mode}`, { headers });
+  if (r.status === 304) return { notModified: true };
+  if (!r.ok) throw new Error(`dashboard: ${r.status}`);
+  return {
+    notModified: false,
+    data: (await r.json()) as Dashboard,
+    etag: r.headers.get("etag") ?? undefined,
+  };
+}
+
 export const api = {
   dashboard: (mode: Mode = "long") => req<Dashboard>(`/api/dashboard?mode=${mode}`),
   settings: () => req<Settings>("/api/settings"),

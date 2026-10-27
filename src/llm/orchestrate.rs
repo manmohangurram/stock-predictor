@@ -36,6 +36,8 @@ pub struct RunInput<'a> {
     pub held_qty: f64,
     /// The owner's expected profit for this instrument, in percent.
     pub target_profit_pct: Option<f64>,
+    /// Hours of intraday tape included in the prompt.
+    pub window_hours: u32,
     pub headlines: &'a [Headline],
     pub price_window: &'a str,
     pub daily_summary: &'a str,
@@ -93,7 +95,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         cash_available: input.available_cash,
         target_profit_pct: input.target_profit_pct,
         headlines: &headlines,
-        window_hours: 6,
+        window_hours: input.window_hours,
         price_window: input.price_window,
         daily_days: 10,
         daily_summary: input.daily_summary,

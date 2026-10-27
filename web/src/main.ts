@@ -1,4 +1,4 @@
-import { api, type Hit } from "./api";
+import { api, dashboardCached, type Hit } from "./api";
 import { renderCalls } from "./pages/calls";
 import { qtyLimit, renderInstrument } from "./pages/instrument";
 import { renderLedger } from "./pages/ledger";
@@ -6,6 +6,7 @@ import { renderPositions } from "./pages/positions";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
+let dashboardEtag: string | null = null;
 const nav = `<nav class="topnav">
   <a href="/">Ledger</a><a href="/positions">Positions</a>
   <a href="/settings">Settings</a><a href="/calls">Audit</a>
@@ -42,7 +43,10 @@ async function route(): Promise<void> {
         | "trade"
         | null) ?? "long";
       // One request: the dashboard payload carries the rail's recent fills.
-      const d = await api.dashboard(mode);
+      const res = await dashboardCached(mode, dashboardEtag);
+      if (res.notModified) return; // nothing changed: keep the DOM, and the user's open rows
+      dashboardEtag = res.etag ?? null;
+      const d = res.data!;
       app.innerHTML = nav + renderLedger(d, d.recent_trades);
       wireRows();
       wireSearch();

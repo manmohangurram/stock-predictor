@@ -687,3 +687,66 @@ async fn the_same_symbol_can_be_held_in_both_pots_separately() {
     assert!(rows.iter().any(|r| r["mode"] == "long"));
     assert!(rows.iter().any(|r| r["mode"] == "trade"));
 }
+
+#[tokio::test]
+async fn the_dashboard_answers_304_when_nothing_changed() {
+    let (_d, router, _pool) = setup().await;
+
+    // First GET: a body and an ETag.
+    use tower::ServiceExt;
+    let first = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/dashboard")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+    let etag = first
+        .headers()
+        .get("etag")
+        .expect("etag header")
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    // Same tag back: 304, no body.
+    let second = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/dashboard")
+                .header("if-none-match", &etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::NOT_MODIFIED);
+    let bytes = second.into_body().collect().await.unwrap().to_bytes();
+    assert!(bytes.is_empty(), "a 304 must not carry a body");
+
+    // Change something, and the tag must move.
+    let _ = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 1.0, "price": 100.0}),
+    )
+    .await;
+    let third = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/dashboard")
+                .header("if-none-match", &etag)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(third.status(), StatusCode::OK, "stale tag must get fresh data");
+}

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::header::{ETAG, IF_NONE_MATCH};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
@@ -219,10 +220,31 @@ pub struct Dashboard {
     pub recent_trades: Vec<crate::trades::Trade>,
 }
 
+/// Cheap version tag for the dashboard: max signal id, trade id, position count, settings
+/// count. A minute-by-minute poll that finds nothing new costs a 304 with no body.
+async fn dashboard_etag(pool: &SqlitePool, mode: crate::models::Mode) -> Result<String, ApiError> {
+    let row: (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT COALESCE(MAX(id),0) FROM signals WHERE mode = ?),
+                (SELECT COALESCE(MAX(id),0) FROM trades WHERE mode = ?),
+                (SELECT COUNT(*) FROM positions WHERE mode = ?),
+                (SELECT COUNT(*) FROM settings)",
+    )
+    .bind(mode.as_str())
+    .bind(mode.as_str())
+    .bind(mode.as_str())
+    .fetch_one(pool)
+    .await?;
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(format!("{}-{}-{}-{}-{}", row.0, row.1, row.2, row.3, mode.as_str()).as_bytes());
+    Ok(format!("\"{:x}\"", h.finalize()))
+}
+
 async fn dashboard(
     State(st): State<AppState>,
     Query(q): Query<ModeQuery>,
-) -> Result<Json<Dashboard>, ApiError> {
+    headers: HeaderMap,
+) -> Result<axum::response::Response, ApiError> {
     let mode = mode_of(&q.mode)?;
     let s = settings::get(&st.pool).await?;
     let budget = budget::budget_total_in(&st.pool, mode).await?;
@@ -230,7 +252,16 @@ async fn dashboard(
     let positions = load_positions(&st.pool, mode).await?;
     let signals = load_signals(&st.pool, false, mode).await?;
     let blocked = load_signals(&st.pool, true, mode).await?;
-    Ok(Json(Dashboard {
+    let etag = dashboard_etag(&st.pool, mode).await?;
+    if headers
+        .get(IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v == etag)
+    {
+        return Ok((StatusCode::NOT_MODIFIED, [(ETAG, etag)]).into_response());
+    }
+
+    let body = Json(Dashboard {
         currency: s.currency,
         mode: mode.as_str().to_string(),
         budget,
@@ -242,7 +273,8 @@ async fn dashboard(
         signals,
         blocked,
         recent_trades: crate::trades::history(&st.pool, None, 20).await?,
-    }))
+    });
+    Ok(([(ETAG, etag)], body).into_response())
 }
 
 async fn get_settings(State(st): State<AppState>) -> Result<Json<settings::Settings>, ApiError> {

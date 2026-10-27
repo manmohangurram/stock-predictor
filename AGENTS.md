@@ -54,5 +54,10 @@ cargo bench --bench hot_paths                # indicators, prompt render, bar up
 cd web && npx vitest run && npm run build
 ```
 
-Budgets to keep: `indicators::compute` ~2.8 µs per 250 bars, prompt render ~21 µs,
+Budgets to keep: `indicators::compute` ~2.8 µs per 250 bars, prompt render ~17 µs,
 a poll's bar write ~0.2 ms (only the tail is written; a cold 250-row load is ~18 ms).
+
+Token knobs: `PROMPT_WINDOW_HOURS` (default 4) is the intraday tape length, the biggest single
+lever; the static prompt block is a prefix so DeepSeek's context cache can hit it.
+Request count: one per page (`/api/dashboard` carries recent trades, `/analysis` carries signals
+and fills), and the dashboard answers 304 when its version tag is unchanged.

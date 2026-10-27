@@ -462,3 +462,15 @@ range `ts >= 'YYYY-MM-DD'`.
 - Render cost itself fell 21 µs -> 17.4 µs.
 - Remaining big item: the 24-bar intraday tape is ~260 tokens. `window_hours` is the knob if a
   shorter tape ever looks sufficient.
+
+## Follow-up: the suggestions that were left on the table
+
+- `PROMPT_WINDOW_HOURS` (default 4, was a hardcoded 6): the intraday tape is the largest
+  remaining prompt item, ~11 tokens per bar.
+- `ETag`/`If-None-Match` on `/api/dashboard`, keyed on max signal id, max trade id, position
+  count and settings count for that mode. Measured: 304 with 0 bytes versus 200 with 3092.
+  The UI now keeps its DOM on a 304, which also stops the 60-second poll collapsing any row the
+  user had expanded.
+- `PRAGMA optimize` after migrations, so the planner's statistics match the new indexes.
+- Not done, deliberately: multi-row `INSERT ... VALUES` batching (0.18 ms per tick) and
+  ANALYZE on a 74-row database.

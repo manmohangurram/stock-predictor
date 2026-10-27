@@ -77,6 +77,10 @@ pub async fn migrate(pool: &SqlitePool) -> Result<()> {
             .execute(pool)
             .await?;
     }
+
+    // Cheap planner statistics for the indexes above; SQLite recommends this after schema or
+    // data changes and it is a no-op when there is nothing to do.
+    let _ = sqlx::raw_sql("PRAGMA optimize").execute(pool).await;
     Ok(())
 }
 

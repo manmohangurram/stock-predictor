@@ -111,7 +111,7 @@ async fn gather(
     let position = load_position(deps.pool, instrument.id).await?;
     let available = budget::available_in(deps.pool, crate::models::Mode::Long).await?;
     let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
-        Ok(tape) => format_window(&tape, 6, now),
+        Ok(tape) => format_window(&tape, deps.cfg.prompt_window_hours, now),
         Err(e) => {
             tracing::debug!(symbol = %instrument.symbol, error = %e, "no intraday tape");
             "(intraday tape unavailable)".to_string()
@@ -284,6 +284,7 @@ async fn poll_instrument(
             available_cash: available,
             held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
             target_profit_pct,
+            window_hours: deps.cfg.prompt_window_hours,
             headlines: news,
             price_window: &g.price_window,
             daily_summary: &g.daily_summary,
@@ -363,6 +364,7 @@ pub async fn advise(
             available_cash: g.available,
             held_qty: g.position.as_ref().map(|p| p.qty).unwrap_or(0.0),
             target_profit_pct: g.target_profit_pct,
+            window_hours: deps.cfg.prompt_window_hours,
             headlines: &g.news,
             price_window: &g.price_window,
             daily_summary: &g.daily_summary,

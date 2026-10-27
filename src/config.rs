@@ -17,6 +17,8 @@ pub struct Config {
     pub llm_min_price_move: f64,
     /// ...or this long has passed since the last one.
     pub llm_max_silence_secs: i64,
+    /// How many hours of 15-minute tape go into every prompt. The biggest token lever.
+    pub prompt_window_hours: u32,
     /// Poll cadence outside market hours, which only exists to pick up headlines.
     pub off_hours_secs: u64,
     pub ntfy_url: String,
@@ -46,6 +48,7 @@ impl Config {
             llm_daily_cap: num("LLM_DAILY_CAP", 200.0)? as u32,
             llm_min_price_move: num("LLM_MIN_PRICE_MOVE", 2.0)?,
             llm_max_silence_secs: num("LLM_MAX_SILENCE_SECS", 3600.0)? as i64,
+            prompt_window_hours: num("PROMPT_WINDOW_HOURS", 4.0)? as u32,
             off_hours_secs: num("OFF_HOURS_SECS", 7200.0)? as u64,
             ntfy_url: get("NTFY_BASE_URL")
                 .unwrap_or("https://ntfy.sh")
