@@ -2,6 +2,7 @@ use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
+use crate::models::Mode;
 use crate::rules::budget::{self, CashKind, NewCashEntry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +38,7 @@ pub struct Trade {
     pub realised: Option<f64>,
     pub traded_at: String,
     pub note: Option<String>,
+    pub mode: String,
     /// The close on the day the fill happened, so the fill can be read against the market.
     pub market_close: Option<f64>,
 }
@@ -75,6 +77,7 @@ pub fn parse_when(input: &str, now: chrono::DateTime<chrono::Utc>) -> Result<chr
     Ok(parsed)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn record(
     pool: &SqlitePool,
     instrument_id: i64,
@@ -83,6 +86,7 @@ pub async fn record(
     price: f64,
     note: Option<&str>,
     at: Option<chrono::DateTime<chrono::Utc>>,
+    mode: Mode,
 ) -> Result<()> {
     ensure!(qty.is_finite() && qty > 0.0, "qty must be positive");
     ensure!(price.is_finite() && price > 0.0, "price must be positive");
@@ -91,16 +95,18 @@ pub async fn record(
     let now = when.to_rfc3339();
     let open: Option<(i64, f64, f64, String)> = sqlx::query_as(
         "SELECT id, qty, avg_cost, opened_at FROM positions
-         WHERE instrument_id = ? AND state = 'open' ORDER BY id DESC LIMIT 1",
+         WHERE instrument_id = ? AND state = 'open' AND mode = ?
+         ORDER BY id DESC LIMIT 1",
     )
     .bind(instrument_id)
+    .bind(mode.as_str())
     .fetch_optional(pool)
     .await?;
 
     match side {
         Side::Buy => {
             let value = qty * price;
-            let available = budget::available(pool).await?;
+            let available = budget::available_in(pool, mode).await?;
             ensure!(
                 value <= available + 1e-9,
                 "cost {value:.2} exceeds available cash {available:.2}"
@@ -128,20 +134,21 @@ pub async fn record(
                 }
                 None => {
                     sqlx::query(
-                        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state)
-                         VALUES (?, ?, ?, ?, 'open')",
+                        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode)
+                         VALUES (?, ?, ?, ?, 'open', ?)",
                     )
                     .bind(instrument_id)
                     .bind(qty)
                     .bind(price)
                     .bind(&now)
+                    .bind(mode.as_str())
                     .execute(pool)
                     .await?;
                 }
             }
 
-            insert_trade(pool, instrument_id, side, qty, price, None, &now, note).await?;
-            budget::record_at(
+            insert_trade(pool, instrument_id, side, qty, price, None, &now, note, mode).await?;
+            budget::record_at_mode(
                 pool,
                 NewCashEntry {
                     kind: CashKind::Buy,
@@ -149,6 +156,7 @@ pub async fn record(
                     reference: format!("buy {qty} @ {price}"),
                 },
                 &now,
+                mode,
             )
             .await?;
         }
@@ -188,9 +196,10 @@ pub async fn record(
                 Some(realised),
                 &now,
                 note,
+                mode,
             )
             .await?;
-            budget::record_at(
+            budget::record_at_mode(
                 pool,
                 NewCashEntry {
                     kind: CashKind::Sell,
@@ -198,6 +207,7 @@ pub async fn record(
                     reference: format!("sell {qty} @ {price}"),
                 },
                 &now,
+                mode,
             )
             .await?;
         }
@@ -215,10 +225,11 @@ async fn insert_trade(
     realised: Option<f64>,
     at: &str,
     note: Option<&str>,
+    mode: Mode,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO trades (instrument_id, side, qty, price, realised, traded_at, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO trades (instrument_id, side, qty, price, realised, traded_at, note, mode)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(instrument_id)
     .bind(side.as_str())
@@ -227,13 +238,14 @@ async fn insert_trade(
     .bind(realised)
     .bind(at)
     .bind(note)
+    .bind(mode.as_str())
     .execute(pool)
     .await?;
     Ok(())
 }
 
 pub async fn history(pool: &SqlitePool, instrument_id: Option<i64>, limit: i64) -> Result<Vec<Trade>> {
-    let select = "SELECT t.id, i.symbol, t.side, t.qty, t.price, t.realised, t.traded_at, t.note,
+    let select = "SELECT t.id, i.symbol, t.side, t.qty, t.price, t.realised, t.traded_at, t.note, t.mode,
                          (SELECT b.close FROM bars b
                           WHERE b.instrument_id = t.instrument_id
                             AND substr(b.ts, 1, 10) = substr(t.traded_at, 1, 10)
@@ -248,6 +260,7 @@ pub async fn history(pool: &SqlitePool, instrument_id: Option<i64>, limit: i64) 
         Option<f64>,
         String,
         Option<String>,
+        String,
         Option<f64>,
     )> = match instrument_id {
         Some(id) => {
@@ -278,14 +291,22 @@ pub async fn history(pool: &SqlitePool, instrument_id: Option<i64>, limit: i64) 
             realised: r.5,
             traded_at: r.6,
             note: r.7,
-            market_close: r.8,
+            mode: r.8,
+            market_close: r.9,
         })
         .collect())
 }
 
 pub async fn realised_total(pool: &SqlitePool) -> Result<f64> {
-    let row: (Option<f64>,) = sqlx::query_as("SELECT SUM(realised) FROM trades WHERE side = 'sell'")
-        .fetch_one(pool)
-        .await?;
+    realised_in(pool, Mode::Long).await
+}
+
+pub async fn realised_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
+    let row: (Option<f64>,) = sqlx::query_as(
+        "SELECT SUM(realised) FROM trades WHERE side = 'sell' AND mode = ?",
+    )
+    .bind(mode.as_str())
+    .fetch_one(pool)
+    .await?;
     Ok(row.0.unwrap_or(0.0))
 }

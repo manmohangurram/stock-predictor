@@ -287,3 +287,22 @@ link in the chain and the next thing to fix.
 - Notification copy now carries the plan: "sell if ≤ 1412.00 · take profit ≥ 1510.00", so the
   alert alone is enough to place both legs.
 - Signal card in the UI shows the two exits side by side under the decision.
+
+## Two pots: long-term and trading never share capital
+
+Mode is a column, not a UI filter: `cash_ledger`, `positions`, `trades`, `signals` all carry
+`mode` ('long' | 'trade'), migration 0004. Every budget query is mode-scoped
+(`budget_total_in`, `committed_in`, `available_in`, `fits_in`, `realised_in`), and
+`trades::record` refuses a buy that does not fit *its own* pot.
+
+- The same symbol can be held separately in both pots (tested): 2 units long and 5 units trade
+  are two positions, two histories, two cash movements.
+- IPO reservations count only in the long pot: a trading book never reserves for allotment.
+- `/api/dashboard?mode=long|trade` and `GET /api/settings` carry both pots; `PUT
+  /api/settings` accepts `trading_budget` with the same never-below-committed guard.
+- UI: Long-term / Trading tabs, each with its own strip, book and history. The fill form has a
+  pot selector so a trade can be booked into either.
+
+Bug found while wiring it: the trades history SELECT had `mode` before the `market_close`
+subquery while the row tuple expected `Option<f64>` in that slot, so sqlx failed to decode TEXT
+into REAL and every `/trades` call 500'd. Positional column order is load-bearing here.

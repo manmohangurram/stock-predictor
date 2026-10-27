@@ -1,6 +1,31 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
+/// Which pot a row belongs to. Long-term and trading never share capital.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    Long,
+    Trade,
+}
+
+impl Mode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Mode::Long => "long",
+            Mode::Trade => "trade",
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "long" | "long_term" | "" => Ok(Mode::Long),
+            "trade" | "trading" => Ok(Mode::Trade),
+            other => Err(anyhow!("mode must be long or trade, got {other:?}")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AssetClass {

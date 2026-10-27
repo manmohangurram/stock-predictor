@@ -586,3 +586,75 @@ async fn a_backfilled_buy_moves_the_position_start_date_backwards() {
     .await;
     assert_eq!(s, StatusCode::OK, "{v}");
 }
+
+#[tokio::test]
+async fn the_two_pots_never_draw_on_each_other() {
+    let (_d, router, _pool) = setup().await;
+    // Give trading its own pot.
+    let (s, v) = send(&router, "PUT", "/api/settings", json!({"trading_budget": 20000.0})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    // Spend the whole trading pot.
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 200.0, "price": 100.0, "mode": "trade"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    // Long-term is untouched, and still has its own full budget.
+    let (_, long) = get(&router, "/api/dashboard?mode=long").await;
+    assert_eq!(long["committed"], 0.0);
+    assert_eq!(long["budget"], 100_000.0);
+    assert_eq!(long["positions"].as_array().unwrap().len(), 0);
+
+    let (_, trade) = get(&router, "/api/dashboard?mode=trade").await;
+    assert_eq!(trade["mode"], "trade");
+    assert_eq!(trade["budget"], 20_000.0);
+    assert_eq!(trade["committed"], 20_000.0);
+    assert_eq!(trade["available"], 0.0);
+    assert_eq!(trade["positions"].as_array().unwrap().len(), 1);
+
+    // A trading buy cannot dip into the long-term pot even though that pot is full.
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 1.0, "price": 100.0, "mode": "trade"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+}
+
+#[tokio::test]
+async fn the_same_symbol_can_be_held_in_both_pots_separately() {
+    let (_d, router, _pool) = setup().await;
+    let _ = send(&router, "PUT", "/api/settings", json!({"trading_budget": 50_000.0})).await;
+    let _ = send(
+        &router,
+        "POST",
+        "/api/instruments/TCS/trades",
+        json!({"side": "buy", "qty": 2.0, "price": 1000.0, "mode": "long"}),
+    )
+    .await;
+    let _ = send(
+        &router,
+        "POST",
+        "/api/instruments/TCS/trades",
+        json!({"side": "buy", "qty": 5.0, "price": 900.0, "mode": "trade"}),
+    )
+    .await;
+
+    let (_, long) = get(&router, "/api/dashboard?mode=long").await;
+    let (_, trade) = get(&router, "/api/dashboard?mode=trade").await;
+    assert_eq!(long["positions"][0]["qty"], 2.0);
+    assert_eq!(trade["positions"][0]["qty"], 5.0);
+
+    let (_, all) = get(&router, "/api/trades").await;
+    let rows = all.as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().any(|r| r["mode"] == "long"));
+    assert!(rows.iter().any(|r| r["mode"] == "trade"));
+}

@@ -1,8 +1,16 @@
-import type { Dashboard, Trade } from "../api";
+import type { Dashboard, Mode, Trade } from "../api";
 import { escapeHtml, histDate, money, units } from "../format";
 import { stamp } from "../components/stamp";
 
 /** The portfolio strip: the four numbers that decide whether anything is affordable. */
+export function renderModeTabs(mode: Mode): string {
+  const tab = (m: Mode, label: string) =>
+    `<a class="mode-tab" href="/?mode=${m}" ${m === mode ? 'aria-current="page"' : ""}>${label}</a>`;
+  return `<nav class="modes" aria-label="Strategy">
+    ${tab("long", "Long-term")}${tab("trade", "Trading")}
+  </nav>`;
+}
+
 export function renderStrip(d: Dashboard): string {
   const invested = d.positions.reduce((a, p) => a + (p.value ?? p.qty * p.avg_cost), 0);
   const total = invested + d.available;
@@ -47,10 +55,11 @@ export function renderRow(d: Dashboard, p: Dashboard["positions"][number]): stri
 }
 
 export function renderLedger(d: Dashboard, recent: Trade[]): string {
+  const inMode = recent.filter((t) => t.mode === d.mode);
   const rows = d.positions.map((p) => renderRow(d, p)).join("");
   const empty = `<tr><td colspan="7" class="empty">Nothing held yet. Search on the right to add your first instrument.</td></tr>`;
-  const history = recent.length
-    ? recent
+  const history = inMode.length
+    ? inMode
         .slice(0, 8)
         .map(
           (t) => `<div class="hist"><span class="stamp" data-stamp="${t.side === "buy" ? "buy" : "sell"}">${t.side}</span>
@@ -61,11 +70,12 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
     : `<p class="empty">No trades recorded yet.</p>`;
 
   return `<div class="shell">
+  ${renderModeTabs(d.mode)}
   ${renderStrip(d)}
   <div class="body">
     <section class="main">
       <table class="blotter">
-        <caption>Holdings — select a row for the full record</caption>
+        <caption>${d.mode === "trade" ? "Trading book" : "Holdings"} — select a row for the full record</caption>
         <thead><tr>
           <th scope="col">Symbol</th><th scope="col">Qty</th><th scope="col" class="hide-sm">Avg</th>
           <th scope="col">LTP</th><th scope="col">Value</th><th scope="col" class="hide-sm">Stop</th>

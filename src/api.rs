@@ -172,24 +172,31 @@ pub struct Dashboard {
     pub committed: f64,
     pub available: f64,
     pub realised: f64,
+    pub mode: String,
     pub currency_locked: bool,
     pub positions: Vec<PositionRow>,
     pub signals: Vec<SignalRow>,
     pub blocked: Vec<SignalRow>,
 }
 
-async fn dashboard(State(st): State<AppState>) -> Result<Json<Dashboard>, ApiError> {
+async fn dashboard(
+    State(st): State<AppState>,
+    Query(q): Query<ModeQuery>,
+) -> Result<Json<Dashboard>, ApiError> {
+    let mode = mode_of(&q.mode)?;
     let s = settings::get(&st.pool).await?;
-    let available = s.available;
-    let positions = load_positions(&st.pool).await?;
-    let signals = load_signals(&st.pool, false).await?;
-    let blocked = load_signals(&st.pool, true).await?;
+    let budget = budget::budget_total_in(&st.pool, mode).await?;
+    let committed = budget::committed_in(&st.pool, mode).await?;
+    let positions = load_positions(&st.pool, mode).await?;
+    let signals = load_signals(&st.pool, false, mode).await?;
+    let blocked = load_signals(&st.pool, true, mode).await?;
     Ok(Json(Dashboard {
         currency: s.currency,
-        budget: s.budget,
-        committed: s.committed,
-        realised: crate::trades::realised_total(&st.pool).await?,
-        available,
+        mode: mode.as_str().to_string(),
+        budget,
+        committed,
+        realised: crate::trades::realised_in(&st.pool, mode).await?,
+        available: budget - committed,
         currency_locked: s.currency_locked,
         positions,
         signals,
@@ -206,6 +213,7 @@ pub struct PutSettings {
     pub budget: Option<f64>,
     pub currency: Option<String>,
     pub deepseek_key: Option<String>,
+    pub trading_budget: Option<f64>,
 }
 
 async fn put_settings(
@@ -218,6 +226,7 @@ async fn put_settings(
             budget: body.budget,
             currency: body.currency,
             deepseek_key: body.deepseek_key,
+            trading_budget: body.trading_budget,
         },
     )
     .await
@@ -286,7 +295,7 @@ async fn instrument_detail(
     })
     .collect();
 
-    let signals: Vec<SignalRow> = load_signals(&st.pool, false)
+    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long)
         .await?
         .into_iter()
         .filter(|s| s.symbol == symbol)
@@ -366,7 +375,7 @@ async fn analysis(
     bars.reverse();
     bars.dedup_by(|a, b| a.ts == b.ts);
 
-    let position = load_positions(&st.pool)
+    let position = load_positions(&st.pool, crate::models::Mode::Long)
         .await?
         .into_iter()
         .find(|p| p.symbol == symbol && p.state == "open");
@@ -547,7 +556,7 @@ async fn post_position(
         },
     )
     .await?;
-    let row = load_positions(&st.pool)
+    let row = load_positions(&st.pool, crate::models::Mode::Long)
         .await?
         .into_iter()
         .find(|p| p.symbol == body.symbol && p.state == "open")
@@ -616,7 +625,7 @@ async fn patch_position(
             .await?;
     }
 
-    load_positions(&st.pool)
+    load_positions(&st.pool, crate::models::Mode::Long)
         .await?
         .into_iter()
         .find(|p| p.id == id)
@@ -653,6 +662,16 @@ async fn post_ipo(
 #[derive(Debug, Deserialize)]
 pub struct SearchQuery {
     pub q: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ModeQuery {
+    pub mode: Option<String>,
+}
+
+fn mode_of(q: &Option<String>) -> Result<crate::models::Mode, ApiError> {
+    crate::models::Mode::parse(q.as_deref().unwrap_or(""))
+        .map_err(|e| ApiError::BadRequest(e.to_string()))
 }
 
 #[derive(Debug, Serialize)]
@@ -770,6 +789,8 @@ pub struct TradeBody {
     pub note: Option<String>,
     /// `YYYY-MM-DD` or RFC3339. Omitted means "now".
     pub at: Option<String>,
+    /// "long" (default) or "trade" — which pot this fill belongs to.
+    pub mode: Option<String>,
 }
 
 async fn record_trade(
@@ -794,6 +815,9 @@ async fn record_trade(
     let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
+    let mode = crate::models::Mode::parse(body.mode.as_deref().unwrap_or(""))
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
     crate::trades::record(
         &st.pool,
         id,
@@ -802,15 +826,16 @@ async fn record_trade(
         price,
         body.note.as_deref(),
         Some(when),
+        mode,
     )
     .await
     .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
-    let s = settings::get(&st.pool).await?;
+    let cash = budget::available_in(&st.pool, mode).await?;
     Ok(Json(serde_json::json!({
         "ok": true,
-        "cash": s.available,
-        "realised": crate::trades::realised_total(&st.pool).await?,
+        "cash": cash,
+        "realised": crate::trades::realised_in(&st.pool, mode).await?,
     })))
 }
 
@@ -859,14 +884,16 @@ async fn instrument_id_by_symbol(pool: &SqlitePool, symbol: &str) -> Result<i64,
         .ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))
 }
 
-async fn load_positions(pool: &SqlitePool) -> Result<Vec<PositionRow>, ApiError> {
+async fn load_positions(pool: &SqlitePool, mode: crate::models::Mode) -> Result<Vec<PositionRow>, ApiError> {
     let rows: Vec<(i64, String, String, f64, f64, Option<f64>, Option<f64>, String, Option<f64>)> =
         sqlx::query_as(
         "SELECT p.id, i.symbol, i.class, p.qty, p.avg_cost, p.stop, p.target, p.state,
                 (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
                  ORDER BY b.ts DESC LIMIT 1)
-         FROM positions p JOIN instruments i ON i.id = p.instrument_id ORDER BY p.id DESC",
+         FROM positions p JOIN instruments i ON i.id = p.instrument_id
+         WHERE p.mode = ? ORDER BY p.id DESC",
     )
+    .bind(mode.as_str())
     .fetch_all(pool)
     .await?;
     Ok(rows
@@ -890,7 +917,11 @@ async fn load_positions(pool: &SqlitePool) -> Result<Vec<PositionRow>, ApiError>
         .collect())
 }
 
-async fn load_signals(pool: &SqlitePool, blocked: bool) -> Result<Vec<SignalRow>, ApiError> {
+async fn load_signals(
+    pool: &SqlitePool,
+    blocked: bool,
+    mode: crate::models::Mode,
+) -> Result<Vec<SignalRow>, ApiError> {
     let predicate = if blocked {
         "s.action = 'BLOCKED'"
     } else {
@@ -901,8 +932,9 @@ async fn load_signals(pool: &SqlitePool, blocked: bool) -> Result<Vec<SignalRow>
             "SELECT s.id, i.symbol, i.class, s.action, s.qty, s.entry, s.stop, s.target,
                     s.valid_until, s.reason_json, s.created_at
              FROM signals s JOIN instruments i ON i.id = s.instrument_id
-             WHERE {predicate} ORDER BY s.id DESC LIMIT 50"
+             WHERE {predicate} AND s.mode = ? ORDER BY s.id DESC LIMIT 50"
         ))
+        .bind(mode.as_str())
         .fetch_all(pool)
         .await?;
 

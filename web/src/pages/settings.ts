@@ -30,6 +30,15 @@ export function renderSettings(s: Settings): string {
           ${below ? `<p class="guard">Committed is ${money(s.committed, 0)} — the budget cannot go below it.</p>` : ""}
         </div>
         <div class="field">
+          <label class="lbl" for="trading_budget">Trading pot</label>
+          <input id="trading_budget" name="trading_budget" type="number" min="0" step="1"
+                 value="${Math.round(s.trading_budget)}" />
+          <p class="help">
+            Separate capital for the trading mode. ${money(s.trading_available, 0)} ${s.currency} free.
+            It never draws on the long-term budget, and the long-term budget never draws on it.
+          </p>
+        </div>
+        <div class="field">
           <label class="lbl" for="currency">Currency</label>
           <select id="currency" name="currency" ${s.currency_locked ? "disabled" : ""}>
             ${currencies.map((c) => `<option value="${c}" ${c === s.currency ? "selected" : ""}>${c}</option>`).join("")}

@@ -28,8 +28,11 @@ export interface PositionRow {
   timing_note: string;
 }
 
+export type Mode = "long" | "trade";
+
 export interface Dashboard {
   currency: string;
+  mode: Mode;
   budget: number;
   committed: number;
   available: number;
@@ -44,6 +47,7 @@ export interface Trade {
   id: number;
   symbol: string;
   side: "buy" | "sell";
+  mode: Mode;
   qty: number;
   price: number;
   realised: number | null;
@@ -67,6 +71,8 @@ export interface Settings {
   currency: string;
   currency_locked: boolean;
   deepseek_configured: boolean;
+  trading_budget: number;
+  trading_available: number;
 }
 
 export interface CallRow {
@@ -144,7 +150,7 @@ const json = (body: unknown): RequestInit => ({
 });
 
 export const api = {
-  dashboard: () => req<Dashboard>("/api/dashboard"),
+  dashboard: (mode: Mode = "long") => req<Dashboard>(`/api/dashboard?mode=${mode}`),
   settings: () => req<Settings>("/api/settings"),
   calls: () => req<CallRow[]>("/api/calls"),
   trades: () => req<Trade[]>("/api/trades"),
@@ -163,13 +169,16 @@ export const api = {
     qty: number,
     price: number,
     at?: string,
+    mode: Mode = "long",
   ) =>
     req<{ ok: boolean; cash: number; realised: number }>(
       `/api/instruments/${encodeURIComponent(symbol)}/trades`,
-      json({ side, qty, price, at }),
+      json({ side, qty, price, at, mode }),
     ),
   putSettings: async (
-    patch: Partial<Pick<Settings, "budget" | "currency">> & { deepseek_key?: string },
+    patch: Partial<Pick<Settings, "budget" | "currency" | "trading_budget">> & {
+      deepseek_key?: string;
+    },
   ) => {
     const r = await fetch("/api/settings", {
       method: "PUT",

@@ -377,7 +377,7 @@
 
   .trade-form { border: 1px solid var(--rule-subtle); border-radius: var(--radius); padding: var(--space-3);
     background: var(--paper-raised); display: grid; gap: var(--space-2); }
-  .trade-form .row { display: grid; grid-template-columns: 100px 1fr 1fr 150px auto; gap: var(--space-2); }
+  .trade-form .row { display: grid; grid-template-columns: 90px 140px 1fr 1fr 150px auto; gap: var(--space-2); }
   .trade-form select, .trade-form input { padding: var(--space-2); font-family: var(--font-ledger);
     background: var(--paper-inset); color: var(--ink); border: 1px solid var(--rule); border-radius: var(--radius); }
 
@@ -395,6 +395,19 @@
     .strip { gap: var(--space-4); }
     .strip .total { font-size: var(--text-lg); }
     .hide-sm { display: none; }
+    .trade-form .row { grid-template-columns: 1fr 1fr; }
+  }
+}
+
+@layer components {
+  .modes { display: flex; gap: var(--space-1); margin-bottom: var(--space-2); }
+  .mode-tab { padding: var(--space-1) var(--space-3); border-radius: var(--radius);
+    font-size: var(--text-sm); color: var(--ink-secondary); text-decoration: none;
+    border: 1px solid transparent; }
+  .mode-tab:hover { background: var(--paper-raised); }
+  .mode-tab[aria-current="page"] { background: var(--paper-raised); border-color: var(--rule);
+    color: var(--ink); font-weight: 600; }
+  @media (max-width: 900px) {
     .trade-form .row { grid-template-columns: 1fr 1fr; }
   }
 }

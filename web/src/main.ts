@@ -39,7 +39,11 @@ async function route(): Promise<void> {
       app.innerHTML = renderInstrument(analysis, detail, trades);
       wireTradeForm(symbol);
     } else {
-      const [d, trades] = await Promise.all([api.dashboard(), api.trades()]);
+      const mode = (new URLSearchParams(location.search).get("mode") as
+        | "long"
+        | "trade"
+        | null) ?? "long";
+      const [d, trades] = await Promise.all([api.dashboard(mode), api.trades()]);
       app.innerHTML = nav + renderLedger(d, trades);
       wireRows();
       wireSearch();
@@ -153,6 +157,7 @@ function wireTradeForm(symbol: string): void {
     ev.preventDefault();
     const data = new FormData(form);
     const side = String(data.get("side")) as "buy" | "sell";
+    const mode = (String(data.get("mode") ?? "long") as "long" | "trade");
     const qty = Number(data.get("qty"));
     const price = Number(data.get("price"));
     const at = String(data.get("at") ?? "").trim();
@@ -162,7 +167,7 @@ function wireTradeForm(symbol: string): void {
     }
     if (status) status.textContent = "Recording…";
     try {
-      const res = await api.recordTrade(symbol, side, qty, price, at || undefined);
+      const res = await api.recordTrade(symbol, side, qty, price, at || undefined, mode);
       if (status) {
         status.textContent = `Recorded. Cash ${Math.round(res.cash)}, realised ${Math.round(res.realised)}.`;
       }
@@ -181,9 +186,9 @@ function wireSettings(): void {
     const budget = Number(data.get("budget"));
     const currency = String(data.get("currency"));
     const key = String(data.get("deepseek_key") ?? "").trim();
-    const res = await api.putSettings(
-      key ? { budget, currency, deepseek_key: key } : { budget, currency },
-    );
+    const trading = Number(data.get("trading_budget"));
+    const patch = { budget, currency, trading_budget: trading };
+    const res = await api.putSettings(key ? { ...patch, deepseek_key: key } : patch);
     if (!res.ok) {
       window.alert(
         res.body.error === "below_committed"

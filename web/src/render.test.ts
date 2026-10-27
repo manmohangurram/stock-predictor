@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Dashboard, PositionRow, Settings, SignalRow } from "./api";
-import { renderLedger, renderRow, renderStrip } from "./pages/ledger";
+import { renderLedger, renderModeTabs, renderRow, renderStrip } from "./pages/ledger";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
 
 const position = (over: Partial<PositionRow> = {}): PositionRow => ({
@@ -37,6 +37,7 @@ const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
 
 const dashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
   currency: "INR",
+  mode: "long",
   budget: 200_000,
   committed: 103_611,
   available: 96_389,
@@ -108,6 +109,8 @@ describe("ledger", () => {
         realised: null,
         traded_at: "2026-10-20T04:00:00Z",
         note: null,
+        market_close: null,
+        mode: "long",
       },
     ]);
     expect(html).toContain("INFY.NS 17 @ 1,163.00");
@@ -129,6 +132,8 @@ describe("settings", () => {
     currency: "INR",
     currency_locked: false,
     deepseek_configured: false,
+    trading_budget: 0,
+    trading_available: 0,
     ...over,
   });
 
@@ -237,5 +242,42 @@ describe("fills against the market", () => {
     const html = renderInstrument(analysis as never, { instrument: analysis.instrument, headlines: [], signals: [] } as never, list);
     expect(html).toContain("—");
     expect(html).not.toContain("0.00%");
+  });
+});
+
+describe("two pots in the UI", () => {
+  test("mode tabs mark the current pot and link to the other", () => {
+    const html = renderModeTabs("trade");
+    expect(html).toContain('href="/?mode=long"');
+    expect(html).toContain('href="/?mode=trade"');
+    expect(html).toContain('aria-current="page">Trading');
+  });
+
+  test("only trades from the current pot are listed", () => {
+    const trade = (id: number, mode: "long" | "trade") => ({
+      id, symbol: "INFY.NS", side: "buy" as const, qty: 1, price: 100,
+      realised: null, traded_at: "2026-10-27T10:00:00Z", note: null,
+      market_close: null, mode,
+    });
+    const html = renderLedger(
+      dashboard({ mode: "trade", positions: [position()] }),
+      [trade(1, "long"), trade(2, "trade")],
+    );
+    expect(html).toContain("Trading book");
+    expect(html.match(/class="hist"/g)?.length).toBe(1);
+  });
+});
+
+describe("settings, second pot", () => {
+  test("offers a trading budget and says the pots are separate", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const html = renderSettings({
+      budget: 500_000, committed: 0, available: 500_000, currency: "INR",
+      currency_locked: false, deepseek_configured: false,
+      trading_budget: 100_000, trading_available: 80_000,
+    });
+    expect(html).toContain('name="trading_budget"');
+    expect(html).toContain("80,000");
+    expect(html).toContain("never draws on the long-term budget");
   });
 });

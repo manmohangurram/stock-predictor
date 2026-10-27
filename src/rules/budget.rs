@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use sqlx::SqlitePool;
 
-use crate::models::AssetClass;
+use crate::models::{AssetClass, Mode};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CashKind {
@@ -52,39 +52,62 @@ pub fn cost(qty: f64, price: f64, class: AssetClass) -> f64 {
 /// The ceiling itself: the sum of every `budget` ledger row. One source of truth — the
 /// ledger — rather than a settings value that could drift away from its own history.
 pub async fn budget_total(pool: &SqlitePool) -> Result<f64> {
-    let row: (Option<f64>,) =
-        sqlx::query_as("SELECT SUM(amount) FROM cash_ledger WHERE kind = 'budget'")
-            .fetch_one(pool)
-            .await
-            .context("sum budget")?;
+    budget_total_in(pool, Mode::Long).await
+}
+
+pub async fn budget_total_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
+    let row: (Option<f64>,) = sqlx::query_as(
+        "SELECT SUM(amount) FROM cash_ledger WHERE kind = 'budget' AND mode = ?",
+    )
+    .bind(mode.as_str())
+    .fetch_one(pool)
+    .await
+    .context("sum budget")?;
     Ok(row.0.unwrap_or(0.0))
 }
 
 /// Open positions at cost, plus cash locked in pending IPO applications.
 pub async fn committed(pool: &SqlitePool) -> Result<f64> {
+    committed_in(pool, Mode::Long).await
+}
+
+pub async fn committed_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
     let pos: (Option<f64>,) = sqlx::query_as(
-        "SELECT SUM(qty * avg_cost) FROM positions WHERE state <> 'closed'",
+        "SELECT SUM(qty * avg_cost) FROM positions WHERE state <> 'closed' AND mode = ?",
     )
+    .bind(mode.as_str())
     .fetch_one(pool)
     .await
     .context("sum positions")?;
 
-    let ipo: (Option<f64>,) = sqlx::query_as(
-        "SELECT SUM(amount) FROM ipo_applications WHERE status = 'pending'",
-    )
-    .fetch_one(pool)
-    .await
-    .context("sum ipo reservations")?;
+    // IPO applications are a long-term instrument; trading never reserves for them.
+    let ipo: (Option<f64>,) = match mode {
+        Mode::Long => {
+            sqlx::query_as("SELECT SUM(amount) FROM ipo_applications WHERE status = 'pending'")
+                .fetch_one(pool)
+                .await
+                .context("sum ipo reservations")?
+        }
+        Mode::Trade => (None,),
+    };
 
     Ok(pos.0.unwrap_or(0.0) + ipo.0.unwrap_or(0.0))
 }
 
 pub async fn available(pool: &SqlitePool) -> Result<f64> {
-    Ok(budget_total(pool).await? - committed(pool).await?)
+    available_in(pool, Mode::Long).await
+}
+
+pub async fn available_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
+    Ok(budget_total_in(pool, mode).await? - committed_in(pool, mode).await?)
 }
 
 pub async fn fits(pool: &SqlitePool, cost: f64) -> Result<bool> {
-    Ok(cost <= available(pool).await? + 1e-9)
+    fits_in(pool, cost, Mode::Long).await
+}
+
+pub async fn fits_in(pool: &SqlitePool, cost: f64, mode: Mode) -> Result<bool> {
+    Ok(cost <= available_in(pool, mode).await? + 1e-9)
 }
 
 pub async fn record(pool: &SqlitePool, entry: NewCashEntry) -> Result<()> {
@@ -94,19 +117,27 @@ pub async fn record(pool: &SqlitePool, entry: NewCashEntry) -> Result<()> {
 /// The same row, stamped with when it actually happened. Backfilled trades must not land at
 /// the top of the ledger just because they were entered today.
 pub async fn record_at(pool: &SqlitePool, entry: NewCashEntry, ts: &str) -> Result<()> {
-    sqlx::query("INSERT INTO cash_ledger (ts, kind, amount, ref) VALUES (?, ?, ?, ?)")
+    record_at_mode(pool, entry, ts, Mode::Long).await
+}
+
+pub async fn record_at_mode(
+    pool: &SqlitePool,
+    entry: NewCashEntry,
+    ts: &str,
+    mode: Mode,
+) -> Result<()> {
+    sqlx::query("INSERT INTO cash_ledger (ts, kind, amount, ref, mode) VALUES (?, ?, ?, ?, ?)")
         .bind(ts)
         .bind(entry.kind.as_str())
         .bind(entry.amount)
         .bind(entry.reference)
+        .bind(mode.as_str())
         .execute(pool)
         .await
         .context("insert cash ledger")?;
     Ok(())
 }
 
-/// An IPO application locks cash without creating a position. This is the row that keeps
-/// the budget honest while the money is unspendable.
 pub async fn reserve_ipo(
     pool: &SqlitePool,
     instrument_id: i64,

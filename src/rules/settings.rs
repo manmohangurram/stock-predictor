@@ -16,6 +16,9 @@ pub struct Settings {
     /// Only ever a boolean. The key itself is never serialised — this server has no auth,
     /// so anything returned here is readable by anyone on the network.
     pub deepseek_configured: bool,
+    /// The second pot. Kept separate on purpose: a swing trade must not starve a long-term buy.
+    pub trading_budget: f64,
+    pub trading_available: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -25,6 +28,7 @@ pub struct SettingsPatch {
     /// Empty or whitespace is ignored rather than clearing: a masked field saves the form
     /// without wiping a working key.
     pub deepseek_key: Option<String>,
+    pub trading_budget: Option<f64>,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -43,6 +47,8 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
     let currency = currency(pool).await?;
     let locked = ledger_has_entries(pool).await?;
     let deepseek_configured = deepseek_key(pool).await?.is_some();
+    let trading_budget = budget::budget_total_in(pool, crate::models::Mode::Trade).await?;
+    let trading_available = budget::available_in(pool, crate::models::Mode::Trade).await?;
     Ok(Settings {
         budget,
         committed,
@@ -50,6 +56,8 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         currency,
         currency_locked: locked,
         deepseek_configured,
+        trading_budget,
+        trading_available,
     })
 }
 
@@ -98,6 +106,35 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
         .await
         .context("set currency")
         .map_err(|_| SettingsError::InvalidAmount)?;
+    }
+
+    if let Some(trading) = patch.trading_budget {
+        if !trading.is_finite() || trading < 0.0 {
+            return Err(SettingsError::InvalidAmount);
+        }
+        let committed = budget::committed_in(pool, crate::models::Mode::Trade)
+            .await
+            .map_err(|_| SettingsError::InvalidAmount)?;
+        if trading < committed - 1e-9 {
+            return Err(SettingsError::BelowCommitted { committed });
+        }
+        let current = budget::budget_total_in(pool, crate::models::Mode::Trade)
+            .await
+            .map_err(|_| SettingsError::InvalidAmount)?;
+        if (trading - current).abs() > 1e-9 {
+            budget::record_at_mode(
+                pool,
+                NewCashEntry {
+                    kind: CashKind::Budget,
+                    amount: trading - current,
+                    reference: format!("trading budget set to {trading}"),
+                },
+                &chrono::Utc::now().to_rfc3339(),
+                crate::models::Mode::Trade,
+            )
+            .await
+            .map_err(|_| SettingsError::InvalidAmount)?;
+        }
     }
 
     if let Some(key) = patch.deepseek_key {

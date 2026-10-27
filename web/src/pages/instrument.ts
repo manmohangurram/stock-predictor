@@ -57,6 +57,10 @@ export function renderTradeForm(
       <option value="buy">Buy</option>
       <option value="sell">Sell</option>
     </select>
+    <select name="mode" aria-label="Which pot">
+      <option value="long">Long-term pot</option>
+      <option value="trade">Trading pot</option>
+    </select>
     <input name="qty" type="number" min="0" step="any"
            placeholder="Qty${held === null ? "" : ` (held ${units(held)})`}"
            data-held="${held ?? ""}" required aria-label="Quantity" />

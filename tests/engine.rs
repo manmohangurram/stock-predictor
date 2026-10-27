@@ -314,6 +314,7 @@ async fn no_affordable_quantity_means_no_candidate_at_all() {
             budget: Some(100.0),
             currency: None,
             deepseek_key: None,
+            trading_budget: None,
         },
     )
     .await
