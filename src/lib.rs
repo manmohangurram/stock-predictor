@@ -2,6 +2,8 @@ pub mod config;
 pub mod db;
 pub mod llm;
 pub mod market;
+pub mod engine;
 pub mod models;
 pub mod notify;
 pub mod rules;
+pub mod schedule;

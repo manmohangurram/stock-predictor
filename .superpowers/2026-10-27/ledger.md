@@ -58,3 +58,6 @@ Mode: inline (executing-plans), backend → notifications → UI
   rules candidate. Every path is covered by a test, including an unparseable response.
   Note: the char-cap test counts runs >= 100 because the JSON envelope contributes a few
   stray single letters; measuring the article run is the actual invariant.
+- Task 11 ✅ notify, 6 tests. Dedupe row is inserted only after a 2xx, so an outage retries.
+  Ruling: ntfy header values are folded to ASCII (the copy uses '·'); reqwest would reject a
+  non-latin-1 header at send time and the user would lose the alert entirely.
