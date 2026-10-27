@@ -13,7 +13,11 @@ pub enum Confidence {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct HeadlineRequest {
+    /// The prompt shows headlines as `[id] title` and older prompts asked for `"id"`, so both
+    /// spellings are accepted. A model that follows the instructions must never be discarded.
+    #[serde(alias = "id", alias = "headlineId")]
     pub headline_id: i64,
+    #[serde(default)]
     pub why: String,
 }
 

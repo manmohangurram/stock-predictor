@@ -75,12 +75,12 @@ Ask once. Do not request material you would not use.
 Trade:
 {"action":"decide","signal":{"action":"BUY"|"SELL","entry":1264.50,"stop":1240.00,
  "target":1318.00,"valid_until":"2026-10-28T09:45:00Z","confidence":"low"|"medium"|"high",
- "rationale":"Two or three sentences: what the evidence says, and what would prove it wrong.",
+ "rationale":"Two or three sentences, under 60 words: the evidence, and what would prove it wrong.",
  "cites":[2,5]}}
 
 Ask for more:
-{"action":"need_more","headlines":[{"id":3,"why":"guidance change is the whole thesis"}],
+{"action":"need_more","headlines":[{"headline_id":3,"why":"guidance change is the whole thesis"}],
  "price_history":true}
 
 Nothing to do:
-{"action":"pass","why":"Headlines restate last week's guidance; no new information."}
+{"action":"pass","why":"Headlines restate last week's guidance; nothing new."}

@@ -306,3 +306,35 @@ Mode is a column, not a UI filter: `cash_ledger`, `positions`, `trades`, `signal
 Bug found while wiring it: the trades history SELECT had `mode` before the `market_close`
 subquery while the row tuple expected `Option<f64>` in that slot, so sqlx failed to decode TEXT
 into REAL and every `/trades` call 500'd. Positional column order is load-bearing here.
+
+## Prompt contract tested, and a real API call made
+
+`tests/scenarios.rs` — 19 dummy responses driven through the real orchestrator, no network:
+valid BUY, BUY without a target, BUY without a stop, stop on the wrong side, entry outside the
+band, a fund legitimately omitting exits, SELL of an unheld instrument, pass, prose around the
+JSON, truncated JSON, a string where a number belongs, unknown action, unknown citation, no
+citation, expired `valid_until`, and extra fields the prompt never asked for. Plus four
+escalation shapes: articles only, history only, both, and asking twice.
+
+**Bug the suite caught immediately:** the prompt example told the model to send
+`{"headlines":[{"id":3,…}]}` while `HeadlineRequest` required `headline_id`. A model following
+the instructions exactly would have had its escalation discarded and fallen back to rules.
+The parser now accepts `id` / `headline_id` / `headlineId`, and the prompt example uses
+`headline_id`.
+
+`tests/live_deepseek.rs` — two ignored tests that make a real billed call
+(`DEEPSEEK_API_KEY=… cargo test --test live_deepseek -- --ignored --nocapture`):
+
+1. Held position + one guidance headline → the model returned `pass`, and its reasoning named
+   the position, the stop, the target, both moving averages and RSI. Correct.
+2. Clean uptrend, material news, no position → the model returned
+   `BUY entry 1200 stop 1160 target 1250 cites [1]`, rationale 54 words. Both exits present,
+   stop below entry, target above, entry within one ATR.
+
+**Second finding:** the first attempt at case 2 passed, and rightly so — my fixture set
+`last_close` to 1200 while the daily summary and tape still described 1163. Given a
+self-contradictory prompt the model refused to trade. The context builder feeds `last_close`
+from the rules candidate and every window from the same fetch, so live prompts are coherent,
+but this is worth remembering when hand-writing a prompt context.
+
+Also capped prose: rationale under 60 words, `pass.why` one sentence.

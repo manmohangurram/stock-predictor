@@ -71,4 +71,4 @@ You have already had your one escalation. Answer now.
 
 or
 
-{"action":"pass","why":"The article confirms the headline; no new information."}
+{"action":"pass","why":"The article confirms the headline; nothing new."}
