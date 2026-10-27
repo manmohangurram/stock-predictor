@@ -1,5 +1,6 @@
 import type { Analysis, InstrumentDetail, Trade } from "../api";
 import { clock, day, escapeHtml, histDate, money, units } from "../format";
+import { confidenceLabel, renderConfidence } from "../components/confidence";
 import { stamp } from "../components/stamp";
 
 function chart(a: Analysis): string {
@@ -20,8 +21,8 @@ function chart(a: Analysis): string {
   const ref = (v: number, label: string) => `
     <line x1="${pad}" x2="${w - pad}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"
           stroke="var(--rule-strong)" stroke-dasharray="3 4" />
-    <text x="${w - pad}" y="${(y(v) - 4).toFixed(1)}" text-anchor="end" font-size="10"
-          fill="var(--ink-tertiary)">${label} ${money(v, 0)}</text>`;
+    <text x="${pad + 2}" y="${(y(v) - 4).toFixed(1)}" font-size="10"
+          fill="var(--ink-tertiary)">${label}</text>`;
 
   return `<figure class="chart">
     <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(a.instrument.symbol)} close, last ${closes.length} sessions">
@@ -85,6 +86,7 @@ function decisions(d: InstrumentDetail): string {
     <span class="stamp" data-stamp="${s.action === "SELL" ? "sell" : s.action === "BUY" ? "buy" : "blocked"}">${s.action}</span>
     <b class="num">${s.entry === null ? "—" : money(s.entry)}</b>
     ${s.qty === null ? "" : `<span class="lbl">${units(s.qty)} units</span>`}
+    <span class="conf-word">${renderConfidence(s.confidence)}<span class="lbl">${confidenceLabel(s.confidence)}</span></span>
     <time class="lbl">${day(s.created_at)} ${clock(s.created_at)}</time>
   </header>
   ${

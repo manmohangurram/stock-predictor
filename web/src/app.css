@@ -377,7 +377,12 @@
 
   .trade-form { border: 1px solid var(--rule-subtle); border-radius: var(--radius); padding: var(--space-3);
     background: var(--paper-raised); display: grid; gap: var(--space-2); }
-  .trade-form .row { display: grid; grid-template-columns: 90px 140px 1fr 1fr 150px auto; gap: var(--space-2); }
+  /* Wraps rather than clipping: six controls do not fit beside a 288px rail at 1280px. */
+  .trade-form .row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .trade-form .row > select { flex: 0 0 auto; }
+  .trade-form .row > input { flex: 1 1 110px; min-width: 0; }
+  .trade-form .row > input[type="date"] { flex: 0 0 150px; }
+  .trade-form .row > button { flex: 0 0 auto; }
   .trade-form select, .trade-form input { padding: var(--space-2); font-family: var(--font-ledger);
     background: var(--paper-inset); color: var(--ink); border: 1px solid var(--rule); border-radius: var(--radius); }
 
@@ -395,7 +400,7 @@
     .strip { gap: var(--space-4); }
     .strip .total { font-size: var(--text-lg); }
     .hide-sm { display: none; }
-    .trade-form .row { grid-template-columns: 1fr 1fr; }
+    .trade-form .row > input { flex: 1 1 100%; }
   }
 }
 
@@ -408,6 +413,24 @@
   .mode-tab[aria-current="page"] { background: var(--paper-raised); border-color: var(--rule);
     color: var(--ink); font-weight: 600; }
   @media (max-width: 900px) {
-    .trade-form .row { grid-template-columns: 1fr 1fr; }
+    .trade-form .row > input { flex: 1 1 100%; }
   }
+}
+
+@layer components {
+  /* Confidence: bars are the signal, colour is reinforcement. */
+  .signal-cell { display: inline-flex; align-items: center; gap: var(--space-2); }
+  .conf { display: inline-flex; align-items: flex-end; gap: 3px; height: 15px; padding-inline: 1px; }
+  .conf i { width: 5px; border-radius: 1px; background: var(--rule-2); display: block; }
+  .conf i[data-on="true"] { background: var(--ink-tertiary); }
+  .conf[data-level="low"] i[data-on="true"] { background: var(--ink-muted); }
+  .conf[data-level="medium"] i[data-on="true"] { background: var(--stamp-amber); }
+  .conf[data-level="high"] i[data-on="true"] { background: var(--stamp-ink); }
+  .conf[data-level="rules"] i { outline: 1px dashed var(--rule-strong); outline-offset: -1px; }
+  .conf i:nth-child(1) { height: 7px; }
+  .conf i:nth-child(2) { height: 11px; }
+  .conf i:nth-child(3) { height: 15px; }
+  .conf-word { display: inline-flex; align-items: center; gap: var(--space-2); margin-left: auto; }
+  .conf-word .lbl { text-transform: uppercase; }
+  .conf-word .lbl { margin: 0; }
 }

@@ -49,6 +49,8 @@ struct Resolved {
     qty: f64,
     reasons: Vec<String>,
     rationale: Option<String>,
+    /// None when the rules produced the signal with no model judgement behind it.
+    confidence: Option<String>,
 }
 
 pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<PollReport> {
@@ -135,6 +137,7 @@ async fn poll_instrument(
             qty: candidate.qty,
             reasons: candidate.reasons.clone(),
             rationale: None,
+            confidence: None,
         };
         return finish(deps, instrument, resolved, &candidate, available, now, report).await;
     }
@@ -151,6 +154,7 @@ async fn poll_instrument(
             qty: candidate.qty,
             reasons: candidate.reasons.clone(),
             rationale: None,
+            confidence: None,
         };
         return finish(deps, instrument, resolved, &candidate, available, now, report).await;
     }
@@ -287,6 +291,7 @@ fn resolve(candidate: &Candidate, outcome: Outcome, now: DateTime<Utc>) -> Optio
             qty: c.qty,
             reasons: c.reasons,
             rationale: None,
+            confidence: None,
         }),
         Outcome::Llm(p) => Some(from_proposal(candidate, &p, valid_until)),
         // An over-budget proposal is NOT re-sized down to something that fits: it is carried
@@ -305,6 +310,7 @@ fn resolve(candidate: &Candidate, outcome: Outcome, now: DateTime<Utc>) -> Optio
             qty: candidate.qty,
             reasons: candidate.reasons.clone(),
             rationale: None,
+            confidence: None,
         }),
         Outcome::Pass { .. } => None,
     }
@@ -320,6 +326,7 @@ fn from_proposal(candidate: &Candidate, p: &Proposal, fallback_until: Option<Str
         qty: candidate.qty,
         reasons: candidate.reasons.clone(),
         rationale: Some(p.rationale.clone()),
+        confidence: Some(p.confidence.as_str().to_string()),
     }
 }
 
@@ -450,8 +457,9 @@ async fn insert_signal(
     })
     .to_string();
     let row: (i64,) = sqlx::query_as(
-        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until, reason_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, confidence)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
     )
     .bind(instrument_id)
     .bind(r.action.as_str())
@@ -462,6 +470,7 @@ async fn insert_signal(
     .bind(&r.valid_until)
     .bind(reason)
     .bind(now.to_rfc3339())
+    .bind(&r.confidence)
     .fetch_one(pool)
     .await?;
     Ok(row.0)
@@ -487,7 +496,8 @@ async fn record_blocked(
     })
     .to_string();
     sqlx::query(
-        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until, reason_json, created_at)
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at)
          VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(instrument.id)

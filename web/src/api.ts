@@ -4,6 +4,7 @@ export interface SignalRow {
   class: "stock" | "mutual_fund" | "ipo";
   action: string;
   qty: number | null;
+  confidence: string | null;
   entry: number | null;
   stop: number | null;
   target: number | null;

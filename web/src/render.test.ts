@@ -281,3 +281,38 @@ describe("settings, second pot", () => {
     expect(html).toContain("never draws on the long-term budget");
   });
 });
+
+describe("confidence", () => {
+  test("shape encodes the level, so colour is never the only signal", async () => {
+    const { renderConfidence } = await import("./components/confidence");
+    const high = renderConfidence("high");
+    expect(high).toContain('data-level="high"');
+    expect(high.match(/data-on="true"/g)?.length).toBe(3);
+    expect(high).toContain('aria-label="Confidence: high"');
+
+    const medium = renderConfidence("medium");
+    expect(medium.match(/data-on="true"/g)?.length).toBe(2);
+
+    const low = renderConfidence("low");
+    expect(low.match(/data-on="true"/g)?.length).toBe(1);
+  });
+
+  test("a rules-only signal is labelled as having no model judgement", async () => {
+    const { renderConfidence, confidenceLabel } = await import("./components/confidence");
+    for (const missing of [null, undefined, "", "certain"]) {
+      const html = renderConfidence(missing as never);
+      expect(html).toContain('data-level="rules"');
+      expect(html).toContain("no model judgement");
+      expect(confidenceLabel(missing as never)).toBe("rules only");
+    }
+  });
+
+  test("the blotter row and the decision card both show it", async () => {
+    const { renderRow } = await import("./pages/ledger");
+    const row = renderRow(
+      dashboard({ positions: [position()], signals: [signal({ confidence: "high" })] }),
+      position(),
+    );
+    expect(row).toContain('aria-label="Confidence: high"');
+  });
+});

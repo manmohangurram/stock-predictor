@@ -505,3 +505,76 @@ async fn new_headlines_earn_a_new_model_call() {
         .unwrap();
     assert!(second.0 > first.0, "a changed headline set must reach the model");
 }
+
+#[tokio::test]
+async fn the_model_confidence_is_stored_and_rules_only_signals_have_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY"]).await;
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+    let c = cfg();
+
+    // A model decision carries its stated confidence through to the stored signal.
+    let decided = serde_json::json!({
+        "choices": [{"message": {"content": serde_json::json!({
+            "action": "decide",
+            "signal": {
+                "action": "BUY", "entry": 103.5, "stop": 100.0, "target": 108.0,
+                "valid_until": "2030-01-01T00:00:00Z", "confidence": "high",
+                "rationale": "guidance raised", "cites": [1]
+            }
+        }).to_string()}}],
+        "usage": {}
+    })
+    .to_string();
+    let transport = FixtureTransport::new(vec![stock_predicter::llm::deepseek::HttpReply {
+        status: 200,
+        body: decided,
+    }]);
+    let deps = EngineDeps {
+        pool: &pool,
+        cfg: &c,
+        market: &market,
+        transport: &transport,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: true,
+    };
+    let report = engine::poll_once(&deps, now()).await.unwrap();
+    assert_eq!(report.signals, 1, "{report:?}");
+    let conf: (Option<String>,) = sqlx::query_as("SELECT confidence FROM signals")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(conf.0.as_deref(), Some("high"));
+
+    // A rules-only signal has no model judgement, so it must be NULL rather than invented.
+    let (_, pool2, _) = (0, {
+        let d2 = tempfile::tempdir().unwrap();
+        let p = db::connect_and_migrate(d2.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        std::mem::forget(d2);
+        p
+    }, 0);
+    seed(&pool2, &["INFY"]).await;
+    let empty = FixtureTransport::new(vec![]);
+    let deps2 = EngineDeps {
+        pool: &pool2,
+        cfg: &c,
+        market: &market,
+        transport: &empty,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: true,
+    };
+    let _ = engine::poll_once(&deps2, now()).await.unwrap();
+    let conf2: (Option<String>,) = sqlx::query_as("SELECT confidence FROM signals")
+        .fetch_one(&pool2)
+        .await
+        .unwrap();
+    assert_eq!(conf2.0, None);
+}

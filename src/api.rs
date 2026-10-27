@@ -140,6 +140,7 @@ pub struct SignalRow {
     pub class: String,
     pub action: String,
     pub qty: Option<f64>,
+    pub confidence: Option<String>,
     pub entry: Option<f64>,
     pub stop: Option<f64>,
     pub target: Option<f64>,
@@ -927,10 +928,23 @@ async fn load_signals(
     } else {
         "s.action <> 'BLOCKED'"
     };
-    let rows: Vec<(i64, String, String, String, Option<f64>, Option<f64>, Option<f64>, Option<f64>, Option<String>, Option<String>, String)> =
+    let rows: Vec<(
+        i64,
+        String,
+        String,
+        String,
+        Option<f64>,
+        Option<f64>,
+        Option<f64>,
+        Option<f64>,
+        Option<String>,
+        Option<String>,
+        String,
+        Option<String>,
+    )> =
         sqlx::query_as(&format!(
             "SELECT s.id, i.symbol, i.class, s.action, s.qty, s.entry, s.stop, s.target,
-                    s.valid_until, s.reason_json, s.created_at
+                    s.valid_until, s.reason_json, s.created_at, s.confidence
              FROM signals s JOIN instruments i ON i.id = s.instrument_id
              WHERE {predicate} AND s.mode = ? ORDER BY s.id DESC LIMIT 50"
         ))
@@ -962,6 +976,7 @@ async fn load_signals(
                 class: class.as_str().to_string(),
                 action: r.3,
                 qty: r.4,
+                confidence: r.11,
                 entry: r.5,
                 stop: r.6,
                 target: r.7,

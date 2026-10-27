@@ -338,3 +338,20 @@ from the rules candidate and every window from the same fetch, so live prompts a
 but this is worth remembering when hand-writing a prompt context.
 
 Also capped prose: rationale under 60 words, `pass.why` one sentence.
+
+## Confidence is stored and shown
+
+The model's `confidence` was parsed and then dropped on the floor: `insert_signal` had a
+10-value bind list against a 9-column INSERT, and sqlx silently ignored the extra value, so
+every row landed with NULL. Migration 0005 adds the column; the engine now writes it, and
+`confidence` is NULL for rules-only signals — deliberately, because "no model judgement" is not
+the same as "low confidence" and inventing a level would be a lie.
+
+UI: three bars, filled one/two/three for low/medium/high, hollow-and-dashed for rules-only.
+Shape carries the level and colour only reinforces it, so it survives colour blindness, and
+every instance has an `aria-label` (`Confidence: high`, `Confidence: rules only, no model
+judgement`). Shown in the blotter row and, with words, on the decision card.
+
+Two layout defects fixed while looking at it: the chart repeated SMA50/SMA200 as labels that
+collided with the same numbers in the rail (labels moved inside the plot, one copy only), and
+the trade form's six controls were clipped under the rail at 1280px (now wraps).

@@ -1,5 +1,6 @@
 import type { Dashboard, Mode, Trade } from "../api";
 import { escapeHtml, histDate, money, units } from "../format";
+import { renderConfidence } from "../components/confidence";
 import { stamp } from "../components/stamp";
 
 /** The portfolio strip: the four numbers that decide whether anything is affordable. */
@@ -40,7 +41,7 @@ export function renderRow(d: Dashboard, p: Dashboard["positions"][number]): stri
   const ltp = p.ltp ?? p.avg_cost;
   const value = p.value ?? p.qty * p.avg_cost;
   const signal = s
-    ? stamp(s.action === "SELL" ? "sell" : "buy", s.action)
+    ? `<span class="signal-cell">${stamp(s.action === "SELL" ? "sell" : "buy", s.action)}${renderConfidence(s.confidence)}</span>`
     : `<span class="muted">—</span>`;
   return `<tr class="row" data-symbol="${escapeHtml(p.symbol)}" tabindex="0" role="link"
       aria-label="${escapeHtml(p.symbol)}, open details">

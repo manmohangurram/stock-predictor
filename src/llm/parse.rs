@@ -11,6 +11,16 @@ pub enum Confidence {
     High,
 }
 
+impl Confidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Confidence::Low => "low",
+            Confidence::Medium => "medium",
+            Confidence::High => "high",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct HeadlineRequest {
     /// The prompt shows headlines as `[id] title` and older prompts asked for `"id"`, so both
