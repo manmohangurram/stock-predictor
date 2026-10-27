@@ -67,6 +67,10 @@ pub fn router(state: AppState) -> Router {
             get(instrument_trades).post(record_trade),
         )
         .route("/api/search", get(search_instruments))
+        .route(
+            "/api/instruments/{symbol}/refresh",
+            post(refresh_instrument),
+        )
         .route("/api/instruments/{symbol}/analysis", get(analysis))
         .route("/api/calls", get(calls))
         .route("/api/positions", post(post_position))
@@ -808,6 +812,28 @@ async fn record_trade(
         "cash": s.available,
         "realised": crate::trades::realised_total(&st.pool).await?,
     })))
+}
+
+/// Fetch prices and headlines for one instrument on demand — for instruments added before the
+/// add-time fetch existed, or simply to pull the latest without waiting for a poll tick.
+async fn refresh_instrument(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let row: Option<(i64, String)> =
+        sqlx::query_as("SELECT id, class FROM instruments WHERE symbol = ?")
+            .bind(&symbol)
+            .fetch_optional(&st.pool)
+            .await?;
+    let (id, class) = row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
+
+    let market = crate::market::YahooSource::new()?;
+    let (bars, news) = crate::store::refresh(&st.pool, id, &symbol, &market)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("{symbol} ({class}): {e}")))?;
+    Ok(Json(
+        serde_json::json!({ "bars": bars, "headlines": news }),
+    ))
 }
 
 async fn instrument_trades(

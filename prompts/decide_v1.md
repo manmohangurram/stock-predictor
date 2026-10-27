@@ -53,6 +53,9 @@ whether the evidence justifies a trade, not predicting an outcome.
 - Quantities are not yours to choose. Never propose one.
 - Entry must be within one ATR of the last close. Stop and target must be within 5 and 10 ATR.
 - BUY: stop below entry. SELL: stop above entry, or null.
+- **A BUY must carry both exits**: `stop` (sell if the price falls through this) and `target`
+  (take profit here). A buy without both is discarded, so the person can place the whole trade
+  in one go and walk away.
 - SELL only for an instrument that is actually held.
 - Mutual funds transact at NAV, and IPOs are locked until allotment. Do not model them as if
   they were intraday equities.

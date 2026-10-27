@@ -25,6 +25,7 @@ fn ctx<'a>(sent: &'a [i64]) -> ValidateCtx<'a> {
         qty: 95.0,
         held_qty: 0.0,
         sent_headline_ids: sent,
+        requires_exit: true,
         now: Utc::now(),
     }
 }
@@ -96,4 +97,24 @@ fn parsed_shapes_round_trip_and_truncated_json_is_an_error() {
     assert!(verdict(r#"{"action":"decide","signal":{"action":"BU"#).is_err());
     assert!(verdict(r#"{"action":"need_more","requests":[{"headline_id":2,"why":"margin"}]}"#).is_ok());
     assert!(verdict(r#"{"action":"pass","why":"nothing"}"#).is_ok());
+}
+
+#[test]
+fn a_buy_without_a_take_profit_target_is_rejected() {
+    let p = proposal(Action::Buy, 105.0, Some(101.0), None);
+    assert_eq!(check(&p, &ctx(&[1])), Err(ValidationError::MissingExit));
+}
+
+#[test]
+fn a_buy_without_a_stop_is_rejected() {
+    let p = proposal(Action::Buy, 105.0, None, Some(111.0));
+    assert_eq!(check(&p, &ctx(&[1])), Err(ValidationError::MissingExit));
+}
+
+#[test]
+fn a_fund_is_not_required_to_carry_an_exit_price() {
+    let p = proposal(Action::Buy, 105.0, None, None);
+    let mut c = ctx(&[1]);
+    c.requires_exit = false;
+    assert_eq!(check(&p, &c), Ok(()));
 }

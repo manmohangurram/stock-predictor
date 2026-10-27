@@ -79,3 +79,19 @@ async fn non_ascii_titles_do_not_break_the_header() {
     // the header encoder is exercised by Ntfy::send; here we assert the copy is as designed
     assert!(n.body.contains("stop 1412.00 hit"));
 }
+
+#[test]
+fn a_buy_notification_carries_the_whole_exit_plan() {
+    let c = candidate(Action::Buy, false);
+    let n = Notification::from_candidate("INFY", "INR", &c).unwrap();
+    assert!(n.body.contains("sell if ≤ 1412.00"), "{}", n.body);
+    assert!(n.body.contains("take profit ≥ 1510.00"), "{}", n.body);
+    assert!(n.title.contains("limit 1405.20"), "{}", n.title);
+}
+
+#[test]
+fn a_sell_notification_still_names_the_trigger() {
+    let c = candidate(Action::Sell, true);
+    let n = Notification::from_candidate("INFY", "INR", &c).unwrap();
+    assert!(n.body.contains("stop 1412.00 hit"), "{}", n.body);
+}

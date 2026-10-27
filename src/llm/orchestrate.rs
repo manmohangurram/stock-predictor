@@ -244,6 +244,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 qty: input.candidate.qty,
                 held_qty: input.held_qty,
                 sent_headline_ids: &sent_ids,
+                requires_exit: input.instrument.class == crate::models::AssetClass::Stock,
                 now: input.now,
             };
             match validate::check(&p, &ctx) {

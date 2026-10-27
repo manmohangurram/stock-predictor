@@ -276,3 +276,14 @@ Observed while verifying: `TCS.NS` returns **zero** headlines from Yahoo for eve
 ("TCS", "TCS.NS", "Tata Consultancy Services"), while "Infosys" returns five. So headline
 coverage is a property of Yahoo's feed, not of our query. Recorded because it is the weakest
 link in the chain and the next thing to fix.
+
+## Exit plan is mandatory on every buy
+
+- Prompt (both templates): "A BUY must carry both exits — stop (sell if it falls through) and
+  target (take profit). A buy without both is discarded, so the person can place the trade in
+  one go and walk away."
+- Validator: new `MissingExit` for exchange-traded instruments. Funds and IPOs are exempt
+  (`requires_exit = false`) because they cannot be exited at a price.
+- Notification copy now carries the plan: "sell if ≤ 1412.00 · take profit ≥ 1510.00", so the
+  alert alone is enough to place both legs.
+- Signal card in the UI shows the two exits side by side under the decision.

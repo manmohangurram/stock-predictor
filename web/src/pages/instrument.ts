@@ -83,6 +83,14 @@ function decisions(d: InstrumentDetail): string {
     ${s.qty === null ? "" : `<span class="lbl">${units(s.qty)} units</span>`}
     <time class="lbl">${day(s.created_at)} ${clock(s.created_at)}</time>
   </header>
+  ${
+    s.action === "BUY" && (s.stop !== null || s.target !== null)
+      ? `<div class="exit-plan">
+          ${s.stop === null ? "" : `<div><span class="lbl">Sell if it falls to</span><b class="num down">≤ ${money(s.stop)}</b></div>`}
+          ${s.target === null ? "" : `<div><span class="lbl">Take profit at</span><b class="num up">≥ ${money(s.target)}</b></div>`}
+        </div>`
+      : ""
+  }
   ${s.rationale ? `<p class="why">${escapeHtml(s.rationale)}</p>` : ""}
   ${s.reasons.length ? `<ul>${s.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul>` : ""}
   <footer>

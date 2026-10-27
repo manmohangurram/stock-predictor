@@ -369,6 +369,10 @@
   .decision header time { margin-left: auto; }
   .decision .why { margin: var(--space-2) 0 0; max-width: 62ch; color: var(--ink-secondary); }
   .decision ul { margin: var(--space-2) 0 0; padding-inline-start: var(--space-4); color: var(--ink-tertiary); font-size: var(--text-sm); }
+  .exit-plan { display: flex; gap: var(--space-6); margin-top: var(--space-2);
+    padding: var(--space-2); background: var(--paper-inset); border-radius: var(--radius); }
+  .exit-plan > div { display: grid; gap: 1px; }
+  .exit-plan b { font-size: var(--text-md); }
   .decision footer { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--ink-tertiary); font-family: var(--font-ledger); }
 
   .trade-form { border: 1px solid var(--rule-subtle); border-radius: var(--radius); padding: var(--space-3);

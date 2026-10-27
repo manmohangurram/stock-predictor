@@ -47,7 +47,7 @@ impl Notification {
                 Priority::High,
             ),
             Action::Buy => (
-                format!("BUY · {symbol} {:.3} units · limit {:.2}", c.qty, c.entry),
+                format!("BUY · {symbol} {} units · limit {:.2}", fmt_qty(c.qty), c.entry),
                 Priority::Default,
             ),
             _ => unreachable!(),
@@ -60,11 +60,20 @@ impl Notification {
                     .unwrap_or_default();
                 format!("{stop}now {:.2} · {}", c.entry, c.timing_note)
             }
-            _ => format!(
-                "cost {:.2} {currency} · {}",
-                c.qty * c.entry,
-                c.timing_note
-            ),
+            _ => {
+                // A buy is only actionable if it says where to get out on both sides.
+                let exits = match (c.stop, c.target) {
+                    (Some(s), Some(t)) => {
+                        format!("sell if ≤ {s:.2} · take profit ≥ {t:.2} · ")
+                    }
+                    _ => String::new(),
+                };
+                format!(
+                    "cost {:.2} {currency} · {exits}{}",
+                    c.qty * c.entry,
+                    c.timing_note
+                )
+            }
         };
         Some(Self {
             title,
@@ -73,6 +82,14 @@ impl Notification {
             dedupe_key: dedupe_key(symbol, c),
             signal_id: None,
         })
+    }
+}
+
+fn fmt_qty(q: f64) -> String {
+    if (q - q.round()).abs() < 1e-9 {
+        format!("{q:.0}")
+    } else {
+        format!("{q:.3}")
     }
 }
 

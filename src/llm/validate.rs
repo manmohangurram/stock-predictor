@@ -28,6 +28,8 @@ pub enum ValidationError {
     UnknownHeadlineId,
     #[error("a decision must cite at least one headline")]
     MissingCitation,
+    #[error("a buy must carry both an exit stop and a take-profit target")]
+    MissingExit,
 }
 
 pub struct ValidateCtx<'a> {
@@ -38,6 +40,9 @@ pub struct ValidateCtx<'a> {
     pub qty: f64,
     pub held_qty: f64,
     pub sent_headline_ids: &'a [i64],
+    /// True when this instrument can actually be exited at a price (stocks). Funds and IPOs
+    /// cannot, so requiring an exit from them would be nonsense.
+    pub requires_exit: bool,
     pub now: DateTime<Utc>,
 }
 
@@ -48,6 +53,9 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
 
     match p.action {
         Action::Buy => {
+            if ctx.requires_exit && (p.stop.is_none() || p.target.is_none()) {
+                return Err(ValidationError::MissingExit);
+            }
             if let Some(stop) = p.stop {
                 if !(stop < p.entry) {
                     return Err(ValidationError::StopOnWrongSide);
