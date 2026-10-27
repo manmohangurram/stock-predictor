@@ -160,9 +160,8 @@ async fn full_cycle_signals_once_then_stays_quiet() {
     assert_eq!(endpoints, vec!["chat", "fetch", "chat"]);
     assert_eq!(notifier.count(), 1);
 
-    // Second tick: identical market data. The model is asked again (it is consulted every
-    // tick now), fails here because the fixture queue is empty, and the rules must not
-    // overwrite the model's standing decision — only its entry price refreshes.
+    // Second tick: identical market data, so the price gate skips the call entirely and the
+    // standing decision is left alone.
     let poll2 = FixtureTransport::new(vec![]);
     let deps2 = EngineDeps {
         pool: &pool,
@@ -176,7 +175,7 @@ async fn full_cycle_signals_once_then_stays_quiet() {
     let r2 = engine::poll_once(&deps2, now()).await.unwrap();
     assert_eq!(r2.signals, 0, "no new row for a price refresh");
     assert_eq!(r2.notifications, 0);
-    assert_eq!(poll2.calls(), 1, "the model is consulted every tick");
+    assert_eq!(poll2.calls(), 0, "price did not move: no model call");
 
     let (n, entry): (i64, f64) = sqlx::query_as("SELECT COUNT(*), MAX(entry) FROM signals")
         .fetch_one(&pool)
@@ -189,7 +188,7 @@ async fn full_cycle_signals_once_then_stays_quiet() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert!(calls.0 >= 4, "the failed call is audited too: {}", calls.0);
+    assert_eq!(calls.0, 3, "no new audit rows on a gated tick");
     assert_eq!(notifier.count(), 1);
 }
 

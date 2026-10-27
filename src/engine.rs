@@ -164,7 +164,37 @@ async fn poll_instrument(
     // The model is paid for judgement about news, so news is what re-triggers it. Prices can
     // move all day without another call; the rules refresh them.
     let headline_fp = crate::llm::memo::fingerprint(&news);
-    let _ = headline_fp;
+    let headlines_changed = !crate::llm::memo::unchanged(deps.pool, instrument.id, &headline_fp)
+        .await
+        .unwrap_or(true);
+
+    // Do not spend a call on a price that has not moved, but never leave a stock unwatched
+    // for more than the gate's interval.
+    if !deps.force {
+        let gate = crate::llm::memo::CallGate {
+            min_move: deps.cfg.llm_min_price_move,
+            max_interval_secs: deps.cfg.llm_max_silence_secs,
+        };
+        if !crate::llm::memo::should_call(
+            deps.pool,
+            instrument.id,
+            candidate.entry,
+            now,
+            gate,
+            headlines_changed,
+        )
+        .await?
+        {
+            report.notes.push(format!(
+                "{}: price moved less than {:.2} and no new headlines — model not asked",
+                instrument.symbol, gate.min_move
+            ));
+            // The decision stands, but its price should not age: refresh the entry only.
+            let _ = reuse_model_signal(deps.pool, instrument.id, candidate.entry, ind.atr14, now)
+                .await?;
+            return Ok(());
+        }
+    }
 
     // No key configured means no model layer at all — not a failed call on every tick.
     let llm_available = crate::rules::settings::deepseek_key(deps.pool).await?.is_some();
@@ -217,6 +247,10 @@ async fn poll_instrument(
     if !matches!(decision.outcome, Outcome::Rules(_)) {
         crate::llm::memo::remember(deps.pool, instrument.id, &headline_fp).await?;
     }
+
+    // Recorded whatever the answer was, so a failing key cannot loop on every tick.
+    crate::llm::memo::record_call(deps.pool, instrument.id, candidate.entry, now, &headline_fp)
+        .await?;
 
     let Some(resolved) = resolve(&candidate, decision.outcome, now) else {
         return Ok(());

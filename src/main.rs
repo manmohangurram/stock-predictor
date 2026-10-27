@@ -103,13 +103,8 @@ async fn main() -> Result<()> {
     let poll_cfg = cfg.clone();
     let poll_pool = pool.clone();
     tokio::spawn(async move {
-        let mut tick = tokio::time::interval(Duration::from_secs(poll_cfg.poll_secs.max(30)));
         loop {
-            tick.tick().await;
             let now = Utc::now();
-            if !(schedule::in_stock_window(now) || schedule::is_daily_pass(now)) {
-                continue;
-            }
             // The key can be changed from the UI at runtime, so it is read per tick.
             let key = settings::deepseek_key(&poll_pool)
                 .await
@@ -140,6 +135,14 @@ async fn main() -> Result<()> {
                 Ok(r) => tracing::info!(?r, "poll complete"),
                 Err(e) => tracing::error!(error = %e, "poll failed"),
             }
+
+            // 15 minutes while the market is open, two hours otherwise.
+            let secs = if schedule::in_stock_window(Utc::now()) {
+                poll_cfg.poll_secs
+            } else {
+                poll_cfg.off_hours_secs
+            };
+            tokio::time::sleep(Duration::from_secs(secs.max(60))).await;
         }
     });
 

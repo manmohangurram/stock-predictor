@@ -337,8 +337,11 @@ fn market_window_respects_ist_hours_and_skips_weekends() {
     assert!(schedule::in_stock_window(
         Utc.with_ymd_and_hms(2026, 10, 27, 10, 0, 0).unwrap() // 15:30 IST
     ));
+    assert!(schedule::in_stock_window(
+        Utc.with_ymd_and_hms(2026, 10, 27, 10, 30, 0).unwrap() // 16:00 IST, the close
+    ));
     assert!(!schedule::in_stock_window(
-        Utc.with_ymd_and_hms(2026, 10, 27, 10, 30, 0).unwrap() // 16:00 IST
+        Utc.with_ymd_and_hms(2026, 10, 27, 10, 31, 0).unwrap() // 16:01 IST
     ));
     assert!(!schedule::in_stock_window(
         Utc.with_ymd_and_hms(2026, 10, 31, 4, 0, 0).unwrap() // Saturday
@@ -459,8 +462,8 @@ async fn a_failed_model_call_does_not_overwrite_the_standing_decision() {
     assert_eq!(second.signals, 0, "{second:?}");
     assert_eq!(
         second_transport.calls(),
-        1,
-        "the model is consulted every tick now, even with nothing new"
+        0,
+        "same price inside the hour: the gate skips the call"
     );
 
     let rows: (i64, f64, Option<f64>) =
@@ -581,4 +584,46 @@ async fn the_model_confidence_is_stored_and_rules_only_signals_have_none() {
         .await
         .unwrap();
     assert_eq!(conf2.0, None);
+}
+
+#[tokio::test]
+async fn the_call_gate_skips_small_moves_but_never_silences_for_more_than_an_hour() {
+    use stock_predicter::llm::memo::{self, CallGate};
+
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY"]).await;
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'INFY'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let gate = CallGate::default();
+    let t0 = now();
+
+    // Never asked: ask.
+    assert!(memo::should_call(&pool, id.0, 100.0, t0, gate, false).await.unwrap());
+
+    memo::record_call(&pool, id.0, 100.0, t0, "fp-a").await.unwrap();
+
+    // 1.99 later, still inside the hour: not worth a call.
+    assert!(!memo::should_call(&pool, id.0, 101.99, t0 + chrono::Duration::minutes(10), gate, false)
+        .await
+        .unwrap());
+    // Exactly the threshold: worth it.
+    assert!(memo::should_call(&pool, id.0, 102.0, t0 + chrono::Duration::minutes(10), gate, false)
+        .await
+        .unwrap());
+    // A fall of the same size counts as a move.
+    assert!(memo::should_call(&pool, id.0, 98.0, t0 + chrono::Duration::minutes(10), gate, false)
+        .await
+        .unwrap());
+    // Nothing moved, but an hour has passed: ask anyway.
+    assert!(memo::should_call(&pool, id.0, 100.0, t0 + chrono::Duration::minutes(59), gate, false)
+        .await
+        .unwrap() == false);
+    assert!(memo::should_call(&pool, id.0, 100.0, t0 + chrono::Duration::minutes(60), gate, false)
+        .await
+        .unwrap());
 }

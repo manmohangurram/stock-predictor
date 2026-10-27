@@ -10,7 +10,18 @@ pub fn in_stock_window(now: DateTime<Utc>) -> bool {
         return false;
     }
     let mins = ist.hour() * 60 + ist.minute();
-    (9 * 60 + 10..=15 * 60 + 35).contains(&mins)
+    // The session is 09:15–15:30; the wider 09:00–16:00 window picks up the open and the close.
+    (9 * 60..=16 * 60).contains(&mins)
+}
+
+/// Outside the session the only thing that changes is news, so a pass every two hours is
+/// enough to have a decision ready for the next open.
+pub fn off_hours_interval(now: DateTime<Utc>) -> u64 {
+    if in_stock_window(now) {
+        0 // caller uses its own in-session cadence
+    } else {
+        7_200
+    }
 }
 
 /// One pass a day for AMFI NAV and IPO status, after the Indian evening.

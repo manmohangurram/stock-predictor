@@ -22,7 +22,11 @@ fn config_defaults_poll_and_cap() {
     assert_eq!(cfg.seed_budget, 200_000.0);
     assert_eq!(cfg.seed_currency, "INR");
     assert_eq!(cfg.poll_secs, 900);
-    assert_eq!(cfg.llm_daily_cap, 50);
+    // The call gate: a 2-unit move, an hourly floor, and a two-hour off-hours cadence.
+    assert_eq!(cfg.llm_min_price_move, 2.0);
+    assert_eq!(cfg.llm_max_silence_secs, 3600);
+    assert_eq!(cfg.off_hours_secs, 7200);
+    assert_eq!(cfg.llm_daily_cap, 200);
 }
 
 #[test]

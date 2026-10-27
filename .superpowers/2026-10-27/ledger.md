@@ -386,3 +386,21 @@ removed, because an empty gauge reads as "scored zero", which is a different and
 Verified live: with 15% set, DeepSeek's answer read "the 15% target (441.66) is far above a
 falling price; exit near cost rather than hold a losing knife" — it used the number we injected
 rather than inventing one.
+
+## Call gate and market-hours cadence
+
+- **Per-instrument gate** (`llm_memos.last_price`, `last_call_at`): the model is skipped when the
+  price moved less than `LLM_MIN_PRICE_MOVE` (default ₹2) AND the headline set is unchanged AND
+  a call has happened within `LLM_MAX_SILENCE_SECS` (default 1 hour). Any one of the three
+  overrides: a ₹2 move, a new headline, or an hour of silence.
+- The gate refreshes the standing signal's entry price without a model call, so the decision's
+  price does not age while its reasoning is left alone.
+- Attempts are recorded whether they succeed or fail, so a broken key cannot loop every tick.
+- Cadence: 15 minutes inside 09:00–16:00 IST, **2 hours outside it** (`OFF_HOURS_SECS`), so
+  evening headlines still produce a decision for the next open. The old 19:00 daily pass is
+  subsumed by the off-hours cadence.
+- Default `LLM_DAILY_CAP` raised 50 → 200, since the gate now runs per instrument per tick.
+
+Ruling found by an existing test: the price gate initially also suppressed calls when headlines
+had changed, which is exactly the wrong time to stay quiet. Headline change is now an override,
+not something the gate has to consider separately.

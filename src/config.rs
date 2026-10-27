@@ -13,6 +13,12 @@ pub struct Config {
     pub seed_currency: String,
     pub poll_secs: u64,
     pub llm_daily_cap: u32,
+    /// Skip a model call unless the price moved at least this much...
+    pub llm_min_price_move: f64,
+    /// ...or this long has passed since the last one.
+    pub llm_max_silence_secs: i64,
+    /// Poll cadence outside market hours, which only exists to pick up headlines.
+    pub off_hours_secs: u64,
     pub ntfy_url: String,
     pub ntfy_topic: String,
     pub deepseek_key: String,
@@ -37,7 +43,10 @@ impl Config {
             seed_budget: num("BUDGET", 0.0)?,
             seed_currency: get("CURRENCY").unwrap_or("INR").to_string(),
             poll_secs: num("POLL_SECS", 900.0)? as u64,
-            llm_daily_cap: num("LLM_DAILY_CAP", 50.0)? as u32,
+            llm_daily_cap: num("LLM_DAILY_CAP", 200.0)? as u32,
+            llm_min_price_move: num("LLM_MIN_PRICE_MOVE", 2.0)?,
+            llm_max_silence_secs: num("LLM_MAX_SILENCE_SECS", 3600.0)? as i64,
+            off_hours_secs: num("OFF_HOURS_SECS", 7200.0)? as u64,
             ntfy_url: get("NTFY_BASE_URL").unwrap_or("https://ntfy.sh").to_string(),
             ntfy_topic: get("NTFY_TOPIC").unwrap_or_default().to_string(),
             deepseek_key: get("DEEPSEEK_API_KEY").unwrap_or_default().to_string(),
