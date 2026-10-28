@@ -1,0 +1,1126 @@
+use std::sync::Arc;
+
+use axum::extract::{Path, Query, State};
+use axum::http::header::{ETAG, IF_NONE_MATCH};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, patch, post, put};
+use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
+
+use crate::config::Config;
+use crate::models::AssetClass;
+use crate::models::Bar;
+use crate::rules::budget::{self, CashKind, NewCashEntry};
+use crate::rules::evaluate::{self, CandidateInput, RuleConfig};
+use crate::rules::indicators;
+use crate::rules::settings::{self, SettingsError, SettingsPatch};
+
+type AmfiCache = Arc<tokio::sync::Mutex<Option<(chrono::DateTime<chrono::Utc>, String)>>>;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: SqlitePool,
+    pub cfg: Config,
+    /// AMFI's scheme file is ~3 MB; it is fetched at most every few hours, not per keystroke.
+    amfi: AmfiCache,
+}
+
+impl AppState {
+    pub fn new(pool: SqlitePool, cfg: Config) -> Self {
+        Self {
+            pool,
+            cfg,
+            amfi: Arc::new(tokio::sync::Mutex::new(None)),
+        }
+    }
+
+    async fn amfi_text(&self) -> Option<String> {
+        let mut guard = self.amfi.lock().await;
+        if let Some((at, text)) = guard.as_ref() {
+            if (chrono::Utc::now() - *at) < chrono::Duration::hours(6) {
+                return Some(text.clone());
+            }
+        }
+        let client = crate::market::yahoo::client().ok()?;
+        match crate::market::amfi::fetch_nav_all(&client).await {
+            Ok(text) => {
+                *guard = Some((chrono::Utc::now(), text.clone()));
+                Some(text)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "AMFI unavailable");
+                None
+            }
+        }
+    }
+}
+
+pub fn router(state: AppState) -> Router {
+    Router::new()
+        .route("/api/health", get(health))
+        .route("/api/dashboard", get(dashboard))
+        .route("/api/settings", get(get_settings).put(put_settings))
+        .route("/api/instruments", post(add_instrument))
+        .route("/api/instruments/{symbol}", get(instrument_detail))
+        .route("/api/trades", get(all_trades))
+        .route(
+            "/api/instruments/{symbol}/trades",
+            get(instrument_trades).post(record_trade),
+        )
+        .route("/api/search", get(search_instruments))
+        .route(
+            "/api/instruments/{symbol}/refresh",
+            post(refresh_instrument),
+        )
+        .route(
+            "/api/instruments/{symbol}/target-profit",
+            put(set_target_profit),
+        )
+        .route("/api/instruments/{symbol}/analysis", get(analysis))
+        .route("/api/calls", get(calls))
+        .route("/api/positions", post(post_position))
+        .route("/api/positions/{id}", patch(patch_position))
+        .route("/api/ipo", post(post_ipo))
+        .with_state(state)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ApiError {
+    #[error("{0}")]
+    NotFound(String),
+    #[error("{0}")]
+    BadRequest(String),
+    #[error("committed is {committed}")]
+    BelowCommitted { committed: f64 },
+    #[error("currency is fixed once the ledger has entries")]
+    CurrencyLocked,
+    #[error("internal error")]
+    Internal,
+}
+
+impl From<anyhow::Error> for ApiError {
+    fn from(e: anyhow::Error) -> Self {
+        tracing::error!(error = %e, "api error");
+        ApiError::Internal
+    }
+}
+
+impl From<sqlx::Error> for ApiError {
+    fn from(e: sqlx::Error) -> Self {
+        tracing::error!(error = %e, "sqlx error");
+        ApiError::Internal
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let (status, body) = match &self {
+            ApiError::NotFound(m) => (StatusCode::NOT_FOUND, serde_json::json!({"error": m})),
+            ApiError::BadRequest(m) => (StatusCode::BAD_REQUEST, serde_json::json!({"error": m})),
+            ApiError::BelowCommitted { committed } => (
+                StatusCode::CONFLICT,
+                serde_json::json!({"error": "below_committed", "committed": committed}),
+            ),
+            ApiError::CurrencyLocked => (
+                StatusCode::CONFLICT,
+                serde_json::json!({"error": "currency_locked"}),
+            ),
+            ApiError::Internal => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::json!({"error": "internal"}),
+            ),
+        };
+        (status, Json(body)).into_response()
+    }
+}
+
+async fn health() -> Json<serde_json::Value> {
+    Json(serde_json::json!({"ok": true}))
+}
+
+/// Mirrors the joined query one-to-one, so a column order mistake is a compile error rather
+/// than a TEXT-decoded-as-REAL at runtime. Two such bugs already shipped from positional tuples.
+#[derive(sqlx::FromRow)]
+struct SignalDbRow {
+    id: i64,
+    symbol: String,
+    class: String,
+    action: String,
+    qty: Option<f64>,
+    confidence: Option<String>,
+    entry: Option<f64>,
+    stop: Option<f64>,
+    target: Option<f64>,
+    valid_until: Option<String>,
+    reason_json: Option<String>,
+    created_at: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct PositionDbRow {
+    id: i64,
+    symbol: String,
+    class: String,
+    qty: f64,
+    avg_cost: f64,
+    ltp: Option<f64>,
+    stop: Option<f64>,
+    target: Option<f64>,
+    state: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SignalRow {
+    pub id: i64,
+    pub symbol: String,
+    pub class: String,
+    pub action: String,
+    pub qty: Option<f64>,
+    pub confidence: Option<String>,
+    pub entry: Option<f64>,
+    pub stop: Option<f64>,
+    pub target: Option<f64>,
+    pub valid_until: Option<String>,
+    pub timing_note: String,
+    pub reasons: Vec<String>,
+    pub rationale: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PositionRow {
+    pub id: i64,
+    pub symbol: String,
+    pub class: String,
+    pub qty: f64,
+    pub avg_cost: f64,
+    pub ltp: Option<f64>,
+    pub value: Option<f64>,
+    pub stop: Option<f64>,
+    pub target: Option<f64>,
+    pub state: String,
+    pub timing_note: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Dashboard {
+    pub currency: String,
+    pub budget: f64,
+    pub committed: f64,
+    pub available: f64,
+    pub realised: f64,
+    pub mode: String,
+    pub currency_locked: bool,
+    pub positions: Vec<PositionRow>,
+    pub signals: Vec<SignalRow>,
+    pub blocked: Vec<SignalRow>,
+    /// The rail's recent fills: one request per page instead of two.
+    pub recent_trades: Vec<crate::trades::Trade>,
+}
+
+/// Cheap version tag for the dashboard: max signal id, trade id, position count, settings
+/// count. A minute-by-minute poll that finds nothing new costs a 304 with no body.
+async fn dashboard_etag(pool: &SqlitePool, mode: crate::models::Mode) -> Result<String, ApiError> {
+    let row: (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT COALESCE(MAX(id),0) FROM signals WHERE mode = ?),
+                (SELECT COALESCE(MAX(id),0) FROM trades WHERE mode = ?),
+                (SELECT COUNT(*) FROM positions WHERE mode = ?),
+                (SELECT COUNT(*) FROM settings)",
+    )
+    .bind(mode.as_str())
+    .bind(mode.as_str())
+    .bind(mode.as_str())
+    .fetch_one(pool)
+    .await?;
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(format!("{}-{}-{}-{}-{}", row.0, row.1, row.2, row.3, mode.as_str()).as_bytes());
+    Ok(format!("\"{:x}\"", h.finalize()))
+}
+
+async fn dashboard(
+    State(st): State<AppState>,
+    Query(q): Query<ModeQuery>,
+    headers: HeaderMap,
+) -> Result<axum::response::Response, ApiError> {
+    let mode = mode_of(&q.mode)?;
+    let s = settings::get(&st.pool).await?;
+    let budget = budget::budget_total_in(&st.pool, mode).await?;
+    let committed = budget::committed_in(&st.pool, mode).await?;
+    let positions = load_positions(&st.pool, mode).await?;
+    let signals = load_signals(&st.pool, false, mode).await?;
+    let blocked = load_signals(&st.pool, true, mode).await?;
+    let etag = dashboard_etag(&st.pool, mode).await?;
+    if headers
+        .get(IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v == etag)
+    {
+        return Ok((StatusCode::NOT_MODIFIED, [(ETAG, etag)]).into_response());
+    }
+
+    let body = Json(Dashboard {
+        currency: s.currency,
+        mode: mode.as_str().to_string(),
+        budget,
+        committed,
+        realised: crate::trades::realised_in(&st.pool, mode).await?,
+        available: budget - committed,
+        currency_locked: s.currency_locked,
+        positions,
+        signals,
+        blocked,
+        recent_trades: crate::trades::history(&st.pool, None, 20).await?,
+    });
+    Ok(([(ETAG, etag)], body).into_response())
+}
+
+async fn get_settings(State(st): State<AppState>) -> Result<Json<settings::Settings>, ApiError> {
+    Ok(Json(settings::get(&st.pool).await?))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PutSettings {
+    pub budget: Option<f64>,
+    pub currency: Option<String>,
+    pub deepseek_key: Option<String>,
+    pub trading_budget: Option<f64>,
+}
+
+async fn put_settings(
+    State(st): State<AppState>,
+    Json(body): Json<PutSettings>,
+) -> Result<Json<settings::Settings>, ApiError> {
+    settings::set(
+        &st.pool,
+        SettingsPatch {
+            budget: body.budget,
+            currency: body.currency,
+            deepseek_key: body.deepseek_key,
+            trading_budget: body.trading_budget,
+        },
+    )
+    .await
+    .map_err(|e| match e {
+        SettingsError::BelowCommitted { committed } => ApiError::BelowCommitted { committed },
+        SettingsError::CurrencyLocked => ApiError::CurrencyLocked,
+        SettingsError::InvalidAmount => ApiError::BadRequest("invalid amount".into()),
+    })?;
+    Ok(Json(settings::get(&st.pool).await?))
+}
+
+#[derive(Debug, Serialize)]
+pub struct InstrumentDetail {
+    pub instrument: InstrumentRow,
+    pub headlines: Vec<HeadlineRow>,
+    pub signals: Vec<SignalRow>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InstrumentRow {
+    pub id: i64,
+    pub symbol: String,
+    pub class: String,
+    pub name: String,
+    pub currency: String,
+    pub timing_note: String,
+    /// The owner's expected profit, in percent. Decisions must reach it.
+    pub target_profit_pct: Option<f64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HeadlineRow {
+    pub id: i64,
+    pub title: String,
+    pub publisher: Option<String>,
+    pub published_at: String,
+    pub url: String,
+}
+
+async fn instrument_detail(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<InstrumentDetail>, ApiError> {
+    let row: Option<(i64, String, String, String, String, Option<f64>)> = sqlx::query_as(
+        "SELECT id, symbol, class, name, currency, target_profit_pct
+         FROM instruments WHERE symbol = ?",
+    )
+    .bind(&symbol)
+    .fetch_optional(&st.pool)
+    .await?;
+    let (id, symbol, class, name, currency, target_profit_pct) =
+        row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
+    let class = AssetClass::parse(&class).map_err(|_| ApiError::Internal)?;
+
+    let headlines: Vec<HeadlineRow> =
+        sqlx::query_as::<_, (i64, String, Option<String>, String, String)>(
+            "SELECT id, title, publisher, published_at, url FROM news
+         WHERE instrument_id = ? ORDER BY published_at DESC LIMIT 20",
+        )
+        .bind(id)
+        .fetch_all(&st.pool)
+        .await?
+        .into_iter()
+        .map(|r| HeadlineRow {
+            id: r.0,
+            title: r.1,
+            publisher: r.2,
+            published_at: r.3,
+            url: r.4,
+        })
+        .collect();
+
+    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long)
+        .await?
+        .into_iter()
+        .filter(|s| s.symbol == symbol)
+        .collect();
+
+    Ok(Json(InstrumentDetail {
+        instrument: InstrumentRow {
+            id,
+            symbol,
+            class: class.as_str().to_string(),
+            name,
+            currency,
+            timing_note: class.timing_note().to_string(),
+            target_profit_pct,
+        },
+        headlines,
+        signals,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct BarPoint {
+    pub ts: String,
+    pub close: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckRow {
+    pub name: String,
+    pub passed: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Analysis {
+    pub instrument: InstrumentRow,
+    pub bars: Vec<BarPoint>,
+    pub indicators: Option<serde_json::Value>,
+    pub checks: Vec<CheckRow>,
+    pub position: Option<PositionRow>,
+    pub headlines: Vec<HeadlineRow>,
+    /// Everything below saves two extra round trips on the instrument page.
+    pub signals: Vec<SignalRow>,
+    pub trades: Vec<crate::trades::Trade>,
+}
+
+/// "Why is there no signal?" answered with the same predicates the engine used.
+async fn analysis(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<Analysis>, ApiError> {
+    let row: Option<(i64, String, String, String, String, Option<f64>)> = sqlx::query_as(
+        "SELECT id, symbol, class, name, currency, target_profit_pct
+         FROM instruments WHERE symbol = ?",
+    )
+    .bind(&symbol)
+    .fetch_optional(&st.pool)
+    .await?;
+    let (id, symbol, class_raw, name, currency, target_profit_pct) =
+        row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
+    let class = AssetClass::parse(&class_raw).map_err(|_| ApiError::Internal)?;
+
+    let rows: Vec<(String, f64, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT ts, COALESCE(open, close), COALESCE(high, close), COALESCE(low, close), close,
+                COALESCE(volume, 0)
+         FROM bars WHERE instrument_id = ? ORDER BY ts DESC LIMIT 400",
+    )
+    .bind(id)
+    .fetch_all(&st.pool)
+    .await?;
+    let mut bars: Vec<Bar> = rows
+        .into_iter()
+        .map(|(ts, open, high, low, close, volume)| Bar {
+            ts,
+            open,
+            high,
+            low,
+            close,
+            volume,
+        })
+        .collect();
+    bars.reverse();
+    bars.dedup_by(|a, b| a.ts == b.ts);
+
+    let position = load_positions(&st.pool, crate::models::Mode::Long)
+        .await?
+        .into_iter()
+        .find(|p| p.symbol == symbol && p.state == "open");
+    let available = budget::available(&st.pool).await?;
+    let instrument = crate::models::Instrument {
+        id,
+        symbol: symbol.clone(),
+        class,
+        name: name.clone(),
+        currency: currency.clone(),
+        active: true,
+    };
+
+    let ind = indicators::compute(&bars).ok();
+    let checks = match ind {
+        Some(ref ind) => {
+            let model = position.as_ref().map(|p| crate::models::Position {
+                id: p.id,
+                instrument_id: id,
+                qty: p.qty,
+                avg_cost: p.avg_cost,
+                stop: p.stop,
+                target: p.target,
+                state: p.state.clone(),
+            });
+            evaluate::diagnose(&CandidateInput {
+                instrument: &instrument,
+                bars: &bars,
+                ind,
+                position: model.as_ref(),
+                available_cash: available,
+                cfg: RuleConfig::default(),
+            })
+            .into_iter()
+            .map(|c| CheckRow {
+                name: c.name.to_string(),
+                passed: c.passed,
+                detail: c.detail,
+            })
+            .collect()
+        }
+        None => vec![CheckRow {
+            name: "price data".into(),
+            passed: false,
+            detail: format!("{} stored bars — the rules need 200", bars.len()),
+        }],
+    };
+
+    let headlines: Vec<HeadlineRow> =
+        sqlx::query_as::<_, (i64, String, Option<String>, String, String)>(
+            "SELECT id, title, publisher, published_at, url FROM news
+             WHERE instrument_id = ? ORDER BY published_at DESC LIMIT 10",
+        )
+        .bind(id)
+        .fetch_all(&st.pool)
+        .await?
+        .into_iter()
+        .map(|r| HeadlineRow {
+            id: r.0,
+            title: r.1,
+            publisher: r.2,
+            published_at: r.3,
+            url: r.4,
+        })
+        .collect();
+
+    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long)
+        .await?
+        .into_iter()
+        .filter(|s| s.symbol == symbol)
+        .collect();
+    let trades = crate::trades::history(&st.pool, Some(id), 200).await?;
+
+    Ok(Json(Analysis {
+        instrument: InstrumentRow {
+            id,
+            symbol,
+            class: class.as_str().to_string(),
+            name,
+            currency,
+            timing_note: class.timing_note().to_string(),
+            target_profit_pct,
+        },
+        bars: bars
+            .iter()
+            .rev()
+            .take(120)
+            .rev()
+            .map(|b| BarPoint {
+                ts: b.ts.clone(),
+                close: b.close,
+            })
+            .collect(),
+        indicators: ind.map(|i| {
+            serde_json::json!({
+                "sma50": i.sma50, "sma200": i.sma200, "rsi14": i.rsi14,
+                "atr14": i.atr14, "high52": i.high52, "low52": i.low52
+            })
+        }),
+        checks,
+        position,
+        headlines,
+        signals,
+        trades,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct CallRow {
+    pub id: i64,
+    pub ts: String,
+    pub endpoint: String,
+    pub purpose: Option<String>,
+    pub round: Option<i64>,
+    pub prompt_tokens: Option<i64>,
+    pub completion_tokens: Option<i64>,
+    pub validator_verdict: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct CallDbRow {
+    id: i64,
+    ts: String,
+    endpoint: String,
+    purpose: Option<String>,
+    round: Option<i64>,
+    prompt_tokens: Option<i64>,
+    completion_tokens: Option<i64>,
+    validator_verdict: Option<String>,
+    error: Option<String>,
+}
+
+async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiError> {
+    let rows: Vec<CallDbRow> = sqlx::query_as(
+        "SELECT id AS id, ts AS ts, endpoint AS endpoint, purpose AS purpose, round AS round,
+                prompt_tokens AS prompt_tokens, completion_tokens AS completion_tokens,
+                validator_verdict AS validator_verdict, error AS error
+         FROM api_calls ORDER BY id DESC LIMIT 100",
+    )
+    .fetch_all(&st.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| CallRow {
+                id: r.id,
+                ts: r.ts,
+                endpoint: r.endpoint,
+                purpose: r.purpose,
+                round: r.round,
+                prompt_tokens: r.prompt_tokens,
+                completion_tokens: r.completion_tokens,
+                validator_verdict: r.validator_verdict,
+                error: r.error,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewPosition {
+    pub symbol: String,
+    pub qty: f64,
+    pub avg_cost: f64,
+    pub stop: Option<f64>,
+    pub target: Option<f64>,
+}
+
+async fn post_position(
+    State(st): State<AppState>,
+    Json(body): Json<NewPosition>,
+) -> Result<Json<PositionRow>, ApiError> {
+    if !body.qty.is_finite()
+        || body.qty <= 0.0
+        || !body.avg_cost.is_finite()
+        || body.avg_cost <= 0.0
+    {
+        return Err(ApiError::BadRequest(
+            "qty and avg_cost must be positive".into(),
+        ));
+    }
+    let id = instrument_id_by_symbol(&st.pool, &body.symbol).await?;
+    let cost = budget::cost(body.qty, body.avg_cost, AssetClass::Stock);
+    if !budget::fits(&st.pool, cost).await? {
+        return Err(ApiError::BadRequest("does not fit the budget".into()));
+    }
+
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, stop, target, state)
+         VALUES (?, ?, ?, ?, ?, ?, 'open')",
+    )
+    .bind(id)
+    .bind(body.qty)
+    .bind(body.avg_cost)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(body.stop)
+    .bind(body.target)
+    .execute(&st.pool)
+    .await?;
+    budget::record(
+        &st.pool,
+        NewCashEntry {
+            kind: CashKind::Buy,
+            amount: -cost,
+            reference: format!("buy {} @ {}", body.symbol, body.avg_cost),
+        },
+    )
+    .await?;
+    let row = load_positions(&st.pool, crate::models::Mode::Long)
+        .await?
+        .into_iter()
+        .find(|p| p.symbol == body.symbol && p.state == "open")
+        .ok_or(ApiError::Internal)?;
+    Ok(Json(row))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PatchPosition {
+    pub qty: Option<f64>,
+    pub stop: Option<f64>,
+    pub target: Option<f64>,
+    pub state: Option<String>,
+}
+
+async fn patch_position(
+    State(st): State<AppState>,
+    Path(id): Path<i64>,
+    Json(body): Json<PatchPosition>,
+) -> Result<Json<PositionRow>, ApiError> {
+    let existing: Option<(f64, f64)> =
+        sqlx::query_as("SELECT qty, avg_cost FROM positions WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&st.pool)
+            .await?;
+    let (old_qty, avg_cost) = existing.ok_or_else(|| ApiError::NotFound("no position".into()))?;
+
+    if let Some(qty) = body.qty {
+        sqlx::query("UPDATE positions SET qty = ? WHERE id = ?")
+            .bind(qty)
+            .bind(id)
+            .execute(&st.pool)
+            .await?;
+        let sold = old_qty - qty;
+        if sold > 0.0 {
+            budget::record(
+                &st.pool,
+                NewCashEntry {
+                    kind: CashKind::Sell,
+                    amount: sold * avg_cost,
+                    reference: format!("sell position {id}"),
+                },
+            )
+            .await?;
+        }
+    }
+    if let Some(stop) = body.stop {
+        sqlx::query("UPDATE positions SET stop = ? WHERE id = ?")
+            .bind(stop)
+            .bind(id)
+            .execute(&st.pool)
+            .await?;
+    }
+    if let Some(target) = body.target {
+        sqlx::query("UPDATE positions SET target = ? WHERE id = ?")
+            .bind(target)
+            .bind(id)
+            .execute(&st.pool)
+            .await?;
+    }
+    if let Some(state) = body.state {
+        sqlx::query("UPDATE positions SET state = ? WHERE id = ?")
+            .bind(&state)
+            .bind(id)
+            .execute(&st.pool)
+            .await?;
+    }
+
+    load_positions(&st.pool, crate::models::Mode::Long)
+        .await?
+        .into_iter()
+        .find(|p| p.id == id)
+        .ok_or(ApiError::Internal)
+        .map(Json)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewIpo {
+    pub symbol: String,
+    pub qty: f64,
+    pub price: f64,
+}
+
+async fn post_ipo(
+    State(st): State<AppState>,
+    Json(body): Json<NewIpo>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if !body.qty.is_finite() || body.qty <= 0.0 || !body.price.is_finite() || body.price <= 0.0 {
+        return Err(ApiError::BadRequest(
+            "qty and price must be positive".into(),
+        ));
+    }
+    let id = instrument_id_by_symbol(&st.pool, &body.symbol).await?;
+    let cost = budget::cost(body.qty, body.price, AssetClass::Ipo);
+    if !budget::fits(&st.pool, cost).await? {
+        return Err(ApiError::BadRequest("does not fit the budget".into()));
+    }
+    budget::reserve_ipo(&st.pool, id, body.qty, body.price).await?;
+    Ok(Json(serde_json::json!({
+        "reserved": cost,
+        "available": budget::available(&st.pool).await?,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ModeQuery {
+    pub mode: Option<String>,
+}
+
+fn mode_of(q: &Option<String>) -> Result<crate::models::Mode, ApiError> {
+    crate::models::Mode::parse(q.as_deref().unwrap_or(""))
+        .map_err(|e| ApiError::BadRequest(e.to_string()))
+}
+
+#[derive(Debug, Serialize)]
+pub struct HitRow {
+    pub code: String,
+    pub name: String,
+    pub class: String,
+    pub venue: String,
+    pub price: Option<f64>,
+}
+
+async fn search_instruments(
+    State(st): State<AppState>,
+    Query(q): Query<SearchQuery>,
+) -> Result<Json<Vec<HitRow>>, ApiError> {
+    let query = q.q.trim();
+    if query.len() < 2 {
+        return Ok(Json(Vec::new()));
+    }
+    let client = crate::market::yahoo::client()?;
+    let amfi = st.amfi_text().await;
+    let hits = crate::market::search(&client, query, amfi.as_deref())
+        .await
+        .unwrap_or_default();
+    Ok(Json(
+        hits.into_iter()
+            .map(|h| HitRow {
+                code: h.code,
+                name: h.name,
+                class: h.class.as_str().to_string(),
+                venue: h.venue,
+                price: h.price,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddInstrument {
+    pub code: String,
+    pub name: Option<String>,
+    /// "stock" (default) or "mutual_fund".
+    pub class: Option<String>,
+}
+
+async fn add_instrument(
+    State(st): State<AppState>,
+    Json(body): Json<AddInstrument>,
+) -> Result<Json<InstrumentRow>, ApiError> {
+    let code = body.code.trim();
+    if code.is_empty() {
+        return Err(ApiError::BadRequest("code is required".into()));
+    }
+
+    let (class, name) = match body.class.as_deref() {
+        Some("mutual_fund") => {
+            let text = st
+                .amfi_text()
+                .await
+                .ok_or_else(|| ApiError::BadRequest("AMFI scheme list unavailable".into()))?;
+            let hit = crate::market::search::amfi_by_code(&text, code)
+                .ok_or_else(|| ApiError::NotFound(format!("no scheme {code}")))?;
+            (crate::models::AssetClass::MutualFund, hit.name)
+        }
+        _ => (
+            crate::models::AssetClass::Stock,
+            body.name.unwrap_or_else(|| code.to_string()),
+        ),
+    };
+
+    sqlx::query(
+        "INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES (?, ?, ?, 'INR')",
+    )
+    .bind(code)
+    .bind(class.as_str())
+    .bind(&name)
+    .execute(&st.pool)
+    .await?;
+
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = ?")
+        .bind(code)
+        .fetch_one(&st.pool)
+        .await?;
+
+    // A newly added symbol should have a chart and headlines on first open, not tomorrow
+    // morning. Mutual funds have no Yahoo series, so they are skipped deliberately.
+    if class == crate::models::AssetClass::Stock {
+        if let Ok(market) = crate::market::YahooSource::new() {
+            let fetch = crate::store::refresh(&st.pool, id.0, code, &market);
+            match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
+                Ok(Ok((bars, news))) => {
+                    tracing::info!(symbol = code, bars, news, "prices and headlines stored")
+                }
+                Ok(Err(e)) => tracing::warn!(symbol = code, error = %e, "refresh failed"),
+                Err(_) => tracing::warn!(symbol = code, "refresh timed out"),
+            }
+        }
+    }
+
+    Ok(Json(InstrumentRow {
+        id: id.0,
+        symbol: code.to_string(),
+        class: class.as_str().to_string(),
+        name,
+        currency: "INR".into(),
+        timing_note: class.timing_note().to_string(),
+        target_profit_pct: None,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetTargetProfit {
+    pub target_profit_pct: Option<f64>,
+}
+
+/// Set or clear the profit expectation for an instrument.
+async fn set_target_profit(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+    Json(body): Json<SetTargetProfit>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if let Some(p) = body.target_profit_pct {
+        if !p.is_finite() || p <= 0.0 || p > 1000.0 {
+            return Err(ApiError::BadRequest(
+                "target_profit_pct must be between 0 and 1000".into(),
+            ));
+        }
+    }
+    let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
+    sqlx::query("UPDATE instruments SET target_profit_pct = ? WHERE id = ?")
+        .bind(body.target_profit_pct)
+        .bind(id)
+        .execute(&st.pool)
+        .await?;
+    Ok(Json(serde_json::json!({
+        "symbol": symbol,
+        "target_profit_pct": body.target_profit_pct,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TradeBody {
+    pub side: String,
+    pub qty: f64,
+    pub price: Option<f64>,
+    pub note: Option<String>,
+    /// `YYYY-MM-DD` or RFC3339. Omitted means "now".
+    pub at: Option<String>,
+    /// "long" (default) or "trade" — which pot this fill belongs to.
+    pub mode: Option<String>,
+}
+
+async fn record_trade(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+    Json(body): Json<TradeBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
+    let side =
+        crate::trades::Side::parse(&body.side).map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    // A price is required; there is no "current price" for a fill that already happened.
+    let price = body
+        .price
+        .filter(|p| p.is_finite() && *p > 0.0)
+        .ok_or_else(|| ApiError::BadRequest("price is required".into()))?;
+
+    if !body.qty.is_finite() || body.qty <= 0.0 {
+        return Err(ApiError::BadRequest("qty must be positive".into()));
+    }
+
+    let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    let mode = crate::models::Mode::parse(body.mode.as_deref().unwrap_or(""))
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    crate::trades::record(
+        &st.pool,
+        id,
+        side,
+        body.qty,
+        price,
+        body.note.as_deref(),
+        Some(when),
+        mode,
+    )
+    .await
+    .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    let cash = budget::available_in(&st.pool, mode).await?;
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "cash": cash,
+        "realised": crate::trades::realised_in(&st.pool, mode).await?,
+    })))
+}
+
+/// Fetch prices and headlines for one instrument on demand — for instruments added before the
+/// add-time fetch existed, or simply to pull the latest without waiting for a poll tick.
+async fn refresh_instrument(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let row: Option<(i64, String)> =
+        sqlx::query_as("SELECT id, class FROM instruments WHERE symbol = ?")
+            .bind(&symbol)
+            .fetch_optional(&st.pool)
+            .await?;
+    let (id, class) = row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
+
+    let market = crate::market::YahooSource::new()?;
+    let (bars, news) = crate::store::refresh(&st.pool, id, &symbol, &market)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("{symbol} ({class}): {e}")))?;
+    Ok(Json(serde_json::json!({ "bars": bars, "headlines": news })))
+}
+
+async fn instrument_trades(
+    State(st): State<AppState>,
+    Path(symbol): Path<String>,
+) -> Result<Json<Vec<crate::trades::Trade>>, ApiError> {
+    let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
+    Ok(Json(crate::trades::history(&st.pool, Some(id), 200).await?))
+}
+
+async fn all_trades(
+    State(st): State<AppState>,
+) -> Result<Json<Vec<crate::trades::Trade>>, ApiError> {
+    Ok(Json(crate::trades::history(&st.pool, None, 200).await?))
+}
+
+async fn instrument_id_by_symbol(pool: &SqlitePool, symbol: &str) -> Result<i64, ApiError> {
+    let row: Option<(i64,)> = sqlx::query_as("SELECT id FROM instruments WHERE symbol = ?")
+        .bind(symbol)
+        .fetch_optional(pool)
+        .await?;
+    row.map(|r| r.0)
+        .ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))
+}
+
+async fn load_positions(
+    pool: &SqlitePool,
+    mode: crate::models::Mode,
+) -> Result<Vec<PositionRow>, ApiError> {
+    let rows: Vec<PositionDbRow> = sqlx::query_as(
+        "SELECT p.id AS id, i.symbol AS symbol, i.class AS class, p.qty AS qty,
+                p.avg_cost AS avg_cost, p.stop AS stop, p.target AS target, p.state AS state,
+                (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
+                 ORDER BY b.ts DESC LIMIT 1) AS ltp
+         FROM positions p JOIN instruments i ON i.id = p.instrument_id
+         WHERE p.mode = ? ORDER BY p.id DESC",
+    )
+    .bind(mode.as_str())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let class = AssetClass::parse(&r.class).unwrap_or(AssetClass::Stock);
+            PositionRow {
+                id: r.id,
+                symbol: r.symbol,
+                class: class.as_str().to_string(),
+                qty: r.qty,
+                avg_cost: r.avg_cost,
+                ltp: r.ltp,
+                value: r.ltp.map(|price| price * r.qty),
+                stop: r.stop,
+                target: r.target,
+                state: r.state,
+                timing_note: class.timing_note().to_string(),
+            }
+        })
+        .collect())
+}
+
+async fn load_signals(
+    pool: &SqlitePool,
+    blocked: bool,
+    mode: crate::models::Mode,
+) -> Result<Vec<SignalRow>, ApiError> {
+    let predicate = if blocked {
+        "s.action = 'BLOCKED'"
+    } else {
+        "s.action <> 'BLOCKED'"
+    };
+    let rows: Vec<SignalDbRow> = sqlx::query_as(&format!(
+        "SELECT s.id AS id, i.symbol AS symbol, i.class AS class, s.action AS action,
+                s.qty AS qty, s.confidence AS confidence, s.entry AS entry, s.stop AS stop,
+                s.target AS target, s.valid_until AS valid_until,
+                s.reason_json AS reason_json, s.created_at AS created_at
+         FROM signals s JOIN instruments i ON i.id = s.instrument_id
+         WHERE {predicate} AND s.mode = ? ORDER BY s.id DESC LIMIT 50"
+    ))
+    .bind(mode.as_str())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let class = AssetClass::parse(&r.class).unwrap_or(AssetClass::Stock);
+            let reason: serde_json::Value = r
+                .reason_json
+                .as_deref()
+                .and_then(|j| serde_json::from_str(j).ok())
+                .unwrap_or(serde_json::json!({}));
+            let reasons = reason
+                .get("reasons")
+                .and_then(|x| x.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            SignalRow {
+                id: r.id,
+                symbol: r.symbol,
+                class: class.as_str().to_string(),
+                action: r.action,
+                qty: r.qty,
+                confidence: r.confidence,
+                entry: r.entry,
+                stop: r.stop,
+                target: r.target,
+                valid_until: r.valid_until,
+                timing_note: class.timing_note().to_string(),
+                reasons,
+                rationale: reason
+                    .get("rationale")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                created_at: r.created_at,
+            }
+        })
+        .collect())
+}

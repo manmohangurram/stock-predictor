@@ -14,7 +14,7 @@ Explicitly **not** a price oracle. The engine is a deterministic strategy; the w
 
 ## Goals
 
-- Poll market data every 10 minutes during market hours; evaluate; notify on change.
+- Poll market data every 15 minutes during market hours; evaluate; notify on change.
 - Suggest buy and sell actions with entry price, stop, target, and validity window.
 - Hard-capped cash: the system never proposes spending beyond the configured budget.
 - Track holdings per asset class so sell suggestions are grounded in real positions.
@@ -80,7 +80,7 @@ because an unvalidated LLM price is how money disappears quietly. B deferred.
 
 ### Poll loop
 
-- Market hours (stocks): 09:10–15:35 IST on trading days, every 10 min.
+- Market hours (stocks): 09:10–15:35 IST on trading days, every 15 min.
   Fetch quotes + bars + news for watchlist symbols only, never the whole market.
 - Outside market hours: one daily pass after ~19:00 to pick up AMFI NAV and any
   IPO status changes.

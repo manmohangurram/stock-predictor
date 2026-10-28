@@ -44,3 +44,20 @@ searchable there, so read those directly.
 - `api_calls` and `cash_ledger` are append-only. Nothing updates or deletes those rows.
 - The budget ceiling lives in the `settings` table and is edited from the UI; `BUDGET` /
   `CURRENCY` env values seed it on first boot and are then ignored.
+
+## Quality gates
+
+```sh
+cargo test                                   # 139 tests, no network
+cargo clippy --all-targets                   # must be warning-free
+cargo bench --bench hot_paths                # indicators, prompt render, bar upsert
+cd web && npx vitest run && npm run build
+```
+
+Budgets to keep: `indicators::compute` ~2.8 µs per 250 bars, prompt render ~17 µs,
+a poll's bar write ~0.2 ms (only the tail is written; a cold 250-row load is ~18 ms).
+
+Token knobs: `PROMPT_WINDOW_HOURS` (default 4) is the intraday tape length, the biggest single
+lever; the static prompt block is a prefix so DeepSeek's context cache can hit it.
+Request count: one per page (`/api/dashboard` carries recent trades, `/analysis` carries signals
+and fills), and the dashboard answers 304 when its version tag is unchanged.
