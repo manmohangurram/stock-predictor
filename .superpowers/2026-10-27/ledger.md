@@ -509,3 +509,19 @@ Gaps found and closed:
 - The headers and body are now built by a pure `payload()` function, so a header typo is a test
   failure rather than a silently missing alert. Tests assert the exact names ntfy reads
   (`Title`, `Priority`, `Tags`, `Click`) and that the non-ASCII separator is folded.
+
+## ntfy configured from the UI
+
+Topic, server, access token and tap-through link are now settings rows, edited on `/settings`
+and read per tick, exactly like the DeepSeek key. Env values seed them on first boot only.
+
+- `Settings` returns topic/server/link and a `ntfy_token_configured` boolean; the token itself
+  is never serialised, and an empty token field keeps the stored one.
+- `POST /api/notify/test` sends through the same code path a real signal uses, so the "Send a
+  test notification" button proves the channel rather than describing it.
+- Verified against ntfy.sh: saved `sp-ui-d66` through the UI's API, pressed the endpoint, and
+  the message came back from the topic's JSON API with its title intact.
+
+Ruling: the topic is returned in full (a name the user must be able to read back and copy into
+their phone) while the token is not. The topic is still a secret — anyone who knows it can
+subscribe — so the UI says so next to the field.

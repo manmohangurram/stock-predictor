@@ -78,6 +78,7 @@ pub fn router(state: AppState) -> Router {
             "/api/instruments/{symbol}/target-profit",
             put(set_target_profit),
         )
+        .route("/api/notify/test", post(test_notify))
         .route("/api/instruments/{symbol}/analysis", get(analysis))
         .route("/api/calls", get(calls))
         .route("/api/positions", post(post_position))
@@ -287,6 +288,10 @@ pub struct PutSettings {
     pub currency: Option<String>,
     pub deepseek_key: Option<String>,
     pub trading_budget: Option<f64>,
+    pub ntfy_url: Option<String>,
+    pub ntfy_topic: Option<String>,
+    pub ntfy_token: Option<String>,
+    pub public_url: Option<String>,
 }
 
 async fn put_settings(
@@ -300,6 +305,10 @@ async fn put_settings(
             currency: body.currency,
             deepseek_key: body.deepseek_key,
             trading_budget: body.trading_budget,
+            ntfy_url: body.ntfy_url,
+            ntfy_topic: body.ntfy_topic,
+            ntfy_token: body.ntfy_token,
+            public_url: body.public_url,
         },
     )
     .await
@@ -1014,6 +1023,31 @@ async fn all_trades(
     State(st): State<AppState>,
 ) -> Result<Json<Vec<crate::trades::Trade>>, ApiError> {
     Ok(Json(crate::trades::history(&st.pool, None, 200).await?))
+}
+
+/// Sends one notification through the same path a real signal uses.
+async fn test_notify(State(st): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let Some(notifier) = crate::notify::Ntfy::from_settings(&st.pool)
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+    else {
+        return Err(ApiError::BadRequest(
+            "no topic configured — add one below first".into(),
+        ));
+    };
+    let n = crate::notify::Notification {
+        title: "stock-predicter · test".into(),
+        body: "If this arrived on your phone, the channel works.".into(),
+        priority: crate::notify::Priority::Default,
+        dedupe_key: format!("test-{}", chrono::Utc::now().timestamp()),
+        signal_id: None,
+        symbol: String::new(),
+    };
+    notifier
+        .send_test(&n)
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("ntfy: {e}")))?;
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 async fn instrument_id_by_symbol(pool: &SqlitePool, symbol: &str) -> Result<i64, ApiError> {

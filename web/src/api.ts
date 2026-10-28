@@ -75,6 +75,10 @@ export interface Settings {
   deepseek_configured: boolean;
   trading_budget: number;
   trading_available: number;
+  ntfy_url: string;
+  ntfy_topic: string;
+  ntfy_token_configured: boolean;
+  public_url: string;
 }
 
 export interface CallRow {
@@ -193,6 +197,10 @@ export const api = {
       `/api/instruments/${encodeURIComponent(symbol)}/target-profit`,
       { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ target_profit_pct: pct }) },
     ),
+  testNotify: async () => {
+    const r = await fetch("/api/notify/test", { method: "POST" });
+    return { ok: r.ok, body: await r.json().catch(() => ({})) };
+  },
   addInstrument: (code: string, name?: string, cls?: string) =>
     req<{ symbol: string }>("/api/instruments", json({ code, name, class: cls })),
   recordTrade: (
@@ -208,9 +216,9 @@ export const api = {
       json({ side, qty, price, at, mode }),
     ),
   putSettings: async (
-    patch: Partial<Pick<Settings, "budget" | "currency" | "trading_budget">> & {
-      deepseek_key?: string;
-    },
+    patch: Partial<
+      Pick<Settings, "budget" | "currency" | "trading_budget" | "ntfy_url" | "ntfy_topic" | "public_url">
+    > & { deepseek_key?: string; ntfy_token?: string },
   ) => {
     const r = await fetch("/api/settings", {
       method: "PUT",

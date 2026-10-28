@@ -72,6 +72,10 @@ async fn budget_below_committed_is_refused_with_the_figure() {
             currency: None,
             deepseek_key: None,
             trading_budget: None,
+            ntfy_url: None,
+            ntfy_topic: None,
+            ntfy_token: None,
+            public_url: None,
         },
     )
     .await
@@ -99,6 +103,10 @@ async fn currency_change_is_refused_once_ledger_has_entries() {
             currency: Some("USD".into()),
             deepseek_key: None,
             trading_budget: None,
+            ntfy_url: None,
+            ntfy_topic: None,
+            ntfy_token: None,
+            public_url: None,
         },
     )
     .await
@@ -116,6 +124,10 @@ async fn currency_change_is_allowed_on_a_fresh_ledger() {
             currency: Some("USD".into()),
             deepseek_key: None,
             trading_budget: None,
+            ntfy_url: None,
+            ntfy_topic: None,
+            ntfy_token: None,
+            public_url: None,
         },
     )
     .await
@@ -135,6 +147,10 @@ async fn raising_the_budget_is_reflected_in_available_immediately() {
             currency: None,
             deepseek_key: None,
             trading_budget: None,
+            ntfy_url: None,
+            ntfy_topic: None,
+            ntfy_token: None,
+            public_url: None,
         },
     )
     .await
@@ -153,6 +169,10 @@ async fn negative_or_infinite_budget_is_rejected() {
                 currency: None,
                 deepseek_key: None,
                 trading_budget: None,
+                ntfy_url: None,
+                ntfy_topic: None,
+                ntfy_token: None,
+                public_url: None,
             },
         )
         .await
@@ -171,6 +191,10 @@ async fn the_deepseek_key_is_stored_but_never_serialised() {
             currency: None,
             deepseek_key: Some("  sk-secret-value  ".into()),
             trading_budget: None,
+            ntfy_url: None,
+            ntfy_topic: None,
+            ntfy_token: None,
+            public_url: None,
         },
     )
     .await
@@ -201,6 +225,10 @@ async fn an_empty_key_patch_leaves_a_working_key_alone() {
             currency: None,
             deepseek_key: Some("sk-keep-me".into()),
             trading_budget: None,
+            ntfy_url: None,
+            ntfy_topic: None,
+            ntfy_token: None,
+            public_url: None,
         },
     )
     .await
@@ -213,6 +241,10 @@ async fn an_empty_key_patch_leaves_a_working_key_alone() {
             currency: None,
             deepseek_key: Some("   ".into()),
             trading_budget: None,
+            ntfy_url: None,
+            ntfy_topic: None,
+            ntfy_token: None,
+            public_url: None,
         },
     )
     .await
@@ -244,6 +276,10 @@ async fn a_key_seeded_from_env_is_used_once_and_then_owned_by_the_settings_table
             currency: None,
             deepseek_key: Some("sk-from-ui".into()),
             trading_budget: None,
+            ntfy_url: None,
+            ntfy_topic: None,
+            ntfy_token: None,
+            public_url: None,
         },
     )
     .await

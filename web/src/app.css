@@ -451,3 +451,9 @@
     font-family: var(--font-ledger); background: var(--paper-inset); color: var(--ink);
     border: 1px solid var(--rule); border-radius: var(--radius); }
 }
+
+@layer components {
+  .field-group { border: 1px solid var(--rule-subtle); border-radius: var(--radius);
+    padding: var(--space-3); display: grid; gap: var(--space-3); margin: 0; }
+  .field-group legend { padding-inline: var(--space-1); }
+}

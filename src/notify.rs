@@ -6,7 +6,6 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use sqlx::SqlitePool;
 
-use crate::config::Config;
 use crate::models::{Action, Candidate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -130,20 +129,33 @@ pub struct Ntfy {
 }
 
 impl Ntfy {
-    pub fn new(cfg: &Config) -> Result<Self> {
+    pub fn new(
+        base_url: &str,
+        topic: &str,
+        token: &str,
+        public_url: &str,
+    ) -> Result<Self> {
         Ok(Self {
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(15))
                 .build()
                 .context("build ntfy client")?,
-            url: format!(
-                "{}/{}",
-                cfg.ntfy_url.trim_end_matches('/'),
-                cfg.ntfy_topic.trim_start_matches('/')
-            ),
-            token: cfg.ntfy_token.clone(),
-            public_url: cfg.public_url.trim_end_matches('/').to_string(),
+            url: format!("{}/{}", base_url.trim_end_matches('/'), topic.trim_start_matches('/')),
+            token: token.to_string(),
+            public_url: public_url.trim_end_matches('/').to_string(),
         })
+    }
+
+    /// Build from the settings table, which is what the UI edits.
+    pub async fn from_settings(pool: &SqlitePool) -> Result<Option<Self>> {
+        let s = crate::rules::settings::get(pool).await?;
+        if s.ntfy_topic.trim().is_empty() {
+            return Ok(None);
+        }
+        let token = crate::rules::settings::ntfy_token(pool)
+            .await?
+            .unwrap_or_default();
+        Ok(Some(Self::new(&s.ntfy_url, &s.ntfy_topic, &token, &s.public_url)?))
     }
 }
 

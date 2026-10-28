@@ -231,6 +231,10 @@ async fn with_no_affordable_quantity_the_model_is_still_asked_but_nothing_is_tra
             currency: None,
             deepseek_key: None,
             trading_budget: None,
+            ntfy_url: None,
+            ntfy_topic: None,
+            ntfy_token: None,
+            public_url: None,
         },
     )
     .await

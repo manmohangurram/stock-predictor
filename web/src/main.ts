@@ -209,7 +209,16 @@ function wireSettings(): void {
     const currency = String(data.get("currency"));
     const key = String(data.get("deepseek_key") ?? "").trim();
     const trading = Number(data.get("trading_budget"));
-    const patch = { budget, currency, trading_budget: trading };
+    const ntfyToken = String(data.get("ntfy_token") ?? "").trim();
+    const patch = {
+      budget,
+      currency,
+      trading_budget: trading,
+      ntfy_url: String(data.get("ntfy_url") ?? "").trim(),
+      ntfy_topic: String(data.get("ntfy_topic") ?? "").trim(),
+      public_url: String(data.get("public_url") ?? "").trim(),
+      ...(ntfyToken ? { ntfy_token: ntfyToken } : {}),
+    };
     const res = await api.putSettings(key ? { ...patch, deepseek_key: key } : patch);
     if (!res.ok) {
       window.alert(
@@ -221,6 +230,20 @@ function wireSettings(): void {
     }
     await route();
   });
+  document.querySelector<HTMLButtonElement>("#test-notify")?.addEventListener("click", async (ev) => {
+    const button = ev.currentTarget as HTMLButtonElement;
+    const status = document.querySelector<HTMLElement>("#notify-status");
+    button.disabled = true;
+    if (status) status.textContent = "Sending…";
+    const res = await api.testNotify();
+    button.disabled = false;
+    if (status) {
+      status.textContent = res.ok
+        ? "Sent. Check your phone."
+        : `Failed: ${res.body.error ?? "unknown error"}`;
+    }
+  });
+
   document.querySelector<HTMLInputElement>("#budget")?.addEventListener("input", (ev) => {
     const el = ev.currentTarget as HTMLInputElement;
     const save = document.querySelector<HTMLButtonElement>('#settings-form button[type="submit"]');

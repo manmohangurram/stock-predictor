@@ -134,6 +134,10 @@ describe("settings", () => {
     deepseek_configured: false,
     trading_budget: 0,
     trading_available: 0,
+    ntfy_url: "https://ntfy.sh",
+    ntfy_topic: "",
+    ntfy_token_configured: false,
+    public_url: "",
     ...over,
   });
 
@@ -275,6 +279,7 @@ describe("settings, second pot", () => {
       budget: 500_000, committed: 0, available: 500_000, currency: "INR",
       currency_locked: false, deepseek_configured: false,
       trading_budget: 100_000, trading_available: 80_000,
+      ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
     });
     expect(html).toContain('name="trading_budget"');
     expect(html).toContain("80,000");
@@ -435,5 +440,33 @@ describe("one request per page", () => {
     const html = renderInstrument(payload as never, payload as never, payload.trades as never);
     expect(html).toContain("SELL");
     expect(html).toContain("Close that day");
+  });
+});
+
+describe("ntfy settings", () => {
+  const base = {
+    budget: 100_000, committed: 0, available: 100_000, currency: "INR", currency_locked: false,
+    deepseek_configured: false, trading_budget: 0, trading_available: 0,
+    ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+  };
+
+  test("offers topic, server, token and link, plus a way to prove it", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const html = renderSettings({ ...base, ntfy_topic: "stock-predicter-abc123" });
+    expect(html).toContain('name="ntfy_topic"');
+    expect(html).toContain('value="stock-predicter-abc123"');
+    expect(html).toContain('name="ntfy_url"');
+    expect(html).toContain('name="ntfy_token"');
+    expect(html).toContain('name="public_url"');
+    expect(html).toContain("Send a test notification");
+    expect(html).toContain("Anyone who knows the name can read it");
+  });
+
+  test("a configured token is masked and never echoed", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const html = renderSettings({ ...base, ntfy_token_configured: true });
+    expect(html).toContain('type="password"');
+    expect(html).toContain("leave blank to keep");
+    expect(html).toContain("never shown again");
   });
 });

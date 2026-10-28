@@ -19,6 +19,12 @@ pub struct Settings {
     /// The second pot. Kept separate on purpose: a swing trade must not starve a long-term buy.
     pub trading_budget: f64,
     pub trading_available: f64,
+    /// Push channel. The topic is a name the user must be able to read back; the token never
+    /// leaves the server.
+    pub ntfy_url: String,
+    pub ntfy_topic: String,
+    pub ntfy_token_configured: bool,
+    pub public_url: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -29,6 +35,10 @@ pub struct SettingsPatch {
     /// without wiping a working key.
     pub deepseek_key: Option<String>,
     pub trading_budget: Option<f64>,
+    pub ntfy_url: Option<String>,
+    pub ntfy_topic: Option<String>,
+    pub ntfy_token: Option<String>,
+    pub public_url: Option<String>,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -49,6 +59,14 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
     let deepseek_configured = deepseek_key(pool).await?.is_some();
     let trading_budget = budget::budget_total_in(pool, crate::models::Mode::Trade).await?;
     let trading_available = budget::available_in(pool, crate::models::Mode::Trade).await?;
+    let ntfy_topic = setting(pool, "ntfy_topic").await?.unwrap_or_default();
+    let ntfy_url = setting(pool, "ntfy_url")
+        .await?
+        .unwrap_or_else(|| "https://ntfy.sh".to_string());
+    let ntfy_token_configured = setting(pool, "ntfy_token")
+        .await?
+        .is_some_and(|t| !t.trim().is_empty());
+    let public_url = setting(pool, "public_url").await?.unwrap_or_default();
     Ok(Settings {
         budget,
         committed,
@@ -58,6 +76,10 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         deepseek_configured,
         trading_budget,
         trading_available,
+        ntfy_url,
+        ntfy_topic,
+        ntfy_token_configured,
+        public_url,
     })
 }
 
@@ -137,6 +159,28 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
         }
     }
 
+    for (name, value) in [
+        ("ntfy_url", patch.ntfy_url),
+        ("ntfy_topic", patch.ntfy_topic),
+        ("public_url", patch.public_url),
+    ] {
+        if let Some(v) = value {
+            // An empty string is a deliberate clear for these three; the token is different.
+            put_setting(pool, name, v.trim())
+                .await
+                .map_err(|_| SettingsError::InvalidAmount)?;
+        }
+    }
+
+    if let Some(token) = patch.ntfy_token {
+        let token = token.trim();
+        if !token.is_empty() {
+            put_setting(pool, "ntfy_token", token)
+                .await
+                .map_err(|_| SettingsError::InvalidAmount)?;
+        }
+    }
+
     if let Some(key) = patch.deepseek_key {
         let key = key.trim();
         if !key.is_empty() {
@@ -212,6 +256,19 @@ pub async fn seed(
         }
     }
     Ok(())
+}
+
+pub async fn setting(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(|r| r.0).filter(|v| !v.is_empty()))
+}
+
+/// The token itself, for the notifier. Never serialised.
+pub async fn ntfy_token(pool: &SqlitePool) -> Result<Option<String>> {
+    setting(pool, "ntfy_token").await
 }
 
 async fn currency(pool: &SqlitePool) -> Result<String> {

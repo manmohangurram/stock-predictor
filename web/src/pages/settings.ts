@@ -1,5 +1,5 @@
 import type { Settings } from "../api";
-import { money } from "../format";
+import { escapeHtml, money } from "../format";
 
 /** The one rule the form enforces client-side; the server enforces it again. */
 export const shouldDisableSave = (budget: number, committed: number): boolean =>
@@ -59,6 +59,45 @@ export function renderSettings(s: Settings): string {
               : "Without a key the rules run alone and no model call is made."
           }</p>
         </div>
+        <fieldset class="field-group">
+          <legend class="lbl">Phone notifications (ntfy)</legend>
+          <div class="field">
+            <label class="lbl" for="ntfy_topic">Topic</label>
+            <input id="ntfy_topic" name="ntfy_topic" value="${escapeHtml(s.ntfy_topic)}"
+                   placeholder="stock-predicter-7f3k9m2q" autocomplete="off" />
+            <p class="help">
+              Subscribe to this topic in the ntfy app. Anyone who knows the name can read it —
+              make it long and random.
+            </p>
+          </div>
+          <div class="field">
+            <label class="lbl" for="ntfy_url">Server</label>
+            <input id="ntfy_url" name="ntfy_url" value="${escapeHtml(s.ntfy_url)}"
+                   placeholder="https://ntfy.sh" autocomplete="off" />
+            <p class="help">Use your own ntfy instance here if you self-host one.</p>
+          </div>
+          <div class="field">
+            <label class="lbl" for="ntfy_token">Access token</label>
+            <input id="ntfy_token" name="ntfy_token" type="password" autocomplete="off"
+                   placeholder="${s.ntfy_token_configured ? "•••••••• configured — leave blank to keep" : "tk_… (only for a protected topic)"}" />
+            <p class="help">${
+              s.ntfy_token_configured
+                ? "Configured. The token is never shown again, here or over the API."
+                : "Optional. Needed only when the topic requires authentication."
+            }</p>
+          </div>
+          <div class="field">
+            <label class="lbl" for="public_url">Link from the notification</label>
+            <input id="public_url" name="public_url" value="${escapeHtml(s.public_url)}"
+                   placeholder="http://192.168.1.10:8080" autocomplete="off" />
+            <p class="help">Tapping the push opens this host. Leave blank for no link.</p>
+          </div>
+          <div class="row">
+            <button class="btn" type="button" id="test-notify">Send a test notification</button>
+            <span class="help" id="notify-status" role="status"></span>
+          </div>
+        </fieldset>
+
         <div class="row">
           <button class="btn" type="submit" ${below ? "disabled" : ""}>Save</button>
         </div>

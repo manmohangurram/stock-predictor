@@ -39,10 +39,9 @@ async fn main() -> Result<()> {
 
     // Prove the push channel end to end before relying on it.
     if flag("--test-notify") {
-        if cfg.ntfy_topic.trim().is_empty() {
-            anyhow::bail!("NTFY_TOPIC is empty — set it to a topic name you have subscribed to");
-        }
-        let notifier = Ntfy::new(&cfg)?;
+        let Some(notifier) = Ntfy::from_settings(&pool).await? else {
+            anyhow::bail!("no ntfy topic configured — set one in Settings, or NTFY_TOPIC");
+        };
         let n = stock_predicter::notify::Notification {
             title: "stock-predicter · test".into(),
             body: "If this arrived on your phone, the push channel works.".into(),
@@ -52,7 +51,7 @@ async fn main() -> Result<()> {
             symbol: String::new(),
         };
         match notifier.send_test(&n).await {
-            Ok(()) => println!("sent to {}/{}", cfg.ntfy_url, cfg.ntfy_topic),
+            Ok(()) => println!("test notification sent"),
             Err(e) => println!("failed: {e}"),
         }
         return Ok(());
@@ -70,7 +69,10 @@ async fn main() -> Result<()> {
         let market = YahooSource::new()?;
         let key = settings::deepseek_key(&pool).await?.unwrap_or_default();
         let transport = ReqwestTransport::new(key)?;
-        let notifier = Ntfy::new(&cfg)?;
+        let notifier = match Ntfy::from_settings(&pool).await? {
+            Some(n) => n,
+            None => Ntfy::new("https://ntfy.sh", "", "", "")?,
+        };
         let instrument = stock_predicter::models::Instrument {
             id,
             symbol,
@@ -99,7 +101,10 @@ async fn main() -> Result<()> {
         let market = YahooSource::new()?;
         let key = settings::deepseek_key(&pool).await?.unwrap_or_default();
         let transport = ReqwestTransport::new(key)?;
-        let notifier = Ntfy::new(&cfg)?;
+        let notifier = match Ntfy::from_settings(&pool).await? {
+            Some(n) => n,
+            None => Ntfy::new("https://ntfy.sh", "", "", "")?,
+        };
         let deps = EngineDeps {
             pool: &pool,
             cfg: &cfg,
@@ -136,14 +141,25 @@ async fn main() -> Result<()> {
                 .ok()
                 .flatten()
                 .unwrap_or_default();
-            let (market, transport, notifier) = match (
-                YahooSource::new(),
-                ReqwestTransport::new(key),
-                Ntfy::new(&poll_cfg),
-            ) {
-                (Ok(m), Ok(t), Ok(n)) => (m, t, n),
+            let (market, transport) = match (YahooSource::new(), ReqwestTransport::new(key)) {
+                (Ok(m), Ok(t)) => (m, t),
                 _ => {
                     tracing::error!("clients unavailable, skipping tick");
+                    continue;
+                }
+            };
+            // The notifier is rebuilt each tick so a topic edited in the UI takes effect.
+            let notifier = match Ntfy::from_settings(&poll_pool).await {
+                Ok(Some(n)) => n,
+                Ok(None) => match Ntfy::new("https://ntfy.sh", "", "", "") {
+                    Ok(n) => n,
+                    Err(e) => {
+                        tracing::error!(error = %e, "notifier unavailable");
+                        continue;
+                    }
+                },
+                Err(e) => {
+                    tracing::error!(error = %e, "notifier settings unreadable");
                     continue;
                 }
             };
