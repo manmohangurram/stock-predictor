@@ -138,6 +138,10 @@ describe("settings", () => {
     ntfy_topic: "",
     ntfy_token_configured: false,
     public_url: "",
+    llm_provider: "deepseek",
+    llm_model: "deepseek-chat",
+    llm_base_url: "https://api.deepseek.com",
+    llm_key_configured: false,
     ...over,
   });
 
@@ -148,7 +152,7 @@ describe("settings", () => {
   });
 
   test("a configured key is masked and offers to keep it", () => {
-    const html = renderSettings(settings({ deepseek_configured: true }));
+    const html = renderSettings(settings({ llm_key_configured: true }));
     expect(html).toContain('type="password"');
     expect(html).toContain("leave blank to keep");
     expect(html).toContain("never shown again");
@@ -280,6 +284,8 @@ describe("settings, second pot", () => {
       currency_locked: false, deepseek_configured: false,
       trading_budget: 100_000, trading_available: 80_000,
       ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+      llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
+      llm_key_configured: false,
     });
     expect(html).toContain('name="trading_budget"');
     expect(html).toContain("80,000");
@@ -448,6 +454,8 @@ describe("ntfy settings", () => {
     budget: 100_000, committed: 0, available: 100_000, currency: "INR", currency_locked: false,
     deepseek_configured: false, trading_budget: 0, trading_available: 0,
     ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+    llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
+    llm_key_configured: false,
   };
 
   test("offers topic, server, token and link, plus a way to prove it", async () => {
@@ -468,5 +476,33 @@ describe("ntfy settings", () => {
     expect(html).toContain('type="password"');
     expect(html).toContain("leave blank to keep");
     expect(html).toContain("never shown again");
+  });
+});
+
+describe("model provider settings", () => {
+  const base = {
+    budget: 100_000, committed: 0, available: 100_000, currency: "INR", currency_locked: false,
+    deepseek_configured: false, trading_budget: 0, trading_available: 0,
+    ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+    llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
+    llm_key_configured: false,
+  };
+
+  test("offers every provider and shows which is selected", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const html = renderSettings({ ...base, llm_provider: "gemini" });
+    for (const p of ["deepseek", "openai", "gemini", "custom"]) {
+      expect(html).toContain(`value="${p}"`);
+    }
+    expect(html).toContain('<option value="gemini" selected>');
+    expect(html).toContain('name="llm_model"');
+    expect(html).toContain('name="llm_base_url"');
+  });
+
+  test("the key field is one box for whichever provider is chosen", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const html = renderSettings({ ...base, llm_provider: "openai", llm_key_configured: true });
+    expect(html).toContain('name="llm_key"');
+    expect(html).toContain("Configured. The key is never shown again");
   });
 });

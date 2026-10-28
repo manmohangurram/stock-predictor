@@ -91,16 +91,12 @@ outside market hours; `--ask SYMBOL` asks the model about one instrument and wri
 
 ## Configuration
 
-Everything is optional except where noted. The database holds the budget, the currency and the
-API key after first boot; the environment only seeds them.
+The environment carries deployment settings only. **Budget, currency, API keys and ntfy are set
+in the UI and live in the database** — there is one source of truth for each, and it is not the
+environment, so a stale `.env` cannot silently override what you configured.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `BUDGET`, `CURRENCY` | `0`, `INR` | First-boot seed for the long-term pot |
-| `DEEPSEEK_API_KEY` | empty | Can be set in Settings instead |
-| `NTFY_TOPIC`, `NTFY_BASE_URL` | empty, `https://ntfy.sh` | Push channel; empty means none |
-| `NTFY_TOKEN` | empty | Access token (`tk_…`) for a protected topic |
-| `PUBLIC_URL` | empty | e.g. `http://192.168.1.10:8080`, used for the notification's tap-through link |
 | `DB_PATH` | `data/stock-predicter.db` | SQLite file; the directory is created |
 | `BIND` | `127.0.0.1:8080` | Listen address (use `0.0.0.0:8080` in Docker) |
 | `POLL_SECS` | `900` | In-session cadence |
@@ -144,6 +140,49 @@ on first boot; after that the database owns them and edits apply on the next pol
 **What never gets sent:** `BLOCKED` signals (there is nothing to do about them), unchanged
 signals, and `pass`. A signal already pushed is not pushed again, and a failed push leaves no
 record so the next tick retries it rather than losing it.
+
+## Choosing a model provider
+
+**Settings → Model provider.** Any of these, with one key field for whichever is selected:
+
+| Provider | Default model | Notes |
+|---|---|---|
+| **DeepSeek** | `deepseek-chat` | Cheapest of the four; the only one that can also fetch an article's body for the escalation step. |
+| **OpenAI** | `gpt-4o-mini` | OpenAI-compatible request, JSON response mode. |
+| **Google Gemini** | `gemini-2.0-flash` | Different request and response shape, handled in `src/llm/provider.rs`. |
+| **Custom** | — | Any OpenAI-compatible endpoint: OpenRouter, Groq, a local Ollama (`http://localhost:11434/v1`), or a proxy. |
+
+Each provider's key is stored separately, so switching between them does not lose the others.
+The base URL and model name are editable, which is what makes the custom option work. Without any
+key the rules layer runs alone and no call is ever made.
+
+## Running 24×7
+
+The server is a single long-lived process with no session or login: start it and it keeps
+polling. On a home server, either run the container with `restart: unless-stopped` (the Compose
+file does) or a systemd unit:
+
+```ini
+[Unit]
+Description=stock-predicter
+After=network-online.target
+
+[Service]
+User=stock
+WorkingDirectory=/srv/stock-predicter
+ExecStart=/srv/stock-predicter/stock-predicter
+Environment=BIND=0.0.0.0:8080
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+What survives a restart: everything in the database. What does not: nothing that matters — the
+poll loop restarts on its own schedule and the next tick resumes where the last one stopped. A
+Yahoo outage, a failed model call or an unreachable ntfy is logged and retried on the next tick
+rather than stopping the loop.
 
 ## Self-hosting with Docker
 

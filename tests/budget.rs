@@ -3,13 +3,23 @@ use stock_predicter::models::AssetClass;
 use stock_predicter::rules::budget::{self, CashKind, NewCashEntry};
 use stock_predicter::rules::settings::{self, SettingsError, SettingsPatch};
 
+/// The budget now lives in the ledger, so seeding it means recording the ceiling.
 async fn fresh(budget: f64) -> (tempfile::TempDir, sqlx::SqlitePool, i64) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("t.db");
     let pool = db::connect_and_migrate(path.to_str().unwrap())
         .await
         .unwrap();
-    settings::seed(&pool, budget, "INR", "").await.unwrap();
+    settings::seed(&pool).await.unwrap();
+    settings::set(
+        &pool,
+        SettingsPatch {
+            budget: Some(budget),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
     let id: (i64,) = sqlx::query_as(
         "INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY', 'stock', 'Infosys', 'INR') RETURNING id",
     )
@@ -76,6 +86,10 @@ async fn budget_below_committed_is_refused_with_the_figure() {
             ntfy_topic: None,
             ntfy_token: None,
             public_url: None,
+            llm_provider: None,
+            llm_model: None,
+            llm_base_url: None,
+            llm_key: None,
         },
     )
     .await
@@ -107,6 +121,10 @@ async fn currency_change_is_refused_once_ledger_has_entries() {
             ntfy_topic: None,
             ntfy_token: None,
             public_url: None,
+            llm_provider: None,
+            llm_model: None,
+            llm_base_url: None,
+            llm_key: None,
         },
     )
     .await
@@ -128,6 +146,10 @@ async fn currency_change_is_allowed_on_a_fresh_ledger() {
             ntfy_topic: None,
             ntfy_token: None,
             public_url: None,
+            llm_provider: None,
+            llm_model: None,
+            llm_base_url: None,
+            llm_key: None,
         },
     )
     .await
@@ -151,6 +173,10 @@ async fn raising_the_budget_is_reflected_in_available_immediately() {
             ntfy_topic: None,
             ntfy_token: None,
             public_url: None,
+            llm_provider: None,
+            llm_model: None,
+            llm_base_url: None,
+            llm_key: None,
         },
     )
     .await
@@ -173,6 +199,10 @@ async fn negative_or_infinite_budget_is_rejected() {
                 ntfy_topic: None,
                 ntfy_token: None,
                 public_url: None,
+                llm_provider: None,
+                llm_model: None,
+                llm_base_url: None,
+                llm_key: None,
             },
         )
         .await
@@ -195,6 +225,10 @@ async fn the_deepseek_key_is_stored_but_never_serialised() {
             ntfy_topic: None,
             ntfy_token: None,
             public_url: None,
+            llm_provider: None,
+            llm_model: None,
+            llm_base_url: None,
+            llm_key: None,
         },
     )
     .await
@@ -229,6 +263,10 @@ async fn an_empty_key_patch_leaves_a_working_key_alone() {
             ntfy_topic: None,
             ntfy_token: None,
             public_url: None,
+            llm_provider: None,
+            llm_model: None,
+            llm_base_url: None,
+            llm_key: None,
         },
     )
     .await
@@ -245,6 +283,10 @@ async fn an_empty_key_patch_leaves_a_working_key_alone() {
             ntfy_topic: None,
             ntfy_token: None,
             public_url: None,
+            llm_provider: None,
+            llm_model: None,
+            llm_base_url: None,
+            llm_key: None,
         },
     )
     .await
@@ -256,38 +298,25 @@ async fn an_empty_key_patch_leaves_a_working_key_alone() {
 }
 
 #[tokio::test]
-async fn a_key_seeded_from_env_is_used_once_and_then_owned_by_the_settings_table() {
+async fn a_key_is_owned_by_the_settings_table_and_never_overwritten_by_seeding() {
     let dir = tempfile::tempdir().unwrap();
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
-    settings::seed(&pool, 1000.0, "INR", "sk-from-env")
-        .await
-        .unwrap();
-    assert_eq!(
-        settings::deepseek_key(&pool).await.unwrap().as_deref(),
-        Some("sk-from-env")
-    );
+    settings::seed(&pool).await.unwrap();
+    assert_eq!(settings::deepseek_key(&pool).await.unwrap(), None);
 
     settings::set(
         &pool,
         SettingsPatch {
-            budget: None,
-            currency: None,
-            deepseek_key: Some("sk-from-ui".into()),
-            trading_budget: None,
-            ntfy_url: None,
-            ntfy_topic: None,
-            ntfy_token: None,
-            public_url: None,
+            llm_key: Some("sk-from-ui".into()),
+            ..Default::default()
         },
     )
     .await
     .unwrap();
-    // Re-seeding must not overwrite what the UI set.
-    settings::seed(&pool, 1000.0, "INR", "sk-from-env")
-        .await
-        .unwrap();
+    // Seeding again on a later boot must not clear or replace it.
+    settings::seed(&pool).await.unwrap();
     assert_eq!(
         settings::deepseek_key(&pool).await.unwrap().as_deref(),
         Some("sk-from-ui")

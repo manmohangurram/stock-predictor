@@ -511,11 +511,6 @@ async fn finish(
     as_candidate.target = resolved.target;
     as_candidate.qty = resolved.qty;
 
-    // No topic configured means no push channel; the signal is still recorded, and not
-    // attempting the call keeps the poll's error list about the market, not the config.
-    if deps.cfg.ntfy_topic.is_empty() {
-        return Ok(());
-    }
     if let Some(mut n) =
         Notification::from_candidate(&instrument.symbol, &instrument.currency, &as_candidate)
     {

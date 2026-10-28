@@ -525,3 +525,20 @@ and read per tick, exactly like the DeepSeek key. Env values seed them on first 
 Ruling: the topic is returned in full (a name the user must be able to read back and copy into
 their phone) while the token is not. The topic is still a secret — anyone who knows it can
 subscribe — so the UI says so next to the field.
+
+## Auth dropped, 24x7 restored, providers selectable, env no longer owns secrets
+
+- **Auth removed.** The envelope-key design would have required unlocking after every restart,
+  which defeats 24x7 operation. `src/auth.rs` and its four crates (aes-gcm, argon2, base64,
+  rand, zeroize) are gone. Consequence, stated in the README: the API keys sit in plaintext in
+  the database and the server has no login.
+- **One source of truth.** Budget, currency, model provider, keys and ntfy are settings rows
+  edited in the UI. `Config` no longer carries them, so a stale `.env` cannot override what you
+  configured. Only deployment knobs remain: BIND, DB_PATH, poll cadence, token caps.
+- **Provider selection**: DeepSeek, OpenAI, Google Gemini, or any OpenAI-compatible endpoint
+  (OpenRouter, Groq, Ollama) with editable base URL and model. Each provider keeps its own key,
+  so switching back does not lose the other. Gemini's request/response shape is handled in
+  `src/llm/provider.rs`; article fetch is DeepSeek-only and the escalation degrades to price
+  history for the rest.
+- 24x7: nothing in the loop exits on error. A failed fetch, model call or push is logged and
+  retried next tick; the README documents a systemd unit and the Compose restart policy.

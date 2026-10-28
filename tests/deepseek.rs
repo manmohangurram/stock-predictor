@@ -14,6 +14,15 @@ async fn pool() -> (tempfile::TempDir, sqlx::SqlitePool) {
     (dir, pool)
 }
 
+fn model() -> stock_predicter::llm::provider::ModelConfig {
+    stock_predicter::llm::provider::ModelConfig {
+        provider: stock_predicter::llm::provider::Provider::Deepseek,
+        model: "deepseek-chat".into(),
+        base_url: "https://api.deepseek.com".into(),
+        api_key: "k".into(),
+    }
+}
+
 fn cfg() -> Config {
     Config::from_map(
         &[
@@ -51,7 +60,7 @@ async fn rows(
 async fn every_chat_call_writes_one_api_calls_row() {
     let (_d, pool) = pool().await;
     let t = FixtureTransport::ok(DECIDE);
-    let reply = deepseek::chat(&pool, &cfg(), &t, req()).await.unwrap();
+    let reply = deepseek::chat(&pool, &model(), &t, req()).await.unwrap();
     assert!(reply.content.contains("pass"));
     assert_eq!(reply.prompt_tokens, 812);
 
@@ -66,7 +75,7 @@ async fn every_chat_call_writes_one_api_calls_row() {
 async fn malformed_json_body_is_an_error_not_a_panic() {
     let (_d, pool) = pool().await;
     let t = FixtureTransport::ok("not json at all");
-    assert!(deepseek::chat(&pool, &cfg(), &t, req()).await.is_err());
+    assert!(deepseek::chat(&pool, &model(), &t, req()).await.is_err());
     assert_eq!(
         rows(&pool).await.len(),
         1,
@@ -81,7 +90,7 @@ async fn api_error_row_is_still_written() {
         status: 402,
         body: "{\"error\":\"insufficient balance\"}".into(),
     }]);
-    assert!(deepseek::chat(&pool, &cfg(), &t, req()).await.is_err());
+    assert!(deepseek::chat(&pool, &model(), &t, req()).await.is_err());
     let r = rows(&pool).await;
     assert_eq!(r.len(), 1);
     assert_eq!(r[0].1, Some(402));

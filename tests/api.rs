@@ -22,7 +22,16 @@ async fn setup() -> (tempfile::TempDir, axum::Router, sqlx::SqlitePool) {
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
-    settings::seed(&pool, 100_000.0, "INR", "").await.unwrap();
+    settings::seed(&pool).await.unwrap();
+    settings::set(
+        &pool,
+        settings::SettingsPatch {
+            budget: Some(100_000.0),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
     for sym in ["INFY", "TCS", "XYZIPO"] {
         sqlx::query(
             "INSERT INTO instruments (symbol, class, name, currency) VALUES (?, 'stock', ?, 'INR')",

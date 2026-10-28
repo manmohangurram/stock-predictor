@@ -7,7 +7,6 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::Result;
-use stock_predicter::config::Config;
 use stock_predicter::llm::deepseek::{self, ChatRequest, HttpReply, Transport};
 use stock_predicter::llm::parse::{self, LlmVerdict};
 use stock_predicter::llm::prompts::{self, PromptContext};
@@ -28,16 +27,12 @@ impl Transport for Real {
     }
 }
 
-fn cfg() -> Config {
-    let key = std::env::var("DEEPSEEK_API_KEY").unwrap_or_default();
-    Config::from_map(
-        &[("DEEPSEEK_API_KEY", key.as_str())]
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect(),
-    )
-    .unwrap()
+fn key() -> String {
+    std::env::var("DEEPSEEK_API_KEY").unwrap_or_default()
 }
+
+// The provider key comes from the environment for these opt-in checks only.
+
 
 fn ctx<'a>(i: &'a Instrument, x: &'a Indicators, h: &'a [Headline]) -> PromptContext<'a> {
     PromptContext {
@@ -63,8 +58,7 @@ fn ctx<'a>(i: &'a Instrument, x: &'a Indicators, h: &'a [Headline]) -> PromptCon
 #[tokio::test]
 #[ignore = "makes a real, billed API call; run with --ignored and a key"]
 async fn deepseek_returns_a_response_the_system_can_use() {
-    let cfg = cfg();
-    assert!(!cfg.deepseek_key.is_empty(), "DEEPSEEK_API_KEY is required");
+    assert!(!key().is_empty(), "DEEPSEEK_API_KEY is required");
 
     let dir = tempfile::tempdir().unwrap();
     let pool = stock_predicter::db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
@@ -97,11 +91,17 @@ async fn deepseek_returns_a_response_the_system_can_use() {
 
     let rendered = prompts::render("decide_v1", &ctx(&i, &x, &h)).unwrap();
     let real = Real {
-        inner: deepseek::ReqwestTransport::new(cfg.deepseek_key.clone()).unwrap(),
+        inner: deepseek::ReqwestTransport::new(key()).unwrap(),
+    };
+    let model = stock_predicter::llm::provider::ModelConfig {
+        provider: stock_predicter::llm::provider::Provider::Deepseek,
+        model: "deepseek-chat".into(),
+        base_url: "https://api.deepseek.com".into(),
+        api_key: key(),
     };
     let reply = deepseek::chat(
         &pool,
-        &cfg,
+        &model,
         &real,
         ChatRequest {
             conversation_id: "live-check".into(),
@@ -150,8 +150,7 @@ async fn deepseek_returns_a_response_the_system_can_use() {
 #[tokio::test]
 #[ignore = "makes a real, billed API call; run with --ignored and a key"]
 async fn deepseek_buy_carries_both_exits() {
-    let cfg = cfg();
-    assert!(!cfg.deepseek_key.is_empty(), "DEEPSEEK_API_KEY is required");
+    assert!(!key().is_empty(), "DEEPSEEK_API_KEY is required");
 
     let dir = tempfile::tempdir().unwrap();
     let pool = stock_predicter::db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
@@ -196,11 +195,17 @@ async fn deepseek_buy_carries_both_exits() {
 
     let rendered = prompts::render("decide_v1", &c).unwrap();
     let real = Real {
-        inner: deepseek::ReqwestTransport::new(cfg.deepseek_key.clone()).unwrap(),
+        inner: deepseek::ReqwestTransport::new(key()).unwrap(),
+    };
+    let model = stock_predicter::llm::provider::ModelConfig {
+        provider: stock_predicter::llm::provider::Provider::Deepseek,
+        model: "deepseek-chat".into(),
+        base_url: "https://api.deepseek.com".into(),
+        api_key: key(),
     };
     let reply = deepseek::chat(
         &pool,
-        &cfg,
+        &model,
         &real,
         ChatRequest {
             conversation_id: "live-buy".into(),

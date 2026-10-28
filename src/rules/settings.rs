@@ -25,6 +25,12 @@ pub struct Settings {
     pub ntfy_topic: String,
     pub ntfy_token_configured: bool,
     pub public_url: String,
+    /// Which chat API decisions come from, and the model name.
+    pub llm_provider: String,
+    pub llm_model: String,
+    pub llm_base_url: String,
+    /// True when a key is stored for the selected provider.
+    pub llm_key_configured: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -39,6 +45,11 @@ pub struct SettingsPatch {
     pub ntfy_topic: Option<String>,
     pub ntfy_token: Option<String>,
     pub public_url: Option<String>,
+    pub llm_provider: Option<String>,
+    pub llm_model: Option<String>,
+    pub llm_base_url: Option<String>,
+    /// Stored under the selected provider's own key name.
+    pub llm_key: Option<String>,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -67,6 +78,17 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         .await?
         .is_some_and(|t| !t.trim().is_empty());
     let public_url = setting(pool, "public_url").await?.unwrap_or_default();
+    let provider = crate::llm::provider::Provider::parse(
+        &setting(pool, "llm_provider").await?.unwrap_or_default(),
+    )
+    .unwrap_or(crate::llm::provider::Provider::Deepseek);
+    let llm_model = setting(pool, "llm_model")
+        .await?
+        .unwrap_or_else(|| provider.default_model().to_string());
+    let llm_base_url = setting(pool, "llm_base_url")
+        .await?
+        .unwrap_or_else(|| provider.default_base_url().to_string());
+    let llm_key_configured = key_for(pool, provider).await?.is_some();
     Ok(Settings {
         budget,
         committed,
@@ -80,6 +102,10 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         ntfy_topic,
         ntfy_token_configured,
         public_url,
+        llm_provider: provider.as_str().to_string(),
+        llm_model,
+        llm_base_url,
+        llm_key_configured,
     })
 }
 
@@ -172,6 +198,39 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
         }
     }
 
+    if let Some(provider) = patch.llm_provider.as_deref() {
+        let p = crate::llm::provider::Provider::parse(provider)
+            .map_err(|_| SettingsError::InvalidAmount)?;
+        put_setting(pool, "llm_provider", p.as_str())
+            .await
+            .map_err(|_| SettingsError::InvalidAmount)?;
+    }
+    for (name, value) in [
+        ("llm_model", patch.llm_model),
+        ("llm_base_url", patch.llm_base_url),
+    ] {
+        if let Some(v) = value {
+            put_setting(pool, name, v.trim())
+                .await
+                .map_err(|_| SettingsError::InvalidAmount)?;
+        }
+    }
+    if let Some(key) = patch.llm_key {
+        let key = key.trim();
+        if !key.is_empty() {
+            let provider = crate::llm::provider::Provider::parse(
+                &setting(pool, "llm_provider")
+                    .await
+                    .map_err(|_| SettingsError::InvalidAmount)?
+                    .unwrap_or_default(),
+            )
+            .unwrap_or(crate::llm::provider::Provider::Deepseek);
+            put_setting(pool, key_name(provider), key)
+                .await
+                .map_err(|_| SettingsError::InvalidAmount)?;
+        }
+    }
+
     if let Some(token) = patch.ntfy_token {
         let token = token.trim();
         if !token.is_empty() {
@@ -194,12 +253,60 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
 }
 
 /// The key itself, for the client that actually calls DeepSeek. Never exposed over HTTP.
+pub async fn setting(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+        .bind(key)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(|r| r.0).filter(|v| !v.is_empty()))
+}
+
+/// The token itself, for the notifier. Never serialised.
+pub async fn ntfy_token(pool: &SqlitePool) -> Result<Option<String>> {
+    setting(pool, "ntfy_token").await
+}
+
+fn key_name(provider: crate::llm::provider::Provider) -> &'static str {
+    match provider {
+        crate::llm::provider::Provider::Deepseek => "deepseek_key",
+        crate::llm::provider::Provider::Openai => "openai_key",
+        crate::llm::provider::Provider::Gemini => "gemini_key",
+        crate::llm::provider::Provider::Custom => "custom_key",
+    }
+}
+
+/// The key for one provider, whatever is currently selected.
+pub async fn key_for(
+    pool: &SqlitePool,
+    provider: crate::llm::provider::Provider,
+) -> Result<Option<String>> {
+    setting(pool, key_name(provider)).await
+}
+
+/// Everything a chat call needs, resolved from the settings table.
+pub async fn model_config(pool: &SqlitePool) -> Result<crate::llm::provider::ModelConfig> {
+    let provider = crate::llm::provider::Provider::parse(
+        &setting(pool, "llm_provider").await?.unwrap_or_default(),
+    )
+    .unwrap_or(crate::llm::provider::Provider::Deepseek);
+    let model = setting(pool, "llm_model")
+        .await?
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| provider.default_model().to_string());
+    let base_url = setting(pool, "llm_base_url")
+        .await?
+        .filter(|u| !u.is_empty())
+        .unwrap_or_else(|| provider.default_base_url().to_string());
+    Ok(crate::llm::provider::ModelConfig {
+        provider,
+        model,
+        base_url,
+        api_key: key_for(pool, provider).await?.unwrap_or_default(),
+    })
+}
+
 pub async fn deepseek_key(pool: &SqlitePool) -> Result<Option<String>> {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT value FROM settings WHERE key = 'deepseek_key'")
-            .fetch_optional(pool)
-            .await?;
-    Ok(row.map(|r| r.0).filter(|k| !k.trim().is_empty()))
+    key_for(pool, crate::llm::provider::Provider::Deepseek).await
 }
 
 async fn put_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()> {
@@ -215,60 +322,16 @@ async fn put_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-/// First boot only: seed the ceiling and the currency from env, then never read env again.
-pub async fn seed(
-    pool: &SqlitePool,
-    seed_budget: f64,
-    seed_currency: &str,
-    seed_deepseek_key: &str,
-) -> Result<()> {
-    let budget_rows: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM cash_ledger WHERE kind = 'budget'")
-            .fetch_one(pool)
-            .await?;
-    if budget_rows.0 == 0 && seed_budget > 0.0 {
-        budget::record(
-            pool,
-            NewCashEntry {
-                kind: CashKind::Budget,
-                amount: seed_budget,
-                reference: "seed from BUDGET".into(),
-            },
-        )
+/// First boot only: make sure the currency row exists. Everything else — budget, trading pot,
+/// keys, ntfy — starts empty and is set in the UI, so there is exactly one source of truth.
+pub async fn seed(pool: &SqlitePool) -> Result<()> {
+    let rows: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM settings WHERE key = 'currency'")
+        .fetch_one(pool)
         .await?;
-    }
-
-    if !seed_currency.trim().is_empty() {
-        let rows: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM settings WHERE key = 'currency'")
-            .fetch_one(pool)
-            .await?;
-        if rows.0 == 0 {
-            put_setting(pool, "currency", seed_currency).await?;
-        }
-    }
-    if !seed_deepseek_key.trim().is_empty() {
-        let rows: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM settings WHERE key = 'deepseek_key'")
-                .fetch_one(pool)
-                .await?;
-        if rows.0 == 0 {
-            put_setting(pool, "deepseek_key", seed_deepseek_key.trim()).await?;
-        }
+    if rows.0 == 0 {
+        put_setting(pool, "currency", "INR").await?;
     }
     Ok(())
-}
-
-pub async fn setting(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
-    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
-        .bind(key)
-        .fetch_optional(pool)
-        .await?;
-    Ok(row.map(|r| r.0).filter(|v| !v.is_empty()))
-}
-
-/// The token itself, for the notifier. Never serialised.
-pub async fn ntfy_token(pool: &SqlitePool) -> Result<Option<String>> {
-    setting(pool, "ntfy_token").await
 }
 
 async fn currency(pool: &SqlitePool) -> Result<String> {

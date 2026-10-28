@@ -108,9 +108,10 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
     };
 
     let rendered = prompts::render("decide_v1", &base)?;
+    let model = crate::rules::settings::model_config(deps.pool).await?;
     let reply = deepseek::chat(
         deps.pool,
-        deps.cfg,
+        &model,
         deps.transport,
         ChatRequest {
             conversation_id: conversation_id.clone(),
@@ -156,11 +157,15 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 .collect();
 
             let mut extracts: Vec<(i64, String)> = Vec::new();
+            let can_fetch = model.provider.supports_article_fetch();
             let mut budget_chars = MAX_TOTAL_FETCHED_CHARS;
             for id in wanted {
                 let Some(h) = headlines.iter().find(|h| h.id == id) else {
                     continue;
                 };
+                if !can_fetch {
+                    continue;
+                }
                 let text =
                     match deepseek::fetch_page(deps.pool, deps.cfg, deps.transport, &h.url).await {
                         Ok(t) => t,
@@ -212,7 +217,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
             let rendered2 = prompts::render("escalate_v1", &ctx2)?;
             let reply2 = deepseek::chat(
                 deps.pool,
-                deps.cfg,
+                &model,
                 deps.transport,
                 ChatRequest {
                     conversation_id: conversation_id.clone(),

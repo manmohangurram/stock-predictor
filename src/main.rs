@@ -24,13 +24,7 @@ async fn main() -> Result<()> {
 
     let cfg = Config::from_env()?;
     let pool = db::connect_and_migrate(&cfg.db_path).await?;
-    settings::seed(
-        &pool,
-        cfg.seed_budget,
-        &cfg.seed_currency,
-        &cfg.deepseek_key,
-    )
-    .await?;
+    settings::seed(&pool).await?;
 
     if flag("--seed") {
         let report = stock_predicter::seed::run(&pool, !flag("--no-positions")).await?;
@@ -67,8 +61,7 @@ async fn main() -> Result<()> {
         let (id, symbol, class, name) =
             row.ok_or_else(|| anyhow::anyhow!("no instrument {symbol} — add it first"))?;
         let market = YahooSource::new()?;
-        let key = settings::deepseek_key(&pool).await?.unwrap_or_default();
-        let transport = ReqwestTransport::new(key)?;
+        let transport = ReqwestTransport::new(settings::model_config(&pool).await?.api_key)?;
         let notifier = match Ntfy::from_settings(&pool).await? {
             Some(n) => n,
             None => Ntfy::new("https://ntfy.sh", "", "", "")?,
@@ -99,8 +92,7 @@ async fn main() -> Result<()> {
 
     if flag("--poll-once") || flag("--predict") {
         let market = YahooSource::new()?;
-        let key = settings::deepseek_key(&pool).await?.unwrap_or_default();
-        let transport = ReqwestTransport::new(key)?;
+        let transport = ReqwestTransport::new(settings::model_config(&pool).await?.api_key)?;
         let notifier = match Ntfy::from_settings(&pool).await? {
             Some(n) => n,
             None => Ntfy::new("https://ntfy.sh", "", "", "")?,
@@ -136,10 +128,9 @@ async fn main() -> Result<()> {
         loop {
             let now = Utc::now();
             // The key can be changed from the UI at runtime, so it is read per tick.
-            let key = settings::deepseek_key(&poll_pool)
+            let key = settings::model_config(&poll_pool)
                 .await
-                .ok()
-                .flatten()
+                .map(|m| m.api_key)
                 .unwrap_or_default();
             let (market, transport) = match (YahooSource::new(), ReqwestTransport::new(key)) {
                 (Ok(m), Ok(t)) => (m, t),

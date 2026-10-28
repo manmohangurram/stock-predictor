@@ -63,9 +63,18 @@ async fn setup() -> (tempfile::TempDir, sqlx::SqlitePool) {
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
-    settings::seed(&pool, 200_000.0, "INR", "test-key")
-        .await
-        .unwrap();
+    settings::seed(&pool).await.unwrap();
+    // The ceiling and the key are settings now, so a test that relies on them sets them.
+    settings::set(
+        &pool,
+        settings::SettingsPatch {
+            budget: Some(200_000.0),
+            llm_key: Some("test-key".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
     sqlx::query(
         "INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY', 'stock', 'Infosys', 'INR')",
     )

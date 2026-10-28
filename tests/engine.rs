@@ -30,7 +30,27 @@ async fn seed(pool: &sqlx::SqlitePool, symbols: &[&str]) {
 }
 
 async fn seed_with_key(pool: &sqlx::SqlitePool, symbols: &[&str], key: &str) {
-    settings::seed(pool, 200_000.0, "INR", key).await.unwrap();
+    settings::seed(pool).await.unwrap();
+    settings::set(
+        pool,
+        settings::SettingsPatch {
+            budget: Some(200_000.0),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    if !key.is_empty() {
+        settings::set(
+            pool,
+            settings::SettingsPatch {
+                llm_key: Some(key.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
     for s in symbols {
         sqlx::query(
             "INSERT INTO instruments (symbol, class, name, currency) VALUES (?, 'stock', ?, 'INR')",
@@ -235,6 +255,10 @@ async fn with_no_affordable_quantity_the_model_is_still_asked_but_nothing_is_tra
             ntfy_topic: None,
             ntfy_token: None,
             public_url: None,
+            llm_provider: None,
+            llm_model: None,
+            llm_base_url: None,
+            llm_key: None,
         },
     )
     .await
@@ -283,22 +307,25 @@ fn market_window_respects_ist_hours_and_skips_weekends() {
 }
 
 #[tokio::test]
-async fn an_unset_topic_skips_the_push_but_still_records_the_signal() {
+async fn a_failing_push_does_not_lose_the_signal() {
+    // The channel is a settings row, so the engine always attempts the push; a broken channel
+    // must leave the signal recorded and be retried, not swallowed.
     let dir = tempfile::tempdir().unwrap();
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
     seed(&pool, &["INFY"]).await;
     let market = FakeMarket::ok(bars_n(250));
-    let notifier = FakeNotifier::default();
-    // No NTFY_TOPIC: there is nowhere to push to, which must not look like a market error.
-    let mut c = cfg();
-    c.ntfy_topic = String::new();
+    let notifier = FakeNotifier::failing();
+    let c = cfg();
 
     let report = poll(&pool, &market, &notifier, &c, now()).await.unwrap();
     assert_eq!(report.signals, 1, "{report:?}");
     assert_eq!(report.notifications, 0);
-    assert!(report.errors.is_empty(), "{report:?}");
+    assert!(
+        report.errors.iter().any(|e| e.contains("ntfy")),
+        "the failure is reported, not hidden: {report:?}"
+    );
     assert_eq!(notifier.count(), 0);
 }
 

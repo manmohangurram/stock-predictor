@@ -292,6 +292,10 @@ pub struct PutSettings {
     pub ntfy_topic: Option<String>,
     pub ntfy_token: Option<String>,
     pub public_url: Option<String>,
+    pub llm_provider: Option<String>,
+    pub llm_model: Option<String>,
+    pub llm_base_url: Option<String>,
+    pub llm_key: Option<String>,
 }
 
 async fn put_settings(
@@ -309,6 +313,10 @@ async fn put_settings(
             ntfy_topic: body.ntfy_topic,
             ntfy_token: body.ntfy_token,
             public_url: body.public_url,
+            llm_provider: body.llm_provider,
+            llm_model: body.llm_model,
+            llm_base_url: body.llm_base_url,
+            llm_key: body.llm_key,
         },
     )
     .await

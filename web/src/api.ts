@@ -79,6 +79,10 @@ export interface Settings {
   ntfy_topic: string;
   ntfy_token_configured: boolean;
   public_url: string;
+  llm_provider: string;
+  llm_model: string;
+  llm_base_url: string;
+  llm_key_configured: boolean;
 }
 
 export interface CallRow {

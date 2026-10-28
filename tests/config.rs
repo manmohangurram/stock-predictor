@@ -11,7 +11,9 @@ fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 }
 
 #[test]
-fn config_defaults_poll_and_cap() {
+fn config_only_carries_deployment_settings() {
+    // Budget, currency, keys and ntfy are edited in the UI and live in the database, so none
+    // of them appear here: one source of truth, and it is not the environment.
     let cfg = Config::from_map(&map(&[
         ("BUDGET", "200000"),
         ("DEEPSEEK_API_KEY", "k"),
@@ -19,8 +21,6 @@ fn config_defaults_poll_and_cap() {
         ("NTFY_BASE_URL", "https://ntfy.sh"),
     ]))
     .unwrap();
-    assert_eq!(cfg.seed_budget, 200_000.0);
-    assert_eq!(cfg.seed_currency, "INR");
     assert_eq!(cfg.poll_secs, 900);
     // The call gate: a 2-unit move, an hourly floor, and a two-hour off-hours cadence.
     assert_eq!(cfg.llm_min_price_move, 2.0);
@@ -30,8 +30,9 @@ fn config_defaults_poll_and_cap() {
 }
 
 #[test]
-fn non_numeric_budget_is_an_error() {
-    assert!(Config::from_map(&map(&[("BUDGET", "lots")])).is_err());
+fn a_stray_budget_in_the_environment_is_ignored() {
+    // It used to be a seed. Now the UI owns it, so a typo there must not break the boot.
+    assert!(Config::from_map(&map(&[("BUDGET", "lots")])).is_ok());
 }
 
 #[tokio::test]

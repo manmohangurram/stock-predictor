@@ -207,7 +207,7 @@ function wireSettings(): void {
     const data = new FormData(form);
     const budget = Number(data.get("budget"));
     const currency = String(data.get("currency"));
-    const key = String(data.get("deepseek_key") ?? "").trim();
+    const llmKey = String(data.get("llm_key") ?? "").trim();
     const trading = Number(data.get("trading_budget"));
     const ntfyToken = String(data.get("ntfy_token") ?? "").trim();
     const patch = {
@@ -217,9 +217,13 @@ function wireSettings(): void {
       ntfy_url: String(data.get("ntfy_url") ?? "").trim(),
       ntfy_topic: String(data.get("ntfy_topic") ?? "").trim(),
       public_url: String(data.get("public_url") ?? "").trim(),
+      llm_provider: String(data.get("llm_provider") ?? "deepseek"),
+      llm_model: String(data.get("llm_model") ?? "").trim(),
+      llm_base_url: String(data.get("llm_base_url") ?? "").trim(),
       ...(ntfyToken ? { ntfy_token: ntfyToken } : {}),
+      ...(llmKey ? { llm_key: llmKey } : {}),
     };
-    const res = await api.putSettings(key ? { ...patch, deepseek_key: key } : patch);
+    const res = await api.putSettings(patch);
     if (!res.ok) {
       window.alert(
         res.body.error === "below_committed"

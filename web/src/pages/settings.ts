@@ -49,16 +49,46 @@ export function renderSettings(s: Settings): string {
               : "Locked permanently after the first recorded transaction."
           }</p>
         </div>
-        <div class="field">
-          <label class="lbl" for="deepseek_key">DeepSeek API key</label>
-          <input id="deepseek_key" name="deepseek_key" type="password" autocomplete="off"
-                 placeholder="${s.deepseek_configured ? "•••••••• configured — leave blank to keep" : "sk-…"}" />
-          <p class="help">${
-            s.deepseek_configured
-              ? "Configured. The key is never shown again, here or over the API."
-              : "Without a key the rules run alone and no model call is made."
-          }</p>
-        </div>
+        <fieldset class="field-group">
+          <legend class="lbl">Model provider</legend>
+          <div class="field">
+            <label class="lbl" for="llm_provider">Provider</label>
+            <select id="llm_provider" name="llm_provider">
+              ${[
+                ["deepseek", "DeepSeek"],
+                ["openai", "OpenAI"],
+                ["gemini", "Google Gemini"],
+                ["custom", "OpenAI-compatible (OpenRouter, Groq, Ollama…)"],
+              ]
+                .map(
+                  ([v, label]) =>
+                    `<option value="${v}" ${v === s.llm_provider ? "selected" : ""}>${label}</option>`,
+                )
+                .join("")}
+            </select>
+          </div>
+          <div class="field">
+            <label class="lbl" for="llm_model">Model</label>
+            <input id="llm_model" name="llm_model" value="${escapeHtml(s.llm_model)}"
+                   placeholder="default for the provider" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label class="lbl" for="llm_base_url">Base URL</label>
+            <input id="llm_base_url" name="llm_base_url" value="${escapeHtml(s.llm_base_url)}"
+                   placeholder="default for the provider" autocomplete="off" />
+            <p class="help">Change it for a proxy or a local Ollama: <code>http://localhost:11434/v1</code>.</p>
+          </div>
+          <div class="field">
+            <label class="lbl" for="llm_key">API key</label>
+            <input id="llm_key" name="llm_key" type="password" autocomplete="off"
+                   placeholder="${s.llm_key_configured ? "•••••••• configured — leave blank to keep" : "key for the selected provider"}" />
+            <p class="help">${
+              s.llm_key_configured
+                ? "Configured. The key is never shown again, here or over the API."
+                : "Without a key the rules run alone and no model call is made."
+            }</p>
+          </div>
+        </fieldset>
         <fieldset class="field-group">
           <legend class="lbl">Phone notifications (ntfy)</legend>
           <div class="field">

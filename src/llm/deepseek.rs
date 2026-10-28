@@ -10,6 +10,7 @@ use sqlx::SqlitePool;
 use super::audit::{self, ApiCallRow};
 use crate::config::Config;
 
+/// The DeepSeek default model, kept for the fixture tests.
 pub const MODEL: &str = "deepseek-chat";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -138,48 +139,14 @@ pub struct SearchHit {
     pub date: Option<String>,
 }
 
-#[derive(Serialize)]
-struct ChatBody<'a> {
-    model: &'a str,
-    messages: Vec<Msg<'a>>,
-    response_format: ResponseFormat,
-    temperature: f32,
-}
-
-#[derive(Serialize)]
-struct Msg<'a> {
-    role: &'a str,
-    content: &'a str,
-}
-
-#[derive(Serialize)]
-struct ResponseFormat {
-    #[serde(rename = "type")]
-    kind: &'static str,
-}
-
 pub async fn chat(
     pool: &SqlitePool,
-    cfg: &Config,
+    model: &crate::llm::provider::ModelConfig,
     transport: &dyn Transport,
     req: ChatRequest,
 ) -> Result<ChatReply> {
-    let body = serde_json::to_string(&ChatBody {
-        model: MODEL,
-        messages: vec![Msg {
-            role: "user",
-            content: &req.prompt,
-        }],
-        response_format: ResponseFormat {
-            kind: "json_object",
-        },
-        temperature: 0.2,
-    })?;
-
-    let url = format!(
-        "{}/chat/completions",
-        cfg.deepseek_base.trim_end_matches('/')
-    );
+    let body = model.request_body(&req.prompt).to_string();
+    let url = model.chat_url();
     let started = Instant::now();
     let reply = transport.post(&url, &body).await;
     let latency = started.elapsed().as_millis() as i64;
@@ -196,12 +163,16 @@ pub async fn chat(
         ..Default::default()
     };
 
-    let outcome = parse_chat(reply, &mut row);
+    let outcome = parse_chat(reply, model, &mut row);
     audit::record(pool, row).await?;
     outcome
 }
 
-fn parse_chat(reply: Result<HttpReply>, row: &mut ApiCallRow) -> Result<ChatReply> {
+fn parse_chat(
+    reply: Result<HttpReply>,
+    model: &crate::llm::provider::ModelConfig,
+    row: &mut ApiCallRow,
+) -> Result<ChatReply> {
     let reply = match reply {
         Ok(r) => r,
         Err(e) => {
@@ -221,26 +192,26 @@ fn parse_chat(reply: Result<HttpReply>, row: &mut ApiCallRow) -> Result<ChatRepl
         Ok(v) => v,
         Err(e) => {
             row.error = Some(format!("malformed json: {e}"));
-            return Err(anyhow!("deepseek chat: malformed json: {e}"));
+            return Err(anyhow!(
+                "{} chat: malformed json: {e}",
+                model.provider.as_str()
+            ));
         }
     };
-    let content = v
-        .pointer("/choices/0/message/content")
-        .and_then(|c| c.as_str())
-        .ok_or_else(|| {
-            row.error = Some("missing choices[0].message.content".into());
-            anyhow!("deepseek chat: missing content")
-        })?
-        .to_string();
-
-    let prompt_tokens = v
-        .pointer("/usage/prompt_tokens")
-        .and_then(|t| t.as_i64())
-        .unwrap_or(0);
-    let completion_tokens = v
-        .pointer("/usage/completion_tokens")
-        .and_then(|t| t.as_i64())
-        .unwrap_or(0);
+    // Providers disagree on both the envelope and the error shape; both live in ModelConfig.
+    if v.get("error").is_some() {
+        row.error = Some(v["error"].to_string());
+        return Err(anyhow!(
+            "{} chat: {}",
+            model.provider.as_str(),
+            v["error"]
+        ));
+    }
+    let content = model.extract_content(&v).ok_or_else(|| {
+        row.error = Some("response carried no assistant text".into());
+        anyhow!("{} chat: no assistant text", model.provider.as_str())
+    })?;
+    let (prompt_tokens, completion_tokens) = model.usage(&v);
     row.prompt_tokens = Some(prompt_tokens);
     row.completion_tokens = Some(completion_tokens);
 
