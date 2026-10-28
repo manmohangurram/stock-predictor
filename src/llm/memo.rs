@@ -17,7 +17,7 @@ pub fn fingerprint(headlines: &[Headline]) -> String {
         h.update(p.as_bytes());
         h.update(b"\n");
     }
-    format!("{:x}", h.finalize())
+    crate::hex(&h.finalize())
 }
 
 /// True when the model has already answered for exactly this headline set.

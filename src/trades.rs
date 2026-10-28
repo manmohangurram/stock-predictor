@@ -288,16 +288,18 @@ pub async fn history(
 
     let rows: Vec<TradeRow> = match instrument_id {
         Some(id) => {
-            sqlx::query_as(&format!(
+            sqlx::query_as(sqlx::AssertSqlSafe(format!(
                 "{SELECT} WHERE t.instrument_id = ? ORDER BY t.traded_at DESC LIMIT ?"
-            ))
+            )))
             .bind(id)
             .bind(limit)
             .fetch_all(pool)
             .await?
         }
         None => {
-            sqlx::query_as(&format!("{SELECT} ORDER BY t.traded_at DESC LIMIT ?"))
+            sqlx::query_as(sqlx::AssertSqlSafe(format!(
+                "{SELECT} ORDER BY t.traded_at DESC LIMIT ?"
+            )))
                 .bind(limit)
                 .fetch_all(pool)
                 .await?

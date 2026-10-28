@@ -109,7 +109,7 @@ pub fn dedupe_key(symbol: &str, c: &Candidate) -> String {
             .unwrap_or_default()
             .as_bytes(),
     );
-    format!("{:x}", h.finalize())
+    crate::hex(&h.finalize())
 }
 
 pub trait Notifier: Send + Sync {

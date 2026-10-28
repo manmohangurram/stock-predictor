@@ -67,7 +67,7 @@ pub async fn migrate(pool: &SqlitePool) -> Result<()> {
         if done.is_some() {
             continue;
         }
-        sqlx::raw_sql(sql)
+        sqlx::raw_sql(sqlx::AssertSqlSafe(sql.to_string()))
             .execute(pool)
             .await
             .with_context(|| format!("apply migration {id}"))?;

@@ -52,7 +52,7 @@ pub fn template(name: &str) -> Result<&'static str> {
 pub fn template_hash(name: &str) -> Result<String> {
     let mut h = Sha256::new();
     h.update(template(name)?.as_bytes());
-    Ok(format!("{:x}", h.finalize()))
+    Ok(crate::hex(&h.finalize()))
 }
 
 pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {

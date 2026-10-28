@@ -474,3 +474,22 @@ range `ts >= 'YYYY-MM-DD'`.
 - `PRAGMA optimize` after migrations, so the planner's statistics match the new indexes.
 - Not done, deliberately: multi-row `INSERT ... VALUES` batching (0.18 ms per tick) and
   ANALYZE on a 74-row database.
+
+## Dependency audit
+
+- `tokio` was on `features = ["full"]` — every subsystem compiled in. Now only what is used:
+  `rt-multi-thread` (main + bench runtime), `macros` (`#[tokio::main]`, `#[tokio::test]`),
+  `net` (TcpListener), `time` (sleep/timeout), `sync` (Mutex).
+- Dropped unused features: `reqwest/json` (no `.json()` call), `sqlx/chrono` (times are stored as
+  strings), `chrono/serde` (no chrono field is serialised), `tower-http/trace` (unused),
+  `criterion/html_reports`.
+- Upgrades: reqwest 0.12 -> 0.13, sqlx 0.8 -> 0.9, tower-http 0.6 -> 0.7, sha2 0.10 -> 0.11,
+  criterion 0.5 -> 0.8. `cargo update` for the rest.
+- **`rsa` and RUSTSEC-2023-0071 are gone entirely.** The crate came from `sqlx-mysql`, which the
+  old sqlx pulled in as a build-time dependency of its derive macros. sqlx 0.9 no longer does,
+  so `cargo audit` is clean with no ignore file. The temporary `.cargo/audit.toml` ignore was
+  removed rather than left in place.
+- Migration work for the majors: `sha2` 0.11 dropped `LowerHex` on `finalize()` (one `hex`
+  helper now), `sqlx` 0.9 requires dynamic SQL to be wrapped in `AssertSqlSafe` (four sites, all
+  interned by us), `reqwest` 0.13 renamed the TLS features and moved `.query()` behind a
+  feature.

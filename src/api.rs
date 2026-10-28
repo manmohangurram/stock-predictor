@@ -237,7 +237,7 @@ async fn dashboard_etag(pool: &SqlitePool, mode: crate::models::Mode) -> Result<
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(format!("{}-{}-{}-{}-{}", row.0, row.1, row.2, row.3, mode.as_str()).as_bytes());
-    Ok(format!("\"{:x}\"", h.finalize()))
+    Ok(format!("\"{}\"", crate::hex(&h.finalize())))
 }
 
 async fn dashboard(
@@ -1072,14 +1072,14 @@ async fn load_signals(
     } else {
         "s.action <> 'BLOCKED'"
     };
-    let rows: Vec<SignalDbRow> = sqlx::query_as(&format!(
+    let rows: Vec<SignalDbRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT s.id AS id, i.symbol AS symbol, i.class AS class, s.action AS action,
                 s.qty AS qty, s.confidence AS confidence, s.entry AS entry, s.stop AS stop,
                 s.target AS target, s.valid_until AS valid_until,
                 s.reason_json AS reason_json, s.created_at AS created_at
          FROM signals s JOIN instruments i ON i.id = s.instrument_id
          WHERE {predicate} AND s.mode = ? ORDER BY s.id DESC LIMIT 50"
-    ))
+    )))
     .bind(mode.as_str())
     .fetch_all(pool)
     .await?;

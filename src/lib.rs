@@ -1,3 +1,12 @@
+/// Lowercase hex of a digest. sha2 0.11's `finalize()` dropped `LowerHex`.
+pub fn hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
+}
+
 pub mod api;
 pub mod backtest;
 pub mod config;
