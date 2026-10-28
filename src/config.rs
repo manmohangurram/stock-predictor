@@ -58,7 +58,9 @@ impl Config {
             deepseek_base: get("DEEPSEEK_BASE_URL")
                 .unwrap_or("https://api.deepseek.com")
                 .to_string(),
-            db_path: get("DB_PATH").unwrap_or("stock-predicter.db").to_string(),
+            db_path: get("DB_PATH")
+                .unwrap_or("data/stock-predicter.db")
+                .to_string(),
             bind: get("BIND").unwrap_or("127.0.0.1:8080").to_string(),
         })
     }

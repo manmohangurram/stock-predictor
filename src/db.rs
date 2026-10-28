@@ -32,6 +32,12 @@ pub fn path_of(path: &str) -> &str {
 }
 
 pub async fn connect(path: &str) -> Result<SqlitePool> {
+    // Create the parent directory: a missing folder should not look like a corrupt database.
+    if let Some(dir) = std::path::Path::new(path_of(path)).parent() {
+        if !dir.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+    }
     let opts = SqliteConnectOptions::new()
         .filename(path_of(path))
         .create_if_missing(true)

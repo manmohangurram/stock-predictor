@@ -1,0 +1,22 @@
+services:
+  stock-predicter:
+    build: .
+    # Or use the published image instead of building:
+    # image: ghcr.io/manmohangurram/stock-predictor:latest
+    container_name: stock-predicter
+    restart: unless-stopped
+    ports:
+      # LAN only on purpose: there is no authentication. Never publish this to the internet.
+      - "8080:8080"
+    volumes:
+      # The SQLite database, its WAL and the ledger live here. Back this up.
+      - ./data:/data
+    environment:
+      BUDGET: "500000"          # seeded on first boot, then edited from Settings
+      CURRENCY: "INR"
+      DEEPSEEK_API_KEY: ""      # can be set later in Settings instead
+      NTFY_BASE_URL: "https://ntfy.sh"
+      NTFY_TOPIC: ""            # optional; empty means no push
+      POLL_SECS: "900"
+      PROMPT_WINDOW_HOURS: "4"
+      RUST_LOG: "info"

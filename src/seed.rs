@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 
 use crate::market::{amfi, yahoo};
 use crate::models::AssetClass;
-use crate::rules::budget::{self, CashKind, NewCashEntry};
+use crate::rules::budget;
 
 /// A small, real watchlist. Everything downstream uses live Yahoo data for these.
 pub const STOCKS: &[(&str, &str)] = &[
@@ -57,25 +57,16 @@ pub async fn run(pool: &SqlitePool, with_positions: bool) -> Result<SeedReport> 
                         .push(format!("{symbol}: does not fit the budget"));
                     continue;
                 }
-                sqlx::query(
-                    "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, stop, target, state)
-                     VALUES (?, ?, ?, ?, ?, ?, 'open')",
-                )
-                .bind(id)
-                .bind(qty)
-                .bind(close)
-                .bind(chrono::Utc::now().to_rfc3339())
-                .bind(close * 0.95)
-                .bind(close * 1.10)
-                .execute(pool)
-                .await?;
-                budget::record(
+                // One call creates the position, the fill and the cash movement together.
+                crate::trades::record(
                     pool,
-                    NewCashEntry {
-                        kind: CashKind::Buy,
-                        amount: -(qty * close),
-                        reference: format!("seed buy {symbol} @ {close:.2}"),
-                    },
+                    id,
+                    crate::trades::Side::Buy,
+                    qty,
+                    close,
+                    Some("seeded at the last close"),
+                    None,
+                    crate::models::Mode::Long,
                 )
                 .await?;
                 report.positions_added += 1;
@@ -104,23 +95,15 @@ pub async fn run(pool: &SqlitePool, with_positions: bool) -> Result<SeedReport> 
                 Ok(nav) => {
                     let qty = budget::units_floor(SPEND_PER_FUND / nav.nav);
                     if qty > 0.0 && budget::fits(pool, qty * nav.nav).await? {
-                        sqlx::query(
-                            "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state)
-                             VALUES (?, ?, ?, ?, 'open')",
-                        )
-                        .bind(id)
-                        .bind(qty)
-                        .bind(nav.nav)
-                        .bind(chrono::Utc::now().to_rfc3339())
-                        .execute(pool)
-                        .await?;
-                        budget::record(
+                        crate::trades::record(
                             pool,
-                            NewCashEntry {
-                                kind: CashKind::Buy,
-                                amount: -(qty * nav.nav),
-                                reference: format!("seed buy {} @ {}", nav.name, nav.nav),
-                            },
+                            id,
+                            crate::trades::Side::Buy,
+                            qty,
+                            nav.nav,
+                            Some("seeded at AMFI NAV"),
+                            None,
+                            crate::models::Mode::Long,
                         )
                         .await?;
                         report.positions_added += 1;
