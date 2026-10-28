@@ -99,3 +99,55 @@ fn a_sell_notification_still_names_the_trigger() {
     let n = Notification::from_candidate("INFY", "INR", &c).unwrap();
     assert!(n.body.contains("stop 1412.00 hit"), "{}", n.body);
 }
+
+#[test]
+fn the_ntfy_request_carries_the_headers_the_service_expects() {
+    use stock_predicter::notify::{payload, Notification, Priority};
+
+    let n = Notification {
+        title: "SELL · INFY 17 units".into(),
+        body: "stop 1200 hit".into(),
+        priority: Priority::High,
+        dedupe_key: "k".into(),
+        signal_id: None,
+        symbol: "INFY.NS".into(),
+    };
+
+    let (headers, body) = payload(&n, "http://192.168.1.10:8080");
+    let get = |name: &str| {
+        headers
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.clone())
+    };
+
+    // ntfy reads these exact names; the non-ASCII middot is folded so the header is legal.
+    assert_eq!(get("Title").as_deref(), Some("SELL - INFY 17 units"));
+    assert_eq!(get("Priority").as_deref(), Some("high"));
+    assert_eq!(get("Tags").as_deref(), Some("rotating_light"));
+    assert_eq!(get("Click").as_deref(), Some("http://192.168.1.10:8080/i/INFY.NS"));
+    assert_eq!(body, "stop 1200 hit");
+}
+
+#[test]
+fn without_a_public_url_there_is_no_dead_deep_link() {
+    use stock_predicter::notify::{payload, Notification, Priority};
+    let n = Notification {
+        title: "BUY".into(),
+        body: "x".into(),
+        priority: Priority::Default,
+        dedupe_key: "k".into(),
+        signal_id: None,
+        symbol: "INFY.NS".into(),
+    };
+    let (headers, _) = payload(&n, "");
+    assert!(headers.iter().all(|(k, _)| k != "Click"), "no link when the host is unknown");
+    assert_eq!(
+        headers.iter().find(|(k, _)| k == "Priority").map(|(_, v)| v.as_str()),
+        Some("default")
+    );
+    assert_eq!(
+        headers.iter().find(|(k, _)| k == "Tags").map(|(_, v)| v.as_str()),
+        Some("chart_with_upwards_trend")
+    );
+}

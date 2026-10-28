@@ -97,6 +97,8 @@ API key after first boot; the environment only seeds them.
 | `BUDGET`, `CURRENCY` | `0`, `INR` | First-boot seed for the long-term pot |
 | `DEEPSEEK_API_KEY` | empty | Can be set in Settings instead |
 | `NTFY_TOPIC`, `NTFY_BASE_URL` | empty, `https://ntfy.sh` | Push channel; empty means none |
+| `NTFY_TOKEN` | empty | Access token (`tk_…`) for a protected topic |
+| `PUBLIC_URL` | empty | e.g. `http://192.168.1.10:8080`, used for the notification's tap-through link |
 | `DB_PATH` | `data/stock-predicter.db` | SQLite file; the directory is created |
 | `BIND` | `127.0.0.1:8080` | Listen address (use `0.0.0.0:8080` in Docker) |
 | `POLL_SECS` | `900` | In-session cadence |
@@ -105,6 +107,30 @@ API key after first boot; the environment only seeds them.
 | `LLM_MIN_PRICE_MOVE` | `2.0` | Skip a call unless the price moved this much |
 | `LLM_MAX_SILENCE_SECS` | `3600` | ...but never stay quiet longer than this |
 | `LLM_DAILY_CAP` | `200` | Hard ceiling on model calls per day |
+
+## Phone notifications
+
+Push goes through [ntfy](https://ntfy.sh): no accounts, no Apple or Google dependency, works on
+a home server.
+
+1. Install the ntfy app and subscribe to a topic name — make it long and random, because anyone
+   who knows the name can read it: `stock-predicter-7f3k9m2q`.
+2. Run with `NTFY_TOPIC=stock-predicter-7f3k9m2q`. Set `NTFY_TOKEN` as well if the topic is
+   protected by an ntfy account, and `PUBLIC_URL` so tapping the notification opens the
+   instrument page on your LAN.
+3. Verify before trusting it:
+
+```bash
+NTFY_TOPIC=stock-predicter-7f3k9m2q ./target/release/stock-predicter --test-notify
+```
+
+What is sent, and what is not:
+
+- **Sent**: a buy with its limit, both exits and the cost; a sell with the level that triggered
+  it. Sells are high priority and carry a red-light tag.
+- **Never sent**: `BLOCKED` signals (there is nothing to do about them), unchanged signals, and
+  `pass`. Nothing pulses or repeats: a signal already pushed is not pushed again, and a failed
+  push retries on the next tick rather than disappearing.
 
 ## Self-hosting with Docker
 

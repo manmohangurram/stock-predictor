@@ -32,6 +32,8 @@ pub struct Notification {
     pub priority: Priority,
     pub dedupe_key: String,
     pub signal_id: Option<i64>,
+    /// Used for the tap-through link; empty when there is nothing to open.
+    pub symbol: String,
 }
 
 impl Notification {
@@ -85,6 +87,7 @@ impl Notification {
             priority,
             dedupe_key: dedupe_key(symbol, c),
             signal_id: None,
+            symbol: symbol.to_string(),
         })
     }
 }
@@ -122,6 +125,8 @@ pub trait Notifier: Send + Sync {
 pub struct Ntfy {
     client: reqwest::Client,
     url: String,
+    token: String,
+    public_url: String,
 }
 
 impl Ntfy {
@@ -136,38 +141,8 @@ impl Ntfy {
                 cfg.ntfy_url.trim_end_matches('/'),
                 cfg.ntfy_topic.trim_start_matches('/')
             ),
-        })
-    }
-}
-
-impl Notifier for Ntfy {
-    fn send<'a>(
-        &'a self,
-        n: &'a Notification,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
-        Box::pin(async move {
-            let resp = self
-                .client
-                .post(&self.url)
-                .header("Title", encode_header(&n.title))
-                .header("Priority", n.priority.as_ntfy())
-                .header(
-                    "Tags",
-                    if n.priority == Priority::High {
-                        "rotating_light"
-                    } else {
-                        "chart_with_upwards_trend"
-                    },
-                )
-                .body(n.body.clone())
-                .send()
-                .await
-                .context("ntfy: request")?;
-            let status = resp.status();
-            if !status.is_success() {
-                anyhow::bail!("ntfy: http {status}");
-            }
-            Ok(())
+            token: cfg.ntfy_token.clone(),
+            public_url: cfg.public_url.trim_end_matches('/').to_string(),
         })
     }
 }
@@ -178,6 +153,64 @@ fn encode_header(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_ascii() { c } else { '-' })
         .collect::<String>()
+}
+
+/// The headers and body ntfy expects, built separately so they can be asserted without a
+/// network round trip. Kept in one place: a header typo used to mean a silently missing alert.
+pub fn payload(n: &Notification, public_url: &str) -> (Vec<(String, String)>, String) {
+    let mut headers = vec![
+        ("Title".to_string(), encode_header(&n.title)),
+        ("Priority".to_string(), n.priority.as_ntfy().to_string()),
+        (
+            "Tags".to_string(),
+            if n.priority == Priority::High {
+                "rotating_light".to_string()
+            } else {
+                "chart_with_upwards_trend".to_string()
+            },
+        ),
+    ];
+    if !public_url.is_empty() && !n.symbol.is_empty() {
+        headers.push((
+            "Click".to_string(),
+            format!("{public_url}/i/{}", n.symbol),
+        ));
+    }
+    (headers, n.body.clone())
+}
+
+impl Ntfy {
+    /// The same send path, exposed for `--test-notify`.
+    pub async fn send_test(&self, n: &Notification) -> Result<()> {
+        Notifier::send(self, n).await
+    }
+}
+
+impl Notifier for Ntfy {
+    fn send<'a>(
+        &'a self,
+        n: &'a Notification,
+    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
+        Box::pin(async move {
+            let (headers, body) = payload(n, &self.public_url);
+            let mut request = self.client.post(&self.url).body(body);
+            for (k, v) in headers {
+                request = request.header(k, v);
+            }
+            // A protected topic rejects anonymous posts; open topics ignore the header.
+            if !self.token.is_empty() {
+                request = request.bearer_auth(&self.token);
+            }
+
+            let resp = request.send().await.context("ntfy: request")?;
+            let status = resp.status();
+            if !status.is_success() {
+                let detail = resp.text().await.unwrap_or_default();
+                anyhow::bail!("ntfy: http {status} {}", detail.trim());
+            }
+            Ok(())
+        })
+    }
 }
 
 #[derive(Default)]

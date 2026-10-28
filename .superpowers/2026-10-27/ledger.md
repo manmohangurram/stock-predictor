@@ -493,3 +493,19 @@ range `ts >= 'YYYY-MM-DD'`.
   helper now), `sqlx` 0.9 requires dynamic SQL to be wrapped in `AssertSqlSafe` (four sites, all
   interned by us), `reqwest` 0.13 renamed the TLS features and moved `.query()` behind a
   feature.
+
+## ntfy, verified against the real service
+
+`--test-notify` posts one message and reports the result. Run against ntfy.sh it returned
+`sent to https://ntfy.sh/sp-test-bi23`, and polling the topic's JSON API returned the message
+with its title intact — so the integration is proven end to end, not just unit-tested.
+
+Gaps found and closed:
+- **No auth.** A protected ntfy topic rejects anonymous posts. `NTFY_TOKEN` now adds a bearer
+  token.
+- **No deep link.** A notification you cannot act on is half a notification. `PUBLIC_URL` adds a
+  `Click` header pointing at `/i/<symbol>`. Without it, no link is sent at all: a `127.0.0.1`
+  link is dead from a phone, and a dead link is worse than none.
+- The headers and body are now built by a pure `payload()` function, so a header typo is a test
+  failure rather than a silently missing alert. Tests assert the exact names ntfy reads
+  (`Title`, `Priority`, `Tags`, `Click`) and that the non-ASCII separator is folded.

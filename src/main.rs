@@ -37,6 +37,27 @@ async fn main() -> Result<()> {
         println!("seed: {report:?}");
     }
 
+    // Prove the push channel end to end before relying on it.
+    if flag("--test-notify") {
+        if cfg.ntfy_topic.trim().is_empty() {
+            anyhow::bail!("NTFY_TOPIC is empty — set it to a topic name you have subscribed to");
+        }
+        let notifier = Ntfy::new(&cfg)?;
+        let n = stock_predicter::notify::Notification {
+            title: "stock-predicter · test".into(),
+            body: "If this arrived on your phone, the push channel works.".into(),
+            priority: stock_predicter::notify::Priority::Default,
+            dedupe_key: "test-notify".into(),
+            signal_id: None,
+            symbol: String::new(),
+        };
+        match notifier.send_test(&n).await {
+            Ok(()) => println!("sent to {}/{}", cfg.ntfy_url, cfg.ntfy_topic),
+            Err(e) => println!("failed: {e}"),
+        }
+        return Ok(());
+    }
+
     if let Some(i) = args.iter().position(|a| a == "--ask") {
         let symbol = args.get(i + 1).cloned().unwrap_or_default();
         let row: Option<(i64, String, String, String)> =

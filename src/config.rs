@@ -23,6 +23,11 @@ pub struct Config {
     pub off_hours_secs: u64,
     pub ntfy_url: String,
     pub ntfy_topic: String,
+    /// Access token for a protected ntfy topic (`tk_...`). Empty means an open topic.
+    pub ntfy_token: String,
+    /// Where a notification's tap should land, e.g. http://192.168.1.10:8080. Optional:
+    /// without it the push has no deep link, because 127.0.0.1 is useless from a phone.
+    pub public_url: String,
     pub deepseek_key: String,
     pub deepseek_base: String,
     pub db_path: String,
@@ -54,6 +59,8 @@ impl Config {
                 .unwrap_or("https://ntfy.sh")
                 .to_string(),
             ntfy_topic: get("NTFY_TOPIC").unwrap_or_default().to_string(),
+            ntfy_token: get("NTFY_TOKEN").unwrap_or_default().to_string(),
+            public_url: get("PUBLIC_URL").unwrap_or_default().to_string(),
             deepseek_key: get("DEEPSEEK_API_KEY").unwrap_or_default().to_string(),
             deepseek_base: get("DEEPSEEK_BASE_URL")
                 .unwrap_or("https://api.deepseek.com")

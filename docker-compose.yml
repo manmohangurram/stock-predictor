@@ -17,6 +17,8 @@ services:
       DEEPSEEK_API_KEY: ""      # can be set later in Settings instead
       NTFY_BASE_URL: "https://ntfy.sh"
       NTFY_TOPIC: ""            # optional; empty means no push
+      NTFY_TOKEN: ""            # only for a protected topic (tk_...)
+      PUBLIC_URL: "http://127.0.0.1:8080"  # set to the LAN address for tap-through
       POLL_SECS: "900"
       PROMPT_WINDOW_HOURS: "4"
       RUST_LOG: "info"
