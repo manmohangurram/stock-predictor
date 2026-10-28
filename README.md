@@ -40,6 +40,8 @@ AMFI (India) ───┤ mutual fund NAV                                       
   and a take-profit below it is rejected.
 - **Explains silence.** Each instrument page shows which rule blocked a trade and with what
   numbers, so an empty ledger is never a mystery.
+- **Pushes to your phone** through ntfy — configured in Settings, testable from the same page,
+  one notification per actionable change and nothing else.
 - **Costs little.** The model is only called when the price moved ₹2, when a new headline
   arrived, or once an hour; the static prompt block is a cacheable prefix.
 
@@ -110,27 +112,38 @@ API key after first boot; the environment only seeds them.
 
 ## Phone notifications
 
-Push goes through [ntfy](https://ntfy.sh): no accounts, no Apple or Google dependency, works on
-a home server.
+Push goes through [ntfy](https://ntfy.sh): no account, no Apple or Google dependency, works from
+a home server to a phone in another room or another country. Self-hosted ntfy instances work the
+same way — point the *Server* field at yours.
 
-1. Install the ntfy app and subscribe to a topic name — make it long and random, because anyone
-   who knows the name can read it: `stock-predicter-7f3k9m2q`.
-2. Run with `NTFY_TOPIC=stock-predicter-7f3k9m2q`. Set `NTFY_TOKEN` as well if the topic is
-   protected by an ntfy account, and `PUBLIC_URL` so tapping the notification opens the
-   instrument page on your LAN.
-3. Verify before trusting it:
+**Setting it up, all of it in the UI.** Open **Settings → Phone notifications**:
+
+| Field | What it is |
+|---|---|
+| **Topic** | The channel name. Make it long and random (`stock-predicter-7f3k9m2q`) — anyone who knows it can read your alerts. |
+| **Server** | `https://ntfy.sh`, or your own instance. |
+| **Access token** | Optional, only for a protected topic (`tk_…`). Write-only: it is never returned by the API and an empty field keeps the stored one. |
+| **Link from the notification** | `http://192.168.1.10:8080` — tapping the push opens that instrument's page. Leave it blank for no link; a `127.0.0.1` link would be dead from a phone. |
+
+Press **Send a test notification** and it arrives — that button uses the same send path as a real
+signal, so a success there means a signal will reach you. From a terminal, the equivalent is:
 
 ```bash
-NTFY_TOPIC=stock-predicter-7f3k9m2q ./target/release/stock-predicter --test-notify
+./target/release/stock-predicter --test-notify
 ```
 
-What is sent, and what is not:
+The same values can be seeded from `NTFY_TOPIC`, `NTFY_TOKEN`, `NTFY_BASE_URL` and `PUBLIC_URL`
+on first boot; after that the database owns them and edits apply on the next poll.
 
-- **Sent**: a buy with its limit, both exits and the cost; a sell with the level that triggered
-  it. Sells are high priority and carry a red-light tag.
-- **Never sent**: `BLOCKED` signals (there is nothing to do about them), unchanged signals, and
-  `pass`. Nothing pulses or repeats: a signal already pushed is not pushed again, and a failed
-  push retries on the next tick rather than disappearing.
+**What gets sent:**
+
+- `SELL · INFY 17 units` — high priority, red-light tag, with the stop that triggered it.
+- `BUY · HDFCBANK 12 units · limit 1,650.00` — with `sell if ≤ 1,590 · take profit ≥ 1,735` and
+  the cost, so the whole trade can be placed from the notification.
+
+**What never gets sent:** `BLOCKED` signals (there is nothing to do about them), unchanged
+signals, and `pass`. A signal already pushed is not pushed again, and a failed push leaves no
+record so the next tick retries it rather than losing it.
 
 ## Self-hosting with Docker
 
