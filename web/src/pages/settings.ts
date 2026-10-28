@@ -1,9 +1,28 @@
-import type { Settings } from "../api";
+import type { Limits, Settings } from "../api";
 import { escapeHtml, money } from "../format";
 
 /** The one rule the form enforces client-side; the server enforces it again. */
 export const shouldDisableSave = (budget: number, committed: number): boolean =>
   !Number.isFinite(budget) || budget < committed;
+
+/** Five numbers per pot. Percentages are of that pot; amounts are in its currency. */
+function limitFields(mode: "long" | "trade", label: string, l: Limits): string {
+  const field = (name: keyof Limits, text: string, step = "1", hint = "") => `
+    <div class="field">
+      <label class="lbl" for="${mode}_${name}">${text}</label>
+      <input id="${mode}_${name}" name="${mode}_${name}" type="number" min="0" step="${step}"
+             value="${l[name]}" />
+      ${hint ? `<p class="help">${hint}</p>` : ""}
+    </div>`;
+  return `<fieldset class="field-group">
+    <legend class="lbl">${label}</legend>
+    ${field("min_profit_pct", "Minimum profit %", "0.5", "A take-profit below this is rejected.")}
+    ${field("max_profit_pct", "Maximum profit %", "0.5", "A target above this is rejected — no fantasy numbers.")}
+    ${field("min_trade_amount", "Minimum per trade", "1", "Below this a fill is not worth its fees.")}
+    ${field("max_trade_amount", "Maximum per trade", "1", "Largest single fill, in the currency.")}
+    ${field("max_instrument_pct", "Maximum per instrument %", "1", "Total exposure to one symbol, as a share of this pot.")}
+  </fieldset>`;
+}
 
 export function renderSettings(s: Settings): string {
   const below = shouldDisableSave(s.budget, s.committed);
@@ -49,6 +68,9 @@ export function renderSettings(s: Settings): string {
               : "Locked permanently after the first recorded transaction."
           }</p>
         </div>
+        ${limitFields("long", "Long-term limits", s.limits_long)}
+        ${limitFields("trade", "Trading limits", s.limits_trade)}
+
         <fieldset class="field-group">
           <legend class="lbl">Model provider</legend>
           <div class="field">

@@ -24,6 +24,8 @@ pub struct PromptContext<'a> {
     pub cash_available: f64,
     /// The owner's profit expectation for this instrument, if any.
     pub target_profit_pct: Option<f64>,
+    /// The pot's limits, already rendered.
+    pub limits: &'a str,
     pub headlines: &'a [Headline],
     pub window_hours: u32,
     pub price_window: &'a str,
@@ -123,6 +125,7 @@ pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
         .replace("{{recent_trades}}", ctx.recent_trades)
         .replace("{{last_decision}}", ctx.last_decision)
         .replace("{{cash}}", &format!("{:.2}", ctx.cash_available))
+        .replace("{{limits}}", ctx.limits)
         .replace(
             "{{target_profit}}",
             &match ctx.target_profit_pct {

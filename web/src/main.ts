@@ -181,6 +181,17 @@ function wireTradeForm(symbol: string): void {
   });
 }
 
+function readLimits(data: FormData, mode: "long" | "trade") {
+  const num = (name: string) => Number(data.get(`${mode}_${name}`) ?? 0);
+  return {
+    min_profit_pct: num("min_profit_pct"),
+    max_profit_pct: num("max_profit_pct"),
+    min_trade_amount: num("min_trade_amount"),
+    max_trade_amount: num("max_trade_amount"),
+    max_instrument_pct: num("max_instrument_pct"),
+  };
+}
+
 function wireTargetProfit(symbol: string): void {
   const form = document.querySelector<HTMLFormElement>(".target-form");
   form?.addEventListener("submit", async (ev) => {
@@ -220,6 +231,8 @@ function wireSettings(): void {
       llm_provider: String(data.get("llm_provider") ?? "deepseek"),
       llm_model: String(data.get("llm_model") ?? "").trim(),
       llm_base_url: String(data.get("llm_base_url") ?? "").trim(),
+      limits_long: readLimits(data, "long"),
+      limits_trade: readLimits(data, "trade"),
       ...(ntfyToken ? { ntfy_token: ntfyToken } : {}),
       ...(llmKey ? { llm_key: llmKey } : {}),
     };

@@ -542,3 +542,21 @@ subscribe — so the UI says so next to the field.
   history for the rest.
 - 24x7: nothing in the loop exits on error. A failed fetch, model call or push is logged and
   retried next tick; the README documents a systemd unit and the Compose restart policy.
+
+## Risk limits, per pot
+
+Five numbers per pot, stored as `limits_<mode>_<name>`: min/max profit %, min/max trade amount,
+and a per-instrument exposure cap as a percentage of the pot (chosen so the cap keeps its meaning
+when the budget changes; the per-trade amounts stay absolute).
+
+Enforced twice, deliberately:
+- the **validator** after the model answers, in a fixed order (cash → amount → instrument cap →
+  profit band → price sanity), so the error names the first thing that failed;
+- the **engine**, clamping the rules candidate too. Without this the rules fallback could write a
+  200k signal through a 50k ceiling — the model was constrained and the fallback was not.
+
+The prompt receives the same numbers as one sentence, including the room actually left on that
+instrument, so the model is asked for something that can be accepted.
+
+`Settings::set` refuses an incoherent set (max below min, negative, cap outside 0–100) rather
+than storing it and confusing the validator later.

@@ -90,6 +90,8 @@ async fn budget_below_committed_is_refused_with_the_figure() {
             llm_model: None,
             llm_base_url: None,
             llm_key: None,
+            limits_long: None,
+            limits_trade: None,
         },
     )
     .await
@@ -125,6 +127,8 @@ async fn currency_change_is_refused_once_ledger_has_entries() {
             llm_model: None,
             llm_base_url: None,
             llm_key: None,
+            limits_long: None,
+            limits_trade: None,
         },
     )
     .await
@@ -150,6 +154,8 @@ async fn currency_change_is_allowed_on_a_fresh_ledger() {
             llm_model: None,
             llm_base_url: None,
             llm_key: None,
+            limits_long: None,
+            limits_trade: None,
         },
     )
     .await
@@ -177,6 +183,8 @@ async fn raising_the_budget_is_reflected_in_available_immediately() {
             llm_model: None,
             llm_base_url: None,
             llm_key: None,
+            limits_long: None,
+            limits_trade: None,
         },
     )
     .await
@@ -203,6 +211,8 @@ async fn negative_or_infinite_budget_is_rejected() {
                 llm_model: None,
                 llm_base_url: None,
                 llm_key: None,
+                limits_long: None,
+                limits_trade: None,
             },
         )
         .await
@@ -229,6 +239,8 @@ async fn the_deepseek_key_is_stored_but_never_serialised() {
             llm_model: None,
             llm_base_url: None,
             llm_key: None,
+            limits_long: None,
+            limits_trade: None,
         },
     )
     .await
@@ -267,6 +279,8 @@ async fn an_empty_key_patch_leaves_a_working_key_alone() {
             llm_model: None,
             llm_base_url: None,
             llm_key: None,
+            limits_long: None,
+            limits_trade: None,
         },
     )
     .await
@@ -287,6 +301,8 @@ async fn an_empty_key_patch_leaves_a_working_key_alone() {
             llm_model: None,
             llm_base_url: None,
             llm_key: None,
+            limits_long: None,
+            limits_trade: None,
         },
     )
     .await

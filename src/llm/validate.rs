@@ -36,6 +36,14 @@ pub enum ValidationError {
     TooManyUnits,
     #[error("take-profit does not reach the required {required_pct}%")]
     TargetBelowRequirement { required_pct: f64 },
+    #[error("take-profit exceeds the {max_pct}% limit — do not chase fantasy targets")]
+    TargetAboveLimit { max_pct: f64 },
+    #[error("trade is below the minimum of {min}")]
+    TradeTooSmall { min: f64 },
+    #[error("trade is above the maximum of {max}")]
+    TradeTooLarge { max: f64 },
+    #[error("this would put {already} + the trade over the {cap} cap for one instrument")]
+    InstrumentLimit { cap: f64, already: f64 },
 }
 
 pub struct ValidateCtx<'a> {
@@ -49,9 +57,12 @@ pub struct ValidateCtx<'a> {
     /// True when this instrument can actually be exited at a price (stocks). Funds and IPOs
     /// cannot, so requiring an exit from them would be nonsense.
     pub requires_exit: bool,
-    /// The owner's expected profit for this instrument, in percent. A take-profit below it
-    /// fails: the point of the trade is that return, not any return.
-    pub required_profit_pct: Option<f64>,
+    /// The limits for the pot this trade belongs to.
+    pub limits: crate::rules::limits::Limits,
+    /// What this pot has already committed to this instrument.
+    pub instrument_exposure: f64,
+    /// The pot's ceiling, which the percentage caps are measured against.
+    pub pot: f64,
     pub now: DateTime<Utc>,
 }
 
@@ -89,16 +100,6 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
         return Err(ValidationError::PriceOutOfBand);
     }
 
-    if let Some(required_pct) = ctx.required_profit_pct {
-        if p.action == Action::Buy {
-            let target = p.target.ok_or(ValidationError::MissingExit)?;
-            let achieved = (target - p.entry) / p.entry * 100.0;
-            if achieved + 1e-9 < required_pct {
-                return Err(ValidationError::TargetBelowRequirement { required_pct });
-            }
-        }
-    }
-
     let atr = ctx.atr.max(1e-9);
     if let Some(stop) = p.stop {
         if (p.entry - stop).abs() > MAX_STOP_ATRS * atr {
@@ -123,6 +124,18 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
     let units = p.qty.unwrap_or(ctx.qty);
     if p.action == Action::Buy && units * p.entry > ctx.available_cash + 1e-9 {
         return Err(ValidationError::InsufficientCash);
+    }
+
+    // Size limits, applied to both directions: a sale is a transaction too.
+    let amount = units * p.entry;
+    ctx.limits.check(amount)?;
+    if p.action == Action::Buy {
+        ctx.limits
+            .check_instrument(ctx.pot, ctx.instrument_exposure, amount)?;
+        if let Some(target) = p.target {
+            let achieved = (target - p.entry) / p.entry * 100.0;
+            ctx.limits.check_profit(achieved)?;
+        }
     }
 
     let until = DateTime::parse_from_rfc3339(&p.valid_until)

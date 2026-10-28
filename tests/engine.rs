@@ -29,12 +29,42 @@ async fn seed(pool: &sqlx::SqlitePool, symbols: &[&str]) {
     seed_with_key(pool, symbols, "test-key").await
 }
 
+async fn seed_no_limits(pool: &sqlx::SqlitePool, symbols: &[&str]) {
+    settings::seed(pool).await.unwrap();
+    for s in symbols {
+        sqlx::query(
+            "INSERT INTO instruments (symbol, class, name, currency) VALUES (?, 'stock', ?, 'INR')",
+        )
+        .bind(s)
+        .bind(format!("{s} Ltd"))
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+}
+
 async fn seed_with_key(pool: &sqlx::SqlitePool, symbols: &[&str], key: &str) {
     settings::seed(pool).await.unwrap();
     settings::set(
         pool,
         settings::SettingsPatch {
             budget: Some(200_000.0),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    // Wide limits: these tests are about decisions, not sizing.
+    settings::set(
+        pool,
+        settings::SettingsPatch {
+            limits_long: Some(stock_predicter::rules::limits::Limits {
+                min_profit_pct: 0.0,
+                max_profit_pct: 1000.0,
+                min_trade_amount: 0.0,
+                max_trade_amount: 1_000_000.0,
+                max_instrument_pct: 100.0,
+            }),
             ..Default::default()
         },
     )
@@ -259,6 +289,8 @@ async fn with_no_affordable_quantity_the_model_is_still_asked_but_nothing_is_tra
             llm_model: None,
             llm_base_url: None,
             llm_key: None,
+            limits_long: None,
+            limits_trade: None,
         },
     )
     .await
@@ -633,4 +665,47 @@ async fn the_call_gate_skips_small_moves_but_never_silences_for_more_than_an_hou
     )
     .await
     .unwrap());
+}
+
+#[tokio::test]
+async fn the_rules_layer_is_clamped_by_the_limits_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    // Deliberately tight limits: 20,000 per fill.
+    settings::seed(&pool).await.unwrap();
+    settings::set(
+        &pool,
+        settings::SettingsPatch {
+            budget: Some(200_000.0),
+            limits_long: Some(stock_predicter::rules::limits::Limits {
+                min_profit_pct: 0.0,
+                max_profit_pct: 1000.0,
+                min_trade_amount: 1_000.0,
+                max_trade_amount: 20_000.0,
+                max_instrument_pct: 100.0,
+            }),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    seed_no_limits(&pool, &["INFY"]).await;
+
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+    let report = poll(&pool, &market, &notifier, &cfg(), now()).await.unwrap();
+    assert_eq!(report.signals, 1, "{report:?}");
+
+    let (qty, entry): (f64, f64) = sqlx::query_as("SELECT qty, entry FROM signals")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let amount = qty * entry;
+    assert!(
+        amount <= 20_000.5,
+        "a rules-sized fill of {amount:.2} must be clamped to the 20,000 limit"
+    );
+    assert!(amount >= 1_000.0, "and must still clear the minimum");
 }

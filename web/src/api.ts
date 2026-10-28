@@ -83,6 +83,16 @@ export interface Settings {
   llm_model: string;
   llm_base_url: string;
   llm_key_configured: boolean;
+  limits_long: Limits;
+  limits_trade: Limits;
+}
+
+export interface Limits {
+  min_profit_pct: number;
+  max_profit_pct: number;
+  min_trade_amount: number;
+  max_trade_amount: number;
+  max_instrument_pct: number;
 }
 
 export interface CallRow {

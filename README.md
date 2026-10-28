@@ -36,8 +36,9 @@ AMFI (India) ───┤ mutual fund NAV                                       
   the validated levels rather than reported by the model.
 - **Respects your budget.** Spend is capped by the ledger; a signal that would overspend is
   recorded as `BLOCKED` with the shortfall and never pushes a notification.
-- **Knows its own limits.** A per-stock *profit expectation* (say 15%) is passed into the prompt,
-  and a take-profit below it is rejected.
+- **Knows its own limits.** Each pot has five numbers — minimum and maximum profit, minimum and
+  maximum per trade, and a cap on exposure to any single instrument. They are passed into the
+  prompt and enforced in the validator, so neither the rules nor the model can exceed them.
 - **Explains silence.** Each instrument page shows which rule blocked a trade and with what
   numbers, so an empty ledger is never a mystery.
 - **Pushes to your phone** through ntfy — configured in Settings, testable from the same page,
@@ -143,6 +144,25 @@ on first boot; after that the database owns them and edits apply on the next pol
 **What never gets sent:** `BLOCKED` signals (there is nothing to do about them), unchanged
 signals, and `pass`. A signal already pushed is not pushed again, and a failed push leaves no
 record so the next tick retries it rather than losing it.
+
+## Risk limits
+
+Settings carries a separate set for each pot, because a swing book and a long-term book should
+not share a ceiling:
+
+| Setting | Default | What it stops |
+|---|---|---|
+| Minimum profit % | 5 | a take-profit that is not worth the trade |
+| Maximum profit % | 50 | a fantasy target that will never fill |
+| Minimum per trade | 500 | fills eaten by fees |
+| Maximum per trade | 50,000 | one order becoming the portfolio |
+| Maximum per instrument % | 25 | concentration — total exposure to one symbol, all fills counted |
+
+Percentages are of that pot, so the caps keep their meaning when the budget changes. The
+validator checks, in this order: cash and holdings, then the per-trade amount, then the
+per-instrument total, then the profit band, then price sanity. A refused trade is recorded as
+`BLOCKED` with the reason, never silently dropped. The rules layer clamps its own sizing to the
+same numbers, so a fallback cannot sneak past them either.
 
 ## Choosing a model provider
 

@@ -1,6 +1,7 @@
 use chrono::{Duration, Utc};
 use stock_predicter::llm::parse::{Confidence, Proposal};
 use stock_predicter::llm::validate::{check, ValidateCtx, ValidationError};
+use stock_predicter::rules::limits::Limits;
 use stock_predicter::models::Action;
 use stock_predicter::rules::indicators::atr_bands;
 
@@ -27,7 +28,15 @@ fn ctx<'a>(sent: &'a [i64]) -> ValidateCtx<'a> {
         held_qty: 0.0,
         sent_headline_ids: sent,
         requires_exit: true,
-        required_profit_pct: None,
+        limits: Limits {
+            min_profit_pct: 0.0,
+            max_profit_pct: 1000.0,
+            min_trade_amount: 0.0,
+            max_trade_amount: f64::MAX,
+            max_instrument_pct: 100.0,
+        },
+        instrument_exposure: 0.0,
+        pot: 100_000.0,
         now: Utc::now(),
     }
 }
@@ -191,7 +200,7 @@ fn a_take_profit_below_the_owner_expectation_is_rejected() {
     // The band is 105 ± 2 ATR, so the entry must sit near 105.
     let mut p = proposal(Action::Buy, 105.0, Some(101.0), Some(110.0)); // +4.8%
     let mut c = ctx(&[1]);
-    c.required_profit_pct = Some(15.0);
+    c.limits.min_profit_pct = 15.0;
     assert_eq!(
         check(&p, &c),
         Err(ValidationError::TargetBelowRequirement { required_pct: 15.0 })
@@ -205,7 +214,7 @@ fn a_take_profit_below_the_owner_expectation_is_rejected() {
 fn a_profit_expectation_only_governs_buys() {
     let p = proposal(Action::Sell, 105.0, Some(110.0), None);
     let mut c = ctx(&[1]);
-    c.required_profit_pct = Some(50.0);
+    c.limits.min_profit_pct = 50.0;
     c.held_qty = 10.0;
     assert_eq!(
         check(&p, &c),
@@ -220,4 +229,70 @@ fn a_nan_stop_is_rejected_rather_than_slipping_through() {
     // is false for NaN, so an unparseable stop used to pass.
     let p = proposal(Action::Buy, 105.0, Some(f64::NAN), Some(111.0));
     assert_eq!(check(&p, &ctx(&[1])), Err(ValidationError::StopOnWrongSide));
+}
+
+#[test]
+fn a_target_above_the_profit_ceiling_is_rejected() {
+    // +15% on a 105 entry: inside the 10-ATR distance check (20 points), over a 10% ceiling.
+    let p = proposal(Action::Buy, 105.0, Some(101.0), Some(120.75));
+    let mut c = ctx(&[1]);
+    c.limits.max_profit_pct = 10.0;
+    c.limits.max_trade_amount = f64::MAX;
+    assert_eq!(
+        check(&p, &c),
+        Err(ValidationError::TargetAboveLimit { max_pct: 10.0 })
+    );
+}
+
+#[test]
+fn trade_size_limits_apply_in_both_directions() {
+    let mut c = ctx(&[1]);
+    c.limits.min_trade_amount = 500.0;
+    c.limits.max_trade_amount = 5_000.0;
+
+    // 95 units at 105 = 9,975: too large.
+    let too_big = proposal(Action::Buy, 105.0, Some(101.0), Some(111.0));
+    assert_eq!(
+        check(&too_big, &c),
+        Err(ValidationError::TradeTooLarge { max: 5_000.0 })
+    );
+
+    // 1 unit at 105 = 105: too small.
+    let mut too_small = proposal(Action::Buy, 105.0, Some(101.0), Some(111.0));
+    too_small.qty = Some(1.0);
+    assert_eq!(
+        check(&too_small, &c),
+        Err(ValidationError::TradeTooSmall { min: 500.0 })
+    );
+
+    // A sale is a transaction too.
+    c.held_qty = 100.0;
+    let mut sell = proposal(Action::Sell, 105.0, Some(110.0), None);
+    sell.qty = Some(1.0);
+    assert_eq!(
+        check(&sell, &c),
+        Err(ValidationError::TradeTooSmall { min: 500.0 })
+    );
+}
+
+#[test]
+fn the_per_instrument_cap_counts_what_is_already_held() {
+    let mut c = ctx(&[1]);
+    c.pot = 100_000.0;
+    c.limits.max_instrument_pct = 10.0; // cap = 10,000
+    c.instrument_exposure = 9_000.0; // 9,000 already in it
+    c.limits.max_trade_amount = f64::MAX;
+
+    let mut p = proposal(Action::Buy, 105.0, Some(101.0), Some(111.0));
+    p.qty = Some(20.0); // 2,100 more: over the cap
+    assert_eq!(
+        check(&p, &c),
+        Err(ValidationError::InstrumentLimit {
+            cap: 10_000.0,
+            already: 9_000.0
+        })
+    );
+
+    p.qty = Some(9.0); // 945 more: inside
+    assert_eq!(check(&p, &c), Ok(()));
 }

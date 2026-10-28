@@ -67,7 +67,11 @@ fn run_input<'a>(
         candidate: c,
         available_cash: 10_000.0,
         held_qty: 0.0,
-        target_profit_pct: None,
+        limits: Default::default(),
+
+        instrument_exposure: 0.0,
+
+        pot: 100_000.0,
         window_hours: 6,
         headlines: hs,
         price_window: "27 09:30 100.00 101.00 99.00 100.50 1000",

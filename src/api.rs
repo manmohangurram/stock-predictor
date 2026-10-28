@@ -296,6 +296,8 @@ pub struct PutSettings {
     pub llm_model: Option<String>,
     pub llm_base_url: Option<String>,
     pub llm_key: Option<String>,
+    pub limits_long: Option<crate::rules::limits::Limits>,
+    pub limits_trade: Option<crate::rules::limits::Limits>,
 }
 
 async fn put_settings(
@@ -317,6 +319,8 @@ async fn put_settings(
             llm_model: body.llm_model,
             llm_base_url: body.llm_base_url,
             llm_key: body.llm_key,
+            limits_long: body.limits_long,
+            limits_trade: body.limits_trade,
         },
     )
     .await

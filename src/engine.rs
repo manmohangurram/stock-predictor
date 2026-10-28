@@ -76,7 +76,9 @@ struct Gathered {
     ind: Indicators,
     position: Option<Position>,
     available: f64,
-    target_profit_pct: Option<f64>,
+    limits: crate::rules::limits::Limits,
+    pot: f64,
+    instrument_exposure: f64,
     price_window: String,
     daily_summary: String,
     positions_text: String,
@@ -110,6 +112,9 @@ async fn gather(
 
     let position = load_position(deps.pool, instrument.id).await?;
     let available = budget::available_in(deps.pool, crate::models::Mode::Long).await?;
+    let limits = crate::rules::settings::limits(deps.pool, crate::models::Mode::Long).await?;
+    let pot = budget::budget_total_in(deps.pool, crate::models::Mode::Long).await?;
+    let instrument_exposure = load_exposure(deps.pool, instrument.id).await?;
     let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
         Ok(tape) => format_window(&tape, deps.cfg.prompt_window_hours, now),
         Err(e) => {
@@ -123,7 +128,9 @@ async fn gather(
         positions_text: format_positions(position.as_ref(), &instrument.symbol),
         recent_trades: load_recent_trades(deps.pool, instrument.id, now).await?,
         last_decision: load_last_decision(deps.pool, instrument.id).await?,
-        target_profit_pct: load_target_profit(deps.pool, instrument.id).await?,
+        limits,
+        pot,
+        instrument_exposure,
         bars,
         news,
         ind,
@@ -143,7 +150,7 @@ async fn poll_instrument(
         return Ok(());
     };
     let (bars, news, ind) = (&g.bars, &g.news, &g.ind);
-    let (position, available, target_profit_pct) = (&g.position, g.available, g.target_profit_pct);
+    let (position, available) = (&g.position, g.available);
 
     let rules_candidate = evaluate::candidate(CandidateInput {
         instrument,
@@ -193,6 +200,18 @@ async fn poll_instrument(
                 timing_note: instrument.class.timing_note().into(),
                 urgent: false,
             }
+        }
+    };
+    // Limits bind the rules too, not just the model: a 200k fill against a 50k ceiling is
+    // not acceptable because a rule suggested it.
+    let candidate = match clamp_to_limits(candidate, g.limits, g.pot, g.instrument_exposure) {
+        Some(c) => c,
+        None => {
+            report.notes.push(format!(
+                "{}: no affordable size inside the limits ({:.2} to {:.2} per trade)",
+                instrument.symbol, g.limits.min_trade_amount, g.limits.max_trade_amount
+            ));
+            return Ok(());
         }
     };
     if had_rules_candidate {
@@ -283,7 +302,9 @@ async fn poll_instrument(
             candidate: &candidate,
             available_cash: available,
             held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
-            target_profit_pct,
+            limits: g.limits,
+            instrument_exposure: g.instrument_exposure,
+            pot: g.pot,
             window_hours: deps.cfg.prompt_window_hours,
             headlines: news,
             price_window: &g.price_window,
@@ -363,7 +384,9 @@ pub async fn advise(
             candidate: &neutral,
             available_cash: g.available,
             held_qty: g.position.as_ref().map(|p| p.qty).unwrap_or(0.0),
-            target_profit_pct: g.target_profit_pct,
+            limits: g.limits,
+            instrument_exposure: g.instrument_exposure,
+            pot: g.pot,
             window_hours: deps.cfg.prompt_window_hours,
             headlines: &g.news,
             price_window: &g.price_window,
@@ -594,6 +617,49 @@ async fn load_instruments(pool: &SqlitePool) -> Result<Vec<Instrument>> {
         .collect()
 }
 
+/// Cap a candidate's size to the pot's limits, or drop it if nothing usable is left.
+fn clamp_to_limits(
+    mut c: Candidate,
+    limits: crate::rules::limits::Limits,
+    pot: f64,
+    exposure: f64,
+) -> Option<Candidate> {
+    if !matches!(c.action, Action::Buy | Action::Sell) {
+        return Some(c);
+    }
+    let max_fill = limits.max_fill(pot, exposure);
+    if max_fill <= 0.0 {
+        return None;
+    }
+    let max_units = max_fill / c.entry.max(1e-9);
+    if c.qty > max_units {
+        c.qty = match c.action {
+            Action::Sell => c.qty.min(max_units),
+            _ => max_units.floor(),
+        };
+    }
+    if c.qty <= 0.0 {
+        return None;
+    }
+    // A buy below the minimum is not worth its fees; a sale of a tiny remainder still is.
+    if c.action == Action::Buy && c.qty * c.entry < limits.min_trade_amount {
+        return None;
+    }
+    Some(c)
+}
+
+async fn load_exposure(pool: &SqlitePool, instrument_id: i64) -> Result<f64> {
+    let row: (Option<f64>,) = sqlx::query_as(
+        "SELECT SUM(qty * avg_cost) FROM positions
+         WHERE instrument_id = ? AND mode = 'long' AND state <> 'closed'",
+    )
+    .bind(instrument_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0.unwrap_or(0.0))
+}
+
+#[allow(dead_code)]
 async fn load_target_profit(pool: &SqlitePool, instrument_id: i64) -> Result<Option<f64>> {
     let row: Option<(Option<f64>,)> =
         sqlx::query_as("SELECT target_profit_pct FROM instruments WHERE id = ?")

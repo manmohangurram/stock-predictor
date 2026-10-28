@@ -138,7 +138,11 @@ async fn run_case(reply: HttpReply, held: f64, class: AssetClass) -> (Outcome, F
             candidate: &c,
             available_cash: 20_000.0,
             held_qty: held,
-            target_profit_pct: None,
+            limits: Default::default(),
+
+            instrument_exposure: 0.0,
+
+            pot: 100_000.0,
             window_hours: 6,
             headlines: &hs,
             price_window: "27 09:30 1163.00 1164.10 1162.50 1163.40 12500",
@@ -168,7 +172,7 @@ async fn every_response_shape_lands_where_it_should() {
     let cases = vec![
         Case {
             name: "valid BUY with both exits is accepted",
-            reply: chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1200.0))),
+            reply: chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1230.0))),
             held: 0.0,
             class: AssetClass::Stock,
             expect: |o| matches!(o, Outcome::Llm(_)),
@@ -182,14 +186,14 @@ async fn every_response_shape_lands_where_it_should() {
         },
         Case {
             name: "BUY without a stop is rejected (MissingExit)",
-            reply: chat(decide_json("BUY", 1163.0, json!(null), json!(1200.0))),
+            reply: chat(decide_json("BUY", 1163.0, json!(null), json!(1230.0))),
             held: 0.0,
             class: AssetClass::Stock,
             expect: |o| matches!(o, Outcome::Rejected { error: ValidationError::MissingExit, .. }),
         },
         Case {
             name: "BUY with stop above entry is rejected",
-            reply: chat(decide_json("BUY", 1163.0, json!(1170.0), json!(1200.0))),
+            reply: chat(decide_json("BUY", 1163.0, json!(1170.0), json!(1230.0))),
             held: 0.0,
             class: AssetClass::Stock,
             expect: |o| matches!(o, Outcome::Rejected { error: ValidationError::StopOnWrongSide, .. }),
@@ -210,7 +214,7 @@ async fn every_response_shape_lands_where_it_should() {
         },
         Case {
             name: "SELL of something not held is rejected",
-            reply: chat(decide_json("SELL", 1163.0, json!(1200.0), json!(null))),
+            reply: chat(decide_json("SELL", 1163.0, json!(1230.0), json!(null))),
             held: 0.0,
             class: AssetClass::Stock,
             expect: |o| matches!(o, Outcome::Rejected { error: ValidationError::NotHeld, .. }),
@@ -255,7 +259,7 @@ async fn every_response_shape_lands_where_it_should() {
         Case {
             name: "a citation to a headline that was never sent is rejected",
             reply: chat(json!({"action":"decide","signal":{
-                "action":"BUY","entry":1163.0,"stop":1150.0,"target":1200.0,
+                "action":"BUY","entry":1163.0,"stop":1150.0,"target":1230.0,
                 "valid_until":"2030-01-01T00:00:00Z","confidence":"high",
                 "rationale":"x","cites":[99]}})),
             held: 0.0,
@@ -265,7 +269,7 @@ async fn every_response_shape_lands_where_it_should() {
         Case {
             name: "no citation at all is rejected",
             reply: chat(json!({"action":"decide","signal":{
-                "action":"BUY","entry":1163.0,"stop":1150.0,"target":1200.0,
+                "action":"BUY","entry":1163.0,"stop":1150.0,"target":1230.0,
                 "valid_until":"2030-01-01T00:00:00Z","confidence":"high",
                 "rationale":"x","cites":[]}})),
             held: 0.0,
@@ -275,7 +279,7 @@ async fn every_response_shape_lands_where_it_should() {
         Case {
             name: "an expired valid_until is rejected",
             reply: chat(json!({"action":"decide","signal":{
-                "action":"BUY","entry":1163.0,"stop":1150.0,"target":1200.0,
+                "action":"BUY","entry":1163.0,"stop":1150.0,"target":1230.0,
                 "valid_until":"2020-01-01T00:00:00Z","confidence":"high",
                 "rationale":"x","cites":[1]}})),
             held: 0.0,
@@ -285,7 +289,7 @@ async fn every_response_shape_lands_where_it_should() {
         Case {
             name: "extra fields the prompt never asked for are ignored",
             reply: chat(json!({"action":"decide","signal":{
-                "action":"BUY","entry":1163.0,"stop":1150.0,"target":1200.0,
+                "action":"BUY","entry":1163.0,"stop":1150.0,"target":1230.0,
                 "valid_until":"2030-01-01T00:00:00Z","confidence":"high",
                 "rationale":"x","cites":[1],"leverage":10,"conviction":"max"}})),
             held: 0.0,
@@ -295,7 +299,7 @@ async fn every_response_shape_lands_where_it_should() {
         Case {
             name: "a quantity the model chooses is honoured",
             reply: chat(json!({"action":"decide","signal":{
-                "action":"BUY","qty":5,"entry":1163.0,"stop":1150.0,"target":1200.0,
+                "action":"BUY","qty":5,"entry":1163.0,"stop":1150.0,"target":1230.0,
                 "valid_until":"2030-01-01T00:00:00Z","confidence":"high",
                 "rationale":"x","cites":[1]}})),
             held: 0.0,
@@ -305,7 +309,7 @@ async fn every_response_shape_lands_where_it_should() {
         Case {
             name: "a quantity that would not fit the pot is rejected",
             reply: chat(json!({"action":"decide","signal":{
-                "action":"BUY","qty":500,"entry":1163.0,"stop":1150.0,"target":1200.0,
+                "action":"BUY","qty":500,"entry":1163.0,"stop":1150.0,"target":1230.0,
                 "valid_until":"2030-01-01T00:00:00Z","confidence":"high",
                 "rationale":"x","cites":[1]}})),
             held: 0.0,
@@ -335,7 +339,7 @@ async fn escalation_shapes_are_bounded() {
             status: 200,
             body: json!({"title":"t","content":"Guidance raised"}).to_string(),
         },
-        chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1200.0))),
+        chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1230.0))),
     ])
     .await;
     assert!(matches!(outcome, Outcome::Llm(_)), "{outcome:?}");
@@ -344,7 +348,7 @@ async fn escalation_shapes_are_bounded() {
     // Price history only: no article fetch, still one escalation.
     let (outcome, t) = escalate(vec![
         chat(json!({"action":"need_more","price_history":true})),
-        chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1200.0))),
+        chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1230.0))),
     ])
     .await;
     assert!(matches!(outcome, Outcome::Llm(_)), "{outcome:?}");
@@ -361,7 +365,7 @@ async fn escalation_shapes_are_bounded() {
             status: 200,
             body: json!({"title":"t","content":"body"}).to_string(),
         },
-        chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1200.0))),
+        chat(decide_json("BUY", 1163.0, json!(1150.0), json!(1230.0))),
     ])
     .await;
     assert!(matches!(outcome, Outcome::Llm(_)), "{outcome:?}");
@@ -406,7 +410,11 @@ async fn escalate(replies: Vec<HttpReply>) -> (Outcome, FixtureTransport) {
             candidate: &c,
             available_cash: 20_000.0,
             held_qty: 0.0,
-            target_profit_pct: None,
+            limits: Default::default(),
+
+            instrument_exposure: 0.0,
+
+            pot: 100_000.0,
             window_hours: 6,
             headlines: &hs,
             price_window: "27 09:30 1163.00 1164.10 1162.50 1163.40 12500",

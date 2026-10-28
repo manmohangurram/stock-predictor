@@ -2,6 +2,16 @@ import { describe, expect, test } from "vitest";
 import type { Dashboard, PositionRow, Settings, SignalRow } from "./api";
 import { renderLedger, renderModeTabs, renderRow, renderStrip } from "./pages/ledger";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
+import type { Limits } from "./api";
+
+const limits = (over: Partial<Limits> = {}): Limits => ({
+  min_profit_pct: 5,
+  max_profit_pct: 50,
+  min_trade_amount: 500,
+  max_trade_amount: 50_000,
+  max_instrument_pct: 25,
+  ...over,
+});
 
 const position = (over: Partial<PositionRow> = {}): PositionRow => ({
   id: 1,
@@ -142,6 +152,8 @@ describe("settings", () => {
     llm_model: "deepseek-chat",
     llm_base_url: "https://api.deepseek.com",
     llm_key_configured: false,
+    limits_long: limits(),
+    limits_trade: limits(),
     ...over,
   });
 
@@ -285,7 +297,7 @@ describe("settings, second pot", () => {
       trading_budget: 100_000, trading_available: 80_000,
       ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
       llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
-      llm_key_configured: false,
+      llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
     });
     expect(html).toContain('name="trading_budget"');
     expect(html).toContain("80,000");
@@ -455,7 +467,7 @@ describe("ntfy settings", () => {
     deepseek_configured: false, trading_budget: 0, trading_available: 0,
     ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
     llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
-    llm_key_configured: false,
+    llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
   };
 
   test("offers topic, server, token and link, plus a way to prove it", async () => {
@@ -485,7 +497,7 @@ describe("model provider settings", () => {
     deepseek_configured: false, trading_budget: 0, trading_available: 0,
     ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
     llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
-    llm_key_configured: false,
+    llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
   };
 
   test("offers every provider and shows which is selected", async () => {
@@ -504,5 +516,45 @@ describe("model provider settings", () => {
     const html = renderSettings({ ...base, llm_provider: "openai", llm_key_configured: true });
     expect(html).toContain('name="llm_key"');
     expect(html).toContain("Configured. The key is never shown again");
+  });
+});
+
+describe("per-pot limits", () => {
+  test("both pots get their own five numbers", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const s = {
+      budget: 500_000, committed: 0, available: 500_000, currency: "INR", currency_locked: false,
+      deepseek_configured: false, trading_budget: 50_000, trading_available: 50_000,
+      ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+      llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
+      llm_key_configured: false,
+      limits_long: limits({ max_trade_amount: 25_000 }),
+      limits_trade: limits({ max_trade_amount: 5_000, max_instrument_pct: 10 }),
+    };
+    const html = renderSettings(s);
+    for (const mode of ["long", "trade"]) {
+      for (const name of ["min_profit_pct", "max_profit_pct", "min_trade_amount", "max_trade_amount", "max_instrument_pct"]) {
+        expect(html).toContain(`name="${mode}_${name}"`);
+      }
+    }
+    expect(html).toContain("Long-term limits");
+    expect(html).toContain("Trading limits");
+    // different values per pot
+    expect(html).toContain('id="long_max_trade_amount" name="long_max_trade_amount" type="number" min="0" step="1"\n             value="25000"');
+    expect(html).toContain('value="5000"');
+  });
+
+  test("the take-profit band is explained in plain words", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const html = renderSettings({
+      budget: 1000, committed: 0, available: 1000, currency: "INR", currency_locked: false,
+      deepseek_configured: false, trading_budget: 0, trading_available: 0,
+      ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+      llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "", llm_key_configured: false,
+      limits_long: limits(), limits_trade: limits(),
+    });
+    expect(html).toContain("A take-profit below this is rejected");
+    expect(html).toContain("no fantasy numbers");
+    expect(html).toContain("not worth its fees");
   });
 });

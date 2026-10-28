@@ -34,8 +34,11 @@ pub struct RunInput<'a> {
     pub candidate: &'a Candidate,
     pub available_cash: f64,
     pub held_qty: f64,
-    /// The owner's expected profit for this instrument, in percent.
-    pub target_profit_pct: Option<f64>,
+    /// Limits, pot and current exposure: the same numbers the validator enforces, so the
+    /// model is asked for something that can actually be accepted.
+    pub limits: crate::rules::limits::Limits,
+    pub instrument_exposure: f64,
+    pub pot: f64,
     /// Hours of intraday tape included in the prompt.
     pub window_hours: u32,
     pub headlines: &'a [Headline],
@@ -93,7 +96,8 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         ind: input.ind,
         last_close: input.candidate.entry,
         cash_available: input.available_cash,
-        target_profit_pct: input.target_profit_pct,
+        target_profit_pct: Some(input.limits.min_profit_pct),
+        limits: &limits_block(input.limits, input.pot, input.instrument_exposure),
         headlines: &headlines,
         window_hours: input.window_hours,
         price_window: input.price_window,
@@ -251,7 +255,9 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 held_qty: input.held_qty,
                 sent_headline_ids: &sent_ids,
                 requires_exit: input.instrument.class == crate::models::AssetClass::Stock,
-                required_profit_pct: input.target_profit_pct,
+                limits: input.limits,
+                instrument_exposure: input.instrument_exposure,
+                pot: input.pot,
                 now: input.now,
             };
             match validate::check(&p, &ctx) {
@@ -301,6 +307,29 @@ pub fn format_history(bars: &[crate::models::Bar]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// The limits as one readable paragraph, with the room that is actually left.
+fn limits_block(
+    limits: crate::rules::limits::Limits,
+    pot: f64,
+    already_spent: f64,
+) -> String {
+    let cap = pot * limits.max_instrument_pct / 100.0;
+    let room = (cap - already_spent).max(0.0);
+    format!(
+        "trade size {:.2} to {:.2} per fill; at most {:.2} in this instrument ({:.0}% of the pot), \
+         of which {:.2} is already committed, leaving {:.2} of room; take-profit between {:.1}% \
+         and {:.1}% above entry",
+        limits.min_trade_amount,
+        limits.max_trade_amount,
+        cap,
+        limits.max_instrument_pct,
+        already_spent,
+        room,
+        limits.min_profit_pct,
+        limits.max_profit_pct
+    )
 }
 
 pub async fn daily_chat_calls(pool: &SqlitePool) -> Result<i64> {

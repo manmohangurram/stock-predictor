@@ -31,6 +31,9 @@ pub struct Settings {
     pub llm_base_url: String,
     /// True when a key is stored for the selected provider.
     pub llm_key_configured: bool,
+    /// Risk limits, one set per pot.
+    pub limits_long: crate::rules::limits::Limits,
+    pub limits_trade: crate::rules::limits::Limits,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -50,6 +53,8 @@ pub struct SettingsPatch {
     pub llm_base_url: Option<String>,
     /// Stored under the selected provider's own key name.
     pub llm_key: Option<String>,
+    pub limits_long: Option<crate::rules::limits::Limits>,
+    pub limits_trade: Option<crate::rules::limits::Limits>,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -89,6 +94,8 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         .await?
         .unwrap_or_else(|| provider.default_base_url().to_string());
     let llm_key_configured = key_for(pool, provider).await?.is_some();
+    let limits_long = limits(pool, crate::models::Mode::Long).await?;
+    let limits_trade = limits(pool, crate::models::Mode::Trade).await?;
     Ok(Settings {
         budget,
         committed,
@@ -106,6 +113,8 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         llm_model,
         llm_base_url,
         llm_key_configured,
+        limits_long,
+        limits_trade,
     })
 }
 
@@ -198,6 +207,41 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
         }
     }
 
+    for (mode, limits) in [
+        (crate::models::Mode::Long, patch.limits_long),
+        (crate::models::Mode::Trade, patch.limits_trade),
+    ] {
+        if let Some(limits) = limits {
+            if !limits.min_profit_pct.is_finite()
+                || !limits.max_profit_pct.is_finite()
+                || limits.min_profit_pct < 0.0
+                || limits.max_profit_pct < limits.min_profit_pct
+                || limits.min_trade_amount < 0.0
+                || limits.max_trade_amount < limits.min_trade_amount
+                || !(0.0..=100.0).contains(&limits.max_instrument_pct)
+            {
+                return Err(SettingsError::InvalidAmount);
+            }
+            for name in [
+                "min_profit_pct",
+                "max_profit_pct",
+                "min_trade_amount",
+                "max_trade_amount",
+                "max_instrument_pct",
+            ] {
+                if let Some(value) = limits.field(name) {
+                    put_setting(
+                        pool,
+                        &format!("{}_{name}", crate::rules::limits::Limits::key_prefix(mode)),
+                        &value.to_string(),
+                    )
+                    .await
+                    .map_err(|_| SettingsError::InvalidAmount)?;
+                }
+            }
+        }
+    }
+
     if let Some(provider) = patch.llm_provider.as_deref() {
         let p = crate::llm::provider::Provider::parse(provider)
             .map_err(|_| SettingsError::InvalidAmount)?;
@@ -281,6 +325,31 @@ pub async fn key_for(
     provider: crate::llm::provider::Provider,
 ) -> Result<Option<String>> {
     setting(pool, key_name(provider)).await
+}
+
+/// The limits for one pot, defaulted field by field so a partial configuration still works.
+pub async fn limits(
+    pool: &SqlitePool,
+    mode: crate::models::Mode,
+) -> Result<crate::rules::limits::Limits> {
+    let mut limits = crate::rules::limits::Limits::default();
+    for name in [
+        "min_profit_pct",
+        "max_profit_pct",
+        "min_trade_amount",
+        "max_trade_amount",
+        "max_instrument_pct",
+    ] {
+        let key = format!("{}_{name}", crate::rules::limits::Limits::key_prefix(mode));
+        if let Some(v) = setting(pool, &key).await? {
+            if let Ok(value) = v.parse::<f64>() {
+                if let Some(next) = limits.with(name, value) {
+                    limits = next;
+                }
+            }
+        }
+    }
+    Ok(limits)
 }
 
 /// Everything a chat call needs, resolved from the settings table.

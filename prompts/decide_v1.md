@@ -52,6 +52,7 @@ Last close: {{last_close}}
 Time now: {{now}}
 Indicators (daily): {{indicators}}
 Profit expected on this position: {{target_profit}}
+Limits you must respect: {{limits}}
 Cash available: {{cash}}
 Execution for this class: {{class_rules}}
 Open position: {{positions}}
