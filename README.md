@@ -60,16 +60,46 @@ decision above it is the model's, and the validator — not either of them — h
 
 ![Instrument](docs/screenshots/instrument.png)
 
-**Trading pot** — the same instrument set, a separate budget, a separate book.
+**Trading pot** — a separate ceiling, a separate book, separate limits. Same instrument set,
+different capital.
 
 ![Trading](docs/screenshots/trading.png)
 
-**Settings** — budget and currency, then the two pots' risk limits side by side so they can be
-compared, then the model provider (DeepSeek, OpenAI, Gemini or any OpenAI-compatible endpoint)
-with its key, and the ntfy push channel with a test button. Keys are write-only: the API reports
-only whether one is configured.
+**Settings, part 1** — budget and currency, then the two pots' limits side by side so they can be
+compared rather than read in sequence.
 
-![Settings](docs/screenshots/settings.png)
+![Settings: budget and limits](docs/screenshots/settings-limits.png)
+
+**Settings, part 2** — model provider (DeepSeek, OpenAI, Gemini or any OpenAI-compatible
+endpoint) with its key, and the ntfy push channel with a test button. Keys are write-only: the
+API reports only whether one is configured.
+
+![Settings: provider and notifications](docs/screenshots/settings-model.png)
+
+## Long-term and trading: what actually differs
+
+Two books, one process. The difference is *capital and rules*, not a different engine.
+
+| | Long-term | Trading |
+|---|---|---|
+| Capital | Long-term pot | Its own pot; never draws on the other, and the other never draws on it |
+| Limits | Its own five numbers | Its own five numbers, usually tighter |
+| Holdings | Separate positions, even in the same symbol | Separate positions, even in the same symbol |
+| History | Own fills and realised P&L | Own fills and realised P&L |
+| Polling | Same poll, same cadence | Same poll, same cadence |
+
+**How the server behaves differently for them:** the poll tick walks the watchlist once and
+evaluates each instrument against the pot it belongs to, using that pot's limits — so a switch to
+the Trading tab changes which book you see, not how often anything is fetched. Cash, exposure and
+the per-trade caps are computed per pot, which is why a swing trade cannot block a long-term buy.
+Because both live in one process, one instrument can appear in both books with two independent
+positions (the screenshot above shows TCS in the trading book while the long-term book holds it
+separately).
+
+**What is *not* different yet, plainly:** there is no separate trading strategy and no candidate
+discovery. Both pots run the same rules (trend, RSI, ATR) and the same prompt, with the trading
+pot distinguished by its capital, its limit set and its own books. A momentum scanner and a
+swing-specific prompt are the missing half of the trading mode, and they are not built.
 
 ## Quick start
 

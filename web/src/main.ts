@@ -25,6 +25,10 @@ async function route(): Promise<void> {
       app.innerHTML = renderSettings(s);
       wireSettings();
       await route2();
+      // Deep link into a section: the element only exists after this render.
+      if (location.hash) {
+        document.querySelector(location.hash)?.scrollIntoView({ block: "start" });
+      }
     } else if (path === "/positions") {
       app.innerHTML = renderPositions(await api.dashboard());
       wireRows();

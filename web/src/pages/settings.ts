@@ -14,7 +14,7 @@ function limitFields(mode: "long" | "trade", label: string, l: Limits): string {
              value="${l[name]}" />
       ${hint ? `<p class="help">${hint}</p>` : ""}
     </div>`;
-  return `<fieldset class="field-group">
+  return `<fieldset class="field-group" id="limits-${mode}">
     <legend class="lbl">${label}</legend>
     ${field("min_profit_pct", "Minimum profit %", "0.5", "A take-profit below this is rejected.")}
     ${field("max_profit_pct", "Maximum profit %", "0.5", "A target above this is rejected — no fantasy numbers.")}
@@ -73,7 +73,7 @@ export function renderSettings(s: Settings): string {
           ${limitFields("trade", "Trading limits", s.limits_trade)}
         </div>
 
-        <fieldset class="field-group">
+        <fieldset class="field-group" id="model">
           <legend class="lbl">Model provider</legend>
           <div class="field">
             <label class="lbl" for="llm_provider">Provider</label>
@@ -113,7 +113,7 @@ export function renderSettings(s: Settings): string {
             }</p>
           </div>
         </fieldset>
-        <fieldset class="field-group">
+        <fieldset class="field-group" id="ntfy">
           <legend class="lbl">Phone notifications (ntfy)</legend>
           <div class="field">
             <label class="lbl" for="ntfy_topic">Topic</label>
