@@ -64,9 +64,10 @@ decision above it is the model's, and the validator — not either of them — h
 
 ![Trading](docs/screenshots/trading.png)
 
-**Settings** — budget, currency, the second pot, the model provider (DeepSeek, OpenAI, Gemini or
-any OpenAI-compatible endpoint) with its key, and the ntfy push channel with a test button. Keys
-are write-only: the API reports only whether one is configured.
+**Settings** — budget and currency, then the two pots' risk limits side by side so they can be
+compared, then the model provider (DeepSeek, OpenAI, Gemini or any OpenAI-compatible endpoint)
+with its key, and the ntfy push channel with a test button. Keys are write-only: the API reports
+only whether one is configured.
 
 ![Settings](docs/screenshots/settings.png)
 

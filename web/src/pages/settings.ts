@@ -68,8 +68,10 @@ export function renderSettings(s: Settings): string {
               : "Locked permanently after the first recorded transaction."
           }</p>
         </div>
-        ${limitFields("long", "Long-term limits", s.limits_long)}
-        ${limitFields("trade", "Trading limits", s.limits_trade)}
+        <div class="limits-pair">
+          ${limitFields("long", "Long-term limits", s.limits_long)}
+          ${limitFields("trade", "Trading limits", s.limits_trade)}
+        </div>
 
         <fieldset class="field-group">
           <legend class="lbl">Model provider</legend>

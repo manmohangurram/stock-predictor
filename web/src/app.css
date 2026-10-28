@@ -457,3 +457,11 @@
     padding: var(--space-3); display: grid; gap: var(--space-3); margin: 0; }
   .field-group legend { padding-inline: var(--space-1); }
 }
+
+@layer components {
+  /* The two pots are compared, not read in sequence: side by side on any real screen. */
+  .limits-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+  @media (max-width: 900px) {
+    .limits-pair { grid-template-columns: 1fr; }
+  }
+}
