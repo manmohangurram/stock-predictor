@@ -1,0 +1,79 @@
+name: CI
+
+# Merge gate. Runs on every pull request and on pushes to main, and mirrors what
+# AGENTS.md calls the quality gates: Rust build, clippy with warnings denied, tests
+# (no network), benches compiling, and the front end's tests and production build.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # --locked everywhere: the committed Cargo.lock is the one that ships.
+      - name: Check
+        run: cargo check --locked --all-targets
+
+      - name: Clippy
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # No test touches the network; a test that needs DeepSeek is #[ignore]d behind a key.
+      - name: Test
+        run: cargo test --locked
+
+      - name: Benches compile
+        run: cargo bench --locked --no-run
+
+      - name: Audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: web
+
+      - name: Cache vite
+        uses: actions/cache@v4
+        with:
+          path: web/node_modules/.vite
+          key: ${{ runner.os }}-vite-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Test
+        run: npx vitest run
+        working-directory: web
+
+      - name: Build
+        run: npm run build
+        working-directory: web
+
+      # The bundle the server actually serves must parse, not just the source.
+      - name: Served bundle parses
+        run: node --check dist/assets/*.js
+        working-directory: web
