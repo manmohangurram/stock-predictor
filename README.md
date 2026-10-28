@@ -52,8 +52,10 @@ AMFI (India) ───┤ mutual fund NAV                                       
 ![Ledger](docs/screenshots/ledger.png)
 
 **Instrument** — price history with both moving averages, a fill recorder, the decision stream,
-the full fills history, headlines, and the rule checklist that explains why a signal fired or
-did not.
+the full fills history, headlines, and the rule checklist. Each buy carries its whole exit plan
+(`sell if it falls to` / `take profit at`), the money at risk and reward:risk, and how confident
+the model said it was. The rules panel on the right is what the *mechanical* layer sees; the
+decision above it is the model's, and the validator — not either of them — has the final say.
 
 ![Instrument](docs/screenshots/instrument.png)
 
@@ -61,8 +63,9 @@ did not.
 
 ![Trading](docs/screenshots/trading.png)
 
-**Settings** — budget, currency, the second pot, and the DeepSeek key (write-only; it is never
-returned by the API).
+**Settings** — budget, currency, the second pot, the model provider (DeepSeek, OpenAI, Gemini or
+any OpenAI-compatible endpoint) with its key, and the ntfy push channel with a test button. Keys
+are write-only: the API reports only whether one is configured.
 
 ![Settings](docs/screenshots/settings.png)
 
