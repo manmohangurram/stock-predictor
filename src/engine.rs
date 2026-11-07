@@ -77,6 +77,7 @@ struct Gathered {
     position: Option<Position>,
     available: f64,
     limits: crate::rules::limits::Limits,
+    required_profit_pct: f64,
     pot: f64,
     instrument_exposure: f64,
     price_window: String,
@@ -115,6 +116,12 @@ async fn gather(
     let limits = crate::rules::settings::limits(deps.pool, crate::models::Mode::Long).await?;
     let pot = budget::budget_total_in(deps.pool, crate::models::Mode::Long).await?;
     let instrument_exposure = load_exposure(deps.pool, instrument.id).await?;
+    // No per-stock value means "the pot's minimum"; a value above the ceiling is clamped, so a
+    // lowered max cannot make every trade on this stock impossible.
+    let required_profit_pct = load_target_profit(deps.pool, instrument.id)
+        .await?
+        .unwrap_or(limits.min_profit_pct)
+        .clamp(limits.min_profit_pct, limits.max_profit_pct);
     let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
         Ok(tape) => format_window(&tape, deps.cfg.prompt_window_hours, now),
         Err(e) => {
@@ -129,6 +136,7 @@ async fn gather(
         recent_trades: load_recent_trades(deps.pool, instrument.id, now).await?,
         last_decision: load_last_decision(deps.pool, instrument.id).await?,
         limits,
+        required_profit_pct,
         pot,
         instrument_exposure,
         bars,
@@ -303,6 +311,7 @@ async fn poll_instrument(
             available_cash: available,
             held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
             limits: g.limits,
+            required_profit_pct: g.required_profit_pct,
             instrument_exposure: g.instrument_exposure,
             pot: g.pot,
             window_hours: deps.cfg.prompt_window_hours,
@@ -385,6 +394,7 @@ pub async fn advise(
             available_cash: g.available,
             held_qty: g.position.as_ref().map(|p| p.qty).unwrap_or(0.0),
             limits: g.limits,
+            required_profit_pct: g.required_profit_pct,
             instrument_exposure: g.instrument_exposure,
             pot: g.pot,
             window_hours: deps.cfg.prompt_window_hours,
@@ -659,7 +669,6 @@ async fn load_exposure(pool: &SqlitePool, instrument_id: i64) -> Result<f64> {
     Ok(row.0.unwrap_or(0.0))
 }
 
-#[allow(dead_code)]
 async fn load_target_profit(pool: &SqlitePool, instrument_id: i64) -> Result<Option<f64>> {
     let row: Option<(Option<f64>,)> =
         sqlx::query_as("SELECT target_profit_pct FROM instruments WHERE id = ?")

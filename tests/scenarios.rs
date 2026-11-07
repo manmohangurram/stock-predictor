@@ -139,6 +139,7 @@ async fn run_case(reply: HttpReply, held: f64, class: AssetClass) -> (Outcome, F
             available_cash: 20_000.0,
             held_qty: held,
             limits: Default::default(),
+            required_profit_pct: 5.0,
 
             instrument_exposure: 0.0,
 
@@ -411,6 +412,7 @@ async fn escalate(replies: Vec<HttpReply>) -> (Outcome, FixtureTransport) {
             available_cash: 20_000.0,
             held_qty: 0.0,
             limits: Default::default(),
+            required_profit_pct: 5.0,
 
             instrument_exposure: 0.0,
 

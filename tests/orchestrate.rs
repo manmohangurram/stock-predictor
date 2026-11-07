@@ -68,6 +68,7 @@ fn run_input<'a>(
         available_cash: 10_000.0,
         held_qty: 0.0,
         limits: Default::default(),
+        required_profit_pct: 5.0,
 
         instrument_exposure: 0.0,
 

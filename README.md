@@ -183,13 +183,16 @@ not share a ceiling:
 
 | Setting | Default | What it stops |
 |---|---|---|
-| Minimum profit % | 5 | a take-profit that is not worth the trade |
+| Minimum profit % | 5 | the floor for any stock's profit target |
 | Maximum profit % | 50 | a fantasy target that will never fill |
 | Minimum per trade | 500 | fills eaten by fees |
 | Maximum per trade | 50,000 | one order becoming the portfolio |
 | Maximum per instrument % | 25 | concentration — total exposure to one symbol, all fills counted |
 
-Percentages are of that pot, so the caps keep their meaning when the budget changes. The
+**These bound a stock's target, not the pot.** `min` and `max` are the allowed band for any
+single instrument's profit expectation; a stock's own target defaults to `min` and is set on its
+page. A stock may raise its floor inside the band, never above `max` — the ceiling is global, so
+0.5%-per-trade scalping and 200%-fantasy targets are both impossible. The
 validator checks, in this order: cash and holdings, then the per-trade amount, then the
 per-instrument total, then the profit band, then price sanity. A refused trade is recorded as
 `BLOCKED` with the reason, never silently dropped. The rules layer clamps its own sizing to the

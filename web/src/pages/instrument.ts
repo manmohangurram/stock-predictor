@@ -191,13 +191,16 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
     <aside class="side">
       <div class="lbl">Indicators</div>
       ${facts.map(([k, v]) => `<div class="pair"><span>${k}</span><span class="num">${v}</span></div>`).join("")}
-      <div class="lbl" style="margin-top:16px">Profit expected</div>
+      <div class="lbl" style="margin-top:16px">Profit expected from this stock</div>
       <form class="target-form" data-symbol="${escapeHtml(a.instrument.symbol)}">
-        <input name="pct" type="number" min="0" step="0.5" placeholder="e.g. 15"
+        <input name="pct" type="number" min="0" step="0.5" placeholder="default"
                value="${a.instrument.target_profit_pct ?? ""}" aria-label="Expected profit percent" />
         <button class="btn" type="submit">Save</button>
       </form>
-      <p class="cites">A take-profit below this is rejected. Leave blank for no minimum.</p>
+      <p class="cites">
+        Blank uses the pot's minimum. Must stay inside the pot's band; the band's maximum always
+        wins over a stock asking for more.
+      </p>
       <div class="lbl" style="margin-top:16px">Rules</div>
       ${a.checks
         .map(

@@ -35,6 +35,7 @@ fn ctx<'a>(sent: &'a [i64]) -> ValidateCtx<'a> {
             max_trade_amount: f64::MAX,
             max_instrument_pct: 100.0,
         },
+        required_profit_pct: 5.0,
         instrument_exposure: 0.0,
         pot: 100_000.0,
         now: Utc::now(),
@@ -295,4 +296,47 @@ fn the_per_instrument_cap_counts_what_is_already_held() {
 
     p.qty = Some(9.0); // 945 more: inside
     assert_eq!(check(&p, &c), Ok(()));
+}
+
+#[test]
+fn a_stock_expectation_raises_the_floor_but_cannot_beat_the_ceiling() {
+    // Pot band: 5% minimum, 50% maximum.
+    let p = proposal(Action::Buy, 105.0, Some(101.0), Some(115.5)); // +10%
+    let mut c = ctx(&[1]);
+    c.limits.min_profit_pct = 5.0;
+    c.limits.max_profit_pct = 50.0;
+    c.limits.max_trade_amount = f64::MAX;
+
+    // Default expectation (the band minimum) is satisfied by +10%.
+    c.required_profit_pct = 5.0;
+    assert_eq!(check(&p, &c), Ok(()));
+
+    // This stock wants 15%: the same +10% target now fails.
+    c.required_profit_pct = 15.0;
+    assert_eq!(
+        check(&p, &c),
+        Err(ValidationError::TargetBelowRequirement { required_pct: 15.0 })
+    );
+
+    // A stock asking for 80% would sit outside the pot's band, so the ceiling still wins.
+    c.required_profit_pct = 80.0;
+    let mut high = proposal(Action::Buy, 105.0, Some(101.0), Some(120.0)); // +14%
+    high.target = Some(120.0);
+    assert!(matches!(
+        check(&high, &c),
+        Err(ValidationError::TargetBelowRequirement { .. }) | Err(ValidationError::TargetAboveLimit { .. })
+    ));
+}
+
+#[test]
+fn the_band_bounds_what_a_stock_may_ask_for() {
+    let l = Limits {
+        min_profit_pct: 5.0,
+        max_profit_pct: 50.0,
+        ..Limits::default()
+    };
+    assert!(!l.allows_target(4.9));
+    assert!(l.allows_target(5.0));
+    assert!(l.allows_target(50.0));
+    assert!(!l.allows_target(50.1));
 }

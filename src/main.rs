@@ -180,6 +180,33 @@ async fn main() -> Result<()> {
 
     let listener = TcpListener::bind(&cfg.bind).await?;
     tracing::info!(bind = %cfg.bind, "listening on http://{}", cfg.bind);
-    axum::serve(listener, app).await?;
+
+    // Shut down cleanly so the WAL is folded back into the database. A killed process leaves
+    // recent commits in stock-predicter.db-wal, and copying only the .db file then looks like
+    // data loss.
+    let shutdown_db = pool.clone();
+    let shutdown = async move {
+        let ctrl_c = tokio::signal::ctrl_c();
+        #[cfg(unix)]
+        {
+            let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install SIGTERM handler");
+            tokio::select! {
+                _ = ctrl_c => {}
+                _ = term.recv() => {}
+            }
+        }
+        #[cfg(not(unix))]
+        ctrl_c.await.ok();
+        tracing::info!("shutting down, checkpointing the database");
+        let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&shutdown_db)
+            .await;
+        shutdown_db.close().await;
+    };
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
+        .await?;
     Ok(())
 }

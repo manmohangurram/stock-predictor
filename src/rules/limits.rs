@@ -91,11 +91,12 @@ impl Limits {
         Ok(())
     }
 
-    pub fn check_profit(&self, pct: f64) -> Result<(), ValidationError> {
-        if pct + 1e-9 < self.min_profit_pct {
-            return Err(ValidationError::TargetBelowRequirement {
-                required_pct: self.min_profit_pct,
-            });
+    /// `floor` is this stock's own expectation (which defaults to `min_profit_pct`); the
+    /// ceiling is always the global one, so a stock cannot buy itself a bigger allowance.
+    pub fn check_profit(&self, pct: f64, floor: f64) -> Result<(), ValidationError> {
+        let floor = floor.max(self.min_profit_pct);
+        if pct + 1e-9 < floor {
+            return Err(ValidationError::TargetBelowRequirement { required_pct: floor });
         }
         if pct > self.max_profit_pct + 1e-9 {
             return Err(ValidationError::TargetAboveLimit {
@@ -103,5 +104,10 @@ impl Limits {
             });
         }
         Ok(())
+    }
+
+    /// A stock's expectation must sit inside the global band, or it can never be satisfied.
+    pub fn allows_target(&self, target: f64) -> bool {
+        target >= self.min_profit_pct - 1e-9 && target <= self.max_profit_pct + 1e-9
     }
 }

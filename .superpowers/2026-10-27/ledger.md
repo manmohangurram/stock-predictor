@@ -560,3 +560,22 @@ instrument, so the model is asked for something that can be accepted.
 
 `Settings::set` refuses an incoherent set (max below min, negative, cap outside 0–100) rather
 than storing it and confusing the validator later.
+
+## Per-stock profit vs the global band, and a WAL data-loss trap
+
+Profit expectation is two different things, and the code now says so:
+- **Global `min_profit_pct` / `max_profit_pct`** (per pot) bound what *any single stock* may ask
+  for. They are a band on the stock's target, not a rule about the pot's overall return.
+- **`instruments.target_profit_pct`** is that stock's own floor. Blank means the band minimum
+  (`required = limits.min`); a stored value above the ceiling is clamped, and `PUT
+  /api/instruments/:symbol/target-profit` refuses a value outside the band outright.
+
+Before this, the per-stock field was an orphan: stored and editable in the UI, but the prompt
+only ever received the *global* minimum, so setting 15% on a stock changed nothing. That is now
+wired end to end (engine → prompt → validator → UI copy).
+
+**WAL trap, twice now.** Killing the server with data still in `stock-predicter.db-wal`, then
+deleting or recreating the `.db`, produces an empty database beside an orphaned 400 KB WAL — which
+is exactly what happened to the demo files. Fixed properly: SIGTERM/Ctrl-C now runs
+`PRAGMA wal_checkpoint(TRUNCATE)` and closes the pool, so the database is self-contained on exit.
+Verified: 168957 bytes of WAL before SIGTERM, no `-wal` after, all rows intact.

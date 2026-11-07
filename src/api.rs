@@ -932,6 +932,17 @@ async fn set_target_profit(
                 "target_profit_pct must be between 0 and 1000".into(),
             ));
         }
+        // The global band bounds what a single stock may ask for. Checked against the tighter
+        // of the two pots so the stored value is legal whichever book the stock is held in.
+        let long = settings::limits(&st.pool, crate::models::Mode::Long).await?;
+        let trade = settings::limits(&st.pool, crate::models::Mode::Trade).await?;
+        let floor = long.min_profit_pct.max(trade.min_profit_pct);
+        let ceiling = long.max_profit_pct.min(trade.max_profit_pct);
+        if p < floor - 1e-9 || p > ceiling + 1e-9 {
+            return Err(ApiError::BadRequest(format!(
+                "profit expectation must be between {floor:.1}% and {ceiling:.1}% — the global band"
+            )));
+        }
     }
     let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
     sqlx::query("UPDATE instruments SET target_profit_pct = ? WHERE id = ?")

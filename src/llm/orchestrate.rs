@@ -37,6 +37,8 @@ pub struct RunInput<'a> {
     /// Limits, pot and current exposure: the same numbers the validator enforces, so the
     /// model is asked for something that can actually be accepted.
     pub limits: crate::rules::limits::Limits,
+    /// This stock's expectation, already defaulted and clamped to the band by the caller.
+    pub required_profit_pct: f64,
     pub instrument_exposure: f64,
     pub pot: f64,
     /// Hours of intraday tape included in the prompt.
@@ -96,7 +98,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         ind: input.ind,
         last_close: input.candidate.entry,
         cash_available: input.available_cash,
-        target_profit_pct: Some(input.limits.min_profit_pct),
+        target_profit_pct: Some(input.required_profit_pct),
         limits: &limits_block(input.limits, input.pot, input.instrument_exposure),
         headlines: &headlines,
         window_hours: input.window_hours,
@@ -256,6 +258,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                 sent_headline_ids: &sent_ids,
                 requires_exit: input.instrument.class == crate::models::AssetClass::Stock,
                 limits: input.limits,
+                required_profit_pct: input.required_profit_pct,
                 instrument_exposure: input.instrument_exposure,
                 pot: input.pot,
                 now: input.now,

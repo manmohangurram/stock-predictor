@@ -59,6 +59,8 @@ pub struct ValidateCtx<'a> {
     pub requires_exit: bool,
     /// The limits for the pot this trade belongs to.
     pub limits: crate::rules::limits::Limits,
+    /// This stock's profit expectation, defaulted to the band's minimum.
+    pub required_profit_pct: f64,
     /// What this pot has already committed to this instrument.
     pub instrument_exposure: f64,
     /// The pot's ceiling, which the percentage caps are measured against.
@@ -134,7 +136,7 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
             .check_instrument(ctx.pot, ctx.instrument_exposure, amount)?;
         if let Some(target) = p.target {
             let achieved = (target - p.entry) / p.entry * 100.0;
-            ctx.limits.check_profit(achieved)?;
+            ctx.limits.check_profit(achieved, ctx.required_profit_pct)?;
         }
     }
 

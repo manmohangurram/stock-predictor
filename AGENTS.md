@@ -2,38 +2,38 @@
 
 ## Reading code: never open a whole file to inspect one function
 
-Cheapest first. Two lookups, then one narrow read.
+**Use the `code-read` skill if it is available** — it encodes this whole flow. The commands
+below are the concrete spelling (CLI) and the fallback when the skill is not loaded.
 
-**1. Locate.** Never guess a path:
+One index, three queries, then one narrow read.
+
+**1. Index the repo** (once; persists and re-syncs):
 
 ```sh
-semble search "<what you're hunting>" --max-snippet-lines 0 --top-k 5
+codebase-memory-mcp cli index_repository --repo-path /home/mohan/projects/stock-predicter
 ```
 
-Returns `{file_path, start_line, end_line, score}`. Works with no setup.
-
-**2. Resolve a symbol to its exact range** (once `graphify-out/graph.json` exists):
+**2. Locate.** Never guess a path:
 
 ```sh
-python3 ~/.pi/agent/skills/code-read/scripts/read-ranges.py <Symbol>          # path:start-end
-python3 ~/.pi/agent/skills/code-read/scripts/read-ranges.py <Symbol> --show   # and print it
-python3 ~/.pi/agent/skills/code-read/scripts/read-ranges.py --file src/llm/orchestrate.rs
+codebase-memory-mcp cli search_graph --project stock-predicter --name-pattern '<symbol>'
+codebase-memory-mcp cli search_graph --project stock-predicter --query '<what it does>'
+codebase-memory-mcp cli search_code  --project stock-predicter --pattern '<exact string>'
 ```
 
-**3. Build / refresh the graph** (needed after the first Rust files land):
+**3. Resolve a symbol to its source range:**
 
 ```sh
-graphify . && python3 ~/.pi/agent/skills/code-read/scripts/add-end-lines.py
-# after any rebuild — `graphify --update` wipes end lines, so always re-enrich:
-graphify . --update && python3 ~/.pi/agent/skills/code-read/scripts/add-end-lines.py
+codebase-memory-mcp cli get_file_outline --project stock-predicter --file-path src/llm/orchestrate.rs
+codebase-memory-mcp cli get_code_snippet --project stock-predicter --name <qualified.name>
 ```
 
 **4. Read only those ranges**, batched into one turn. Read a whole file only if it is under
-~120 lines or the question genuinely spans it. `grep`/`rg` confirms an exact literal — then
+~120 lines or the question genuinely spans it. `search_code` confirms an exact literal — then
 read the range around the hit.
 
-Semble indexes source files only; markdown (docs, specs, `.interface-design/`) is not
-searchable there, so read those directly.
+Markdown (docs, specs, `.interface-design/`) is indexed by the graph too, but for prose read the
+files directly when you need exact wording.
 
 ## Project facts worth not rediscovering
 
