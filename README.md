@@ -243,30 +243,46 @@ rather than stopping the loop.
 
 ## Self-hosting with Docker
 
-Build and run:
+Two ways to run it, and one way to publish it.
+
+**Published image (GHCR).** The image is built and pushed **only** when a `v*` tag is pushed —
+nothing is published from `main`. Two architectures are built on native runners (`linux/amd64`,
+`linux/arm64`) and merged into one manifest, so the same tag works on a laptop and a Raspberry Pi.
+The workflows are `.github/workflows/docker-publish.yml` (publishes) and `Dockerfile` (builds).
 
 ```bash
-docker build -t stock-predicter .
+# plain Docker, published image
 docker run -d --name stock-predicter \
   -p 8080:8080 \
   -v "$PWD/data:/data" \
-  -e BUDGET=500000 -e CURRENCY=INR \
-  -e NTFY_TOPIC=your-private-topic \
-  stock-predicter
+  -e RUST_LOG=info \
+  ghcr.io/manmohangurram/stock-predictor:latest
 ```
 
-Or with Compose, which is the same thing in a file:
+```bash
+# Compose, published image: uncomment the image: line and comment out build:
+docker compose up -d
+```
+
+```yaml
+services:
+  stock-predicter:
+    image: ghcr.io/manmohangurram/stock-predictor:latest
+    # build: .        # ← use this instead of image: to build from source
+```
+
+**Build it yourself** — same result, from the `Dockerfile`, via either tool:
 
 ```bash
+docker build -t stock-predicter .
+# or
 docker compose up -d --build
 ```
 
-A published multi-arch image is built on every `v*` tag:
-
-```bash
-docker run -d --name stock-predicter -p 8080:8080 -v "$PWD/data:/data" \
-  ghcr.io/manmohangurram/stock-predictor:latest
-```
+> Budget, currency, the model provider and its key, the risk limits and ntfy are **not** container
+> environment variables: they live in the database and are edited on the Settings page. The only
+> environment variables worth setting are `RUST_LOG`, `BIND` (already `0.0.0.0:8080` in the image)
+> and the tuning knobs listed above.
 
 **Back up the whole `data` directory**, not just the `.db` file — SQLite in WAL mode keeps recent
 commits in `-wal` beside it.

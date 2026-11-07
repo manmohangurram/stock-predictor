@@ -1,8 +1,9 @@
 services:
   stock-predicter:
-    build: .
-    # Or use the published image instead of building:
-    # image: ghcr.io/manmohangurram/stock-predictor:latest
+    # Published image (built only on a v* tag). Comment `image` and uncomment `build` to build
+    # from this checkout instead.
+    image: ghcr.io/manmohangurram/stock-predictor:latest
+    # build: .
     container_name: stock-predicter
     restart: unless-stopped
     ports:
