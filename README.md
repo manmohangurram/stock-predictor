@@ -126,20 +126,55 @@ outside market hours; `--ask SYMBOL` asks the model about one instrument and wri
 
 ## Configuration
 
-The environment carries deployment settings only. **Budget, currency, API keys and ntfy are set
-in the UI and live in the database** — there is one source of truth for each, and it is not the
-environment, so a stale `.env` cannot silently override what you configured.
+**Everything the UI can edit lives in the database, not the environment.** Budget, currency, the
+two pots and their risk limits, the model provider with its key, and the ntfy channel are all
+settings rows — there is one source of truth for each, so a stale `.env` cannot silently override
+what you configured on the Settings page. The variables below are deployment and tuning knobs
+only; all are optional, and all have defaults.
+
+### Deployment
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DB_PATH` | `data/stock-predicter.db` | SQLite file; the directory is created |
-| `BIND` | `127.0.0.1:8080` | Listen address (use `0.0.0.0:8080` in Docker) |
-| `POLL_SECS` | `900` | In-session cadence |
-| `OFF_HOURS_SECS` | `7200` | Cadence outside 09:00–16:00 IST |
-| `PROMPT_WINDOW_HOURS` | `4` | Hours of intraday tape per prompt (biggest token lever) |
-| `LLM_MIN_PRICE_MOVE` | `2.0` | Skip a call unless the price moved this much |
-| `LLM_MAX_SILENCE_SECS` | `3600` | ...but never stay quiet longer than this |
-| `LLM_DAILY_CAP` | `200` | Hard ceiling on model calls per day |
+| `BIND` | `127.0.0.1:8080` | Listen address. Use `0.0.0.0:8080` inside a container (the image already sets it). |
+| `DB_PATH` | `data/stock-predicter.db` | SQLite file. The parent directory is created on boot. |
+| `RUST_LOG` | `info` | Log filter, e.g. `info,stock_predicter=debug`. |
+
+### Polling
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `POLL_SECS` | `900` | Tick cadence while the market is open (09:00–16:00 IST, Mon–Fri). |
+| `OFF_HOURS_SECS` | `7200` | Tick cadence outside those hours — enough to pick up evening headlines. |
+
+### Model calls
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LLM_MIN_PRICE_MOVE` | `2.0` | Skip a call unless the price moved this much since the last one. |
+| `LLM_MAX_SILENCE_SECS` | `3600` | ...but never stay quiet longer than this, whatever the price did. |
+| `LLM_DAILY_CAP` | `200` | Hard ceiling on model calls per day; past it the rules run alone. |
+| `PROMPT_WINDOW_HOURS` | `4` | Hours of 15-minute tape per prompt — the biggest single token lever. |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Only used when the provider is DeepSeek and no base URL is set in Settings. |
+
+A headline change overrides the price gate: new news always earns a call.
+
+### Setting them
+
+```bash
+# plain environment
+BIND=0.0.0.0:8080 DB_PATH=/srv/stock-predicter/app.db POLL_SECS=600 ./stock-predicter
+
+# docker run
+docker run -d -p 8080:8080 -v "$PWD/data:/data" -e RUST_LOG=info -e POLL_SECS=600 \
+  ghcr.io/manmohangurram/stock-predictor:latest
+
+# docker compose (docker-compose.yml, environment: block)
+docker compose up -d
+```
+
+There is no `.env` file loading: nothing reads one, so a `.env` sitting in the working directory is
+ignored. Set variables in the process environment (or the Compose `environment:` block).
 
 ## Phone notifications
 
