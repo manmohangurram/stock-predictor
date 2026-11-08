@@ -209,3 +209,49 @@ fn diagnose_agrees_with_the_candidate() {
         .collect();
     assert_eq!(failed, vec!["not overbought"]);
 }
+
+#[test]
+fn a_position_at_its_target_is_a_sell_not_a_hold() {
+    // The target is a standing sell order. Reaching it must produce a signal, or the notification
+    // that tells you to take the profit never fires.
+    let i = instrument(AssetClass::Stock);
+    let bars = vec![bar(1320.0)];
+    let x = ind(1100.0, 1050.0, 58.0, 20.0);
+    let mut held = position(10.0, Some(1240.0));
+    held.target = Some(1318.0);
+    let c = candidate(CandidateInput {
+        instrument: &i,
+        bars: &bars,
+        ind: &x,
+        position: Some(&held),
+        available_cash: 0.0,
+        cfg: RuleConfig::default(),
+    })
+    .expect("a target hit must be a candidate");
+    assert_eq!(c.action, Action::Sell);
+    assert_eq!(c.qty, 10.0);
+    assert!(c.urgent, "a target hit is as decided as a stop hit");
+    assert!(
+        c.reasons.iter().any(|r| r.contains("take the profit")),
+        "{:?}",
+        c.reasons
+    );
+}
+
+#[test]
+fn a_position_below_its_target_is_left_alone() {
+    let i = instrument(AssetClass::Stock);
+    let bars = vec![bar(1250.0)];
+    let x = ind(1100.0, 1050.0, 58.0, 20.0);
+    let mut held = position(10.0, Some(1240.0));
+    held.target = Some(1318.0);
+    let c = candidate(CandidateInput {
+        instrument: &i,
+        bars: &bars,
+        ind: &x,
+        position: Some(&held),
+        available_cash: 0.0,
+        cfg: RuleConfig::default(),
+    });
+    assert!(c.is_none(), "{c:?}");
+}

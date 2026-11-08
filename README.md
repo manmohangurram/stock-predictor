@@ -71,6 +71,12 @@ opaque fund symbol (`0P00012ALS.BO`, a real NAV series). Funds are found by sear
 code. An AMFI-coded fund can be held but cannot be charted; the poll says so rather than failing
 with a 404 every fifteen minutes.
 
+Exits are watched, not remembered. A held position whose close falls below the recorded stop, or
+reaches the recorded target, produces a **SELL** signal on the very next poll and a high-priority
+push — "stop 1,240.00 hit" or "target 1,318.00 reached — take it". A model reply cannot talk the app
+out of it: the validator refuses a HOLD on a breached position, and `resolve` ignores a model action
+for an urgent candidate regardless.
+
 Recommendations come from the long-term pot only, and cover **stocks and mutual funds** — an MF is a
 plain BUY at NAV with no stop or target, because neither exists for it. The trading pot gets no
 recommendations yet; it is for fills you record yourself.

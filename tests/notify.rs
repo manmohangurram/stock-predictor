@@ -151,3 +151,22 @@ fn without_a_public_url_there_is_no_dead_deep_link() {
         Some("chart_with_upwards_trend")
     );
 }
+
+#[test]
+fn a_target_reached_is_notified_as_a_profit_not_a_stop() {
+    use stock_predicter::models::{Action, AssetClass, Candidate};
+    let c = Candidate {
+        instrument_id: 1,
+        action: Action::Sell,
+        reasons: vec![],
+        entry: 1320.0,
+        stop: None,
+        target: Some(1318.0),
+        qty: 10.0,
+        timing_note: AssetClass::Stock.timing_note().into(),
+        urgent: true,
+    };
+    let n = stock_predicter::notify::Notification::from_candidate("INFY.NS", "INR", &c).unwrap();
+    assert!(n.body.contains("target 1318.00 reached"), "{}", n.body);
+    assert!(!n.body.contains("stop"), "{}", n.body);
+}

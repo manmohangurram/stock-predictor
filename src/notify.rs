@@ -59,11 +59,13 @@ impl Notification {
         };
         let body = match c.action {
             Action::Sell => {
-                let stop = c
-                    .stop
-                    .map(|s| format!("stop {s:.2} hit, "))
-                    .unwrap_or_default();
-                format!("{stop}now {:.2} · {}", c.entry, c.timing_note)
+                // Say which exit fired: a stop-out and a target reached are opposite feelings.
+                let why = match (c.stop, c.target) {
+                    (Some(s), _) if c.entry <= s => format!("stop {s:.2} hit, "),
+                    (_, Some(t)) if c.entry >= t => format!("target {t:.2} reached — take it, "),
+                    _ => String::new(),
+                };
+                format!("{why}now {:.2} · {}", c.entry, c.timing_note)
             }
             _ => {
                 // A buy is only actionable if it says where to get out on both sides.

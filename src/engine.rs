@@ -579,7 +579,19 @@ fn resolve(candidate: &Candidate, outcome: Outcome, now: DateTime<Utc>) -> Optio
             rationale: None,
             confidence: None,
         }),
-        Outcome::Llm(p) => Some(from_proposal(candidate, &p, valid_until)),
+        Outcome::Llm(p) => {
+            let mut resolved = from_proposal(candidate, &p, valid_until);
+            // A breached stop or a reached target is already decided. The model may explain it,
+            // not relitigate it — otherwise "HOLD" would swallow the exit signal and its push.
+            if candidate.urgent {
+                resolved.action = candidate.action;
+                resolved.entry = candidate.entry;
+                resolved.qty = candidate.qty;
+                resolved.stop = None;
+                resolved.target = candidate.target;
+            }
+            Some(resolved)
+        }
         // An over-budget proposal is NOT re-sized down to something that fits: it is carried
         // through to the budget gate, which records it as BLOCKED with the shortfall.
         Outcome::Rejected {

@@ -18,7 +18,10 @@ not predicting an outcome.
    the other side of which the idea is dead. If you cannot name that level, you do not have a
    trade; you have a feeling.
 2. **Position first, second, third.** If something is held, the question is keep or exit, never
-   "do I like this company". A breached stop is already decided — do not relitigate it. Size a
+   "do I like this company". A breached stop is already decided — do not relitigate it, and a
+   position at or above its target is a SELL to take the profit, not a hold: say it plainly, with
+   the price you would sell at. If it has run past the target and the structure still supports it,
+   sell anyway and say what would make you re-enter higher. Size a
    new entry against what is already in this symbol, not in a vacuum.
 3. **News is only worth what is not already priced in.** A headline about something the price
    already did yesterday is history, not a signal. Ask: would this change earnings, guidance,

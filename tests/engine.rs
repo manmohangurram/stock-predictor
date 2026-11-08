@@ -702,3 +702,55 @@ async fn the_rules_layer_is_clamped_by_the_limits_too() {
     );
     assert!(amount >= 1_000.0, "and must still clear the minimum");
 }
+
+#[tokio::test]
+async fn a_stop_hit_sells_even_when_the_model_tries_to_hold() {
+    // The exit is decided by price, not by opinion. Two things keep it that way: the validator
+    // refuses a HOLD on a position that has breached its stop (no target, so no profit band), and
+    // `resolve` ignores a model action for an urgent candidate. Either alone would hold the line.
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed_with_key(&pool, &["INFY"], "test-key").await;
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'INFY'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, stop, target, state, mode, opened_at)
+         VALUES (?, 10, 1200, 2000, 9999, 'open', 'long', '2026-01-01T00:00:00Z')",
+    )
+    .bind(id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Close 1200 is far below the recorded 2000 stop.
+    let market = FakeMarket::ok(bars_n(250));
+    let hold = stock_predicter::llm::deepseek::HttpReply {
+        status: 200,
+        body: serde_json::json!({
+            "choices": [{"message": {"content":
+                r#"{"action":"decide","signal":{"action":"HOLD","entry":1200,"qty":10,"valid_until":"2030-01-01T00:00:00Z","rationale":"the company is fine","confidence":"high"}}"#}}],
+            "usage": {"prompt_tokens": 900, "completion_tokens": 30}
+        })
+        .to_string(),
+    };
+    let notifier = FakeNotifier::default();
+    let report = poll_with(&pool, &market, &notifier, cfg(), now(), vec![hold])
+        .await
+        .unwrap();
+
+    assert_eq!(report.signals, 1, "{report:#?}");
+    assert_eq!(report.llm_calls, 1, "the model was never consulted: {report:#?}");
+    let action: (String,) = sqlx::query_as("SELECT action FROM signals ORDER BY id DESC LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(action.0, "SELL", "the model overrode a stop hit");
+    assert_eq!(report.notifications, 1, "the exit was not pushed");
+    let sent = notifier.sent.lock().unwrap();
+    assert_eq!(sent.len(), 1);
+    assert!(sent[0].title.starts_with("SELL"), "{}", sent[0].title);
+}

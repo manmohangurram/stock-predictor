@@ -43,11 +43,19 @@ pub fn candidate(input: CandidateInput<'_>) -> Option<Candidate> {
 
     if let Some(pos) = input.position {
         let below_stop = pos.stop.is_some_and(|s| close < s);
+        // The other half of a trade: the target is a sell order that already exists, not a wish.
+        let at_target = pos.target.is_some_and(|t| close >= t);
         let trend_break = ind.rsi14 > input.cfg.rsi_sell_floor && close < ind.sma50;
         if below_stop {
             reasons.push(format!(
                 "close {close:.2} below recorded stop {:.2}",
                 pos.stop.unwrap_or_default()
+            ));
+        }
+        if at_target {
+            reasons.push(format!(
+                "close {close:.2} at or above recorded target {:.2} — take the profit",
+                pos.target.unwrap_or_default()
             ));
         }
         if trend_break {
@@ -56,8 +64,8 @@ pub fn candidate(input: CandidateInput<'_>) -> Option<Candidate> {
                 ind.rsi14, ind.sma50
             ));
         }
-        if below_stop || trend_break {
-            let stop_hit = pos.stop.is_some_and(|s| close < s);
+        if below_stop || trend_break || at_target {
+            let stop_hit = below_stop || at_target;
             return Some(Candidate {
                 instrument_id: input.instrument.id,
                 action: Action::Sell,
