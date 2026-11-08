@@ -30,19 +30,16 @@ async fn main() -> Result<()> {
         );
     }
     // Renaming the app changed the default database file. A database written under the old
-    // spelling keeps being used, so the rename never looks like data loss.
-    let mut db_path = cfg.db_path.clone();
+    // spelling is moved to the new one on boot — checkpointed first, so no WAL commit is lost.
+    let db_path = cfg.db_path.clone();
     if std::env::var("DB_PATH").is_err() {
-        let old = "data/stock-predicter.db";
-        if !std::path::Path::new(&db_path).exists() && std::path::Path::new(old).exists() {
-            tracing::warn!(
-                using = old,
-                "found a database under the old name; it is used until you move it to {}",
-                db_path
-            );
-            db_path = old.to_string();
+        if let Some(moved) =
+            db::migrate_legacy_path("data/stock-predicter.db", &db_path).await?
+        {
+            tracing::info!(to = %moved, "moved the database from the old name");
         }
     }
+    tracing::info!(db = %db_path, "database");
     let pool = db::connect_and_migrate(&db_path).await?;
 
     // Secrets at rest. `SECRET_KEY` wins; without it a key file sits beside the database, which

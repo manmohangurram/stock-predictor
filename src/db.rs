@@ -35,6 +35,50 @@ pub fn path_of(path: &str) -> &str {
         .unwrap_or(path)
 }
 
+/// Move a database written under an older name to the current one.
+///
+/// Rule: **the file with the old name is the real one**, so it becomes the file with the new name.
+/// If something already sits at the new path it is moved aside first, never deleted — an empty
+/// database created by an earlier version must not hide the ledger that is still under the old name.
+///
+/// The WAL is checkpointed before the move: renaming only the `.db` would silently drop the commits
+/// still in `-wal`.
+pub async fn migrate_legacy_path(old: &str, new: &str) -> Result<Option<String>> {
+    let (old, new) = (path_of(old), path_of(new));
+    if !std::path::Path::new(old).exists() {
+        return Ok(None);
+    }
+
+    if std::path::Path::new(new).exists() {
+        let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+        let aside = format!("{new}.bak-{stamp}");
+        std::fs::rename(new, &aside).with_context(|| format!("move {new} aside"))?;
+        tracing::info!(at = %aside, "the database at the new name is kept as a backup");
+    }
+
+    // Fold the WAL back into the file before moving it.
+    let pool = connect(old).await?;
+    let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").execute(&pool).await;
+    pool.close().await;
+
+    if let Some(dir) = std::path::Path::new(new).parent() {
+        if !dir.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+    }
+    if std::fs::rename(old, new).is_err() {
+        std::fs::copy(old, new).context("copy the old database")?;
+        tracing::warn!(left_in_place = old, "copied instead of moved");
+    }
+    for suffix in ["-wal", "-shm"] {
+        let stale = format!("{old}{suffix}");
+        if std::path::Path::new(&stale).exists() {
+            let _ = std::fs::remove_file(stale);
+        }
+    }
+    Ok(Some(new.to_string()))
+}
+
 pub async fn connect(path: &str) -> Result<SqlitePool> {
     // Create the parent directory: a missing folder should not look like a corrupt database.
     if let Some(dir) = std::path::Path::new(path_of(path)).parent() {
