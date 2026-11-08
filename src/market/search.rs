@@ -32,28 +32,31 @@ struct Quote {
     quote_type: Option<String>,
 }
 
-/// Yahoo covers equities and funds listed on an exchange, and nothing else that matters here.
+/// Yahoo covers exchange-listed instruments, and Indian mutual funds too — under opaque codes
+/// like `0P00012ALS.BO`, which are priceable and addable. AMFI is the other source, by scheme code.
 pub fn parse_yahoo(body: &str) -> Result<Vec<Hit>> {
     let q: Quotes = serde_json::from_str(body)?;
     Ok(q.quotes
         .into_iter()
-        // Yahoo's Indian mutual-fund hits are opaque identifiers (0P0000N0B6.BO) that
-        // cannot be priced; AMFI is the source for funds, so they are dropped here.
-        .filter(|x| {
-            matches!(
-                x.quote_type.as_deref(),
-                Some("EQUITY") | Some("ETF") | Some("INDEX")
-            )
-        })
-        .map(|x| Hit {
-            code: x.symbol,
-            name: x
-                .short_name
-                .or(x.long_name)
-                .unwrap_or_else(|| "unnamed".into()),
-            class: crate::models::AssetClass::Stock,
-            venue: x.venue.unwrap_or_default(),
-            price: None,
+        .filter_map(|x| {
+            let class = match x.quote_type.as_deref() {
+                Some("EQUITY") | Some("ETF") | Some("INDEX") => crate::models::AssetClass::Stock,
+                Some("MUTUALFUND") => crate::models::AssetClass::MutualFund,
+                _ => return None,
+            };
+            // For a fund the short name is the code, so the readable one is longname.
+            let name = match class {
+                crate::models::AssetClass::MutualFund => x.long_name.clone().or(x.short_name),
+                _ => x.short_name.clone().or(x.long_name),
+            }
+            .unwrap_or_else(|| x.symbol.clone());
+            Some(Hit {
+                code: x.symbol,
+                name,
+                class,
+                venue: x.venue.unwrap_or_default(),
+                price: None,
+            })
         })
         .collect())
 }

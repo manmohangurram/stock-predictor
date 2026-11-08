@@ -916,13 +916,30 @@ async fn add_instrument(
 
     let (class, name) = match body.class.as_deref() {
         Some("mutual_fund") => {
-            let text = st
-                .amfi_text()
-                .await
-                .ok_or_else(|| ApiError::BadRequest("AMFI scheme list unavailable".into()))?;
-            let hit = crate::market::search::amfi_by_code(&text, code)
-                .ok_or_else(|| ApiError::NotFound(format!("no scheme {code}")))?;
-            (crate::models::AssetClass::MutualFund, hit.name)
+            // Two kinds of fund code exist: AMFI's (135762, with NAV in the scheme list) and
+            // Yahoo's (0P00012ALS.BO). Accept either; the AMFI list is not always reachable.
+            let amfi_hit = match st.amfi_text().await {
+                Some(text) => crate::market::search::amfi_by_code(&text, code),
+                None => None,
+            };
+            match amfi_hit {
+                Some(hit) => (crate::models::AssetClass::MutualFund, hit.name),
+                None => {
+                    let rt = crate::rules::settings::runtime(&st.pool).await?;
+                    let client = crate::market::yahoo::client(&rt)?;
+                    let known = crate::market::search(&client, code, None)
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .find(|h| h.code.eq_ignore_ascii_case(code))
+                        .ok_or_else(|| {
+                            ApiError::BadRequest(format!(
+                                "{code} is not in the AMFI scheme list and is not a Yahoo symbol —                                  search for the fund by name and pick a suggestion"
+                            ))
+                        })?;
+                    (crate::models::AssetClass::MutualFund, known.name)
+                }
+            }
         }
         _ => (
             crate::models::AssetClass::Stock,
@@ -945,8 +962,8 @@ async fn add_instrument(
         .await?;
 
     // A newly added symbol should have a chart and headlines on first open, not tomorrow
-    // morning. Mutual funds have no Yahoo series, so they are skipped deliberately.
-    if class == crate::models::AssetClass::Stock {
+    // morning. AMFI scheme codes have no Yahoo series; a Yahoo-coded fund (0P…BO) does.
+    if class == crate::models::AssetClass::Stock || code.contains('.') {
         if let Ok(market) = crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?) {
             let fetch = crate::store::refresh(&st.pool, id.0, code, &market);
             match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {

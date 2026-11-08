@@ -69,15 +69,20 @@ fn chart_url_carries_the_symbol_as_a_path_segment() {
 }
 
 #[test]
-fn search_filters_opaque_yahoo_fund_codes_and_keeps_the_exchange() {
+fn search_keeps_both_the_exchange_listing_and_the_fund() {
+    // The fund code used to be dropped as unpriceable. It is priceable — the chart endpoint
+    // returns a NAV series for it — so it is kept, as a fund rather than as a stock.
     let body = r#"{"quotes":[
       {"symbol":"INFY.NS","shortname":"Infosys","exchDisp":"NSE","quoteType":"EQUITY"},
-      {"symbol":"0P0000N0B6.BO","shortname":"0P0000N0B6.BO","exchDisp":"BSE","quoteType":"MUTUALFUND"}
+      {"symbol":"0P0000N0B6.BO","longname":"HDFC Flexi Cap Dir Gr","exchDisp":"BSE","quoteType":"MUTUALFUND"}
     ]}"#;
     let hits = stock_predicter::market::search::parse_yahoo(body).unwrap();
-    assert_eq!(hits.len(), 1, "the fund code must be dropped");
+    assert_eq!(hits.len(), 2);
     assert_eq!(hits[0].code, "INFY.NS");
     assert_eq!(hits[0].venue, "NSE");
+    assert_eq!(hits[1].code, "0P0000N0B6.BO");
+    assert_eq!(hits[1].name, "HDFC Flexi Cap Dir Gr");
+    assert_eq!(hits[1].class, stock_predicter::models::AssetClass::MutualFund);
 }
 
 #[test]
@@ -94,4 +99,27 @@ fn amfi_search_finds_a_scheme_by_name_and_by_code() {
 
     let by_code = stock_predicter::market::search::amfi_by_code(text, "120503").unwrap();
     assert!(by_code.name.contains("Axis ELSS"));
+}
+
+/// Yahoo's real answer for an Indian mutual fund: an opaque code that is still priceable.
+#[test]
+fn a_yahoo_mutual_fund_is_a_search_hit_of_class_fund() {
+    let body = r#"{"quotes":[
+      {"exchange":"BSE","shortname":"0P00012ALS.BO","quoteType":"MUTUALFUND",
+       "symbol":"0P00012ALS.BO","longname":"Motilal Oswal Midcap Dir Gr","exchDisp":"Bombay"},
+      {"exchange":"NSI","shortname":"INFY.NS","quoteType":"EQUITY","symbol":"INFY.NS","exchDisp":"NSE"}
+    ]}"#;
+    let hits = stock_predicter::market::search::parse_yahoo(body).unwrap();
+    assert_eq!(hits.len(), 2);
+    assert_eq!(hits[0].code, "0P00012ALS.BO");
+    // The readable name, not the ticker repeated back.
+    assert_eq!(hits[0].name, "Motilal Oswal Midcap Dir Gr");
+    assert_eq!(hits[0].class, stock_predicter::models::AssetClass::MutualFund);
+    assert_eq!(hits[1].class, stock_predicter::models::AssetClass::Stock);
+}
+
+#[test]
+fn a_quote_type_that_is_not_an_instrument_is_still_ignored() {
+    let body = r#"{"quotes":[{"symbol":"^NSEI","quoteType":"CRYPTOCURRENCY","shortname":"x"}]}"#;
+    assert!(stock_predicter::market::search::parse_yahoo(body).unwrap().is_empty());
 }

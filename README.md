@@ -65,6 +65,12 @@ different capital.
 
 ![Trading](docs/screenshots/trading.png)
 
+Both kinds of fund code work: AMFI's scheme code (`120503`, NAV from the AMFI list) and Yahoo's
+opaque fund symbol (`0P00012ALS.BO`, a real NAV series). Funds are found by searching the name —
+*Motilal Oswal Midcap* returns the Direct and Regular plans, growth and IDCW — or by pasting the
+code. An AMFI-coded fund can be held but cannot be charted; the poll says so rather than failing
+with a 404 every fifteen minutes.
+
 Recommendations come from the long-term pot only, and cover **stocks and mutual funds** — an MF is a
 plain BUY at NAV with no stop or target, because neither exists for it. The trading pot gets no
 recommendations yet; it is for fills you record yourself.

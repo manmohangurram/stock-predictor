@@ -154,6 +154,15 @@ async fn poll_instrument(
     now: DateTime<Utc>,
     report: &mut PollReport,
 ) -> Result<()> {
+    // An AMFI scheme code (135762) has no price series anywhere: it can be held, but it cannot be
+    // charted, so polling it only produces a 404 every fifteen minutes. Say so once per poll.
+    if instrument.class == crate::models::AssetClass::MutualFund && !instrument.symbol.contains('.') {
+        report.notes.push(format!(
+            "{}: AMFI scheme code, no price series — hold it, but add the Yahoo code to get advice",
+            instrument.symbol
+        ));
+        return Ok(());
+    }
     let Some(g) = gather(deps, instrument, now).await? else {
         return Ok(());
     };
