@@ -52,6 +52,12 @@ impl AssetClass {
         }
     }
 
+    /// Which pot this class may be held in. A mutual fund is bought at NAV and held: there is no
+    /// intraday exit, so it belongs in the long-term book only.
+    pub fn pot_allowed(self, mode: Mode) -> bool {
+        mode == Mode::Long || self == AssetClass::Stock
+    }
+
     /// The execution semantics that actually exist for this class. Carried into the UI and
     /// the prompt so an estimate is never presented as a firm price.
     pub fn timing_note(self) -> &'static str {

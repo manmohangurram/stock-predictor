@@ -94,6 +94,18 @@ pub async fn record(
     ensure!(qty.is_finite() && qty > 0.0, "qty must be positive");
     ensure!(price.is_finite() && price > 0.0, "price must be positive");
 
+    // A mutual fund has no intraday exit, so it cannot be a trading-pot fill.
+    let class: (String,) = sqlx::query_as("SELECT class FROM instruments WHERE id = ?")
+        .bind(instrument_id)
+        .fetch_one(pool)
+        .await?;
+    let class = crate::models::AssetClass::parse(&class.0)?;
+    ensure!(
+        class.pot_allowed(mode),
+        "{} cannot be held in the trading pot — mutual funds are long-term only",
+        class.as_str()
+    );
+
     let when = at.unwrap_or_else(chrono::Utc::now);
     let now = when.to_rfc3339();
     let open: Option<(i64, f64, f64, String)> = sqlx::query_as(

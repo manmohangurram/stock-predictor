@@ -65,6 +65,10 @@ different capital.
 
 ![Trading](docs/screenshots/trading.png)
 
+Recommendations come from the long-term pot only, and cover **stocks and mutual funds** — an MF is a
+plain BUY at NAV with no stop or target, because neither exists for it. The trading pot gets no
+recommendations yet; it is for fills you record yourself.
+
 **Settings is six tabs**, one section each, stamped on its own — every value is a database row, and
 a change applies on the next tick without a restart. On a phone the rail becomes a scrollable strip
 and the stamp bar pins to the bottom.
@@ -102,6 +106,7 @@ Two books, one process. The difference is *capital and rules*, not a different e
 | Capital | Long-term pot | Its own pot; never draws on the other, and the other never draws on it |
 | Limits | Its own five numbers | Its own five numbers, usually tighter |
 | Holdings | Separate positions, even in the same symbol | Separate positions, even in the same symbol |
+| Mutual funds | Yes — bought at NAV and held | **No**: no intraday exit exists, so the API and the page refuse it |
 | History | Own fills and realised P&L | Own fills and realised P&L |
 | Polling | Same poll, same cadence | Same poll, same cadence |
 

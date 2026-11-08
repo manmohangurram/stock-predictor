@@ -901,3 +901,34 @@ async fn a_proxy_that_is_not_a_url_is_refused() {
     assert_eq!(s, StatusCode::BAD_REQUEST);
     assert!(v["error"].as_str().unwrap().contains("http://"), "{v}");
 }
+
+#[tokio::test]
+async fn a_mutual_fund_cannot_be_filled_into_the_trading_pot() {
+    let (_d, router, _pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO instruments (symbol, class, name, currency) VALUES ('AXISELSS', 'mutual_fund', 'Axis ELSS', 'INR')",
+    )
+    .execute(&_pool)
+    .await
+    .unwrap();
+
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/AXISELSS/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 55.0, "mode": "trade"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("long-term only"), "{v}");
+
+    // The long-term pot is the point of it.
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/AXISELSS/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 55.0, "mode": "long"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+}

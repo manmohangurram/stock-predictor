@@ -340,3 +340,11 @@ fn the_band_bounds_what_a_stock_may_ask_for() {
     assert!(l.allows_target(50.0));
     assert!(!l.allows_target(50.1));
 }
+
+#[test]
+fn a_mutual_fund_belongs_to_the_long_term_pot_only() {
+    use stock_predicter::models::{AssetClass, Mode};
+    assert!(AssetClass::Stock.pot_allowed(Mode::Trade));
+    assert!(AssetClass::MutualFund.pot_allowed(Mode::Long));
+    assert!(!AssetClass::MutualFund.pot_allowed(Mode::Trade));
+}

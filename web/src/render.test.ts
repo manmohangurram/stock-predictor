@@ -664,3 +664,19 @@ describe("per-pot limits", () => {
     expect(html).toContain("not worth its fees");
   });
 });
+
+describe("mutual funds in the trading pot", () => {
+  test("an MF is offered the long-term pot only", async () => {
+    const { renderTradeForm } = await import("./pages/instrument");
+    const html = renderTradeForm("AXISELSS", null, new Date("2026-11-08T12:00:00Z"), "mutual_fund");
+    expect(html).toContain("Long-term pot only");
+    expect(html).not.toContain('<option value="trade">');
+    expect(html).toContain('name="mode" value="long"');
+  });
+
+  test("a stock still gets both pots", async () => {
+    const { renderTradeForm } = await import("./pages/instrument");
+    const html = renderTradeForm("INFY.NS", null, new Date("2026-11-08T12:00:00Z"), "stock");
+    expect(html).toContain('<option value="trade">Trading pot</option>');
+  });
+});

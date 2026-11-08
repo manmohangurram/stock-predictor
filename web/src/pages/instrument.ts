@@ -50,6 +50,8 @@ export function renderTradeForm(
   symbol: string,
   position: { qty: number } | null,
   now = new Date(),
+  /** A mutual fund is bought at NAV and held: the trading pot is not offered for it. */
+  klass: "stock" | "mutual_fund" | "ipo" = "stock",
 ): string {
   const held = position?.qty ?? null;
   return `<form class="trade-form" data-symbol="${escapeHtml(symbol)}">
@@ -59,10 +61,15 @@ export function renderTradeForm(
       <option value="buy">Buy</option>
       <option value="sell">Sell</option>
     </select>
-    <select name="mode" aria-label="Which pot">
+    ${
+      klass === "stock"
+        ? `<select name="mode" aria-label="Which pot">
       <option value="long">Long-term pot</option>
       <option value="trade">Trading pot</option>
-    </select>
+    </select>`
+        : `<input type="hidden" name="mode" value="long" />
+    <span class="lbl" title="A mutual fund is bought at NAV and held">Long-term pot only</span>`
+    }
     <input name="qty" type="number" min="0" step="any"
            placeholder="Qty${held === null ? "" : ` (held ${units(held)})`}"
            data-held="${held ?? ""}" required aria-label="Quantity" />
@@ -177,7 +184,12 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
   <div class="body">
     <section class="main">
       ${chart(a)}
-      ${renderTradeForm(a.instrument.symbol, p ? { qty: p.qty } : null)}
+      ${renderTradeForm(
+        a.instrument.symbol,
+        p ? { qty: p.qty } : null,
+        new Date(),
+        a.instrument.class as "stock" | "mutual_fund" | "ipo",
+      )}
 
       <h2 class="sect">Decisions</h2>
       ${decisions(d, a.instrument.target_profit_pct)}
@@ -191,7 +203,7 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
     <aside class="side">
       <div class="lbl">Indicators</div>
       ${facts.map(([k, v]) => `<div class="pair"><span>${k}</span><span class="num">${v}</span></div>`).join("")}
-      <div class="lbl" style="margin-top:16px">Profit expected from this stock</div>
+      <div class="lbl" style="margin-top:16px">Profit expected from this holding</div>
       <form class="target-form" data-symbol="${escapeHtml(a.instrument.symbol)}">
         <input name="pct" type="number" min="0" step="0.5" placeholder="default"
                value="${a.instrument.target_profit_pct ?? ""}" aria-label="Expected profit percent" />
