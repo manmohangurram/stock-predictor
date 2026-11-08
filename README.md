@@ -65,16 +65,33 @@ different capital.
 
 ![Trading](docs/screenshots/trading.png)
 
-**Settings, part 1** — budget and currency, then the two pots' limits side by side so they can be
-compared rather than read in sequence.
+**Settings is six tabs**, one section each, stamped on its own — every value is a database row, and
+a change applies on the next tick without a restart. On a phone the rail becomes a scrollable strip
+and the stamp bar pins to the bottom.
 
-![Settings: budget and limits](docs/screenshots/settings-limits.png)
+Money — two pots that never touch:
 
-**Settings, part 2** — model provider (DeepSeek, OpenAI, Gemini or any OpenAI-compatible
-endpoint) with its key, and the ntfy push channel with a test button. Keys are write-only: the
-API reports only whether one is configured.
+![Settings: money](docs/screenshots/settings-money.png)
 
-![Settings: provider and notifications](docs/screenshots/settings-model.png)
+Risk limits — both pots side by side, so they are compared rather than read in sequence. These bound
+each stock's own profit target:
+
+![Settings: risk limits](docs/screenshots/settings-limits.png)
+
+Model — DeepSeek, OpenAI, Gemini or any OpenAI-compatible endpoint. Keys are write-only: the API
+reports only whether one is configured, and it is stored encrypted at rest.
+
+![Settings: model](docs/screenshots/settings-model.png)
+
+Cadence — how often the app wakes and when it may spend a model call. This is the tab that used to
+be six environment variables:
+
+![Settings: cadence](docs/screenshots/settings-cadence.png)
+
+Network — one proxy for all outbound traffic, with address, username and password as separate
+fields, plus a button that proves it works before you rely on it:
+
+![Settings: network](docs/screenshots/settings-network.png)
 
 ## Long-term and trading: what actually differs
 
