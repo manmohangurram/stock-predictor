@@ -70,12 +70,12 @@ Long version, including why the two pots are separate: [`docs/how-it-works.md`](
 
 | | |
 |---|---|
-| <img src="docs/screenshots/instrument.png" alt="Instrument page"> | <img src="docs/screenshots/audit.png" alt="Audit page"> |
+| <img src="docs/screenshots/instrument-v2.png" alt="Instrument page"> | <img src="docs/screenshots/audit-v2.png" alt="Audit page"> |
 | Price history, both moving averages, the fill recorder, the decision stream and the rule checklist | Every model call with its prompt and reply, kept verbatim |
 
 | | |
 |---|---|
-| <img src="docs/screenshots/settings-money.png" alt="Settings: money"> | <img src="docs/screenshots/settings-network.png" alt="Settings: network"> |
+| <img src="docs/screenshots/settings-money-v2.png" alt="Settings: money"> | <img src="docs/screenshots/settings-network-v2.png" alt="Settings: network"> |
 | Six settings tabs; the money and limits are the first two | The proxy, with a button that proves it works |
 
 ## Getting Started
