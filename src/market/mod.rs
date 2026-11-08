@@ -58,9 +58,9 @@ pub struct YahooSource {
 }
 
 impl YahooSource {
-    pub fn new() -> Result<Self> {
+    pub fn new(rt: &crate::rules::runtime::Runtime) -> Result<Self> {
         Ok(Self {
-            client: yahoo::client()?,
+            client: yahoo::client(rt)?,
         })
     }
 }

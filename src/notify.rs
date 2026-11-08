@@ -134,12 +134,10 @@ impl Ntfy {
         topic: &str,
         token: &str,
         public_url: &str,
+        rt: &crate::rules::runtime::Runtime,
     ) -> Result<Self> {
         Ok(Self {
-            client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(15))
-                .build()
-                .context("build ntfy client")?,
+            client: crate::http::client(rt, 15)?,
             url: format!("{}/{}", base_url.trim_end_matches('/'), topic.trim_start_matches('/')),
             token: token.to_string(),
             public_url: public_url.trim_end_matches('/').to_string(),
@@ -155,7 +153,14 @@ impl Ntfy {
         let token = crate::rules::settings::ntfy_token(pool)
             .await?
             .unwrap_or_default();
-        Ok(Some(Self::new(&s.ntfy_url, &s.ntfy_topic, &token, public_url)?))
+        let rt = crate::rules::settings::runtime(pool).await?;
+        Ok(Some(Self::new(
+            &s.ntfy_url,
+            &s.ntfy_topic,
+            &token,
+            public_url,
+            &rt,
+        )?))
     }
 }
 

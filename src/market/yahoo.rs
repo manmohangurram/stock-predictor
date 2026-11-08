@@ -10,13 +10,10 @@ const CHART_URL: &str = "https://query1.finance.yahoo.com/v8/finance/chart";
 const SEARCH_URL: &str = "https://query1.finance.yahoo.com/v1/finance/search";
 const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) stock-predicter/0.1";
 
-/// All Yahoo access goes through this module. Endpoint drift touches one file.
-pub fn client() -> Result<Client> {
-    Client::builder()
-        .user_agent(UA)
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .context("build http client")
+/// All Yahoo access goes through this module. Endpoint drift touches one file; the client itself
+/// comes from `crate::http` so the proxy is decided in one place.
+pub fn client(rt: &crate::rules::runtime::Runtime) -> Result<Client> {
+    crate::http::client_with(rt, 20, Some(UA))
 }
 
 fn rfc3339(secs: i64) -> String {

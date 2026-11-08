@@ -66,11 +66,12 @@ async fn main() -> Result<()> {
                 .await?;
         let (id, symbol, class, name) =
             row.ok_or_else(|| anyhow::anyhow!("no instrument {symbol} — add it first"))?;
-        let market = YahooSource::new()?;
-        let transport = ReqwestTransport::new(settings::model_config(&pool).await?.api_key)?;
+        let rt = settings::runtime(&pool).await?;
+        let market = YahooSource::new(&rt)?;
+        let transport = ReqwestTransport::new(settings::model_config(&pool).await?.api_key, &rt)?;
         let notifier = match Ntfy::from_settings(&pool, &cfg.public_url).await? {
             Some(n) => n,
-            None => Ntfy::new("https://ntfy.sh", "", "", "")?,
+            None => Ntfy::new("https://ntfy.sh", "", "", "", &rt)?,
         };
         let instrument = stock_predicter::models::Instrument {
             id,
@@ -97,11 +98,12 @@ async fn main() -> Result<()> {
     }
 
     if flag("--poll-once") || flag("--predict") {
-        let market = YahooSource::new()?;
-        let transport = ReqwestTransport::new(settings::model_config(&pool).await?.api_key)?;
+        let rt = settings::runtime(&pool).await?;
+        let market = YahooSource::new(&rt)?;
+        let transport = ReqwestTransport::new(settings::model_config(&pool).await?.api_key, &rt)?;
         let notifier = match Ntfy::from_settings(&pool, &cfg.public_url).await? {
             Some(n) => n,
-            None => Ntfy::new("https://ntfy.sh", "", "", "")?,
+            None => Ntfy::new("https://ntfy.sh", "", "", "", &rt)?,
         };
         let deps = EngineDeps {
             pool: &pool,
@@ -137,7 +139,18 @@ async fn main() -> Result<()> {
                 .await
                 .map(|m| m.api_key)
                 .unwrap_or_default();
-            let (market, transport) = match (YahooSource::new(), ReqwestTransport::new(key)) {
+            // One runtime per tick: cadence, gate and proxy all come from the same read.
+            let runtime = match settings::runtime(&poll_pool).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(error = %e, "runtime settings unreadable");
+                    continue;
+                }
+            };
+            let (market, transport) = match (
+                YahooSource::new(&runtime),
+                ReqwestTransport::new(key, &runtime),
+            ) {
                 (Ok(m), Ok(t)) => (m, t),
                 _ => {
                     tracing::error!("clients unavailable, skipping tick");
@@ -147,7 +160,7 @@ async fn main() -> Result<()> {
             // The notifier is rebuilt each tick so a topic edited in the UI takes effect.
             let notifier = match Ntfy::from_settings(&poll_pool, &cfg.public_url).await {
                 Ok(Some(n)) => n,
-                Ok(None) => match Ntfy::new("https://ntfy.sh", "", "", "") {
+                Ok(None) => match Ntfy::new("https://ntfy.sh", "", "", "", &runtime) {
                     Ok(n) => n,
                     Err(e) => {
                         tracing::error!(error = %e, "notifier unavailable");
@@ -156,14 +169,6 @@ async fn main() -> Result<()> {
                 },
                 Err(e) => {
                     tracing::error!(error = %e, "notifier settings unreadable");
-                    continue;
-                }
-            };
-            // Read at the top of the tick: a cadence edited in the UI applies from now on.
-            let runtime = match settings::runtime(&poll_pool).await {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::error!(error = %e, "runtime settings unreadable");
                     continue;
                 }
             };

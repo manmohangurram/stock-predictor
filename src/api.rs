@@ -43,7 +43,8 @@ impl AppState {
                 return Some(text.clone());
             }
         }
-        let client = crate::market::yahoo::client().ok()?;
+        let rt = crate::rules::settings::runtime(&self.pool).await.ok()?;
+        let client = crate::market::yahoo::client(&rt).ok()?;
         match crate::market::amfi::fetch_nav_all(&client).await {
             Ok(text) => {
                 *guard = Some((chrono::Utc::now(), text.clone()));
@@ -822,7 +823,8 @@ async fn search_instruments(
     if query.len() < 2 {
         return Ok(Json(Vec::new()));
     }
-    let client = crate::market::yahoo::client()?;
+    let rt = crate::rules::settings::runtime(&st.pool).await?;
+    let client = crate::market::yahoo::client(&rt)?;
     let amfi = st.amfi_text().await;
     let hits = crate::market::search(&client, query, amfi.as_deref())
         .await
@@ -890,7 +892,7 @@ async fn add_instrument(
     // A newly added symbol should have a chart and headlines on first open, not tomorrow
     // morning. Mutual funds have no Yahoo series, so they are skipped deliberately.
     if class == crate::models::AssetClass::Stock {
-        if let Ok(market) = crate::market::YahooSource::new() {
+        if let Ok(market) = crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?) {
             let fetch = crate::store::refresh(&st.pool, id.0, code, &market);
             match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
                 Ok(Ok((bars, news))) => {
@@ -1025,7 +1027,7 @@ async fn refresh_instrument(
             .await?;
     let (id, class) = row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
 
-    let market = crate::market::YahooSource::new()?;
+    let market = crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?)?;
     let (bars, news) = crate::store::refresh(&st.pool, id, &symbol, &market)
         .await
         .map_err(|e| ApiError::BadRequest(format!("{symbol} ({class}): {e}")))?;

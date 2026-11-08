@@ -3,7 +3,7 @@ use std::pin::Pin;
 use std::sync::Mutex;
 use std::time::Instant;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
@@ -33,12 +33,9 @@ pub struct ReqwestTransport {
 }
 
 impl ReqwestTransport {
-    pub fn new(key: String) -> Result<Self> {
+    pub fn new(key: String, rt: &crate::rules::runtime::Runtime) -> Result<Self> {
         Ok(Self {
-            client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(60))
-                .build()
-                .context("build deepseek client")?,
+            client: crate::http::client(rt, 60)?,
             key,
         })
     }

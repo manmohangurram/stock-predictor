@@ -7,6 +7,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::Result;
+use stock_predicter::rules::runtime::Runtime;
 use stock_predicter::llm::deepseek::{self, ChatRequest, HttpReply, Transport};
 use stock_predicter::llm::parse::{self, LlmVerdict};
 use stock_predicter::llm::prompts::{self, PromptContext};
@@ -92,7 +93,7 @@ async fn deepseek_returns_a_response_the_system_can_use() {
 
     let rendered = prompts::render("decide_v1", &ctx(&i, &x, &h)).unwrap();
     let real = Real {
-        inner: deepseek::ReqwestTransport::new(key()).unwrap(),
+        inner: deepseek::ReqwestTransport::new(key(), &Runtime::default()).unwrap(),
     };
     let model = stock_predicter::llm::provider::ModelConfig {
         provider: stock_predicter::llm::provider::Provider::Deepseek,
@@ -196,7 +197,7 @@ async fn deepseek_buy_carries_both_exits() {
 
     let rendered = prompts::render("decide_v1", &c).unwrap();
     let real = Real {
-        inner: deepseek::ReqwestTransport::new(key()).unwrap(),
+        inner: deepseek::ReqwestTransport::new(key(), &Runtime::default()).unwrap(),
     };
     let model = stock_predicter::llm::provider::ModelConfig {
         provider: stock_predicter::llm::provider::Provider::Deepseek,

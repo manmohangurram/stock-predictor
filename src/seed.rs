@@ -27,7 +27,7 @@ pub struct SeedReport {
 /// Seeds only what it can price from a live source: a position at the real last close, or at
 /// the scheme's real NAV. Nothing here invents a number.
 pub async fn run(pool: &SqlitePool, with_positions: bool) -> Result<SeedReport> {
-    let client = yahoo::client()?;
+    let client = yahoo::client(&crate::rules::settings::runtime(pool).await?)?;
     let mut report = SeedReport::default();
 
     for (symbol, name) in STOCKS {
