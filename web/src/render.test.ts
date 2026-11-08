@@ -162,6 +162,8 @@ describe("settings", () => {
       daily_cap: 200,
       proxy_configured: false,
       proxy_host: "",
+      proxy_user: null,
+      proxy_pass_configured: false,
       proxy_bypass: null,
     },
     ...over,
@@ -230,6 +232,26 @@ describe("settings", () => {
     expect(html).toContain("10.0.0.2:3128");
     expect(html).toContain("HTTP_PROXY");
     expect(html).toContain('id="test-proxy"');
+    expect(html).toContain('id="proxy_user"');
+    expect(html).toContain('id="proxy_pass"');
+    expect(html).toContain('type="password"');
+  });
+
+  test("a configured proxy password is masked and kept when left blank", () => {
+    const html = renderSettings(
+      settings({
+        runtime: {
+          ...settings().runtime,
+          proxy_configured: true,
+          proxy_user: "mohan",
+          proxy_pass_configured: true,
+        },
+      }),
+      "network",
+    );
+    expect(html).toContain("leave blank to keep");
+    expect(html).toContain("never shown again");
+    expect(html).toContain('value="mohan"');
   });
 
   test("save guard is exact at the boundary", () => {
@@ -634,7 +656,7 @@ describe("per-pot limits", () => {
       runtime: {
         poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
         max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
-        proxy_bypass: null,
+        proxy_user: null, proxy_pass_configured: false, proxy_bypass: null,
       },
     }, "risk");
     expect(html).toContain("A take-profit below this is rejected");

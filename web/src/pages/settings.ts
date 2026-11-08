@@ -198,11 +198,21 @@ const CADENCE = (s: Settings, tab: Tab): string => `
 `;
 
 const NETWORK = (s: Settings, tab: Tab): string => `
-  ${field(tab, "proxy", "Proxy", "", {
-    placeholder: s.runtime.proxy_configured ? `set — ${escapeHtml(s.runtime.proxy_host)} (blank keeps it)` : "http://10.0.0.2:3128",
-    help: `All outbound calls. Leave blank for a direct connection. Credentials go in the URL:
-           <code>http://user:password@proxy:3128</code> — they are sent as a proxy authorization
-           header and are never shown again. The environment's <code>HTTP_PROXY</code> is never used.`,
+  ${field(tab, "proxy", "Proxy address", "", {
+    placeholder: s.runtime.proxy_configured ? escapeHtml(s.runtime.proxy_host) : "http://10.0.0.2:3128",
+    help: `Host and port only, no credentials. Leave blank to clear the proxy and connect directly.
+           The environment's <code>HTTP_PROXY</code> is never used.`,
+  })}
+  ${field(tab, "proxy_user", "Proxy username", s.runtime.proxy_user ?? "", {
+    placeholder: "optional",
+    help: "Sent as basic proxy authentication, together with the password below.",
+  })}
+  ${field(tab, "proxy_pass", "Proxy password", "", {
+    type: "password",
+    placeholder: s.runtime.proxy_pass_configured ? "leave blank to keep" : "stored encrypted",
+    help: s.runtime.proxy_pass_configured
+      ? "Configured. The password is never shown again, here or over the API."
+      : "Encrypted at rest with the same key as the model API key.",
   })}
   ${field(tab, "proxy_bypass", "Bypass the proxy for", s.runtime.proxy_bypass ?? "", {
     placeholder: "localhost, 127.0.0.1",

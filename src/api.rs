@@ -307,6 +307,9 @@ pub struct PutSettings {
     pub daily_cap: Option<u32>,
     pub proxy: Option<String>,
     pub proxy_bypass: Option<String>,
+    pub proxy_user: Option<String>,
+    /// Empty or whitespace keeps the stored password.
+    pub proxy_pass: Option<String>,
 }
 
 async fn put_settings(
@@ -337,6 +340,8 @@ async fn put_settings(
             daily_cap: body.daily_cap,
             proxy: body.proxy,
             proxy_bypass: body.proxy_bypass,
+            proxy_user: body.proxy_user,
+            proxy_pass: body.proxy_pass,
         },
     )
     .await

@@ -30,6 +30,25 @@ async fn main() -> Result<()> {
         );
     }
     let pool = db::connect_and_migrate(&cfg.db_path).await?;
+
+    // Secrets at rest. `SECRET_KEY` wins; without it a key file sits beside the database, which
+    // protects a copied .db but not the whole data directory.
+    let key = match cfg.secret_key.clone() {
+        Some(k) => k,
+        None => {
+            tracing::warn!(
+                "SECRET_KEY is not set — secrets are encrypted with {}. Set SECRET_KEY to keep \
+                 the key out of the data directory.",
+                stock_predicter::secrets::key_path(&cfg.db_path).display()
+            );
+            stock_predicter::secrets::load_or_create_key(&cfg.db_path)?
+        }
+    };
+    stock_predicter::secrets::init(key);
+    let encrypted = stock_predicter::secrets::migrate(&pool).await?;
+    if encrypted > 0 {
+        tracing::info!(encrypted, "encrypted stored secrets");
+    }
     settings::seed(&pool).await?;
 
     if flag("--seed") {

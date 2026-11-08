@@ -98,6 +98,8 @@ export interface Runtime {
   daily_cap: number;
   proxy_configured: boolean;
   proxy_host: string;
+  proxy_user: string | null;
+  proxy_pass_configured: boolean;
   proxy_bypass: string | null;
 }
 
@@ -264,6 +266,8 @@ export const api = {
       max_silence_secs?: number;
       daily_cap?: number;
       proxy?: string;
+      proxy_user?: string;
+      proxy_pass?: string;
       proxy_bypass?: string;
     },
   ) => {

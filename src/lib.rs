@@ -19,6 +19,7 @@ pub mod models;
 pub mod notify;
 pub mod rules;
 pub mod schedule;
+pub mod secrets;
 pub mod seed;
 pub mod store;
 pub mod trades;

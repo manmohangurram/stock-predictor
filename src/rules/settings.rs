@@ -64,6 +64,9 @@ pub struct SettingsPatch {
     /// Empty string clears it; absent leaves it alone.
     pub proxy: Option<String>,
     pub proxy_bypass: Option<String>,
+    pub proxy_user: Option<String>,
+    /// Empty or whitespace keeps the stored password, like every other secret field.
+    pub proxy_pass: Option<String>,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -163,14 +166,32 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
     if let Some(proxy) = patch.proxy.as_deref() {
         let proxy = proxy.trim();
         if proxy.is_empty() {
-            sqlx::query("DELETE FROM settings WHERE key = 'proxy'")
-                .execute(pool)
-                .await
-                .map_err(|_| SettingsError::InvalidAmount)?;
+            for key in ["proxy", "proxy_user", "proxy_pass"] {
+                sqlx::query("DELETE FROM settings WHERE key = ?")
+                    .bind(key)
+                    .execute(pool)
+                    .await
+                    .map_err(|_| SettingsError::InvalidAmount)?;
+            }
         } else {
             crate::http::validate_proxy(proxy)
                 .map_err(|e| SettingsError::BadRequest(e.to_string()))?;
             put_setting(pool, "proxy", proxy)
+                .await
+                .map_err(|_| SettingsError::InvalidAmount)?;
+        }
+    }
+
+    if let Some(user) = patch.proxy_user.as_deref() {
+        put_setting(pool, "proxy_user", user.trim())
+            .await
+            .map_err(|_| SettingsError::InvalidAmount)?;
+    }
+
+    if let Some(pass) = patch.proxy_pass.as_deref() {
+        let pass = pass.trim();
+        if !pass.is_empty() {
+            crate::secrets::put_secret(pool, "proxy_pass", pass)
                 .await
                 .map_err(|_| SettingsError::InvalidAmount)?;
         }
@@ -331,7 +352,7 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
                     .unwrap_or_default(),
             )
             .unwrap_or(crate::llm::provider::Provider::Deepseek);
-            put_setting(pool, key_name(provider), key)
+            crate::secrets::put_secret(pool, key_name(provider), key)
                 .await
                 .map_err(|_| SettingsError::InvalidAmount)?;
         }
@@ -340,7 +361,7 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
     if let Some(token) = patch.ntfy_token {
         let token = token.trim();
         if !token.is_empty() {
-            put_setting(pool, "ntfy_token", token)
+            crate::secrets::put_secret(pool, "ntfy_token", token)
                 .await
                 .map_err(|_| SettingsError::InvalidAmount)?;
         }
@@ -372,7 +393,7 @@ pub async fn setting(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
 
 /// The token itself, for the notifier. Never serialised.
 pub async fn ntfy_token(pool: &SqlitePool) -> Result<Option<String>> {
-    setting(pool, "ntfy_token").await
+    crate::secrets::get_secret(pool, "ntfy_token").await
 }
 
 fn key_name(provider: crate::llm::provider::Provider) -> &'static str {
@@ -389,7 +410,7 @@ pub async fn key_for(
     pool: &SqlitePool,
     provider: crate::llm::provider::Provider,
 ) -> Result<Option<String>> {
-    setting(pool, key_name(provider)).await
+    crate::secrets::get_secret(pool, key_name(provider)).await
 }
 
 /// The limits for one pot, defaulted field by field so a partial configuration still works.

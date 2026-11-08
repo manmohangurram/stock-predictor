@@ -133,6 +133,7 @@ outside market hours; `--ask SYMBOL` asks the model about one instrument and wri
 | `BIND` | `127.0.0.1:8080` | Listen address (`0.0.0.0:8080` in a container; the image already sets it). |
 | `DB_PATH` | `data/stock-predicter.db` | SQLite file. The parent directory is created on boot. |
 | `PUBLIC_URL` | *(empty)* | The address the app is reachable at, used only for the deep link on a notification. |
+| `SECRET_KEY` | *(generated file)* | 32 bytes — 64 hex characters or base64 — that encrypts the stored secrets. `openssl rand -hex 32`. |
 
 `RUST_LOG` is the usual tracing filter and is not part of the product surface.
 
@@ -176,8 +177,21 @@ Credentials go in the URL and are sent as a proxy authorization header:
 http://user:password@proxy.example.in:3128
 ```
 
-The URL is never returned by the API — you get `proxy_configured` and the host:port. **Test the
-proxy** on the Network tab before trusting it; a wrong proxy otherwise shows up as silence.
+The address, the username and the password are three separate fields — the password is encrypted at
+rest like the model key, and none of them are ever returned by the API: you get the host, the
+username you typed, and `proxy_pass_configured`. **Test the proxy** on the Network tab before
+trusting it; a wrong proxy otherwise shows up as silence.
+
+### Secrets at rest
+
+The model API key, the ntfy token and the proxy password are stored encrypted with
+XChaCha20-Poly1305, as `enc:v1:…`. The key comes from `SECRET_KEY`; without it, a `secret.key` file
+is created beside the database (mode 0600).
+
+What this buys: a copied `stock-predicter.db`, a backup, or `sqlite3` open in a terminal shows
+ciphertext instead of your keys. What it does **not** buy: protection from anyone who has the data
+directory or `SECRET_KEY` — and it is still not authentication, because this server has none.
+Lose the key and the stored secrets are gone; they are re-entered on the Settings page.
 
 ## Phone notifications
 

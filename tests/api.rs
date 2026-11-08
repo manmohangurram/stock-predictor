@@ -827,6 +827,74 @@ async fn proxy_credentials_are_never_echoed() {
 }
 
 #[tokio::test]
+async fn every_secret_is_unreadable_in_the_database() {
+    let (_d, router, pool) = setup().await;
+    let (s, _) = send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({
+            "llm_key": "sk-plaintext-hunter2",
+            "ntfy_token": "tk_plaintext_token",
+            "proxy": "http://10.0.0.2:3128",
+            "proxy_user": "mohan",
+            "proxy_pass": "proxy-hunter2",
+        }),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+
+    let rows: Vec<(String, String)> = sqlx::query_as("SELECT key, value FROM settings")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    let dump = serde_json::to_string(&rows).unwrap();
+    for secret in ["sk-plaintext-hunter2", "tk_plaintext_token", "proxy-hunter2"] {
+        assert!(!dump.contains(secret), "{secret} is stored in the clear: {dump}");
+    }
+    // …and they still work when read back through the secret reader.
+    let key = stock_predicter::secrets::get_secret(&pool, "deepseek_key").await.unwrap();
+    assert_eq!(key.as_deref(), Some("sk-plaintext-hunter2"));
+    let pass = stock_predicter::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
+    assert_eq!(pass.as_deref(), Some("proxy-hunter2"));
+
+    // The API says what is configured, never the values.
+    let (_, v) = get(&router, "/api/settings").await;
+    assert_eq!(v["runtime"]["proxy_user"], "mohan");
+    assert_eq!(v["runtime"]["proxy_pass_configured"], true);
+    let body = v.to_string();
+    assert!(!body.contains("proxy-hunter2") && !body.contains("sk-plaintext"), "{body}");
+}
+
+#[tokio::test]
+async fn a_proxy_password_survives_a_patch_that_leaves_it_blank() {
+    let (_d, router, pool) = setup().await;
+    send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"proxy": "http://10.0.0.2:3128", "proxy_user": "mohan", "proxy_pass": "s3cret"}),
+    )
+    .await;
+    // Stamping the tab again without retyping the password must keep it.
+    let (s, v) = send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"proxy": "http://10.0.0.3:3128", "proxy_user": "mohan", "proxy_pass": ""}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let pass = stock_predicter::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
+    assert_eq!(pass.as_deref(), Some("s3cret"), "the password was wiped by a blank field");
+
+    // Clearing the URL clears the credentials with it.
+    send(&router, "PUT", "/api/settings", json!({"proxy": ""})).await;
+    let pass = stock_predicter::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
+    assert_eq!(pass, None);
+}
+
+#[tokio::test]
 async fn a_proxy_that_is_not_a_url_is_refused() {
     let (_d, router, _pool) = setup().await;
     let (s, v) = send(&router, "PUT", "/api/settings", json!({"proxy": "10.0.0.2:3128"})).await;

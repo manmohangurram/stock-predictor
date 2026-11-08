@@ -21,6 +21,9 @@ pub struct View {
     pub daily_cap: u32,
     pub proxy_configured: bool,
     pub proxy_host: String,
+    /// The username is shown back; the password never is.
+    pub proxy_user: Option<String>,
+    pub proxy_pass_configured: bool,
     pub proxy_bypass: Option<String>,
 }
 
@@ -38,8 +41,11 @@ pub struct Runtime {
     pub max_silence_secs: i64,
     /// Hard ceiling on model calls per day.
     pub daily_cap: u32,
-    /// All outbound traffic goes through this, when set.
+    /// All outbound traffic goes through this, when set. Never carries credentials.
     pub proxy: Option<String>,
+    /// Proxy credentials, stored apart from the URL so the password can be masked like a key.
+    pub proxy_user: Option<String>,
+    pub proxy_pass: Option<String>,
     /// Comma-separated hosts that skip the proxy.
     pub proxy_bypass: Option<String>,
 }
@@ -54,6 +60,8 @@ impl Default for Runtime {
             max_silence_secs: 3_600,
             daily_cap: 200,
             proxy: None,
+            proxy_user: None,
+            proxy_pass: None,
             proxy_bypass: None,
         }
     }
@@ -99,7 +107,9 @@ impl Runtime {
             min_price_move: num("min_price_move", d.min_price_move),
             max_silence_secs: num("max_silence_secs", d.max_silence_secs as f64) as i64,
             daily_cap: num("daily_cap", d.daily_cap as f64) as u32,
-            proxy: text("proxy"),
+            proxy: text("proxy").map(split_legacy_proxy).map(|p| p.0),
+            proxy_user: text("proxy_user").or_else(|| text("proxy").and_then(|p| split_legacy_proxy(p).1)),
+            proxy_pass: None,
             proxy_bypass: text("proxy_bypass"),
         }
     }
@@ -114,6 +124,8 @@ impl Runtime {
             daily_cap: self.daily_cap,
             proxy_configured: self.proxy.is_some(),
             proxy_host: self.proxy.as_deref().map(crate::http::proxy_host).unwrap_or_default(),
+            proxy_user: self.proxy_user.clone(),
+            proxy_pass_configured: self.proxy_pass.is_some(),
             proxy_bypass: self.proxy_bypass.clone(),
         }
     }
@@ -142,12 +154,31 @@ impl Runtime {
     }
 }
 
+/// An older database stored `http://user:pass@host` in one row. Split it so both shapes work.
+fn split_legacy_proxy(raw: String) -> (String, Option<String>, Option<String>) {
+    let Ok(url) = reqwest::Url::parse(&raw) else {
+        return (raw, None, None);
+    };
+    if url.username().is_empty() {
+        return (raw, None, None);
+    }
+    let user = url.username().to_string();
+    let pass = url.password().map(str::to_string);
+    let mut clean = url.clone();
+    let _ = clean.set_username("");
+    let _ = clean.set_password(None);
+    (clean.to_string(), Some(user), pass)
+}
+
 /// One query per poll. Missing keys take their defaults, so an empty table is a working app.
 pub async fn load(pool: &SqlitePool) -> Result<Runtime> {
     let rows: Vec<(String, String)> = sqlx::query_as("SELECT key, value FROM settings")
         .fetch_all(pool)
         .await?;
-    Ok(Runtime::from_map(&rows.into_iter().collect()))
+    let mut rt = Runtime::from_map(&rows.into_iter().collect());
+    // The password is encrypted at rest, so it does not come back through `from_map`.
+    rt.proxy_pass = crate::secrets::get_secret(pool, "proxy_pass").await?;
+    Ok(rt)
 }
 
 #[cfg(test)]

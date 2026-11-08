@@ -40,6 +40,26 @@ fn the_three_deployment_variables_are_read() {
 }
 
 #[test]
+fn a_secret_key_is_read_from_the_environment() {
+    let hex = "19".repeat(32);
+    let cfg = Config::from_map(&map(&[("SECRET_KEY", &hex)])).unwrap();
+    assert_eq!(cfg.secret_key.as_ref().unwrap().len(), 32);
+
+    // base64 of 32 bytes is also accepted
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode([7u8; 32]);
+    let cfg = Config::from_map(&map(&[("SECRET_KEY", &b64)])).unwrap();
+    assert_eq!(cfg.secret_key.unwrap(), vec![7u8; 32]);
+}
+
+#[test]
+fn a_short_secret_key_is_refused_with_a_way_to_generate_one() {
+    let err = Config::from_map(&map(&[("SECRET_KEY", "hunter2")])).unwrap_err();
+    assert!(err.to_string().contains("32 bytes"), "{err}");
+    assert!(err.to_string().contains("openssl rand -hex 32"), "{err}");
+}
+
+#[test]
 fn a_malformed_bind_is_refused_at_boot() {
     assert!(Config::from_map(&map(&[("BIND", "8080")])).is_err());
 }

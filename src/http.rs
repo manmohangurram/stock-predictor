@@ -41,6 +41,10 @@ pub fn client_with(rt: &Runtime, timeout_secs: u64, user_agent: Option<&str>) ->
     if let Some(url) = rt.proxy.as_deref() {
         validate_proxy(url)?;
         let mut proxy = Proxy::all(url).with_context(|| format!("proxy URL {url:?} is not usable"))?;
+        if let Some(user) = rt.proxy_user.as_deref() {
+            // Basic auth from the two fields, so the password is a secret like any other.
+            proxy = proxy.basic_auth(user, rt.proxy_pass.as_deref().unwrap_or_default());
+        }
         for host in rt
             .proxy_bypass
             .as_deref()

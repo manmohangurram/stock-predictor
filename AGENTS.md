@@ -42,7 +42,9 @@ files directly when you need exact wording.
 - Design system: `.interface-design/system.md` (binding for all front-end work).
 - No test may hit the network. Fixtures only.
 - `api_calls` and `cash_ledger` are append-only. Nothing updates or deletes those rows.
-- The environment is three variables only: `BIND`, `DB_PATH`, `PUBLIC_URL`. Everything else —
+- The environment is four variables only: `BIND`, `DB_PATH`, `PUBLIC_URL`, `SECRET_KEY`.
+- Provider keys, the ntfy token and the proxy password are encrypted at rest (`src/secrets.rs`,
+  `enc:v1:` prefix). Losing the key means re-entering them. Everything else —
   budget, limits, provider and keys, ntfy, polling cadence, the proxy — is a `settings` row,
   edited on the Settings page and applied without a restart.
 - The settings page is six routed tabs (`/settings/:tab`), each stamped on its own.

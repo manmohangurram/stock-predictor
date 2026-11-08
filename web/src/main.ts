@@ -286,9 +286,16 @@ function wireSettings(tab: Tab, s: Settings): void {
           max_silence_secs: num("max_silence_secs"),
         };
         break;
-      case "network":
-        patch = { proxy: text("proxy"), proxy_bypass: text("proxy_bypass") };
+      case "network": {
+        const pass = text("proxy_pass");
+        patch = {
+          proxy: text("proxy"),
+          proxy_user: text("proxy_user"),
+          proxy_bypass: text("proxy_bypass"),
+          ...(pass ? { proxy_pass: pass } : {}),
+        };
         break;
+      }
     }
 
     if (status) status.textContent = "Stamping…";
