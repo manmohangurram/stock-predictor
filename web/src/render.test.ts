@@ -16,6 +16,7 @@ const limits = (over: Partial<Limits> = {}): Limits => ({
 const position = (over: Partial<PositionRow> = {}): PositionRow => ({
   id: 1,
   symbol: "INFY.NS",
+  name: "Infosys",
   class: "stock",
   qty: 17,
   avg_cost: 1163,
@@ -103,7 +104,7 @@ describe("blotter row", () => {
 describe("ledger", () => {
   test("empty portfolio explains what to do next", () => {
     const html = renderLedger(dashboard(), []);
-    expect(html).toContain("Nothing held yet");
+    expect(html).toContain("No stocks yet");
     expect(html).toContain("No trades recorded yet");
     expect(html).not.toContain("spinner");
   });
@@ -363,7 +364,7 @@ describe("two pots in the UI", () => {
       [trade(1, "long"), trade(2, "trade")],
     );
     expect(html).toContain("Trading book");
-    expect(html.match(/class="hist"/g)?.length).toBe(1);
+    expect(html.match(/class="feed-row"/g)?.length).toBe(1);
   });
 });
 
@@ -513,7 +514,7 @@ describe("one request per page", () => {
     };
     const html = renderLedger(d, d.recent_trades);
     expect(html).toContain("INFY.NS 17 @ 1,163.00");
-    expect(html).toContain("Recent trades");
+    expect(html).toContain("Recent fills");
   });
 
   test("the instrument page renders from the analysis payload alone", async () => {

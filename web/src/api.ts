@@ -18,6 +18,8 @@ export interface SignalRow {
 export interface PositionRow {
   id: number;
   symbol: string;
+  /** The readable name — what the ledger shows instead of the ticker. */
+  name: string;
   class: "stock" | "mutual_fund" | "ipo";
   qty: number;
   avg_cost: number;

@@ -3,6 +3,7 @@ import { clock, day, escapeHtml, histDate, money, units } from "../format";
 import { confidenceLabel, renderConfidence } from "../components/confidence";
 import { renderRisk } from "../components/risk";
 import { stamp } from "../components/stamp";
+import { renderApp } from "../components/shell";
 
 function chart(a: Analysis): string {
   if (a.bars.length < 2) return `<p class="empty">No price history stored yet.</p>`;
@@ -170,7 +171,7 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
         .join("")}</ul>`
     : `<p class="empty">No headlines stored yet.</p>`;
 
-  return `<div class="shell">
+  return renderApp("ledger", `<div class="detail-stack">
   <header class="strip detail-head">
     <div class="who">
       <a class="back" href="/">← Ledger</a>
@@ -222,6 +223,5 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
         .join("")}
       <p class="cites" style="margin-top:14px">${escapeHtml(a.instrument.timing_note)}</p>
     </aside>
-  </div>
-</div>`;
+  </div></div>`);
 }

@@ -2,7 +2,6 @@ import { api, dashboardCached, type Hit, type Settings } from "./api";
 import { renderCalls, renderExchangeDetail } from "./pages/calls";
 import { qtyLimit, renderInstrument } from "./pages/instrument";
 import { renderLedger } from "./pages/ledger";
-import { renderPositions } from "./pages/positions";
 import {
   clearDraft,
   isTab,
@@ -16,10 +15,6 @@ import {
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let dashboardEtag: string | null = null;
-const nav = `<nav class="topnav">
-  <a href="/">Ledger</a><a href="/positions">Positions</a>
-  <a href="/settings">Settings</a><a href="/calls">Audit</a>
-</nav>`;
 
 function failure(e: unknown): string {
   return `<div class="shell"><div class="error-band">Something failed: ${String(e)}
@@ -38,13 +33,8 @@ async function route(): Promise<void> {
       const s = await api.settings();
       app.innerHTML = renderSettings(s, tab);
       wireSettings(tab, s);
-      await route2();
-    } else if (path === "/positions") {
-      app.innerHTML = renderPositions(await api.dashboard());
-      wireRows();
     } else if (path === "/calls") {
       app.innerHTML = renderCalls(await api.calls());
-      await route2();
       wireCallRows();
     } else if (path.startsWith("/i/")) {
       const symbol = decodeURIComponent(path.slice(3));
@@ -65,7 +55,6 @@ async function route(): Promise<void> {
       const d = res.data!;
       app.innerHTML = renderLedger(d, d.recent_trades);
       // The nav belongs inside the content column, not floating in the page margin.
-      await route2();
       wireRows();
       wireSearch();
     }
@@ -74,13 +63,6 @@ async function route(): Promise<void> {
   }
 }
 
-/** Append the nav to pages that build their own shell. */
-async function route2(): Promise<void> {
-  const shell = document.querySelector(".shell");
-  if (shell && !document.querySelector(".topnav")) {
-    shell.insertAdjacentHTML("afterbegin", nav);
-  }
-}
 
 function wireRows(): void {
   document.querySelectorAll<HTMLElement>("[data-symbol]").forEach((row) => {

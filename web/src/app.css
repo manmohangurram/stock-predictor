@@ -1,6 +1,7 @@
 @layer base {
   * { box-sizing: border-box; }
 
+  html, body { max-width: 100%; overflow-x: hidden; }
   body {
     margin: 0;
     background: var(--paper);
@@ -564,5 +565,88 @@
 
   @media (max-width: 900px) {
     .call-grid { grid-template-columns: 1fr; }
+  }
+}
+
+@layer components {
+  /* The app shell: a narrow rail whose foot always shows the money, and a wide content column. */
+  .app { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 100vh; }
+  .rail {
+    border-right: 1px solid var(--rule); background: var(--paper-inset);
+    display: flex; flex-direction: column; padding: var(--space-4) 0; position: sticky; top: 0;
+    height: 100vh;
+  }
+  .rail-brand { padding: 0 var(--space-4) var(--space-6); display: grid; gap: 1px; }
+  .rail-brand b { font-size: var(--text-sm); letter-spacing: -.01em; }
+  .rail-brand span { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
+  .rail > a {
+    display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2);
+    padding: 8px var(--space-4); color: var(--ink-secondary); font-size: var(--text-sm);
+    border-left: 2px solid transparent; min-height: var(--row-h-touch);
+  }
+  .rail > a:hover { background: var(--paper-raised); color: var(--ink); }
+  .rail > a.on { background: var(--paper-raised); color: var(--ink); font-weight: 600;
+    border-left-color: var(--stamp-ink); }
+  .rail-badge { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
+  .rail-foot { margin-top: auto; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--rule);
+    display: grid; gap: 1px; }
+  .rail-foot b { font-family: var(--font-ledger); font-size: var(--text-md); font-weight: 500; }
+  .rail-note { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
+
+  /* Block, not grid: a grid item refuses to shrink below a wide table's min-content width. */
+  .main { display: block; padding: var(--space-4) var(--space-8) var(--space-12);
+    min-width: 0; max-width: 100%; }
+  .main > * { min-width: 0; }
+  .page-head { display: flex; justify-content: space-between; align-items: flex-end;
+    gap: var(--space-6); margin-bottom: var(--space-4); flex-wrap: wrap; }
+  .page-sub { font-size: var(--text-sm); color: var(--ink-tertiary); margin-top: 2px; }
+  .figures { display: flex; gap: var(--space-8); align-items: flex-end; flex-wrap: wrap; }
+  .figures > div { display: grid; gap: 1px; }
+  .figures b { font-family: var(--font-ledger); font-size: var(--text-lg); font-weight: 500; }
+  .mode-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
+
+  .sect { margin-bottom: var(--space-6); }
+  /* A wide table scrolls itself instead of stretching the page. */
+  .table-wrap { width: 100%; overflow-x: auto; }
+  .sect-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2); }
+  .sect-head h2 { font-size: var(--text-base); font-weight: 600; margin: 0; }
+  .holding .name { font-family: var(--font-form); font-weight: 500; }
+  .holding .sub, .blotter .sub { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
+  .subtotal td { background: var(--paper-inset); border-top: 1px solid var(--rule); font-weight: 600; }
+  .up { color: var(--green); } .down { color: var(--stamp-oxide); }
+  .cards { display: grid; grid-template-columns: 1.15fr 1fr; gap: var(--space-6); margin-top: var(--space-6); }
+  .card { background: var(--paper-raised); border: 1px solid var(--rule-subtle); border-radius: var(--radius);
+    padding: var(--space-4); }
+  .feed-row { display: flex; justify-content: space-between; gap: var(--space-3); padding: 6px 0;
+    border-bottom: 1px solid var(--rule-subtle); font-size: var(--text-sm); }
+  .feed-row:last-child { border-bottom: 0; }
+  .main-body { margin-top: var(--space-4); }
+  .tabs-row { border-bottom: 1px solid var(--rule); margin-bottom: var(--space-4); }
+  .tabs-row .settings-rail { flex-direction: row; border-right: 0; background: transparent;
+    overflow-x: auto; padding: 0; }
+  .tabs-row .settings-rail [role="tab"] { border-left: 0; border-bottom: 2px solid transparent;
+    white-space: nowrap; padding: 8px 12px; }
+  .tabs-row .settings-rail [role="tab"].on { border-left: 0; border-bottom-color: var(--stamp-ink);
+    background: transparent; }
+  .detail-stack { display: grid; gap: var(--space-4); max-width: 1100px; }
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .rail { position: static; height: auto; flex-direction: row; align-items: center;
+      overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--rule); padding: 0;
+      flex-wrap: nowrap; }
+    .rail > a { padding: 8px 10px; font-size: var(--text-sm); flex: 0 0 auto; }
+    .rail-foot { padding: 0 var(--space-3); white-space: nowrap; }
+    .rail-foot .lbl, .rail-foot .rail-note { display: none; }
+    .rail-foot b { font-size: var(--text-sm); }
+    .rail-brand { display: none; }
+    .rail > a { border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+    .rail > a.on { border-left: 0; border-bottom-color: var(--stamp-ink); }
+    .rail-foot { margin: 0 0 0 auto; border-top: 0; display: flex; gap: var(--space-2);
+      align-items: baseline; padding: 0 var(--space-4); }
+    .main { padding: var(--space-4) var(--space-4) var(--space-12); }
+    .cards { grid-template-columns: 1fr; }
+    .figures { gap: var(--space-4); }
+    .figures b { font-size: var(--text-md); }
   }
 }

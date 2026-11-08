@@ -1,5 +1,6 @@
 import type { CallRow } from "../api";
 import { escapeHtml } from "../format";
+import { renderApp, renderHead } from "../components/shell";
 import {
   declaredTools,
   pretty,
@@ -34,18 +35,12 @@ export function renderCalls(rows: CallRow[]): string {
     )
     .join("");
 
-  return `<div class="shell">
-  <header class="strip detail-head">
-    <div class="who">
-      <a class="back" href="/">← Ledger</a>
-      <h1>Audit</h1>
-      <span class="lbl">Every outbound model call, newest first</span>
-    </div>
-    <div><span class="lbl">Calls</span><b class="num">${rows.length}</b></div>
-    <div><span class="lbl">Failures</span><b class="num">${failures}</b></div>
-    <div><span class="lbl">Tokens</span><b class="num total">${tokens.toLocaleString("en-IN")}</b></div>
-  </header>
-  <section class="main" style="margin-top: var(--space-4)">
+  return renderApp("audit", `${renderHead("Audit", "Every outbound model call, newest first", [
+      { label: "Calls", value: String(rows.length) },
+      { label: "Failures", value: String(failures), tone: failures ? "neg" : undefined },
+      { label: "Tokens", value: tokens.toLocaleString("en-IN") },
+    ])}
+  <section class="main-body">
     <table class="blotter">
       <caption>The prompt and the reply are stored with every call — open one to read them</caption>
       <thead><tr>
@@ -55,8 +50,7 @@ export function renderCalls(rows: CallRow[]): string {
       </tr></thead>
       <tbody>${body || `<tr><td colspan="7" class="empty">No calls yet.</td></tr>`}</tbody>
     </table>
-  </section>
-</div>`;
+  </section>`);
 }
 
 /** The expanded exchange: prompt by role, the reply, then the raw bodies on demand. */

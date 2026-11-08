@@ -166,6 +166,7 @@ struct SignalDbRow {
 struct PositionDbRow {
     id: i64,
     symbol: String,
+    name: String,
     class: String,
     qty: f64,
     avg_cost: f64,
@@ -197,6 +198,8 @@ pub struct SignalRow {
 pub struct PositionRow {
     pub id: i64,
     pub symbol: String,
+    /// The readable name. A ticker tells you nothing about what you own.
+    pub name: String,
     pub class: String,
     pub qty: f64,
     pub avg_cost: f64,
@@ -1206,7 +1209,7 @@ async fn load_positions(
     mode: crate::models::Mode,
 ) -> Result<Vec<PositionRow>, ApiError> {
     let rows: Vec<PositionDbRow> = sqlx::query_as(
-        "SELECT p.id AS id, i.symbol AS symbol, i.class AS class, p.qty AS qty,
+        "SELECT p.id AS id, i.symbol AS symbol, i.name AS name, i.class AS class, p.qty AS qty,
                 p.avg_cost AS avg_cost, p.stop AS stop, p.target AS target, p.state AS state,
                 (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
                  ORDER BY b.ts DESC LIMIT 1) AS ltp
@@ -1224,6 +1227,7 @@ async fn load_positions(
             PositionRow {
                 id: r.id,
                 symbol: r.symbol,
+                name: r.name,
                 class: class.as_str().to_string(),
                 qty: r.qty,
                 avg_cost: r.avg_cost,

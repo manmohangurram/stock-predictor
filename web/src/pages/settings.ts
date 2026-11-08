@@ -1,5 +1,6 @@
 import type { Settings } from "../api";
 import { escapeHtml, money } from "../format";
+import { renderApp, renderHead } from "../components/shell";
 import { TABS, tabRail, type Tab } from "./settings-tabs";
 
 export { isTab, TABS, type Tab } from "./settings-tabs";
@@ -278,18 +279,15 @@ function pane(s: Settings, tab: Tab): string {
 }
 
 export function renderSettings(s: Settings, tab: Tab = "money"): string {
-  return `<div class="shell settings-shell">
-  <header class="strip detail-head">
-    <div class="who">
-      <a class="back" href="/">← Ledger</a>
-      <h1>Settings</h1>
-      <span class="lbl">Every value is a database row</span>
-    </div>
-    <div><span class="lbl">Long-term</span><b class="num">${money(s.budget, 0)}</b></div>
-    <div><span class="lbl">Trading</span><b class="num">${money(s.trading_budget, 0)}</b></div>
-    <div><span class="lbl">Free</span><b class="num total">${money(s.available, 0)}</b></div>
-  </header>
-  ${tabRail(tab, s)}
-  ${pane(s, tab)}
-</div>`;
+  return renderApp(
+    "settings",
+    `${renderHead("Settings", "Every value is a database row, applied on the next tick", [
+      { label: "Long-term", value: money(s.budget, 0) },
+      { label: "Trading", value: money(s.trading_budget, 0) },
+      { label: "Free", value: money(s.available, 0) },
+    ])}
+    <div class="tabs-row">${tabRail(tab, s)}</div>
+    ${pane(s, tab)}`,
+    { label: "Free to deploy", value: money(s.available, 0) },
+  );
 }
