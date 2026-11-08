@@ -279,10 +279,17 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
           <div class="card-head"><h2>Decisions</h2><span class="sub">open a row for the whole message</span></div>
           ${decisions(d, a.instrument.target_profit_pct)}
         </section>
-        <section class="card">
+        ${
+          list.length
+            ? `<section class="card">
           <div class="card-head"><h2>Fills</h2><span class="sub">what you actually paid</span></div>
           ${trades(list)}
-        </section>
+        </section>`
+            : `<section class="card compact">
+          <div class="card-head"><h2>Fills</h2>
+            <span class="sub">no fills yet — record the first one on the right</span></div>
+        </section>`
+        }
         <section class="card">
           <div class="card-head"><h2>Headlines</h2></div>
           ${headlines}

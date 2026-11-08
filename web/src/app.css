@@ -755,3 +755,9 @@
   .inst-grid > *, .inst-main > *, .inst-side > *, .card { min-width: 0; }
   .chart, .table-wrap { max-width: 100%; }
 }
+
+@layer components {
+  /* An empty section is one line, not a page of blank paper. */
+  .card.compact { padding-block: var(--space-2); }
+  .card.compact .card-head { margin-bottom: 0; }
+}
