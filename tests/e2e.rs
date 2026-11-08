@@ -1,6 +1,6 @@
 use chrono::{DateTime, TimeZone, Utc};
 use serde_json::json;
-use stock_predicter::config::Config;
+use stock_predicter::rules::runtime::Runtime;
 use stock_predicter::db;
 use stock_predicter::engine::{self, EngineDeps};
 use stock_predicter::llm::deepseek::{FixtureTransport, HttpReply};
@@ -44,19 +44,6 @@ fn decide(entry: f64, stop: f64) -> serde_json::Value {
     })
 }
 
-fn cfg() -> Config {
-    Config::from_map(
-        &[
-            ("DEEPSEEK_API_KEY", "k"),
-            ("LLM_DAILY_CAP", "50"),
-            ("NTFY_TOPIC", "test-topic"),
-        ]
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect(),
-    )
-    .unwrap()
-}
 
 async fn setup() -> (tempfile::TempDir, sqlx::SqlitePool) {
     let dir = tempfile::tempdir().unwrap();
@@ -98,7 +85,6 @@ fn now() -> DateTime<Utc> {
 #[tokio::test]
 async fn full_cycle_signals_once_then_stays_quiet() {
     let (_d, pool) = setup().await;
-    let cfg = cfg();
     let market = FakeMarket::ok(bars(250));
     let notifier = FakeNotifier::default();
 
@@ -109,7 +95,7 @@ async fn full_cycle_signals_once_then_stays_quiet() {
     ]);
     let deps1 = EngineDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: Runtime::default(),
         market: &market,
         transport: &poll1,
         notifier: &notifier,
@@ -133,7 +119,7 @@ async fn full_cycle_signals_once_then_stays_quiet() {
     let poll2 = FixtureTransport::new(vec![]);
     let deps2 = EngineDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: Runtime::default(),
         market: &market,
         transport: &poll2,
         notifier: &notifier,
@@ -166,14 +152,13 @@ async fn full_cycle_signals_once_then_stays_quiet() {
 #[tokio::test]
 async fn hallucinated_stop_falls_back_to_the_rules_numbers() {
     let (_d, pool) = setup().await;
-    let cfg = cfg();
     let market = FakeMarket::ok(bars(250));
     let notifier = FakeNotifier::default();
     // stop above entry for a BUY: the validator must refuse this outright.
     let transport = FixtureTransport::new(vec![chat(decide(106.0, 120.0))]);
     let deps = EngineDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: Runtime::default(),
         market: &market,
         transport: &transport,
         notifier: &notifier,

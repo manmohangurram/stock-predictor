@@ -23,6 +23,12 @@ async fn main() -> Result<()> {
     let flag = |name: &str| args.iter().any(|a| a == name);
 
     let cfg = Config::from_env()?;
+    for name in Config::retired_warnings() {
+        tracing::warn!(
+            variable = name,
+            "no longer read — set it in Settings instead (Cadence or Network)"
+        );
+    }
     let pool = db::connect_and_migrate(&cfg.db_path).await?;
     settings::seed(&pool).await?;
 
@@ -33,7 +39,7 @@ async fn main() -> Result<()> {
 
     // Prove the push channel end to end before relying on it.
     if flag("--test-notify") {
-        let Some(notifier) = Ntfy::from_settings(&pool).await? else {
+        let Some(notifier) = Ntfy::from_settings(&pool, &cfg.public_url).await? else {
             anyhow::bail!("no ntfy topic configured — set one in Settings, or NTFY_TOPIC");
         };
         let n = stock_predicter::notify::Notification {
@@ -62,7 +68,7 @@ async fn main() -> Result<()> {
             row.ok_or_else(|| anyhow::anyhow!("no instrument {symbol} — add it first"))?;
         let market = YahooSource::new()?;
         let transport = ReqwestTransport::new(settings::model_config(&pool).await?.api_key)?;
-        let notifier = match Ntfy::from_settings(&pool).await? {
+        let notifier = match Ntfy::from_settings(&pool, &cfg.public_url).await? {
             Some(n) => n,
             None => Ntfy::new("https://ntfy.sh", "", "", "")?,
         };
@@ -76,7 +82,7 @@ async fn main() -> Result<()> {
         };
         let deps = EngineDeps {
             pool: &pool,
-            cfg: &cfg,
+            runtime: settings::runtime(&pool).await?,
             market: &market,
             transport: &transport,
             notifier: &notifier,
@@ -93,13 +99,13 @@ async fn main() -> Result<()> {
     if flag("--poll-once") || flag("--predict") {
         let market = YahooSource::new()?;
         let transport = ReqwestTransport::new(settings::model_config(&pool).await?.api_key)?;
-        let notifier = match Ntfy::from_settings(&pool).await? {
+        let notifier = match Ntfy::from_settings(&pool, &cfg.public_url).await? {
             Some(n) => n,
             None => Ntfy::new("https://ntfy.sh", "", "", "")?,
         };
         let deps = EngineDeps {
             pool: &pool,
-            cfg: &cfg,
+            runtime: settings::runtime(&pool).await?,
             market: &market,
             transport: &transport,
             notifier: &notifier,
@@ -122,7 +128,6 @@ async fn main() -> Result<()> {
         ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html")),
     );
 
-    let poll_cfg = cfg.clone();
     let poll_pool = pool.clone();
     tokio::spawn(async move {
         loop {
@@ -140,7 +145,7 @@ async fn main() -> Result<()> {
                 }
             };
             // The notifier is rebuilt each tick so a topic edited in the UI takes effect.
-            let notifier = match Ntfy::from_settings(&poll_pool).await {
+            let notifier = match Ntfy::from_settings(&poll_pool, &cfg.public_url).await {
                 Ok(Some(n)) => n,
                 Ok(None) => match Ntfy::new("https://ntfy.sh", "", "", "") {
                     Ok(n) => n,
@@ -154,9 +159,17 @@ async fn main() -> Result<()> {
                     continue;
                 }
             };
+            // Read at the top of the tick: a cadence edited in the UI applies from now on.
+            let runtime = match settings::runtime(&poll_pool).await {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::error!(error = %e, "runtime settings unreadable");
+                    continue;
+                }
+            };
             let deps = EngineDeps {
                 pool: &poll_pool,
-                cfg: &poll_cfg,
+                runtime: runtime.clone(),
                 market: &market,
                 transport: &transport,
                 notifier: &notifier,
@@ -170,9 +183,9 @@ async fn main() -> Result<()> {
 
             // 15 minutes while the market is open, two hours otherwise.
             let secs = if schedule::in_stock_window(Utc::now()) {
-                poll_cfg.poll_secs
+                runtime.poll_secs
             } else {
-                poll_cfg.off_hours_secs
+                runtime.off_hours_secs
             };
             tokio::time::sleep(Duration::from_secs(secs.max(60))).await;
         }

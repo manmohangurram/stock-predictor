@@ -291,7 +291,6 @@ pub struct PutSettings {
     pub ntfy_url: Option<String>,
     pub ntfy_topic: Option<String>,
     pub ntfy_token: Option<String>,
-    pub public_url: Option<String>,
     pub llm_provider: Option<String>,
     pub llm_model: Option<String>,
     pub llm_base_url: Option<String>,
@@ -314,7 +313,6 @@ async fn put_settings(
             ntfy_url: body.ntfy_url,
             ntfy_topic: body.ntfy_topic,
             ntfy_token: body.ntfy_token,
-            public_url: body.public_url,
             llm_provider: body.llm_provider,
             llm_model: body.llm_model,
             llm_base_url: body.llm_base_url,
@@ -1050,7 +1048,7 @@ async fn all_trades(
 
 /// Sends one notification through the same path a real signal uses.
 async fn test_notify(State(st): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
-    let Some(notifier) = crate::notify::Ntfy::from_settings(&st.pool)
+    let Some(notifier) = crate::notify::Ntfy::from_settings(&st.pool, &st.cfg.public_url)
         .await
         .map_err(|e| ApiError::BadRequest(e.to_string()))?
     else {

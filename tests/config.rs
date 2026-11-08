@@ -11,22 +11,52 @@ fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 }
 
 #[test]
-fn config_only_carries_deployment_settings() {
-    // Budget, currency, keys and ntfy are edited in the UI and live in the database, so none
-    // of them appear here: one source of truth, and it is not the environment.
+fn config_only_carries_deployment_facts() {
+    // Everything else — budget, keys, ntfy, cadence, the proxy — is a settings row, so a stale
+    // variable cannot silently override what the page says.
     let cfg = Config::from_map(&map(&[
         ("BUDGET", "200000"),
         ("DEEPSEEK_API_KEY", "k"),
         ("NTFY_TOPIC", "t"),
-        ("NTFY_BASE_URL", "https://ntfy.sh"),
     ]))
     .unwrap();
-    assert_eq!(cfg.poll_secs, 900);
-    // The call gate: a 2-unit move, an hourly floor, and a two-hour off-hours cadence.
-    assert_eq!(cfg.llm_min_price_move, 2.0);
-    assert_eq!(cfg.llm_max_silence_secs, 3600);
-    assert_eq!(cfg.off_hours_secs, 7200);
-    assert_eq!(cfg.llm_daily_cap, 200);
+    assert_eq!(cfg.bind, "127.0.0.1:8080");
+    assert_eq!(cfg.db_path, "data/stock-predicter.db");
+    assert_eq!(cfg.public_url, "");
+}
+
+#[test]
+fn the_three_deployment_variables_are_read() {
+    let cfg = Config::from_map(&map(&[
+        ("BIND", "0.0.0.0:9000"),
+        ("DB_PATH", "/srv/app.db"),
+        ("PUBLIC_URL", "https://ledger.example.in/"),
+    ]))
+    .unwrap();
+    assert_eq!(cfg.bind, "0.0.0.0:9000");
+    assert_eq!(cfg.db_path, "/srv/app.db");
+    // Trailing slash trimmed: the deep link appends its own.
+    assert_eq!(cfg.public_url, "https://ledger.example.in");
+}
+
+#[test]
+fn a_malformed_bind_is_refused_at_boot() {
+    assert!(Config::from_map(&map(&[("BIND", "8080")])).is_err());
+}
+
+#[test]
+fn retired_variables_are_reported_so_they_are_never_silently_ignored() {
+    // The map is what boot warns about; the config itself ignores them either way.
+    let cfg = Config::from_map(&map(&[
+        ("POLL_SECS", "60"),
+        ("LLM_DAILY_CAP", "7"),
+        ("PROMPT_WINDOW_HOURS", "99"),
+    ]))
+    .unwrap();
+    assert_eq!(cfg.bind, "127.0.0.1:8080");
+    for name in ["POLL_SECS", "LLM_DAILY_CAP", "PROMPT_WINDOW_HOURS"] {
+        assert!(stock_predicter::config::RETIRED.contains(&name));
+    }
 }
 
 #[test]

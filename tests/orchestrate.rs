@@ -1,5 +1,5 @@
 use serde_json::json;
-use stock_predicter::config::Config;
+use stock_predicter::rules::runtime::Runtime;
 use stock_predicter::db;
 use stock_predicter::llm::deepseek::{FixtureTransport, HttpReply};
 use stock_predicter::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
@@ -175,17 +175,11 @@ fn need_more(ids: &[i64]) -> String {
     .to_string()
 }
 
-fn cfg(cap: u32) -> Config {
-    Config::from_map(
-        &[
-            ("DEEPSEEK_API_KEY", "k"),
-            ("LLM_DAILY_CAP", &cap.to_string()),
-        ]
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect(),
-    )
-    .unwrap()
+fn runtime(cap: u32) -> Runtime {
+    Runtime {
+        daily_cap: cap,
+        ..Runtime::default()
+    }
 }
 
 async fn pool() -> (tempfile::TempDir, sqlx::SqlitePool) {
@@ -231,11 +225,11 @@ async fn need_more_triggers_exactly_one_fetch_round() {
     let i = instrument();
     let x = ind();
     let c = candidate();
-    let cfg = cfg(10);
+
     let market = FakeMarket::default();
     let deps = LlmDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: runtime(10),
         transport: &t,
         market: &market,
     };
@@ -263,11 +257,11 @@ async fn second_need_more_becomes_pass() {
     let i = instrument();
     let x = ind();
     let c = candidate();
-    let cfg = cfg(10);
+
     let market = FakeMarket::default();
     let deps = LlmDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: runtime(10),
         transport: &t,
         market: &market,
     };
@@ -299,11 +293,11 @@ async fn more_than_three_requests_are_truncated() {
     let i = instrument();
     let x = ind();
     let c = candidate();
-    let cfg = cfg(10);
+
     let market = FakeMarket::default();
     let deps = LlmDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: runtime(10),
         transport: &t,
         market: &market,
     };
@@ -334,11 +328,11 @@ async fn article_bodies_are_truncated_and_total_is_capped() {
     let i = instrument();
     let x = ind();
     let c = candidate();
-    let cfg = cfg(10);
+
     let market = FakeMarket::default();
     let deps = LlmDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: runtime(10),
         transport: &t,
         market: &market,
     };
@@ -381,11 +375,11 @@ async fn daily_cap_exhausted_degrades_to_rules_without_a_call() {
     let i = instrument();
     let x = ind();
     let c = candidate();
-    let cfg = cfg(0);
+
     let market = FakeMarket::default();
     let deps = LlmDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: runtime(0),
         transport: &t,
         market: &market,
     };
@@ -406,11 +400,11 @@ async fn invalid_proposal_degrades_to_rules_numbers() {
     let i = instrument();
     let x = ind();
     let c = candidate();
-    let cfg = cfg(10);
+
     let market = FakeMarket::default();
     let deps = LlmDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: runtime(10),
         transport: &t,
         market: &market,
     };
@@ -435,11 +429,11 @@ async fn unparseable_phase_one_degrades_to_rules() {
     let i = instrument();
     let x = ind();
     let c = candidate();
-    let cfg = cfg(10);
+
     let market = FakeMarket::default();
     let deps = LlmDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: runtime(10),
         transport: &t,
         market: &market,
     };

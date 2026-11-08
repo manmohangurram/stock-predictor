@@ -24,7 +24,6 @@ pub struct Settings {
     pub ntfy_url: String,
     pub ntfy_topic: String,
     pub ntfy_token_configured: bool,
-    pub public_url: String,
     /// Which chat API decisions come from, and the model name.
     pub llm_provider: String,
     pub llm_model: String,
@@ -47,7 +46,6 @@ pub struct SettingsPatch {
     pub ntfy_url: Option<String>,
     pub ntfy_topic: Option<String>,
     pub ntfy_token: Option<String>,
-    pub public_url: Option<String>,
     pub llm_provider: Option<String>,
     pub llm_model: Option<String>,
     pub llm_base_url: Option<String>,
@@ -82,7 +80,6 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
     let ntfy_token_configured = setting(pool, "ntfy_token")
         .await?
         .is_some_and(|t| !t.trim().is_empty());
-    let public_url = setting(pool, "public_url").await?.unwrap_or_default();
     let provider = crate::llm::provider::Provider::parse(
         &setting(pool, "llm_provider").await?.unwrap_or_default(),
     )
@@ -108,7 +105,6 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         ntfy_url,
         ntfy_topic,
         ntfy_token_configured,
-        public_url,
         llm_provider: provider.as_str().to_string(),
         llm_model,
         llm_base_url,
@@ -197,10 +193,9 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
     for (name, value) in [
         ("ntfy_url", patch.ntfy_url),
         ("ntfy_topic", patch.ntfy_topic),
-        ("public_url", patch.public_url),
     ] {
         if let Some(v) = value {
-            // An empty string is a deliberate clear for these three; the token is different.
+            // An empty string is a deliberate clear for these; the token is different.
             put_setting(pool, name, v.trim())
                 .await
                 .map_err(|_| SettingsError::InvalidAmount)?;
@@ -295,6 +290,9 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
 
     Ok(())
 }
+
+/// The knobs the app reads while running. Read per tick so edits apply without a restart.
+pub use super::runtime::load as runtime;
 
 /// The key itself, for the client that actually calls DeepSeek. Never exposed over HTTP.
 pub async fn setting(pool: &SqlitePool, key: &str) -> Result<Option<String>> {

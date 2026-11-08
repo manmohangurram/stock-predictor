@@ -5,7 +5,6 @@ use super::deepseek::{self, ChatRequest, Transport};
 use super::parse::{self, LlmVerdict, Proposal};
 use super::prompts::{self, PromptContext};
 use super::validate::{self, ValidateCtx};
-use crate::config::Config;
 use crate::market::MarketSource;
 use crate::models::{Candidate, Headline, Instrument};
 use crate::rules::indicators::{atr_bands, Indicators};
@@ -23,7 +22,7 @@ pub fn history_range() -> String {
 
 pub struct LlmDeps<'a> {
     pub pool: &'a SqlitePool,
-    pub cfg: &'a Config,
+    pub runtime: crate::rules::runtime::Runtime,
     pub transport: &'a dyn Transport,
     pub market: &'a dyn MarketSource,
 }
@@ -80,7 +79,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         input.now.timestamp_millis()
     );
 
-    if daily_chat_calls(deps.pool).await? >= deps.cfg.llm_daily_cap as i64 {
+    if daily_chat_calls(deps.pool).await? >= deps.runtime.daily_cap as i64 {
         return Ok(Decision {
             outcome: Outcome::Rules(input.candidate.clone()),
             conversation_id,
@@ -173,7 +172,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                     continue;
                 }
                 let text =
-                    match deepseek::fetch_page(deps.pool, deps.cfg, deps.transport, &h.url).await {
+                    match deepseek::fetch_page(deps.pool, &model.base_url, deps.transport, &h.url).await {
                         Ok(t) => t,
                         Err(e) => {
                             tracing::warn!(error = %e, headline = id, "fetch failed");

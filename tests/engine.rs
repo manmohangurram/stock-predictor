@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::{DateTime, TimeZone, Utc};
-use stock_predicter::config::Config;
+use stock_predicter::rules::runtime::Runtime;
 use stock_predicter::db;
 use stock_predicter::engine::{self, EngineDeps, MarketSource, PollReport};
 use stock_predicter::llm::deepseek::FixtureTransport;
@@ -11,18 +11,11 @@ use stock_predicter::rules::evaluate::RuleConfig;
 use stock_predicter::rules::settings;
 use stock_predicter::schedule;
 
-fn cfg() -> Config {
-    Config::from_map(
-        &[
-            ("DEEPSEEK_API_KEY", "k"),
-            ("LLM_DAILY_CAP", "50"),
-            ("NTFY_TOPIC", "test-topic"),
-        ]
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect(),
-    )
-    .unwrap()
+fn cfg() -> Runtime {
+    Runtime {
+        daily_cap: 50,
+        ..Runtime::default()
+    }
 }
 
 async fn seed(pool: &sqlx::SqlitePool, symbols: &[&str]) {
@@ -97,24 +90,24 @@ async fn poll(
     pool: &sqlx::SqlitePool,
     market: &dyn MarketSource,
     notifier: &dyn stock_predicter::notify::Notifier,
-    cfg: &Config,
+    runtime: Runtime,
     now: DateTime<Utc>,
 ) -> Result<PollReport> {
-    poll_with(pool, market, notifier, cfg, now, vec![]).await
+    poll_with(pool, market, notifier, runtime, now, vec![]).await
 }
 
 async fn poll_with(
     pool: &sqlx::SqlitePool,
     market: &dyn MarketSource,
     notifier: &dyn stock_predicter::notify::Notifier,
-    cfg: &Config,
+    runtime: Runtime,
     now: DateTime<Utc>,
     replies: Vec<stock_predicter::llm::deepseek::HttpReply>,
 ) -> Result<PollReport> {
     let t = FixtureTransport::new(replies);
     let deps = EngineDeps {
         pool,
-        cfg,
+        runtime,
         market,
         transport: &t,
         notifier,
@@ -139,7 +132,7 @@ async fn one_poll_with_a_candidate_emits_one_signal_and_one_notification() {
     let market = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
     let c = cfg();
-    let report = poll(&pool, &market, &notifier, &c, now()).await.unwrap();
+    let report = poll(&pool, &market, &notifier, c.clone(), now()).await.unwrap();
 
     assert_eq!(report.candidates, 1, "{report:?}");
     assert_eq!(report.signals, 1, "{report:?}");
@@ -163,9 +156,9 @@ async fn second_identical_poll_emits_nothing() {
     let notifier = FakeNotifier::default();
     let c = cfg();
 
-    let first = poll(&pool, &market, &notifier, &c, now()).await.unwrap();
+    let first = poll(&pool, &market, &notifier, c.clone(), now()).await.unwrap();
     assert_eq!(first.signals, 1);
-    let second = poll(&pool, &market, &notifier, &c, now()).await.unwrap();
+    let second = poll(&pool, &market, &notifier, c.clone(), now()).await.unwrap();
 
     assert_eq!(second.signals, 0, "unchanged signal must be a no-op");
     assert_eq!(second.notifications, 0);
@@ -181,7 +174,7 @@ async fn insufficient_bars_emits_no_signal_and_no_llm_call() {
     seed(&pool, &["INFY"]).await;
     let market = FakeMarket::ok(bars_n(10));
     let notifier = FakeNotifier::default();
-    let report = poll(&pool, &market, &notifier, &cfg(), now())
+    let report = poll(&pool, &market, &notifier, cfg(), now())
         .await
         .unwrap();
 
@@ -203,7 +196,7 @@ async fn one_symbol_failing_does_not_stop_the_others() {
     seed(&pool, &["BOOM", "INFY"]).await;
     let market = FakeMarket::ok(bars_n(250)).failing_for("BOOM");
     let notifier = FakeNotifier::default();
-    let report = poll(&pool, &market, &notifier, &cfg(), now())
+    let report = poll(&pool, &market, &notifier, cfg(), now())
         .await
         .unwrap();
 
@@ -247,7 +240,7 @@ async fn budget_exhaustion_records_blocked_and_never_notifies() {
         &pool,
         &market,
         &notifier,
-        &cfg(),
+        cfg(),
         now(),
         vec![stock_predicter::llm::deepseek::HttpReply {
             status: 200,
@@ -284,7 +277,6 @@ async fn with_no_affordable_quantity_the_model_is_still_asked_but_nothing_is_tra
             ntfy_url: None,
             ntfy_topic: None,
             ntfy_token: None,
-            public_url: None,
             llm_provider: None,
             llm_model: None,
             llm_base_url: None,
@@ -298,7 +290,7 @@ async fn with_no_affordable_quantity_the_model_is_still_asked_but_nothing_is_tra
 
     let market = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
-    let report = poll(&pool, &market, &notifier, &cfg(), now())
+    let report = poll(&pool, &market, &notifier, cfg(), now())
         .await
         .unwrap();
     assert_eq!(
@@ -351,7 +343,7 @@ async fn a_failing_push_does_not_lose_the_signal() {
     let notifier = FakeNotifier::failing();
     let c = cfg();
 
-    let report = poll(&pool, &market, &notifier, &c, now()).await.unwrap();
+    let report = poll(&pool, &market, &notifier, c.clone(), now()).await.unwrap();
     assert_eq!(report.signals, 1, "{report:?}");
     assert_eq!(report.notifications, 0);
     assert!(
@@ -371,7 +363,7 @@ async fn without_a_deepseek_key_the_model_layer_is_skipped_entirely() {
 
     let market = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
-    let report = poll(&pool, &market, &notifier, &cfg(), now())
+    let report = poll(&pool, &market, &notifier, cfg(), now())
         .await
         .unwrap();
 
@@ -422,7 +414,7 @@ async fn a_failed_model_call_does_not_overwrite_the_standing_decision() {
     }]);
     let deps1 = EngineDeps {
         pool: &pool,
-        cfg: &c,
+        runtime: c.clone(),
         market: &market,
         transport: &first_transport,
         notifier: &notifier,
@@ -443,7 +435,7 @@ async fn a_failed_model_call_does_not_overwrite_the_standing_decision() {
     let second_transport = FixtureTransport::new(vec![]);
     let deps2 = EngineDeps {
         pool: &pool,
-        cfg: &c,
+        runtime: c.clone(),
         market: &market,
         transport: &second_transport,
         notifier: &notifier,
@@ -487,7 +479,7 @@ async fn new_headlines_earn_a_new_model_call() {
     let source = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
     let c = cfg();
-    let _ = poll(&pool, &source, &notifier, &c, now()).await.unwrap();
+    let _ = poll(&pool, &source, &notifier, c.clone(), now()).await.unwrap();
     let first: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
         .fetch_one(&pool)
         .await
@@ -498,7 +490,7 @@ async fn new_headlines_earn_a_new_model_call() {
         "guidance raised 200bps",
         "https://example.com/new",
     )]);
-    let _ = poll(&pool, &moved, &notifier, &c, now()).await.unwrap();
+    let _ = poll(&pool, &moved, &notifier, c.clone(), now()).await.unwrap();
     let second: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
         .fetch_one(&pool)
         .await
@@ -539,7 +531,7 @@ async fn the_model_confidence_is_stored_and_rules_only_signals_have_none() {
     }]);
     let deps = EngineDeps {
         pool: &pool,
-        cfg: &c,
+        runtime: c.clone(),
         market: &market,
         transport: &transport,
         notifier: &notifier,
@@ -571,7 +563,7 @@ async fn the_model_confidence_is_stored_and_rules_only_signals_have_none() {
     let empty = FixtureTransport::new(vec![]);
     let deps2 = EngineDeps {
         pool: &pool2,
-        cfg: &c,
+        runtime: c.clone(),
         market: &market,
         transport: &empty,
         notifier: &notifier,
@@ -695,7 +687,7 @@ async fn the_rules_layer_is_clamped_by_the_limits_too() {
 
     let market = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
-    let report = poll(&pool, &market, &notifier, &cfg(), now()).await.unwrap();
+    let report = poll(&pool, &market, &notifier, cfg(), now()).await.unwrap();
     assert_eq!(report.signals, 1, "{report:?}");
 
     let (qty, entry): (f64, f64) = sqlx::query_as("SELECT qty, entry FROM signals")

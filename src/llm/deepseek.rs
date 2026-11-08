@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use super::audit::{self, ApiCallRow};
-use crate::config::Config;
 
 /// The DeepSeek default model, kept for the fixture tests.
 pub const MODEL: &str = "deepseek-chat";
@@ -224,7 +223,7 @@ fn parse_chat(
 
 pub async fn search(
     pool: &SqlitePool,
-    cfg: &Config,
+    base: &str,
     transport: &dyn Transport,
     query: &str,
 ) -> Result<Vec<SearchHit>> {
@@ -236,7 +235,7 @@ pub async fn search(
     .to_string();
     let url = format!(
         "{}/v1/tools/search",
-        cfg.deepseek_base.trim_end_matches('/')
+        base.trim_end_matches('/')
     );
     let started = Instant::now();
     let reply = transport.post(&url, &body).await;
@@ -291,12 +290,12 @@ pub async fn search(
 
 pub async fn fetch_page(
     pool: &SqlitePool,
-    cfg: &Config,
+    base: &str,
     transport: &dyn Transport,
     url_to_fetch: &str,
 ) -> Result<String> {
     let body = serde_json::json!({ "url": url_to_fetch }).to_string();
-    let url = format!("{}/v1/tools/fetch", cfg.deepseek_base.trim_end_matches('/'));
+    let url = format!("{}/v1/tools/fetch", base.trim_end_matches('/'));
     let started = Instant::now();
     let reply = transport.post(&url, &body).await;
     let latency = started.elapsed().as_millis() as i64;

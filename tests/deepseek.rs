@@ -1,4 +1,3 @@
-use stock_predicter::config::Config;
 use stock_predicter::db;
 use stock_predicter::llm::deepseek::{self, ChatRequest, FixtureTransport, HttpReply};
 
@@ -23,17 +22,9 @@ fn model() -> stock_predicter::llm::provider::ModelConfig {
     }
 }
 
-fn cfg() -> Config {
-    Config::from_map(
-        &[
-            ("DEEPSEEK_API_KEY", "k"),
-            ("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        ]
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect(),
-    )
-    .unwrap()
+/// The base URL now comes from the model settings; DeepSeek's own tools are the only users.
+fn base() -> &'static str {
+    "https://api.deepseek.com"
 }
 
 fn req() -> ChatRequest {
@@ -101,7 +92,7 @@ async fn api_error_row_is_still_written() {
 async fn search_maps_summary_and_date() {
     let (_d, pool) = pool().await;
     let t = FixtureTransport::ok(SEARCH);
-    let hits = deepseek::search(&pool, &cfg(), &t, "XYZ IPO review")
+    let hits = deepseek::search(&pool, base(), &t, "XYZ IPO review")
         .await
         .unwrap();
     assert_eq!(hits.len(), 1);
@@ -115,7 +106,7 @@ async fn search_maps_summary_and_date() {
 async fn fetch_returns_markdown_and_is_audited() {
     let (_d, pool) = pool().await;
     let t = FixtureTransport::ok(r##"{"title":"t","content":"# Heading\nbody"}"##);
-    let md = deepseek::fetch_page(&pool, &cfg(), &t, "https://example.com/a")
+    let md = deepseek::fetch_page(&pool, base(), &t, "https://example.com/a")
         .await
         .unwrap();
     assert!(md.contains("# Heading"));

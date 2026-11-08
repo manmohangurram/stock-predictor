@@ -2,7 +2,7 @@
 //! with it. Every case is dummy data — no network, no key, no cost.
 
 use serde_json::json;
-use stock_predicter::config::Config;
+use stock_predicter::rules::runtime::Runtime;
 use stock_predicter::db;
 use stock_predicter::llm::deepseek::{FixtureTransport, HttpReply};
 use stock_predicter::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
@@ -59,14 +59,11 @@ fn headlines() -> Vec<Headline> {
     }]
 }
 
-fn cfg() -> Config {
-    Config::from_map(
-        &[("DEEPSEEK_API_KEY", "k"), ("LLM_DAILY_CAP", "50")]
-            .iter()
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect(),
-    )
-    .unwrap()
+fn runtime() -> Runtime {
+    Runtime {
+        daily_cap: 50,
+        ..Runtime::default()
+    }
 }
 
 fn chat(content: serde_json::Value) -> HttpReply {
@@ -115,10 +112,9 @@ async fn run_case(reply: HttpReply, held: f64, class: AssetClass) -> (Outcome, F
         .unwrap();
     let market = FakeMarket::ok(vec![]);
     let t = FixtureTransport::new(vec![reply]);
-    let cfg = cfg();
     let deps = LlmDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: runtime(),
         transport: &t,
         market: &market,
     };
@@ -392,10 +388,9 @@ async fn escalate(replies: Vec<HttpReply>) -> (Outcome, FixtureTransport) {
         .unwrap();
     let market = FakeMarket::ok(vec![common::bar("2026-10-21T05:00:00Z", 1142.0)]);
     let t = FixtureTransport::new(replies);
-    let cfg = cfg();
     let deps = LlmDeps {
         pool: &pool,
-        cfg: &cfg,
+        runtime: runtime(),
         transport: &t,
         market: &market,
     };

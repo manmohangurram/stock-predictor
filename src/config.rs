@@ -2,56 +2,56 @@ use std::collections::BTreeMap;
 
 use anyhow::{anyhow, Result};
 
-/// Deployment configuration only: where to listen, where the database lives, and the tuning
-/// knobs. Anything a user edits in the UI — budget, currency, API keys, ntfy — lives in the
-/// settings table and is never read from the environment.
-#[derive(Debug, Clone)]
+/// Deployment facts only: where to listen, where the database lives, and the address the app is
+/// reachable at. Everything a user edits in the UI — budget, currency, limits, API keys, ntfy,
+/// cadence, the proxy — lives in the settings table and is never read from the environment.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Config {
-    pub poll_secs: u64,
-    pub llm_daily_cap: u32,
-    /// Skip a model call unless the price moved at least this much...
-    pub llm_min_price_move: f64,
-    /// ...or this long has passed since the last one.
-    pub llm_max_silence_secs: i64,
-    /// How many hours of 15-minute tape go into every prompt. The biggest token lever.
-    pub prompt_window_hours: u32,
-    /// Poll cadence outside market hours, which only exists to pick up headlines.
-    pub off_hours_secs: u64,
-    pub deepseek_base: String,
     pub db_path: String,
     pub bind: String,
+    /// Used only to build notification deep links.
+    pub public_url: String,
 }
+
+/// Variables that used to configure the app and are now settings. Boot warns when one is still
+/// set, because a silently ignored `POLL_SECS=600` is an evening lost to wondering.
+pub const RETIRED: &[&str] = &[
+    "POLL_SECS",
+    "OFF_HOURS_SECS",
+    "LLM_DAILY_CAP",
+    "LLM_MIN_PRICE_MOVE",
+    "LLM_MAX_SILENCE_SECS",
+    "PROMPT_WINDOW_HOURS",
+    "DEEPSEEK_BASE_URL",
+];
 
 impl Config {
     pub fn from_map(m: &BTreeMap<String, String>) -> Result<Self> {
         let get = |k: &str| m.get(k).map(|s| s.as_str());
-        let num = |k: &str, default: f64| -> Result<f64> {
-            match get(k) {
-                Some(v) => v
-                    .parse::<f64>()
-                    .map_err(|_| anyhow!("{k} must be a number, got {v:?}")),
-                None => Ok(default),
-            }
-        };
-
+        let bind = get("BIND").unwrap_or("127.0.0.1:8080").to_string();
+        if bind.parse::<std::net::SocketAddr>().is_err() {
+            return Err(anyhow!("BIND must be host:port, got {bind:?}"));
+        }
         Ok(Self {
-            poll_secs: num("POLL_SECS", 900.0)? as u64,
-            llm_daily_cap: num("LLM_DAILY_CAP", 200.0)? as u32,
-            llm_min_price_move: num("LLM_MIN_PRICE_MOVE", 2.0)?,
-            llm_max_silence_secs: num("LLM_MAX_SILENCE_SECS", 3600.0)? as i64,
-            prompt_window_hours: num("PROMPT_WINDOW_HOURS", 4.0)? as u32,
-            off_hours_secs: num("OFF_HOURS_SECS", 7200.0)? as u64,
-            deepseek_base: get("DEEPSEEK_BASE_URL")
-                .unwrap_or("https://api.deepseek.com")
-                .to_string(),
             db_path: get("DB_PATH")
                 .unwrap_or("data/stock-predicter.db")
                 .to_string(),
-            bind: get("BIND").unwrap_or("127.0.0.1:8080").to_string(),
+            bind,
+            public_url: get("PUBLIC_URL").unwrap_or_default().trim_end_matches('/').to_string(),
         })
     }
 
     pub fn from_env() -> Result<Self> {
         Self::from_map(&std::env::vars().collect())
+    }
+
+    /// Retired variable names still present in the environment. Non-empty means the operator is
+    /// configuring something that no longer exists.
+    pub fn retired_warnings() -> Vec<&'static str> {
+        RETIRED
+            .iter()
+            .copied()
+            .filter(|k| std::env::var(k).is_ok())
+            .collect()
     }
 }

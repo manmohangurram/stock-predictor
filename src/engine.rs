@@ -2,7 +2,6 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 
-use crate::config::Config;
 use crate::llm::deepseek::Transport;
 use crate::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
 use crate::llm::parse::Proposal;
@@ -17,7 +16,8 @@ pub use crate::market::{MarketSource, YahooSource};
 
 pub struct EngineDeps<'a> {
     pub pool: &'a SqlitePool,
-    pub cfg: &'a Config,
+    /// Read at the top of every tick, so an edit in the UI applies without a restart.
+    pub runtime: crate::rules::runtime::Runtime,
     pub market: &'a dyn MarketSource,
     pub transport: &'a dyn Transport,
     pub notifier: &'a dyn Notifier,
@@ -123,7 +123,7 @@ async fn gather(
         .unwrap_or(limits.min_profit_pct)
         .clamp(limits.min_profit_pct, limits.max_profit_pct);
     let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
-        Ok(tape) => format_window(&tape, deps.cfg.prompt_window_hours, now),
+        Ok(tape) => format_window(&tape, deps.runtime.prompt_window_hours, now),
         Err(e) => {
             tracing::debug!(symbol = %instrument.symbol, error = %e, "no intraday tape");
             "(intraday tape unavailable)".to_string()
@@ -237,8 +237,8 @@ async fn poll_instrument(
     // for more than the gate's interval.
     if !deps.force {
         let gate = crate::llm::memo::CallGate {
-            min_move: deps.cfg.llm_min_price_move,
-            max_interval_secs: deps.cfg.llm_max_silence_secs,
+            min_move: deps.runtime.min_price_move,
+            max_interval_secs: deps.runtime.max_silence_secs,
         };
         if !crate::llm::memo::should_call(
             deps.pool,
@@ -298,7 +298,7 @@ async fn poll_instrument(
 
     let llm_deps = LlmDeps {
         pool: deps.pool,
-        cfg: deps.cfg,
+        runtime: deps.runtime.clone(),
         transport: deps.transport,
         market: deps.market,
     };
@@ -314,7 +314,7 @@ async fn poll_instrument(
             required_profit_pct: g.required_profit_pct,
             instrument_exposure: g.instrument_exposure,
             pot: g.pot,
-            window_hours: deps.cfg.prompt_window_hours,
+            window_hours: deps.runtime.prompt_window_hours,
             headlines: news,
             price_window: &g.price_window,
             daily_summary: &g.daily_summary,
@@ -381,7 +381,7 @@ pub async fn advise(
 
     let llm_deps = LlmDeps {
         pool: deps.pool,
-        cfg: deps.cfg,
+        runtime: deps.runtime.clone(),
         transport: deps.transport,
         market: deps.market,
     };
@@ -397,7 +397,7 @@ pub async fn advise(
             required_profit_pct: g.required_profit_pct,
             instrument_exposure: g.instrument_exposure,
             pot: g.pot,
-            window_hours: deps.cfg.prompt_window_hours,
+            window_hours: deps.runtime.prompt_window_hours,
             headlines: &g.news,
             price_window: &g.price_window,
             daily_summary: &g.daily_summary,

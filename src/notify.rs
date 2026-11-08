@@ -147,7 +147,7 @@ impl Ntfy {
     }
 
     /// Build from the settings table, which is what the UI edits.
-    pub async fn from_settings(pool: &SqlitePool) -> Result<Option<Self>> {
+    pub async fn from_settings(pool: &SqlitePool, public_url: &str) -> Result<Option<Self>> {
         let s = crate::rules::settings::get(pool).await?;
         if s.ntfy_topic.trim().is_empty() {
             return Ok(None);
@@ -155,7 +155,7 @@ impl Ntfy {
         let token = crate::rules::settings::ntfy_token(pool)
             .await?
             .unwrap_or_default();
-        Ok(Some(Self::new(&s.ntfy_url, &s.ntfy_topic, &token, &s.public_url)?))
+        Ok(Some(Self::new(&s.ntfy_url, &s.ntfy_topic, &token, public_url)?))
     }
 }
 
