@@ -147,32 +147,89 @@ describe("settings", () => {
     ntfy_url: "https://ntfy.sh",
     ntfy_topic: "",
     ntfy_token_configured: false,
-    public_url: "",
     llm_provider: "deepseek",
     llm_model: "deepseek-chat",
     llm_base_url: "https://api.deepseek.com",
     llm_key_configured: false,
     limits_long: limits(),
     limits_trade: limits(),
+    runtime: {
+      poll_secs: 900,
+      off_hours_secs: 7200,
+      prompt_window_hours: 4,
+      min_price_move: 2,
+      max_silence_secs: 3600,
+      daily_cap: 200,
+      proxy_configured: false,
+      proxy_host: "",
+      proxy_bypass: null,
+    },
     ...over,
   });
 
-  test("disables save when the budget is below committed", () => {
-    const html = renderSettings(settings({ committed: 142_000, available: -42_000 }));
+  test("six tabs render, and only the active one shows its fields", () => {
+    const html = renderSettings(settings(), "cadence");
+    for (const id of ["money", "risk", "model", "notifications", "cadence", "network"]) {
+      expect(html).toContain(`id="tab-${id}"`);
+    }
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain('data-tab="cadence"');
+    expect(html).toContain('id="poll_secs"');
+    // A Money field must not be rendered on the Cadence tab.
+    expect(html).not.toContain('id="budget"');
+  });
+
+  test("each tab carries its own stamp, never a page-wide save", () => {
+    for (const tab of ["money", "risk", "model", "notifications", "cadence", "network"] as const) {
+      const html = renderSettings(settings(), tab);
+      expect(html).toContain(">Stamp<");
+      expect(html).toContain('id="revert"');
+    }
+  });
+
+  test("the budget tab warns when committed is above the ceiling", () => {
+    const html = renderSettings(settings({ committed: 142_000, available: -42_000 }), "money");
     expect(html).toContain("Committed is");
-    expect(html).toContain("disabled");
   });
 
   test("a configured key is masked and offers to keep it", () => {
-    const html = renderSettings(settings({ llm_key_configured: true }));
+    const html = renderSettings(settings({ llm_key_configured: true }), "model");
     expect(html).toContain('type="password"');
     expect(html).toContain("leave blank to keep");
     expect(html).toContain("never shown again");
   });
 
   test("disables currency once locked, with the reason", () => {
-    const html = renderSettings(settings({ currency_locked: true }));
+    const html = renderSettings(settings({ currency_locked: true }), "money");
     expect(html).toContain("Currency is fixed once the ledger has entries");
+  });
+
+  test("risk limits are one comparison table, two pots side by side", () => {
+    const html = renderSettings(settings(), "risk");
+    expect(html).toContain("limits-table");
+    expect(html).toContain("id=\"long_min_profit_pct\"");
+    expect(html).toContain("id=\"trade_max_profit_pct\"");
+    expect(html).toContain("band's maximum always wins");
+  });
+
+  test("cadence shows the six knobs with their units", () => {
+    const html = renderSettings(settings(), "cadence");
+    for (const name of ["poll_secs", "off_hours_secs", "prompt_window_hours", "daily_cap", "min_price_move", "max_silence_secs"]) {
+      expect(html).toContain(`id="${name}"`);
+    }
+    expect(html).toContain("no restart");
+  });
+
+  test("network never prints the proxy URL, only where it points", () => {
+    const html = renderSettings(
+      settings({
+        runtime: { ...settings().runtime, proxy_configured: true, proxy_host: "10.0.0.2:3128" },
+      }),
+      "network",
+    );
+    expect(html).toContain("10.0.0.2:3128");
+    expect(html).toContain("HTTP_PROXY");
+    expect(html).toContain('id="test-proxy"');
   });
 
   test("save guard is exact at the boundary", () => {
@@ -295,9 +352,14 @@ describe("settings, second pot", () => {
       budget: 500_000, committed: 0, available: 500_000, currency: "INR",
       currency_locked: false, deepseek_configured: false,
       trading_budget: 100_000, trading_available: 80_000,
-      ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+      ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
       llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
       llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
+    runtime: {
+      poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
+      max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+      proxy_bypass: null,
+    },
     });
     expect(html).toContain('name="trading_budget"');
     expect(html).toContain("80,000");
@@ -465,26 +527,32 @@ describe("ntfy settings", () => {
   const base = {
     budget: 100_000, committed: 0, available: 100_000, currency: "INR", currency_locked: false,
     deepseek_configured: false, trading_budget: 0, trading_available: 0,
-    ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+    ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
     llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
     llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
+    runtime: {
+      poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
+      max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+      proxy_bypass: null,
+    },
   };
 
-  test("offers topic, server, token and link, plus a way to prove it", async () => {
+  test("offers topic, server and token, plus a way to prove it", async () => {
     const { renderSettings } = await import("./pages/settings");
-    const html = renderSettings({ ...base, ntfy_topic: "stock-predicter-abc123" });
+    const html = renderSettings({ ...base, ntfy_topic: "stock-predicter-abc123" }, "notifications");
     expect(html).toContain('name="ntfy_topic"');
     expect(html).toContain('value="stock-predicter-abc123"');
     expect(html).toContain('name="ntfy_url"');
     expect(html).toContain('name="ntfy_token"');
-    expect(html).toContain('name="public_url"');
+    // The deep-link host is PUBLIC_URL in the environment now, not a settings field.
+    expect(html).not.toContain('name="public_url"');
     expect(html).toContain("Send a test notification");
     expect(html).toContain("Anyone who knows the name can read it");
   });
 
   test("a configured token is masked and never echoed", async () => {
     const { renderSettings } = await import("./pages/settings");
-    const html = renderSettings({ ...base, ntfy_token_configured: true });
+    const html = renderSettings({ ...base, ntfy_token_configured: true }, "notifications");
     expect(html).toContain('type="password"');
     expect(html).toContain("leave blank to keep");
     expect(html).toContain("never shown again");
@@ -495,14 +563,19 @@ describe("model provider settings", () => {
   const base = {
     budget: 100_000, committed: 0, available: 100_000, currency: "INR", currency_locked: false,
     deepseek_configured: false, trading_budget: 0, trading_available: 0,
-    ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+    ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
     llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
     llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
+    runtime: {
+      poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
+      max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+      proxy_bypass: null,
+    },
   };
 
   test("offers every provider and shows which is selected", async () => {
     const { renderSettings } = await import("./pages/settings");
-    const html = renderSettings({ ...base, llm_provider: "gemini" });
+    const html = renderSettings({ ...base, llm_provider: "gemini" }, "model");
     for (const p of ["deepseek", "openai", "gemini", "custom"]) {
       expect(html).toContain(`value="${p}"`);
     }
@@ -513,7 +586,7 @@ describe("model provider settings", () => {
 
   test("the key field is one box for whichever provider is chosen", async () => {
     const { renderSettings } = await import("./pages/settings");
-    const html = renderSettings({ ...base, llm_provider: "openai", llm_key_configured: true });
+    const html = renderSettings({ ...base, llm_provider: "openai", llm_key_configured: true }, "model");
     expect(html).toContain('name="llm_key"');
     expect(html).toContain("Configured. The key is never shown again");
   });
@@ -525,13 +598,18 @@ describe("per-pot limits", () => {
     const s = {
       budget: 500_000, committed: 0, available: 500_000, currency: "INR", currency_locked: false,
       deepseek_configured: false, trading_budget: 50_000, trading_available: 50_000,
-      ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+      ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
       llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
       llm_key_configured: false,
       limits_long: limits({ max_trade_amount: 25_000 }),
       limits_trade: limits({ max_trade_amount: 5_000, max_instrument_pct: 10 }),
+    runtime: {
+      poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
+      max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+      proxy_bypass: null,
+    },
     };
-    const html = renderSettings(s);
+    const html = renderSettings(s, "risk");
     for (const mode of ["long", "trade"]) {
       for (const name of ["min_profit_pct", "max_profit_pct", "min_trade_amount", "max_trade_amount", "max_instrument_pct"]) {
         expect(html).toContain(`name="${mode}_${name}"`);
@@ -540,7 +618,8 @@ describe("per-pot limits", () => {
     expect(html).toContain("Long-term limits");
     expect(html).toContain("Trading limits");
     // different values per pot
-    expect(html).toContain('id="long_max_trade_amount" name="long_max_trade_amount" type="number" min="0" step="1"\n             value="25000"');
+    expect(html).toContain('id="long_max_trade_amount"');
+    expect(html).toContain('value="25000"');
     expect(html).toContain('value="5000"');
   });
 
@@ -549,10 +628,15 @@ describe("per-pot limits", () => {
     const html = renderSettings({
       budget: 1000, committed: 0, available: 1000, currency: "INR", currency_locked: false,
       deepseek_configured: false, trading_budget: 0, trading_available: 0,
-      ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false, public_url: "",
+      ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
       llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "", llm_key_configured: false,
       limits_long: limits(), limits_trade: limits(),
-    });
+      runtime: {
+        poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
+        max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+        proxy_bypass: null,
+      },
+    }, "risk");
     expect(html).toContain("A take-profit below this is rejected");
     expect(html).toContain("no fantasy numbers");
     expect(html).toContain("not worth its fees");

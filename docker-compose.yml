@@ -13,7 +13,8 @@ services:
       # The SQLite database, its WAL and the ledger live here. Back this up.
       - ./data:/data
     environment:
-      # Budget, currency, model provider and keys, and ntfy are all set in the UI.
-      POLL_SECS: "900"
-      PROMPT_WINDOW_HOURS: "4"
       RUST_LOG: "info"
+      # The only configuration that lives here. Everything else — budget, limits, model and keys,
+      # ntfy, polling cadence, the proxy — is a settings row edited on the Settings page.
+      # PUBLIC_URL: "http://192.168.1.10:8080"   # deep link on notifications
+      # DB_PATH: "/data/stock-predicter.db"      # the default; change only to relocate

@@ -85,6 +85,20 @@ export interface Settings {
   llm_key_configured: boolean;
   limits_long: Limits;
   limits_trade: Limits;
+  runtime: Runtime;
+}
+
+/** Cadence, gate thresholds and the proxy. The proxy itself is never returned. */
+export interface Runtime {
+  poll_secs: number;
+  off_hours_secs: number;
+  prompt_window_hours: number;
+  min_price_move: number;
+  max_silence_secs: number;
+  daily_cap: number;
+  proxy_configured: boolean;
+  proxy_host: string;
+  proxy_bypass: string | null;
 }
 
 export interface Limits {
@@ -197,6 +211,11 @@ export async function dashboardCached(
 export const api = {
   dashboard: (mode: Mode = "long") => req<Dashboard>(`/api/dashboard?mode=${mode}`),
   settings: () => req<Settings>("/api/settings"),
+  testProxy: () =>
+    req<{ ok: boolean; status: number | null; millis: number; error: string | null }>(
+      "/api/settings/proxy/test",
+      { method: "POST" },
+    ),
   calls: () => req<CallRow[]>("/api/calls"),
   trades: () => req<Trade[]>("/api/trades"),
   instrument: (symbol: string) =>
@@ -231,8 +250,22 @@ export const api = {
     ),
   putSettings: async (
     patch: Partial<
-      Pick<Settings, "budget" | "currency" | "trading_budget" | "ntfy_url" | "ntfy_topic" | "public_url">
-    > & { deepseek_key?: string; ntfy_token?: string },
+      Pick<Settings, "budget" | "currency" | "trading_budget" | "ntfy_url" | "ntfy_topic" | "llm_base_url" | "llm_model" | "llm_provider">
+    > & {
+      deepseek_key?: string;
+      ntfy_token?: string;
+      llm_key?: string;
+      limits_long?: Limits;
+      limits_trade?: Limits;
+      poll_secs?: number;
+      off_hours_secs?: number;
+      prompt_window_hours?: number;
+      min_price_move?: number;
+      max_silence_secs?: number;
+      daily_cap?: number;
+      proxy?: string;
+      proxy_bypass?: string;
+    },
   ) => {
     const r = await fetch("/api/settings", {
       method: "PUT",

@@ -1,171 +1,263 @@
-import type { Limits, Settings } from "../api";
+import type { Settings } from "../api";
 import { escapeHtml, money } from "../format";
+import { TABS, tabRail, type Tab } from "./settings-tabs";
+
+export { isTab, TABS, type Tab } from "./settings-tabs";
 
 /** The one rule the form enforces client-side; the server enforces it again. */
 export const shouldDisableSave = (budget: number, committed: number): boolean =>
   !Number.isFinite(budget) || budget < committed;
 
-/** Five numbers per pot. Percentages are of that pot; amounts are in its currency. */
-function limitFields(mode: "long" | "trade", label: string, l: Limits): string {
-  const field = (name: keyof Limits, text: string, step = "1", hint = "") => `
-    <div class="field">
-      <label class="lbl" for="${mode}_${name}">${text}</label>
-      <input id="${mode}_${name}" name="${mode}_${name}" type="number" min="0" step="${step}"
-             value="${l[name]}" />
-      ${hint ? `<p class="help">${hint}</p>` : ""}
-    </div>`;
-  return `<fieldset class="field-group" id="limits-${mode}">
-    <legend class="lbl">${label}</legend>
-    ${field("min_profit_pct", "Minimum profit %", "0.5", "A take-profit below this is rejected.")}
-    ${field("max_profit_pct", "Maximum profit %", "0.5", "A target above this is rejected — no fantasy numbers.")}
-    ${field("min_trade_amount", "Minimum per trade", "1", "Below this a fill is not worth its fees.")}
-    ${field("max_trade_amount", "Maximum per trade", "1", "Largest single fill, in the currency.")}
-    ${field("max_instrument_pct", "Maximum per instrument %", "1", "Total exposure to one symbol, as a share of this pot.")}
-  </fieldset>`;
+/**
+ * Edit drafts survive a tab switch, so leaving a tab never silently discards typing. A tab is
+ * cleared by stamping it or by reverting it.
+ */
+const drafts = new Map<Tab, Record<string, string>>();
+
+export function setDraft(tab: Tab, name: string, value: string): void {
+  drafts.set(tab, { ...(drafts.get(tab) ?? {}), [name]: value });
 }
 
-export function renderSettings(s: Settings): string {
+export function clearDraft(tab: Tab): void {
+  drafts.delete(tab);
+}
+
+export const draftOf = (tab: Tab, name: string): string | undefined => drafts.get(tab)?.[name];
+
+export const tabHasDraft = (tab: Tab): boolean => {
+  const d = drafts.get(tab);
+  return !!d && Object.keys(d).length > 0;
+};
+
+/** A field, with its value taken from the draft when one exists. */
+function field(
+  tab: Tab,
+  name: string,
+  label: string,
+  value: string | number,
+  opts: { type?: string; step?: string; help?: string; placeholder?: string; unit?: string } = {},
+): string {
+  const raw = draftOf(tab, name) ?? String(value ?? "");
+  const type = opts.type ?? "text";
+  return `<div class="field">
+    <label class="lbl" for="${name}">${label}</label>
+    <div class="field-line">
+      <input id="${name}" name="${name}" type="${type}"
+             ${opts.step ? `step="${opts.step}"` : ""}
+             ${opts.placeholder ? `placeholder="${escapeHtml(opts.placeholder)}"` : ""}
+             value="${escapeHtml(raw)}" autocomplete="off" />
+      ${opts.unit ? `<span class="unit">${opts.unit}</span>` : ""}
+    </div>
+    ${opts.help ? `<p class="help">${opts.help}</p>` : ""}
+  </div>`;
+}
+
+function select(tab: Tab, name: string, label: string, value: string, options: [string, string][], help = "") {
+  const current = draftOf(tab, name) ?? value;
+  return `<div class="field">
+    <label class="lbl" for="${name}">${label}</label>
+    <select id="${name}" name="${name}">
+      ${options
+        .map(([v, text]) => `<option value="${v}" ${v === current ? "selected" : ""}>${text}</option>`)
+        .join("")}
+    </select>
+    ${help ? `<p class="help">${help}</p>` : ""}
+  </div>`;
+}
+
+const MONEY = (s: Settings, tab: Tab): string => {
   const below = shouldDisableSave(s.budget, s.committed);
-  const currencies = ["INR", "USD", "EUR", "GBP"];
-  return `<div class="shell">
+  return `
+    ${field(tab, "budget", "Long-term pot", Math.round(s.budget), {
+      type: "number",
+      step: "1",
+      unit: s.currency,
+      help: `Committed is ${money(s.committed, 0)} ${s.currency}. The budget cannot go below it.`,
+    })}
+    ${field(tab, "trading_budget", "Trading pot", Math.round(s.trading_budget), {
+      type: "number",
+      step: "1",
+      unit: s.currency,
+      help: `Separate capital for the trading mode. ${money(s.trading_available, 0)} free. It never draws on the long-term budget, and the long-term budget never draws on it.`,
+    })}
+    ${select(tab, "currency", "Currency", s.currency, ["INR", "USD", "EUR", "GBP"].map((c) => [c, c]),
+      s.currency_locked
+        ? "Currency is fixed once the ledger has entries."
+        : "Locked permanently after the first recorded transaction.")}
+    ${below ? `<p class="guard">Committed is ${money(s.committed, 0)} — the budget cannot go below it.</p>` : ""}
+  `;
+};
+
+const LIMIT_ROWS: [keyof Settings["limits_long"], string, string, string][] = [
+  ["min_profit_pct", "Minimum profit", "0.5", "%"],
+  ["max_profit_pct", "Maximum profit", "0.5", "%"],
+  ["min_trade_amount", "Smallest trade", "1", ""],
+  ["max_trade_amount", "Largest trade", "1", ""],
+  ["max_instrument_pct", "One stock may be", "1", "%"],
+];
+
+const RISK = (s: Settings, tab: Tab): string => `
+  <table class="limits-table">
+    <thead><tr><th scope="col">Limit</th>
+      <th scope="col">Long-term limits</th><th scope="col">Trading limits</th></tr></thead>
+    <tbody>
+      ${LIMIT_ROWS.map(([key, label, step, unit]) => {
+        const cell = (mode: "long" | "trade") => {
+          const name = `${mode}_${key}`;
+          const value = draftOf(tab, name) ?? String(s[`limits_${mode}`][key]);
+          return `<td><input id="${name}" name="${name}" type="number" min="0" step="${step}"
+                      value="${escapeHtml(value)}" aria-label="${label}, ${mode === "long" ? "long-term" : "trading"}" /></td>`;
+        };
+        return `<tr><th scope="row">${label} ${unit}</th>${cell("long")}${cell("trade")}</tr>`;
+      }).join("")}
+    </tbody>
+  </table>
+  <p class="help">
+    A take-profit below this is rejected, and so is a target above the maximum: no fantasy numbers.
+    Percentages are of that pot, so the caps keep their meaning when the budget changes;
+    a stock's own profit expectation must fall inside the band, and the band's maximum always wins.
+    Amounts are in ${s.currency}.
+  </p>
+  <p class="help">
+    A smallest trade below this is not worth its fees; a largest trade caps one fill. One stock may
+    be at most its share of the pot.
+  </p>
+`;
+
+const MODEL = (s: Settings, tab: Tab): string => `
+  ${select(tab, "llm_provider", "Provider", s.llm_provider, [
+    ["deepseek", "DeepSeek"],
+    ["openai", "OpenAI"],
+    ["gemini", "Google Gemini"],
+    ["custom", "OpenAI-compatible (OpenRouter, Groq, Ollama…)"],
+  ])}
+  ${field(tab, "llm_model", "Model", s.llm_model, {
+    placeholder: "default for the provider",
+    help: "Leave blank to use the provider's default.",
+  })}
+  ${field(tab, "llm_base_url", "Base URL", s.llm_base_url, {
+    placeholder: "default for the provider",
+    help: "Change it for a proxy or a local Ollama: <code>http://localhost:11434/v1</code>.",
+  })}
+  ${field(tab, "llm_key", "API key", "", {
+    type: "password",
+    placeholder: s.llm_key_configured ? "•••••••• configured — leave blank to keep" : "key for the selected provider",
+    help: s.llm_key_configured
+      ? "Configured. The key is never shown again, here or over the API."
+      : "Without a key the rules run alone and no model call is made.",
+  })}
+`;
+
+const NOTIFICATIONS = (s: Settings, tab: Tab): string => `
+  ${field(tab, "ntfy_topic", "Topic", s.ntfy_topic, {
+    placeholder: "stock-predicter-7f3k9m2q",
+    help: "Subscribe to this topic in the ntfy app. Anyone who knows the name can read it.",
+  })}
+  ${field(tab, "ntfy_url", "Server", s.ntfy_url, {
+    placeholder: "https://ntfy.sh",
+    help: "Use your own ntfy instance here if you self-host one.",
+  })}
+  ${field(tab, "ntfy_token", "Access token", "", {
+    type: "password",
+    placeholder: s.ntfy_token_configured ? "•••••••• configured — leave blank to keep" : "tk_… (only for a protected topic)",
+    help: s.ntfy_token_configured
+      ? "Configured. The token is never shown again, here or over the API."
+      : "Optional. Needed only when the topic requires authentication.",
+  })}
+  <div class="row">
+    <button class="btn" type="button" id="test-notify">Send a test notification</button>
+    <span class="help" id="notify-status" role="status"></span>
+  </div>
+`;
+
+const CADENCE = (s: Settings, tab: Tab): string => `
+  ${field(tab, "poll_secs", "Poll while the market is open", s.runtime.poll_secs, {
+    type: "number", step: "60", unit: "seconds",
+    help: "09:00–16:00 IST, Monday to Friday. 900 is every 15 minutes.",
+  })}
+  ${field(tab, "off_hours_secs", "Poll when the market is closed", s.runtime.off_hours_secs, {
+    type: "number", step: "60", unit: "seconds",
+    help: "Only to catch evening headlines. 7200 is every two hours.",
+  })}
+  ${field(tab, "prompt_window_hours", "Tape in each prompt", s.runtime.prompt_window_hours, {
+    type: "number", step: "1", unit: "hours",
+    help: "Hours of 15-minute bars the model sees. The biggest lever on token cost.",
+  })}
+  ${field(tab, "daily_cap", "Model calls per day, at most", s.runtime.daily_cap, {
+    type: "number", step: "1", unit: "calls",
+    help: "Past it, the rules run alone for the rest of the day.",
+  })}
+  ${field(tab, "min_price_move", "Call only if the price moved", s.runtime.min_price_move, {
+    type: "number", step: "0.5", unit: s.currency,
+    help: "Since the last call. A new headline always earns a call regardless.",
+  })}
+  ${field(tab, "max_silence_secs", "…or after silence of", s.runtime.max_silence_secs, {
+    type: "number", step: "60", unit: "seconds",
+    help: "Never stay quiet longer than this, whatever the price did.",
+  })}
+`;
+
+const NETWORK = (s: Settings, tab: Tab): string => `
+  ${field(tab, "proxy", "Proxy", "", {
+    placeholder: s.runtime.proxy_configured ? `set — ${escapeHtml(s.runtime.proxy_host)} (blank keeps it)` : "http://10.0.0.2:3128",
+    help: `All outbound calls. Leave blank for a direct connection. Credentials go in the URL:
+           <code>http://user:password@proxy:3128</code> — they are sent as a proxy authorization
+           header and are never shown again. The environment's <code>HTTP_PROXY</code> is never used.`,
+  })}
+  ${field(tab, "proxy_bypass", "Bypass the proxy for", s.runtime.proxy_bypass ?? "", {
+    placeholder: "localhost, 127.0.0.1",
+    help: "Comma-separated hosts that connect directly.",
+  })}
+  <div class="row">
+    <button class="btn" type="button" id="test-proxy">Test the proxy</button>
+    <span class="help" id="proxy-status" role="status"></span>
+  </div>
+`;
+
+const PANES: Record<Tab, (s: Settings, t: Tab) => string> = {
+  money: MONEY,
+  risk: RISK,
+  model: MODEL,
+  notifications: NOTIFICATIONS,
+  cadence: CADENCE,
+  network: NETWORK,
+};
+
+function pane(s: Settings, tab: Tab): string {
+  const spec = TABS.find((t) => t.id === tab)!;
+  const dirty = tabHasDraft(tab);
+  return `<main class="settings-pane" role="tabpanel" id="panel-${tab}" aria-labelledby="tab-${tab}" tabindex="0">
+    <div class="pane-head">
+      <h2>${spec.title}</h2>
+      <span class="pill ${dirty ? "todo" : "ok"}">${dirty ? "unsaved" : "saved"}</span>
+    </div>
+    <p class="lede">${spec.lede}</p>
+    <form id="tab-form" data-tab="${tab}" autocomplete="off">
+      ${PANES[tab](s, tab)}
+      <div class="pane-foot">
+        <span class="note" id="tab-status" role="status"></span>
+        <div class="row">
+          <button class="btn ghost" type="button" id="revert">Revert</button>
+          <button class="btn" type="submit">Stamp</button>
+        </div>
+      </div>
+    </form>
+  </main>`;
+}
+
+export function renderSettings(s: Settings, tab: Tab = "money"): string {
+  return `<div class="shell settings-shell">
   <header class="strip detail-head">
     <div class="who">
       <a class="back" href="/">← Ledger</a>
       <h1>Settings</h1>
-      <span class="lbl">Budget, currency and the model key</span>
+      <span class="lbl">Every value is a database row</span>
     </div>
-    <div><span class="lbl">Available</span><b class="num total">${money(s.available, 0)}</b></div>
-    <div><span class="lbl">Committed</span><b class="num">${money(s.committed, 0)}</b></div>
-    <div><span class="lbl">Budget</span><b class="num">${money(s.budget, 0)}</b></div>
+    <div><span class="lbl">Long-term</span><b class="num">${money(s.budget, 0)}</b></div>
+    <div><span class="lbl">Trading</span><b class="num">${money(s.trading_budget, 0)}</b></div>
+    <div><span class="lbl">Free</span><b class="num total">${money(s.available, 0)}</b></div>
   </header>
-  <div class="body">
-    <section class="main">
-      <form id="settings-form" class="trade-form">
-        <div class="field">
-          <label class="lbl" for="budget">Budget</label>
-          <input id="budget" name="budget" type="number" min="0" step="1"
-                 value="${Math.round(s.budget)}" data-committed="${s.committed}" />
-          <p class="help">Committed is ${money(s.committed, 0)} ${s.currency}. The budget cannot go below it.</p>
-          ${below ? `<p class="guard">Committed is ${money(s.committed, 0)} — the budget cannot go below it.</p>` : ""}
-        </div>
-        <div class="field">
-          <label class="lbl" for="trading_budget">Trading pot</label>
-          <input id="trading_budget" name="trading_budget" type="number" min="0" step="1"
-                 value="${Math.round(s.trading_budget)}" />
-          <p class="help">
-            Separate capital for the trading mode. ${money(s.trading_available, 0)} ${s.currency} free.
-            It never draws on the long-term budget, and the long-term budget never draws on it.
-          </p>
-        </div>
-        <div class="field">
-          <label class="lbl" for="currency">Currency</label>
-          <select id="currency" name="currency" ${s.currency_locked ? "disabled" : ""}>
-            ${currencies.map((c) => `<option value="${c}" ${c === s.currency ? "selected" : ""}>${c}</option>`).join("")}
-          </select>
-          <p class="help">${
-            s.currency_locked
-              ? "Currency is fixed once the ledger has entries."
-              : "Locked permanently after the first recorded transaction."
-          }</p>
-        </div>
-        <div class="limits-pair">
-          ${limitFields("long", "Long-term limits", s.limits_long)}
-          ${limitFields("trade", "Trading limits", s.limits_trade)}
-        </div>
-
-        <fieldset class="field-group" id="model">
-          <legend class="lbl">Model provider</legend>
-          <div class="field">
-            <label class="lbl" for="llm_provider">Provider</label>
-            <select id="llm_provider" name="llm_provider">
-              ${[
-                ["deepseek", "DeepSeek"],
-                ["openai", "OpenAI"],
-                ["gemini", "Google Gemini"],
-                ["custom", "OpenAI-compatible (OpenRouter, Groq, Ollama…)"],
-              ]
-                .map(
-                  ([v, label]) =>
-                    `<option value="${v}" ${v === s.llm_provider ? "selected" : ""}>${label}</option>`,
-                )
-                .join("")}
-            </select>
-          </div>
-          <div class="field">
-            <label class="lbl" for="llm_model">Model</label>
-            <input id="llm_model" name="llm_model" value="${escapeHtml(s.llm_model)}"
-                   placeholder="default for the provider" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label class="lbl" for="llm_base_url">Base URL</label>
-            <input id="llm_base_url" name="llm_base_url" value="${escapeHtml(s.llm_base_url)}"
-                   placeholder="default for the provider" autocomplete="off" />
-            <p class="help">Change it for a proxy or a local Ollama: <code>http://localhost:11434/v1</code>.</p>
-          </div>
-          <div class="field">
-            <label class="lbl" for="llm_key">API key</label>
-            <input id="llm_key" name="llm_key" type="password" autocomplete="off"
-                   placeholder="${s.llm_key_configured ? "•••••••• configured — leave blank to keep" : "key for the selected provider"}" />
-            <p class="help">${
-              s.llm_key_configured
-                ? "Configured. The key is never shown again, here or over the API."
-                : "Without a key the rules run alone and no model call is made."
-            }</p>
-          </div>
-        </fieldset>
-        <fieldset class="field-group" id="ntfy">
-          <legend class="lbl">Phone notifications (ntfy)</legend>
-          <div class="field">
-            <label class="lbl" for="ntfy_topic">Topic</label>
-            <input id="ntfy_topic" name="ntfy_topic" value="${escapeHtml(s.ntfy_topic)}"
-                   placeholder="stock-predicter-7f3k9m2q" autocomplete="off" />
-            <p class="help">
-              Subscribe to this topic in the ntfy app. Anyone who knows the name can read it —
-              make it long and random.
-            </p>
-          </div>
-          <div class="field">
-            <label class="lbl" for="ntfy_url">Server</label>
-            <input id="ntfy_url" name="ntfy_url" value="${escapeHtml(s.ntfy_url)}"
-                   placeholder="https://ntfy.sh" autocomplete="off" />
-            <p class="help">Use your own ntfy instance here if you self-host one.</p>
-          </div>
-          <div class="field">
-            <label class="lbl" for="ntfy_token">Access token</label>
-            <input id="ntfy_token" name="ntfy_token" type="password" autocomplete="off"
-                   placeholder="${s.ntfy_token_configured ? "•••••••• configured — leave blank to keep" : "tk_… (only for a protected topic)"}" />
-            <p class="help">${
-              s.ntfy_token_configured
-                ? "Configured. The token is never shown again, here or over the API."
-                : "Optional. Needed only when the topic requires authentication."
-            }</p>
-          </div>
-          <div class="field">
-            <label class="lbl" for="public_url">Link from the notification</label>
-            <input id="public_url" name="public_url" value="${escapeHtml(s.public_url)}"
-                   placeholder="http://192.168.1.10:8080" autocomplete="off" />
-            <p class="help">Tapping the push opens this host. Leave blank for no link.</p>
-          </div>
-          <div class="row">
-            <button class="btn" type="button" id="test-notify">Send a test notification</button>
-            <span class="help" id="notify-status" role="status"></span>
-          </div>
-        </fieldset>
-
-        <div class="row">
-          <button class="btn" type="submit" ${below ? "disabled" : ""}>Save</button>
-        </div>
-      </form>
-    </section>
-    <aside class="side">
-      <div class="lbl">What this controls</div>
-      <div class="pair"><span>Hard ceiling</span><span class="num">${money(s.budget, 0)}</span></div>
-      <div class="pair"><span>Spent and reserved</span><span class="num">${money(s.committed, 0)}</span></div>
-      <div class="pair"><span>Free to deploy</span><span class="num">${money(s.available, 0)}</span></div>
-      <p class="cites" style="margin-top:12px">
-        A budget change is recorded as a ledger entry, so the history of the ceiling stays auditable.
-      </p>
-    </aside>
-  </div>
+  ${tabRail(tab, s)}
+  ${pane(s, tab)}
 </div>`;
 }

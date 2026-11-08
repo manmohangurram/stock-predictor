@@ -42,8 +42,12 @@ files directly when you need exact wording.
 - Design system: `.interface-design/system.md` (binding for all front-end work).
 - No test may hit the network. Fixtures only.
 - `api_calls` and `cash_ledger` are append-only. Nothing updates or deletes those rows.
-- The budget ceiling lives in the `settings` table and is edited from the UI; `BUDGET` /
-  `CURRENCY` env values seed it on first boot and are then ignored.
+- The environment is three variables only: `BIND`, `DB_PATH`, `PUBLIC_URL`. Everything else —
+  budget, limits, provider and keys, ntfy, polling cadence, the proxy — is a `settings` row,
+  edited on the Settings page and applied without a restart.
+- The settings page is six routed tabs (`/settings/:tab`), each stamped on its own.
+- The proxy is chosen only by the database: `src/http.rs` is the one client builder and calls
+  `.no_proxy()` first, so `HTTP_PROXY` can never win.
 
 ## Quality gates
 

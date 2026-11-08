@@ -126,55 +126,58 @@ outside market hours; `--ask SYMBOL` asks the model about one instrument and wri
 
 ## Configuration
 
-**Everything the UI can edit lives in the database, not the environment.** Budget, currency, the
-two pots and their risk limits, the model provider with its key, and the ntfy channel are all
-settings rows — there is one source of truth for each, so a stale `.env` cannot silently override
-what you configured on the Settings page. The variables below are deployment and tuning knobs
-only; all are optional, and all have defaults.
-
-### Deployment
+**Three environment variables. Everything else is a settings row, edited in the UI.**
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `BIND` | `127.0.0.1:8080` | Listen address. Use `0.0.0.0:8080` inside a container (the image already sets it). |
+| `BIND` | `127.0.0.1:8080` | Listen address (`0.0.0.0:8080` in a container; the image already sets it). |
 | `DB_PATH` | `data/stock-predicter.db` | SQLite file. The parent directory is created on boot. |
-| `RUST_LOG` | `info` | Log filter, e.g. `info,stock_predicter=debug`. |
+| `PUBLIC_URL` | *(empty)* | The address the app is reachable at, used only for the deep link on a notification. |
 
-### Polling
+`RUST_LOG` is the usual tracing filter and is not part of the product surface.
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `POLL_SECS` | `900` | Tick cadence while the market is open (09:00–16:00 IST, Mon–Fri). |
-| `OFF_HOURS_SECS` | `7200` | Tick cadence outside those hours — enough to pick up evening headlines. |
+There is **no `.env` loading** — nothing reads a file, so a `.env` sitting in the working directory
+is ignored. Set variables in the process environment or the Compose `environment:` block.
 
-### Model calls
+### Where did the rest go?
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `LLM_MIN_PRICE_MOVE` | `2.0` | Skip a call unless the price moved this much since the last one. |
-| `LLM_MAX_SILENCE_SECS` | `3600` | ...but never stay quiet longer than this, whatever the price did. |
-| `LLM_DAILY_CAP` | `200` | Hard ceiling on model calls per day; past it the rules run alone. |
-| `PROMPT_WINDOW_HOURS` | `4` | Hours of 15-minute tape per prompt — the biggest single token lever. |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Only used when the provider is DeepSeek and no base URL is set in Settings. |
+Every knob that used to be an environment variable is now a tab on the Settings page, applied
+without a restart — the scheduler reads them at the top of every tick:
 
-A headline change overrides the price gate: new news always earns a call.
+| Tab | What it holds |
+|---|---|
+| **Money** | the long-term pot, the trading pot, the currency |
+| **Risk limits** | both pots side by side: min and max profit %, smallest and largest trade, one-stock cap |
+| **Model** | provider, model, base URL, API key |
+| **Notifications** | ntfy server, topic, token, and a test button |
+| **Cadence** | `POLL_SECS`, `OFF_HOURS_SECS`, `PROMPT_WINDOW_HOURS`, `LLM_DAILY_CAP`, `LLM_MIN_PRICE_MOVE`, `LLM_MAX_SILENCE_SECS` |
+| **Network** | the proxy URL and a bypass list, with a test button |
 
-### Setting them
+| Retired variable | Now |
+|---|---|
+| `POLL_SECS`, `OFF_HOURS_SECS` | Cadence tab (default 900 s / 7200 s) |
+| `LLM_MIN_PRICE_MOVE`, `LLM_MAX_SILENCE_SECS` | Cadence tab (default 2.0 / 3600 s) |
+| `LLM_DAILY_CAP` | Cadence tab (default 200 calls) |
+| `PROMPT_WINDOW_HOURS` | Cadence tab (default 4 hours of tape) |
+| `DEEPSEEK_BASE_URL` | gone — the Model tab's Base URL, or the provider's default |
 
-```bash
-# plain environment
-BIND=0.0.0.0:8080 DB_PATH=/srv/stock-predicter/app.db POLL_SECS=600 ./stock-predicter
+If one of those is still set, the app logs a warning at boot and ignores it. That is deliberate: a
+silently ignored `POLL_SECS=600` costs an evening of wondering why nothing changed.
 
-# docker run
-docker run -d -p 8080:8080 -v "$PWD/data:/data" -e RUST_LOG=info -e POLL_SECS=600 \
-  ghcr.io/manmohangurram/stock-predictor:latest
+### The proxy
 
-# docker compose (docker-compose.yml, environment: block)
-docker compose up -d
+One proxy for all outbound traffic — market data, the model API and ntfy. It lives in the database,
+so **the environment is never consulted**: the client is built with `no_proxy()` first, which is what
+stops `HTTP_PROXY` from quietly outranking what the page says.
+
+Credentials go in the URL and are sent as a proxy authorization header:
+
+```
+http://user:password@proxy.example.in:3128
 ```
 
-There is no `.env` file loading: nothing reads one, so a `.env` sitting in the working directory is
-ignored. Set variables in the process environment (or the Compose `environment:` block).
+The URL is never returned by the API — you get `proxy_configured` and the host:port. **Test the
+proxy** on the Network tab before trusting it; a wrong proxy otherwise shows up as silence.
 
 ## Phone notifications
 

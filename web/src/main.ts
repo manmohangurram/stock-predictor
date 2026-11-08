@@ -1,9 +1,17 @@
-import { api, dashboardCached, type Hit } from "./api";
+import { api, dashboardCached, type Hit, type Settings } from "./api";
 import { renderCalls } from "./pages/calls";
 import { qtyLimit, renderInstrument } from "./pages/instrument";
 import { renderLedger } from "./pages/ledger";
 import { renderPositions } from "./pages/positions";
-import { renderSettings, shouldDisableSave } from "./pages/settings";
+import {
+  clearDraft,
+  isTab,
+  renderSettings,
+  setDraft,
+  shouldDisableSave,
+  TABS,
+  type Tab,
+} from "./pages/settings";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let dashboardEtag: string | null = null;
@@ -20,15 +28,16 @@ function failure(e: unknown): string {
 async function route(): Promise<void> {
   const path = window.location.pathname;
   try {
-    if (path === "/settings") {
+    if (path === "/settings" || path.startsWith("/settings/")) {
+      const wanted = path.startsWith("/settings/")
+        ? decodeURIComponent(path.slice("/settings/".length))
+        : "money";
+      const tab: Tab = isTab(wanted) ? wanted : "money";
+      if (tab !== wanted) history.replaceState(null, "", `/settings/${tab}`);
       const s = await api.settings();
-      app.innerHTML = renderSettings(s);
-      wireSettings();
+      app.innerHTML = renderSettings(s, tab);
+      wireSettings(tab, s);
       await route2();
-      // Deep link into a section: the element only exists after this render.
-      if (location.hash) {
-        document.querySelector(location.hash)?.scrollIntoView({ block: "start" });
-      }
     } else if (path === "/positions") {
       app.innerHTML = renderPositions(await api.dashboard());
       wireRows();
@@ -215,60 +224,134 @@ function wireTargetProfit(symbol: string): void {
   });
 }
 
-function wireSettings(): void {
-  const form = document.querySelector<HTMLFormElement>("#settings-form");
+function wireSettings(tab: Tab, s: Settings): void {
+  const form = document.querySelector<HTMLFormElement>("#tab-form");
+  const status = document.querySelector<HTMLElement>("#tab-status");
+
+  // Drafts live in the settings module, so switching tabs keeps what was typed.
+  form?.addEventListener("input", (ev) => {
+    const el = ev.target as HTMLInputElement | HTMLSelectElement;
+    if (!el.name) return;
+    setDraft(tab, el.name, el.value);
+    document.querySelector<HTMLElement>(".pane-head .pill")?.replaceChildren("unsaved");
+    document.querySelector<HTMLElement>(".pane-head .pill")?.setAttribute("class", "pill todo");
+  });
+
   form?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const data = new FormData(form);
-    const budget = Number(data.get("budget"));
-    const currency = String(data.get("currency"));
-    const llmKey = String(data.get("llm_key") ?? "").trim();
-    const trading = Number(data.get("trading_budget"));
-    const ntfyToken = String(data.get("ntfy_token") ?? "").trim();
-    const patch = {
-      budget,
-      currency,
-      trading_budget: trading,
-      ntfy_url: String(data.get("ntfy_url") ?? "").trim(),
-      ntfy_topic: String(data.get("ntfy_topic") ?? "").trim(),
-      public_url: String(data.get("public_url") ?? "").trim(),
-      llm_provider: String(data.get("llm_provider") ?? "deepseek"),
-      llm_model: String(data.get("llm_model") ?? "").trim(),
-      llm_base_url: String(data.get("llm_base_url") ?? "").trim(),
-      limits_long: readLimits(data, "long"),
-      limits_trade: readLimits(data, "trade"),
-      ...(ntfyToken ? { ntfy_token: ntfyToken } : {}),
-      ...(llmKey ? { llm_key: llmKey } : {}),
-    };
+    const text = (name: string) => String(data.get(name) ?? "").trim();
+    const num = (name: string) => Number(data.get(name));
+    let patch: Parameters<typeof api.putSettings>[0];
+
+    switch (tab) {
+      case "money": {
+        const budget = num("budget");
+        if (shouldDisableSave(budget, s.committed)) {
+          if (status) status.textContent = `Committed is ${s.committed} — the budget cannot go below it.`;
+          return;
+        }
+        patch = { budget, trading_budget: num("trading_budget"), currency: text("currency") };
+        break;
+      }
+      case "risk":
+        patch = { limits_long: readLimits(data, "long"), limits_trade: readLimits(data, "trade") };
+        break;
+      case "model": {
+        const key = text("llm_key");
+        patch = {
+          llm_provider: text("llm_provider"),
+          llm_model: text("llm_model"),
+          llm_base_url: text("llm_base_url"),
+          ...(key ? { llm_key: key } : {}),
+        };
+        break;
+      }
+      case "notifications": {
+        const token = text("ntfy_token");
+        patch = {
+          ntfy_topic: text("ntfy_topic"),
+          ntfy_url: text("ntfy_url"),
+          ...(token ? { ntfy_token: token } : {}),
+        };
+        break;
+      }
+      case "cadence":
+        patch = {
+          poll_secs: num("poll_secs"),
+          off_hours_secs: num("off_hours_secs"),
+          prompt_window_hours: num("prompt_window_hours"),
+          daily_cap: num("daily_cap"),
+          min_price_move: num("min_price_move"),
+          max_silence_secs: num("max_silence_secs"),
+        };
+        break;
+      case "network":
+        patch = { proxy: text("proxy"), proxy_bypass: text("proxy_bypass") };
+        break;
+    }
+
+    if (status) status.textContent = "Stamping…";
     const res = await api.putSettings(patch);
     if (!res.ok) {
-      window.alert(
-        res.body.error === "below_committed"
-          ? `Committed is ${res.body.committed} — the budget cannot go below it.`
-          : String(res.body.error),
-      );
+      // The error belongs on this tab, next to the field that caused it — not a toast.
+      if (status) status.textContent = String(res.body.error ?? "rejected");
+      if (tab === "money" && res.body.error === "below_committed") {
+        if (status) status.textContent = `Committed is ${res.body.committed} — the budget cannot go below it.`;
+      }
       return;
     }
+    clearDraft(tab);
     await route();
   });
+
+  document.querySelector<HTMLButtonElement>("#revert")?.addEventListener("click", async () => {
+    clearDraft(tab);
+    await route();
+  });
+
   document.querySelector<HTMLButtonElement>("#test-notify")?.addEventListener("click", async (ev) => {
     const button = ev.currentTarget as HTMLButtonElement;
-    const status = document.querySelector<HTMLElement>("#notify-status");
+    const el = document.querySelector<HTMLElement>("#notify-status");
     button.disabled = true;
-    if (status) status.textContent = "Sending…";
+    if (el) el.textContent = "Sending…";
     const res = await api.testNotify();
     button.disabled = false;
-    if (status) {
-      status.textContent = res.ok
+    if (el) {
+      el.textContent = res.ok
         ? "Sent. Check your phone."
         : `Failed: ${res.body.error ?? "unknown error"}`;
     }
   });
 
-  document.querySelector<HTMLInputElement>("#budget")?.addEventListener("input", (ev) => {
-    const el = ev.currentTarget as HTMLInputElement;
-    const save = document.querySelector<HTMLButtonElement>('#settings-form button[type="submit"]');
-    if (save) save.disabled = shouldDisableSave(Number(el.value), Number(el.dataset.committed ?? 0));
+  document.querySelector<HTMLButtonElement>("#test-proxy")?.addEventListener("click", async (ev) => {
+    const button = ev.currentTarget as HTMLButtonElement;
+    const el = document.querySelector<HTMLElement>("#proxy-status");
+    button.disabled = true;
+    if (el) el.textContent = "Sending one request through it…";
+    try {
+      const r = await api.testProxy();
+      if (el) {
+        el.textContent = r.ok
+          ? `Reached the provider · HTTP ${r.status} · ${r.millis} ms`
+          : `Failed after ${r.millis} ms — ${r.error}`;
+      }
+    } catch (e) {
+      if (el) el.textContent = String(e);
+    }
+    button.disabled = false;
+  });
+
+  // Arrow keys move between tabs, as a tablist should.
+  document.querySelectorAll<HTMLAnchorElement>('.settings-rail [role="tab"]').forEach((el, i, all) => {
+    el.addEventListener("keydown", (ev) => {
+      const step = ev.key === "ArrowRight" ? 1 : ev.key === "ArrowLeft" ? -1 : 0;
+      if (!step) return;
+      ev.preventDefault();
+      const next = all[(i + step + all.length) % all.length];
+      next.focus();
+      location.href = next.getAttribute("href")!;
+    });
   });
 }
 
