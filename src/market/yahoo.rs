@@ -8,7 +8,7 @@ use crate::models::{Bar, Headline};
 
 const CHART_URL: &str = "https://query1.finance.yahoo.com/v8/finance/chart";
 const SEARCH_URL: &str = "https://query1.finance.yahoo.com/v1/finance/search";
-const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) stock-predicter/0.1";
+const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) stock-predictor/0.1";
 
 /// All Yahoo access goes through this module. Endpoint drift touches one file; the client itself
 /// comes from `crate::http` so the proxy is decided in one place.

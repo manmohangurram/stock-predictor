@@ -40,9 +40,9 @@ RUN case ${TARGETARCH} in \
         arm64) CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
                CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
                cargo build --release --locked --target aarch64-unknown-linux-gnu && \
-               cp target/aarch64-unknown-linux-gnu/release/stock-predicter /app/stock-predicter;; \
+               cp target/aarch64-unknown-linux-gnu/release/stock-predictor /app/stock-predictor;; \
         *)     cargo build --release --locked && \
-               cp target/release/stock-predicter /app/stock-predicter;; \
+               cp target/release/stock-predictor /app/stock-predictor;; \
     esac
 
 # Must match the builder's glibc: rust:1.98 is Debian trixie (2.41). A bookworm runtime here
@@ -54,14 +54,14 @@ FROM debian:trixie-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=builder /app/stock-predicter /usr/local/bin/stock-predicter
+COPY --from=builder /app/stock-predictor /usr/local/bin/stock-predictor
 COPY --from=frontend /app/web/dist ./web/dist
 
 # The server has no authentication on purpose: it is meant for a home LAN.
 # Binding 0.0.0.0 is what makes it usable in a container, so publish the port
 # only on a trusted network and never port-forward it to the internet.
 ENV BIND=0.0.0.0:8080 \
-    DB_PATH=/data/stock-predicter.db
+    DB_PATH=/data/stock-predictor.db
 VOLUME ["/data"]
 EXPOSE 8080
-ENTRYPOINT ["stock-predicter"]
+ENTRYPOINT ["stock-predictor"]

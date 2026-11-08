@@ -7,16 +7,16 @@
 # page. Compose substitutes ${…} from a .env file next to this file (see .env.example); the
 # binary itself reads only the process environment and never opens a file.
 services:
-  stock-predicter:
+  stock-predictor:
     image: ghcr.io/manmohangurram/stock-predictor:${IMAGE_TAG:-latest}
-    container_name: stock-predicter
+    container_name: stock-predictor
     restart: unless-stopped
     ports:
       # LAN only on purpose: there is no authentication. Put it behind a reverse proxy, or publish
       # to 127.0.0.1, and never forward this port to the internet.
       - "${PORT:-8080}:8080"
     environment:
-      # BIND (0.0.0.0:8080) and DB_PATH (/data/stock-predicter.db) are set by the image.
+      # BIND (0.0.0.0:8080) and DB_PATH (/data/stock-predictor.db) are set by the image.
       PUBLIC_URL: ${PUBLIC_URL:-}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — openssl rand -hex 32}
       RUST_LOG: ${RUST_LOG:-info}

@@ -1,12 +1,12 @@
 use chrono::{DateTime, TimeZone, Utc};
 use serde_json::json;
-use stock_predicter::rules::runtime::Runtime;
-use stock_predicter::db;
-use stock_predicter::engine::{self, EngineDeps};
-use stock_predicter::llm::deepseek::{FixtureTransport, HttpReply};
-use stock_predicter::notify::FakeNotifier;
-use stock_predicter::rules::evaluate::RuleConfig;
-use stock_predicter::rules::settings;
+use stock_predictor::rules::runtime::Runtime;
+use stock_predictor::db;
+use stock_predictor::engine::{self, EngineDeps};
+use stock_predictor::llm::deepseek::{FixtureTransport, HttpReply};
+use stock_predictor::notify::FakeNotifier;
+use stock_predictor::rules::evaluate::RuleConfig;
+use stock_predictor::rules::settings;
 
 mod common;
 use common::{rising_bars as bars, FakeMarket};
@@ -57,7 +57,7 @@ async fn setup() -> (tempfile::TempDir, sqlx::SqlitePool) {
         settings::SettingsPatch {
             budget: Some(200_000.0),
             llm_key: Some("test-key".into()),
-            limits_long: Some(stock_predicter::rules::limits::Limits {
+            limits_long: Some(stock_predictor::rules::limits::Limits {
                 min_profit_pct: 0.0,
                 max_profit_pct: 1000.0,
                 min_trade_amount: 0.0,

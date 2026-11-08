@@ -1,6 +1,6 @@
-use stock_predicter::llm::prompts::{self, PromptContext};
-use stock_predicter::models::{AssetClass, Headline, Instrument};
-use stock_predicter::rules::indicators::Indicators;
+use stock_predictor::llm::prompts::{self, PromptContext};
+use stock_predictor::models::{AssetClass, Headline, Instrument};
+use stock_predictor::rules::indicators::Indicators;
 
 fn instrument() -> Instrument {
     Instrument {

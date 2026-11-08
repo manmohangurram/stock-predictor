@@ -1,5 +1,5 @@
-use stock_predicter::models::Bar;
-use stock_predicter::rules::indicators::{self, BAND_MULT};
+use stock_predictor::models::Bar;
+use stock_predictor::rules::indicators::{self, BAND_MULT};
 
 /// `n` bars cycling through `pattern`, so the mean of any full cycle is known exactly.
 fn series(pattern: &[f64], n: usize) -> Vec<Bar> {

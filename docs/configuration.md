@@ -8,7 +8,7 @@ and everything else is a settings row edited on the Settings page.
 | Variable | Default | Meaning |
 |---|---|---|
 | `BIND` | `127.0.0.1:8080` | Listen address (`0.0.0.0:8080` in a container; the image already sets it). |
-| `DB_PATH` | `data/stock-predicter.db` | SQLite file. The parent directory is created on boot. |
+| `DB_PATH` | `data/stock-predictor.db` | SQLite file. The parent directory is created on boot. |
 | `PUBLIC_URL` | *(empty)* | The address the app is reachable at, used only for the deep link on a notification. |
 | `SECRET_KEY` | *(generated file)* | 32 bytes — 64 hex characters or base64 — that encrypts the stored secrets. `openssl rand -hex 32`. |
 
@@ -65,7 +65,7 @@ The model API key, the ntfy token and the proxy password are stored encrypted wi
 XChaCha20-Poly1305, as `enc:v1:…`. The key comes from `SECRET_KEY`; without it, a `secret.key` file
 is created beside the database (mode 0600).
 
-What this buys: a copied `stock-predicter.db`, a backup, or `sqlite3` open in a terminal shows
+What this buys: a copied `stock-predictor.db`, a backup, or `sqlite3` open in a terminal shows
 ciphertext instead of your keys. What it does **not** buy: protection from anyone who has the data
 directory or `SECRET_KEY` — and it is still not authentication, because this server has none.
 Lose the key and the stored secrets are gone; they are re-entered on the Settings page.
@@ -80,7 +80,7 @@ same way — point the *Server* field at yours.
 
 | Field | What it is |
 |---|---|
-| **Topic** | The channel name. Make it long and random (`stock-predicter-7f3k9m2q`) — anyone who knows it can read your alerts. |
+| **Topic** | The channel name. Make it long and random (`stock-predictor-7f3k9m2q`) — anyone who knows it can read your alerts. |
 | **Server** | `https://ntfy.sh`, or your own instance. |
 | **Access token** | Optional, only for a protected topic (`tk_…`). Write-only: it is never returned by the API and an empty field keeps the stored one. |
 | **Link from the notification** | `http://192.168.1.10:8080` — tapping the push opens that instrument's page. Leave it blank for no link; a `127.0.0.1` link would be dead from a phone. |
@@ -89,7 +89,7 @@ Press **Send a test notification** and it arrives — that button uses the same 
 signal, so a success there means a signal will reach you. From a terminal, the equivalent is:
 
 ```bash
-./target/release/stock-predicter --test-notify
+./target/release/stock-predictor --test-notify
 ```
 
 The same values can be seeded from `NTFY_TOPIC`, `NTFY_TOKEN`, `NTFY_BASE_URL` and `PUBLIC_URL`

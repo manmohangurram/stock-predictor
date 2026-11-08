@@ -32,7 +32,11 @@ export function renderRail(active: Section, foot?: RailFoot, badges: Partial<Rec
       </div>`
     : "";
   return `<nav class="rail" aria-label="Sections">
-    <div class="rail-brand"><b>stock-predicter</b><span>${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span></div>
+    <div class="rail-brand">
+      <img src="/favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
+      <b>Stock Predictor</b>
+      <span>${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
+    </div>
     ${items}
     ${footHtml}
   </nav>`;

@@ -1181,7 +1181,7 @@ async fn test_notify(State(st): State<AppState>) -> Result<Json<serde_json::Valu
         ));
     };
     let n = crate::notify::Notification {
-        title: "stock-predicter · test".into(),
+        title: "stock-predictor · test".into(),
         body: "If this arrived on your phone, the channel works.".into(),
         priority: crate::notify::Priority::Default,
         dedupe_key: format!("test-{}", chrono::Utc::now().timestamp()),

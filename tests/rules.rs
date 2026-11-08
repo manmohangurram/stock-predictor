@@ -1,6 +1,6 @@
-use stock_predicter::models::{Action, AssetClass, Bar, Instrument, Position};
-use stock_predicter::rules::evaluate::{candidate, CandidateInput, RuleConfig};
-use stock_predicter::rules::indicators::Indicators;
+use stock_predictor::models::{Action, AssetClass, Bar, Instrument, Position};
+use stock_predictor::rules::evaluate::{candidate, CandidateInput, RuleConfig};
+use stock_predictor::rules::indicators::Indicators;
 
 fn instrument(class: AssetClass) -> Instrument {
     Instrument {
@@ -179,7 +179,7 @@ fn nan_price_produces_no_candidate() {
 
 #[test]
 fn diagnose_agrees_with_the_candidate() {
-    use stock_predicter::rules::evaluate::diagnose;
+    use stock_predictor::rules::evaluate::diagnose;
 
     let i = instrument(AssetClass::Stock);
     let bars = vec![bar(105.0)];

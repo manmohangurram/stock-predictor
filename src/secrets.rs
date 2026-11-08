@@ -1,7 +1,7 @@
 //! Secrets at rest: provider keys, the ntfy token and the proxy password.
 //!
 //! The key lives in `<db dir>/secret.key`, created on first boot with 0600. That is honest about
-//! what this buys: it defends against the database file escaping (a copied `stock-predicter.db`, a
+//! what this buys: it defends against the database file escaping (a copied `stock-predictor.db`, a
 //! backup, `sqlite3` open in a terminal), **not** against someone who has the whole data directory,
 //! and it is nothing like authentication. The server still has no login.
 //!
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn the_key_file_sits_beside_the_database() {
         assert_eq!(
-            key_path("data/stock-predicter.db"),
+            key_path("data/stock-predictor.db"),
             PathBuf::from("data/secret.key")
         );
         assert_eq!(key_path("/srv/app.db"), PathBuf::from("/srv/secret.key"));

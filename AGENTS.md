@@ -1,4 +1,4 @@
-# stock-predicter — agent notes
+# stock-predictor — agent notes
 
 ## Reading code: never open a whole file to inspect one function
 
@@ -10,22 +10,22 @@ One index, three queries, then one narrow read.
 **1. Index the repo** (once; persists and re-syncs):
 
 ```sh
-codebase-memory-mcp cli index_repository --repo-path /home/mohan/projects/stock-predicter
+codebase-memory-mcp cli index_repository --repo-path /home/mohan/projects/stock-predictor
 ```
 
 **2. Locate.** Never guess a path:
 
 ```sh
-codebase-memory-mcp cli search_graph --project stock-predicter --name-pattern '<symbol>'
-codebase-memory-mcp cli search_graph --project stock-predicter --query '<what it does>'
-codebase-memory-mcp cli search_code  --project stock-predicter --pattern '<exact string>'
+codebase-memory-mcp cli search_graph --project stock-predictor --name-pattern '<symbol>'
+codebase-memory-mcp cli search_graph --project stock-predictor --query '<what it does>'
+codebase-memory-mcp cli search_code  --project stock-predictor --pattern '<exact string>'
 ```
 
 **3. Resolve a symbol to its source range:**
 
 ```sh
-codebase-memory-mcp cli get_file_outline --project stock-predicter --file-path src/llm/orchestrate.rs
-codebase-memory-mcp cli get_code_snippet --project stock-predicter --name <qualified.name>
+codebase-memory-mcp cli get_file_outline --project stock-predictor --file-path src/llm/orchestrate.rs
+codebase-memory-mcp cli get_code_snippet --project stock-predictor --name <qualified.name>
 ```
 
 **4. Read only those ranges**, batched into one turn. Read a whole file only if it is under
@@ -37,8 +37,8 @@ files directly when you need exact wording.
 
 ## Project facts worth not rediscovering
 
-- Spec: `docs/superpowers/specs/2026-10-27-stock-predicter-design.md` (binding).
-- Plan: `docs/superpowers/plans/2026-10-27-stock-predicter.md` (binding, task by task).
+- Spec: `docs/superpowers/specs/2026-10-27-stock-predictor-design.md` (binding).
+- Plan: `docs/superpowers/plans/2026-10-27-stock-predictor.md` (binding, task by task).
 - Design system: `.interface-design/system.md` (binding for all front-end work).
 - No test may hit the network. Fixtures only.
 - `api_calls` and `cash_ledger` are append-only. Nothing updates or deletes those rows.

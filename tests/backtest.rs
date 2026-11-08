@@ -1,6 +1,6 @@
-use stock_predicter::backtest;
-use stock_predicter::models::Bar;
-use stock_predicter::rules::evaluate::RuleConfig;
+use stock_predictor::backtest;
+use stock_predictor::models::Bar;
+use stock_predictor::rules::evaluate::RuleConfig;
 
 fn bars() -> Vec<Bar> {
     (0..400)

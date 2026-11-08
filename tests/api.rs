@@ -2,10 +2,10 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
-use stock_predicter::api::{self, AppState};
-use stock_predicter::config::Config;
-use stock_predicter::db;
-use stock_predicter::rules::settings;
+use stock_predictor::api::{self, AppState};
+use stock_predictor::config::Config;
+use stock_predictor::db;
+use stock_predictor::rules::settings;
 
 fn cfg() -> Config {
     Config::from_map(
@@ -853,9 +853,9 @@ async fn every_secret_is_unreadable_in_the_database() {
         assert!(!dump.contains(secret), "{secret} is stored in the clear: {dump}");
     }
     // …and they still work when read back through the secret reader.
-    let key = stock_predicter::secrets::get_secret(&pool, "deepseek_key").await.unwrap();
+    let key = stock_predictor::secrets::get_secret(&pool, "deepseek_key").await.unwrap();
     assert_eq!(key.as_deref(), Some("sk-plaintext-hunter2"));
-    let pass = stock_predicter::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
+    let pass = stock_predictor::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
     assert_eq!(pass.as_deref(), Some("proxy-hunter2"));
 
     // The API says what is configured, never the values.
@@ -885,12 +885,12 @@ async fn a_proxy_password_survives_a_patch_that_leaves_it_blank() {
     )
     .await;
     assert_eq!(s, StatusCode::OK, "{v}");
-    let pass = stock_predicter::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
+    let pass = stock_predictor::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
     assert_eq!(pass.as_deref(), Some("s3cret"), "the password was wiped by a blank field");
 
     // Clearing the URL clears the credentials with it.
     send(&router, "PUT", "/api/settings", json!({"proxy": ""})).await;
-    let pass = stock_predicter::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
+    let pass = stock_predictor::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
     assert_eq!(pass, None);
 }
 

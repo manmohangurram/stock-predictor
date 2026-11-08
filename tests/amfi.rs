@@ -1,4 +1,4 @@
-use stock_predicter::market::amfi;
+use stock_predictor::market::amfi;
 
 /// Captured from the live file on 2026-10-27: eight columns, CRLF, NAV at index 6.
 const FIXTURE_NAVALL: &str = include_str!("fixtures/amfi_navall.txt");

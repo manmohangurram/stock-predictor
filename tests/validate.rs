@@ -1,9 +1,9 @@
 use chrono::{Duration, Utc};
-use stock_predicter::llm::parse::{Confidence, Proposal};
-use stock_predicter::llm::validate::{check, ValidateCtx, ValidationError};
-use stock_predicter::rules::limits::Limits;
-use stock_predicter::models::Action;
-use stock_predicter::rules::indicators::atr_bands;
+use stock_predictor::llm::parse::{Confidence, Proposal};
+use stock_predictor::llm::validate::{check, ValidateCtx, ValidationError};
+use stock_predictor::rules::limits::Limits;
+use stock_predictor::models::Action;
+use stock_predictor::rules::indicators::atr_bands;
 
 fn proposal(action: Action, entry: f64, stop: Option<f64>, target: Option<f64>) -> Proposal {
     Proposal {
@@ -106,11 +106,11 @@ fn decision_without_any_citation_is_rejected() {
 
 #[test]
 fn parsed_shapes_round_trip_and_truncated_json_is_an_error() {
-    use stock_predicter::llm::parse::verdict;
+    use stock_predictor::llm::parse::verdict;
     let ok = r#"{"action":"decide","signal":{"action":"BUY","entry":105.0,"stop":101.0,"target":111.0,"valid_until":"2030-01-01T00:00:00Z","confidence":"high","rationale":"r","cites":[1]}}"#;
     assert!(matches!(
         verdict(ok).unwrap(),
-        stock_predicter::llm::parse::LlmVerdict::Decide(_)
+        stock_predictor::llm::parse::LlmVerdict::Decide(_)
     ));
     assert!(verdict(r#"{"action":"decide","signal":{"action":"BU"#).is_err());
     assert!(
@@ -343,7 +343,7 @@ fn the_band_bounds_what_a_stock_may_ask_for() {
 
 #[test]
 fn a_mutual_fund_belongs_to_the_long_term_pot_only() {
-    use stock_predicter::models::{AssetClass, Mode};
+    use stock_predictor::models::{AssetClass, Mode};
     assert!(AssetClass::Stock.pot_allowed(Mode::Trade));
     assert!(AssetClass::MutualFund.pot_allowed(Mode::Long));
     assert!(!AssetClass::MutualFund.pot_allowed(Mode::Trade));

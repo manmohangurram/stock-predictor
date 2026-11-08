@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/icon.png" width="120" alt="stock-predicter: three rising candles under one trend line">
+  <img src="docs/icon.png" width="120" alt="Stock Predictor: three rising candles under one trend line">
 </p>
 
-<h1 align="center">stock-predicter</h1>
+<h1 align="center">Stock Predictor</h1>
 
 <p align="center">
   <a href="https://github.com/manmohangurram/stock-predictor/actions/workflows/ci.yml"><img src="https://github.com/manmohangurram/stock-predictor/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -12,7 +12,7 @@
   <a href="https://github.com/manmohangurram/stock-predictor/pkgs/container/stock-predictor"><img src="https://img.shields.io/badge/GHCR-linux%2Famd64%20%7C%20linux%2Farm64-blue" alt="Container image"></a>
 </p>
 
-**stock-predicter** is a self-hosted portfolio ledger for Indian markets. It watches what you hold,
+**Stock Predictor** is a self-hosted portfolio ledger for Indian markets. It watches what you hold,
 suggests buy and sell decisions with a full exit plan, and pushes **one notification** when
 something actually needs doing — a stop breached, a target reached, or a new entry worth the money.
 
@@ -82,9 +82,9 @@ Long version, including why the two pots are separate: [`docs/how-it-works.md`](
 
 ```yaml
 services:
-  stock-predicter:
+  stock-predictor:
     image: ghcr.io/manmohangurram/stock-predictor:latest
-    container_name: stock-predicter
+    container_name: stock-predictor
     restart: unless-stopped
     ports:
       - "${PORT:-8080}:8080"
@@ -117,7 +117,7 @@ Three environment variables, and nothing else:
 | Variable | Default | Meaning |
 |---|---|---|
 | `BIND` | `127.0.0.1:8080` | Listen address; the image sets `0.0.0.0:8080` |
-| `DB_PATH` | `data/stock-predicter.db` | The SQLite file; the image sets `/data/stock-predicter.db` |
+| `DB_PATH` | `data/stock-predictor.db` | The SQLite file; the image sets `/data/stock-predictor.db` |
 | `PUBLIC_URL` | *(empty)* | The address you reach it at, for the deep link on a notification |
 | `SECRET_KEY` | *(key file)* | 32 bytes that encrypt the stored secrets: `openssl rand -hex 32` |
 

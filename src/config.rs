@@ -66,7 +66,7 @@ impl Config {
         };
         Ok(Self {
             db_path: get("DB_PATH")
-                .unwrap_or("data/stock-predicter.db")
+                .unwrap_or("data/stock-predictor.db")
                 .to_string(),
             bind,
             public_url: get("PUBLIC_URL").unwrap_or_default().trim_end_matches('/').to_string(),

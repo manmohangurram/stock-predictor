@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use stock_predicter::config::Config;
-use stock_predicter::db;
+use stock_predictor::config::Config;
+use stock_predictor::db;
 
 fn map(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
     pairs
@@ -21,7 +21,7 @@ fn config_only_carries_deployment_facts() {
     ]))
     .unwrap();
     assert_eq!(cfg.bind, "127.0.0.1:8080");
-    assert_eq!(cfg.db_path, "data/stock-predicter.db");
+    assert_eq!(cfg.db_path, "data/stock-predictor.db");
     assert_eq!(cfg.public_url, "");
 }
 
@@ -75,7 +75,7 @@ fn retired_variables_are_reported_so_they_are_never_silently_ignored() {
     .unwrap();
     assert_eq!(cfg.bind, "127.0.0.1:8080");
     for name in ["POLL_SECS", "LLM_DAILY_CAP", "PROMPT_WINDOW_HOURS"] {
-        assert!(stock_predicter::config::RETIRED.contains(&name));
+        assert!(stock_predictor::config::RETIRED.contains(&name));
     }
 }
 

@@ -1,5 +1,5 @@
-use stock_predicter::db;
-use stock_predicter::llm::deepseek::{self, ChatRequest, FixtureTransport, HttpReply};
+use stock_predictor::db;
+use stock_predictor::llm::deepseek::{self, ChatRequest, FixtureTransport, HttpReply};
 
 const DECIDE: &str = include_str!("fixtures/deepseek_decide.json");
 const SEARCH: &str = include_str!("fixtures/deepseek_search.json");
@@ -13,9 +13,9 @@ async fn pool() -> (tempfile::TempDir, sqlx::SqlitePool) {
     (dir, pool)
 }
 
-fn model() -> stock_predicter::llm::provider::ModelConfig {
-    stock_predicter::llm::provider::ModelConfig {
-        provider: stock_predicter::llm::provider::Provider::Deepseek,
+fn model() -> stock_predictor::llm::provider::ModelConfig {
+    stock_predictor::llm::provider::ModelConfig {
+        provider: stock_predictor::llm::provider::Provider::Deepseek,
         model: "deepseek-chat".into(),
         base_url: "https://api.deepseek.com".into(),
         api_key: "k".into(),

@@ -1,6 +1,6 @@
-use stock_predicter::db;
-use stock_predicter::models::{Action, AssetClass, Candidate};
-use stock_predicter::notify::{self, FakeNotifier, Notification, Priority};
+use stock_predictor::db;
+use stock_predictor::models::{Action, AssetClass, Candidate};
+use stock_predictor::notify::{self, FakeNotifier, Notification, Priority};
 
 fn candidate(action: Action, urgent: bool) -> Candidate {
     Candidate {
@@ -102,7 +102,7 @@ fn a_sell_notification_still_names_the_trigger() {
 
 #[test]
 fn the_ntfy_request_carries_the_headers_the_service_expects() {
-    use stock_predicter::notify::{payload, Notification, Priority};
+    use stock_predictor::notify::{payload, Notification, Priority};
 
     let n = Notification {
         title: "SELL · INFY 17 units".into(),
@@ -131,7 +131,7 @@ fn the_ntfy_request_carries_the_headers_the_service_expects() {
 
 #[test]
 fn without_a_public_url_there_is_no_dead_deep_link() {
-    use stock_predicter::notify::{payload, Notification, Priority};
+    use stock_predictor::notify::{payload, Notification, Priority};
     let n = Notification {
         title: "BUY".into(),
         body: "x".into(),
@@ -154,7 +154,7 @@ fn without_a_public_url_there_is_no_dead_deep_link() {
 
 #[test]
 fn a_target_reached_is_notified_as_a_profit_not_a_stop() {
-    use stock_predicter::models::{Action, AssetClass, Candidate};
+    use stock_predictor::models::{Action, AssetClass, Candidate};
     let c = Candidate {
         instrument_id: 1,
         action: Action::Sell,
@@ -166,7 +166,7 @@ fn a_target_reached_is_notified_as_a_profit_not_a_stop() {
         timing_note: AssetClass::Stock.timing_note().into(),
         urgent: true,
     };
-    let n = stock_predicter::notify::Notification::from_candidate("INFY.NS", "INR", &c).unwrap();
+    let n = stock_predictor::notify::Notification::from_candidate("INFY.NS", "INR", &c).unwrap();
     assert!(n.body.contains("target 1318.00 reached"), "{}", n.body);
     assert!(!n.body.contains("stop"), "{}", n.body);
 }

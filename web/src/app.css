@@ -576,7 +576,11 @@
     display: flex; flex-direction: column; padding: var(--space-4) 0; position: sticky; top: 0;
     height: 100vh;
   }
-  .rail-brand { padding: 0 var(--space-4) var(--space-6); display: grid; gap: 1px; }
+  .rail-brand { padding: 0 var(--space-4) var(--space-6); display: grid;
+    grid-template-columns: 30px 1fr; column-gap: 11px; row-gap: 1px; align-items: start; }
+  .rail-brand img { grid-row: 1 / 3; width: 30px; height: 30px; border-radius: 7px; }
+  .rail-brand b, .rail-brand span { grid-column: 2; line-height: 1.25; }
+  .rail-brand b { padding-top: 2px; }
   .rail-brand b { font-size: var(--text-sm); letter-spacing: -.01em; }
   .rail-brand span { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
   .rail a, .rail a:hover, .rail a:focus { text-decoration: none; }

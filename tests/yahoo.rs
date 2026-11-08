@@ -1,7 +1,7 @@
 const FIXTURE_CHART: &str = include_str!("fixtures/yahoo_chart.json");
 const FIXTURE_NEWS: &str = include_str!("fixtures/yahoo_news.json");
 
-use stock_predicter::market::yahoo;
+use stock_predictor::market::yahoo;
 
 #[test]
 fn parses_chart_fixture_into_bars() {
@@ -76,28 +76,28 @@ fn search_keeps_both_the_exchange_listing_and_the_fund() {
       {"symbol":"INFY.NS","shortname":"Infosys","exchDisp":"NSE","quoteType":"EQUITY"},
       {"symbol":"0P0000N0B6.BO","longname":"HDFC Flexi Cap Dir Gr","exchDisp":"BSE","quoteType":"MUTUALFUND"}
     ]}"#;
-    let hits = stock_predicter::market::search::parse_yahoo(body).unwrap();
+    let hits = stock_predictor::market::search::parse_yahoo(body).unwrap();
     assert_eq!(hits.len(), 2);
     assert_eq!(hits[0].code, "INFY.NS");
     assert_eq!(hits[0].venue, "NSE");
     assert_eq!(hits[1].code, "0P0000N0B6.BO");
     assert_eq!(hits[1].name, "HDFC Flexi Cap Dir Gr");
-    assert_eq!(hits[1].class, stock_predicter::models::AssetClass::MutualFund);
+    assert_eq!(hits[1].class, stock_predictor::models::AssetClass::MutualFund);
 }
 
 #[test]
 fn amfi_search_finds_a_scheme_by_name_and_by_code() {
     let text = include_str!("fixtures/amfi_navall.txt");
-    let by_name = stock_predicter::market::search::search_amfi(text, "axis elss", 5);
+    let by_name = stock_predictor::market::search::search_amfi(text, "axis elss", 5);
     assert_eq!(by_name.len(), 1, "{by_name:?}");
     assert_eq!(by_name[0].code, "120503");
     assert_eq!(
         by_name[0].class,
-        stock_predicter::models::AssetClass::MutualFund
+        stock_predictor::models::AssetClass::MutualFund
     );
     assert!(by_name[0].price.is_some());
 
-    let by_code = stock_predicter::market::search::amfi_by_code(text, "120503").unwrap();
+    let by_code = stock_predictor::market::search::amfi_by_code(text, "120503").unwrap();
     assert!(by_code.name.contains("Axis ELSS"));
 }
 
@@ -109,17 +109,17 @@ fn a_yahoo_mutual_fund_is_a_search_hit_of_class_fund() {
        "symbol":"0P00012ALS.BO","longname":"Motilal Oswal Midcap Dir Gr","exchDisp":"Bombay"},
       {"exchange":"NSI","shortname":"INFY.NS","quoteType":"EQUITY","symbol":"INFY.NS","exchDisp":"NSE"}
     ]}"#;
-    let hits = stock_predicter::market::search::parse_yahoo(body).unwrap();
+    let hits = stock_predictor::market::search::parse_yahoo(body).unwrap();
     assert_eq!(hits.len(), 2);
     assert_eq!(hits[0].code, "0P00012ALS.BO");
     // The readable name, not the ticker repeated back.
     assert_eq!(hits[0].name, "Motilal Oswal Midcap Dir Gr");
-    assert_eq!(hits[0].class, stock_predicter::models::AssetClass::MutualFund);
-    assert_eq!(hits[1].class, stock_predicter::models::AssetClass::Stock);
+    assert_eq!(hits[0].class, stock_predictor::models::AssetClass::MutualFund);
+    assert_eq!(hits[1].class, stock_predictor::models::AssetClass::Stock);
 }
 
 #[test]
 fn a_quote_type_that_is_not_an_instrument_is_still_ignored() {
     let body = r#"{"quotes":[{"symbol":"^NSEI","quoteType":"CRYPTOCURRENCY","shortname":"x"}]}"#;
-    assert!(stock_predicter::market::search::parse_yahoo(body).unwrap().is_empty());
+    assert!(stock_predictor::market::search::parse_yahoo(body).unwrap().is_empty());
 }

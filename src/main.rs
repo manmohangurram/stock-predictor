@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use anyhow::Result;
 use chrono::Utc;
-use stock_predicter::engine::{self, EngineDeps, YahooSource};
-use stock_predicter::llm::deepseek::ReqwestTransport;
-use stock_predicter::notify::Ntfy;
-use stock_predicter::rules::evaluate::RuleConfig;
-use stock_predicter::rules::settings;
-use stock_predicter::{api, config::Config, db, schedule};
+use stock_predictor::engine::{self, EngineDeps, YahooSource};
+use stock_predictor::llm::deepseek::ReqwestTransport;
+use stock_predictor::notify::Ntfy;
+use stock_predictor::rules::evaluate::RuleConfig;
+use stock_predictor::rules::settings;
+use stock_predictor::{api, config::Config, db, schedule};
 use tokio::net::TcpListener;
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -29,7 +29,21 @@ async fn main() -> Result<()> {
             "no longer read — set it in Settings instead (Cadence or Network)"
         );
     }
-    let pool = db::connect_and_migrate(&cfg.db_path).await?;
+    // Renaming the app changed the default database file. A database written under the old
+    // spelling keeps being used, so the rename never looks like data loss.
+    let mut db_path = cfg.db_path.clone();
+    if std::env::var("DB_PATH").is_err() {
+        let old = "data/stock-predicter.db";
+        if !std::path::Path::new(&db_path).exists() && std::path::Path::new(old).exists() {
+            tracing::warn!(
+                using = old,
+                "found a database under the old name; it is used until you move it to {}",
+                db_path
+            );
+            db_path = old.to_string();
+        }
+    }
+    let pool = db::connect_and_migrate(&db_path).await?;
 
     // Secrets at rest. `SECRET_KEY` wins; without it a key file sits beside the database, which
     // protects a copied .db but not the whole data directory.
@@ -39,20 +53,20 @@ async fn main() -> Result<()> {
             tracing::warn!(
                 "SECRET_KEY is not set — secrets are encrypted with {}. Set SECRET_KEY to keep \
                  the key out of the data directory.",
-                stock_predicter::secrets::key_path(&cfg.db_path).display()
+                stock_predictor::secrets::key_path(&cfg.db_path).display()
             );
-            stock_predicter::secrets::load_or_create_key(&cfg.db_path)?
+            stock_predictor::secrets::load_or_create_key(&cfg.db_path)?
         }
     };
-    stock_predicter::secrets::init(key);
-    let encrypted = stock_predicter::secrets::migrate(&pool).await?;
+    stock_predictor::secrets::init(key);
+    let encrypted = stock_predictor::secrets::migrate(&pool).await?;
     if encrypted > 0 {
         tracing::info!(encrypted, "encrypted stored secrets");
     }
     settings::seed(&pool).await?;
 
     if flag("--seed") {
-        let report = stock_predicter::seed::run(&pool, !flag("--no-positions")).await?;
+        let report = stock_predictor::seed::run(&pool, !flag("--no-positions")).await?;
         println!("seed: {report:?}");
     }
 
@@ -61,10 +75,10 @@ async fn main() -> Result<()> {
         let Some(notifier) = Ntfy::from_settings(&pool, &cfg.public_url).await? else {
             anyhow::bail!("no ntfy topic configured — set one in Settings, or NTFY_TOPIC");
         };
-        let n = stock_predicter::notify::Notification {
-            title: "stock-predicter · test".into(),
+        let n = stock_predictor::notify::Notification {
+            title: "stock-predictor · test".into(),
             body: "If this arrived on your phone, the push channel works.".into(),
-            priority: stock_predicter::notify::Priority::Default,
+            priority: stock_predictor::notify::Priority::Default,
             dedupe_key: "test-notify".into(),
             signal_id: None,
             symbol: String::new(),
@@ -92,10 +106,10 @@ async fn main() -> Result<()> {
             Some(n) => n,
             None => Ntfy::new("https://ntfy.sh", "", "", "", &rt)?,
         };
-        let instrument = stock_predicter::models::Instrument {
+        let instrument = stock_predictor::models::Instrument {
             id,
             symbol,
-            class: stock_predicter::models::AssetClass::parse(&class)?,
+            class: stock_predictor::models::AssetClass::parse(&class)?,
             name,
             currency: "INR".into(),
             active: true,
@@ -109,7 +123,7 @@ async fn main() -> Result<()> {
             rules: RuleConfig::default(),
             force: true,
         };
-        match stock_predicter::engine::advise(&deps, &instrument, Utc::now()).await? {
+        match stock_predictor::engine::advise(&deps, &instrument, Utc::now()).await? {
             Some(line) => println!("ADVICE {line}"),
             None => println!("ADVICE none"),
         }
@@ -219,7 +233,7 @@ async fn main() -> Result<()> {
     tracing::info!(bind = %cfg.bind, "listening on http://{}", cfg.bind);
 
     // Shut down cleanly so the WAL is folded back into the database. A killed process leaves
-    // recent commits in stock-predicter.db-wal, and copying only the .db file then looks like
+    // recent commits in stock-predictor.db-wal, and copying only the .db file then looks like
     // data loss.
     let shutdown_db = pool.clone();
     let shutdown = async move {

@@ -1,5 +1,5 @@
-use stock_predicter::db;
-use stock_predicter::rules::runtime::{self, Runtime};
+use stock_predictor::db;
+use stock_predictor::rules::runtime::{self, Runtime};
 
 async fn fresh() -> (tempfile::TempDir, sqlx::SqlitePool) {
     let dir = tempfile::tempdir().unwrap();

@@ -5,9 +5,9 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use stock_predicter::models::{Bar, Headline, Instrument};
-use stock_predicter::rules::indicators::{self, Indicators};
-use stock_predicter::{llm::prompts, store};
+use stock_predictor::models::{Bar, Headline, Instrument};
+use stock_predictor::rules::indicators::{self, Indicators};
+use stock_predictor::{llm::prompts, store};
 
 fn bars(n: usize) -> Vec<Bar> {
     (0..n)
@@ -40,7 +40,7 @@ fn bench_prompt(c: &mut Criterion) {
     let instrument = Instrument {
         id: 1,
         symbol: "INFY.NS".into(),
-        class: stock_predicter::models::AssetClass::Stock,
+        class: stock_predictor::models::AssetClass::Stock,
         name: "Infosys".into(),
         currency: "INR".into(),
         active: true,
@@ -99,7 +99,7 @@ fn bench_bar_upsert(c: &mut Criterion) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("bench.db");
     let (pool, id, series) = rt.block_on(async {
-        let pool = stock_predicter::db::connect_and_migrate(path.to_str().unwrap())
+        let pool = stock_predictor::db::connect_and_migrate(path.to_str().unwrap())
             .await
             .unwrap();
         let id: (i64,) = sqlx::query_as(

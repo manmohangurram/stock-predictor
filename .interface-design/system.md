@@ -1,6 +1,6 @@
-# stock-predicter — interface design system
+# stock-predictor — interface design system
 
-Companion to `docs/superpowers/specs/2026-10-27-stock-predicter-design.md`.
+Companion to `docs/superpowers/specs/2026-10-27-stock-predictor-design.md`.
 Binding for the front-end tasks. Not a mood board.
 
 ---

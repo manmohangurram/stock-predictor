@@ -7,12 +7,12 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::Result;
-use stock_predicter::rules::runtime::Runtime;
-use stock_predicter::llm::deepseek::{self, ChatRequest, HttpReply, Transport};
-use stock_predicter::llm::parse::{self, LlmVerdict};
-use stock_predicter::llm::prompts::{self, PromptContext};
-use stock_predicter::models::{AssetClass, Headline, Instrument};
-use stock_predicter::rules::indicators::Indicators;
+use stock_predictor::rules::runtime::Runtime;
+use stock_predictor::llm::deepseek::{self, ChatRequest, HttpReply, Transport};
+use stock_predictor::llm::parse::{self, LlmVerdict};
+use stock_predictor::llm::prompts::{self, PromptContext};
+use stock_predictor::models::{AssetClass, Headline, Instrument};
+use stock_predictor::rules::indicators::Indicators;
 
 struct Real {
     inner: deepseek::ReqwestTransport,
@@ -63,7 +63,7 @@ async fn deepseek_returns_a_response_the_system_can_use() {
     assert!(!key().is_empty(), "DEEPSEEK_API_KEY is required");
 
     let dir = tempfile::tempdir().unwrap();
-    let pool = stock_predicter::db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+    let pool = stock_predictor::db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
 
@@ -95,8 +95,8 @@ async fn deepseek_returns_a_response_the_system_can_use() {
     let real = Real {
         inner: deepseek::ReqwestTransport::new(key(), &Runtime::default()).unwrap(),
     };
-    let model = stock_predicter::llm::provider::ModelConfig {
-        provider: stock_predicter::llm::provider::Provider::Deepseek,
+    let model = stock_predictor::llm::provider::ModelConfig {
+        provider: stock_predictor::llm::provider::Provider::Deepseek,
         model: "deepseek-chat".into(),
         base_url: "https://api.deepseek.com".into(),
         api_key: key(),
@@ -129,7 +129,7 @@ async fn deepseek_returns_a_response_the_system_can_use() {
                 "decided: {:?} entry {} stop {:?} target {:?}",
                 p.action, p.entry, p.stop, p.target
             );
-            if p.action == stock_predicter::models::Action::Buy {
+            if p.action == stock_predictor::models::Action::Buy {
                 assert!(p.stop.is_some(), "a BUY must carry a stop");
                 assert!(p.target.is_some(), "a BUY must carry a take-profit");
             }
@@ -155,7 +155,7 @@ async fn deepseek_buy_carries_both_exits() {
     assert!(!key().is_empty(), "DEEPSEEK_API_KEY is required");
 
     let dir = tempfile::tempdir().unwrap();
-    let pool = stock_predicter::db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+    let pool = stock_predictor::db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
         .await
         .unwrap();
 
@@ -199,8 +199,8 @@ async fn deepseek_buy_carries_both_exits() {
     let real = Real {
         inner: deepseek::ReqwestTransport::new(key(), &Runtime::default()).unwrap(),
     };
-    let model = stock_predicter::llm::provider::ModelConfig {
-        provider: stock_predicter::llm::provider::Provider::Deepseek,
+    let model = stock_predictor::llm::provider::ModelConfig {
+        provider: stock_predictor::llm::provider::Provider::Deepseek,
         model: "deepseek-chat".into(),
         base_url: "https://api.deepseek.com".into(),
         api_key: key(),
@@ -233,7 +233,7 @@ async fn deepseek_buy_carries_both_exits() {
                 "decided: {:?} entry {} stop {:?} target {:?} cites {:?}",
                 p.action, p.entry, p.stop, p.target, p.cites
             );
-            if p.action == stock_predicter::models::Action::Buy {
+            if p.action == stock_predictor::models::Action::Buy {
                 let stop = p.stop.expect("BUY must carry a stop");
                 let target = p.target.expect("BUY must carry a take-profit");
                 assert!(

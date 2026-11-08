@@ -1,7 +1,7 @@
-use stock_predicter::db;
-use stock_predicter::models::AssetClass;
-use stock_predicter::rules::budget::{self, CashKind, NewCashEntry};
-use stock_predicter::rules::settings::{self, SettingsError, SettingsPatch};
+use stock_predictor::db;
+use stock_predictor::models::AssetClass;
+use stock_predictor::rules::budget::{self, CashKind, NewCashEntry};
+use stock_predictor::rules::settings::{self, SettingsError, SettingsPatch};
 
 /// The budget now lives in the ledger, so seeding it means recording the ceiling.
 async fn fresh(budget: f64) -> (tempfile::TempDir, sqlx::SqlitePool, i64) {

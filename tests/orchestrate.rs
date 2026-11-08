@@ -1,24 +1,24 @@
 use serde_json::json;
-use stock_predicter::rules::runtime::Runtime;
-use stock_predicter::db;
-use stock_predicter::llm::deepseek::{FixtureTransport, HttpReply};
-use stock_predicter::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
-use stock_predicter::models::{Action, AssetClass, Candidate, Headline, Instrument};
-use stock_predicter::rules::indicators::Indicators;
+use stock_predictor::rules::runtime::Runtime;
+use stock_predictor::db;
+use stock_predictor::llm::deepseek::{FixtureTransport, HttpReply};
+use stock_predictor::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
+use stock_predictor::models::{Action, AssetClass, Candidate, Headline, Instrument};
+use stock_predictor::rules::indicators::Indicators;
 
 /// Bars the escalation can ask for. Timestamps are fixed so the rendered history is stable.
 #[derive(Default)]
 struct FakeMarket {
-    bars: Vec<stock_predicter::models::Bar>,
+    bars: Vec<stock_predictor::models::Bar>,
 }
 
-impl stock_predicter::market::MarketSource for FakeMarket {
+impl stock_predictor::market::MarketSource for FakeMarket {
     fn bars<'a>(
         &'a self,
         _s: &'a str,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Bar>>>
+            dyn std::future::Future<Output = anyhow::Result<Vec<stock_predictor::models::Bar>>>
                 + Send
                 + 'a,
         >,
@@ -33,7 +33,7 @@ impl stock_predicter::market::MarketSource for FakeMarket {
         _r: &'a str,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Bar>>>
+            dyn std::future::Future<Output = anyhow::Result<Vec<stock_predictor::models::Bar>>>
                 + Send
                 + 'a,
         >,
@@ -46,7 +46,7 @@ impl stock_predicter::market::MarketSource for FakeMarket {
         _s: &'a str,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = anyhow::Result<Vec<stock_predicter::models::Headline>>>
+            dyn std::future::Future<Output = anyhow::Result<Vec<stock_predictor::models::Headline>>>
                 + Send
                 + 'a,
         >,
@@ -415,7 +415,7 @@ async fn invalid_proposal_degrades_to_rules_numbers() {
     match d.outcome {
         Outcome::Rejected { error, .. } => assert_eq!(
             error,
-            stock_predicter::llm::validate::ValidationError::StopOnWrongSide
+            stock_predictor::llm::validate::ValidationError::StopOnWrongSide
         ),
         other => panic!("expected a rejection, got {other:?}"),
     }

@@ -5,8 +5,8 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::Result;
-use stock_predicter::market::MarketSource;
-use stock_predicter::models::{Bar, Headline};
+use stock_predictor::market::MarketSource;
+use stock_predictor::models::{Bar, Headline};
 
 pub struct FakeMarket {
     pub bars: Vec<Bar>,

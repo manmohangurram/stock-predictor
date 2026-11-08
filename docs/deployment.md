@@ -8,13 +8,13 @@ file does) or a systemd unit:
 
 ```ini
 [Unit]
-Description=stock-predicter
+Description=stock-predictor
 After=network-online.target
 
 [Service]
 User=stock
-WorkingDirectory=/srv/stock-predicter
-ExecStart=/srv/stock-predicter/stock-predicter
+WorkingDirectory=/srv/stock-predictor
+ExecStart=/srv/stock-predictor/stock-predictor
 Environment=BIND=0.0.0.0:8080
 Restart=always
 RestartSec=5
@@ -38,9 +38,9 @@ The image is never built from `main`.
 
 ```yaml
 services:
-  stock-predicter:
+  stock-predictor:
     image: ghcr.io/manmohangurram/stock-predictor:${IMAGE_TAG:-latest}
-    container_name: stock-predicter
+    container_name: stock-predictor
     restart: unless-stopped
     ports:
       - "${PORT:-8080}:8080"
@@ -54,7 +54,7 @@ services:
 ```
 
 `BIND` and `DB_PATH` need no lines: the image already sets `0.0.0.0:8080` and
-`/data/stock-predicter.db`, and declares `/data` as its volume. Copy `.env.example` to `.env`
+`/data/stock-predictor.db`, and declares `/data` as its volume. Copy `.env.example` to `.env`
 (mode 0600) and Compose does the rest.
 
 The container runs as **root**, like the sibling financer image, because a bind mount of `./data`
@@ -92,7 +92,7 @@ RUST_LOG=info
 | Variable | Default | Meaning |
 |---|---|---|
 | `BIND` | `127.0.0.1:8080` | Listen address. The image sets `0.0.0.0:8080`. |
-| `DB_PATH` | `data/stock-predicter.db` | SQLite file. The image sets `/data/stock-predicter.db`. |
+| `DB_PATH` | `data/stock-predictor.db` | SQLite file. The image sets `/data/stock-predictor.db`. |
 | `PUBLIC_URL` | *(empty)* | The address the app is reachable at, for the deep link on a notification. |
 | `SECRET_KEY` | *(key file)* | 32 bytes, 64 hex characters or base64, encrypting stored secrets. |
 | `TZ` | `UTC` | The container clock's zone. Cosmetic: the NSE window is IST and storage is UTC. |
@@ -104,7 +104,7 @@ standalone window rather than a browser tab.
 ### Plain Docker
 
 ```bash
-docker run -d --name stock-predicter \
+docker run -d --name stock-predictor \
   --restart unless-stopped \
   -p 8080:8080 \
   -e PUBLIC_URL=http://192.168.1.10:8080 \
@@ -119,8 +119,8 @@ docker run -d --name stock-predicter \
 ### Building from source instead
 
 ```bash
-docker build -t stock-predicter .
-docker run -d --name stock-predicter -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" stock-predicter
+docker build -t stock-predictor .
+docker run -d --name stock-predictor -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" stock-predictor
 ```
 
 Or with Compose: uncomment `build: .` in `docker-compose.yml` and drop the `image:` line.
@@ -140,7 +140,7 @@ port-forward it to the internet, and treat the ntfy topic name as a secret — a
 read your notifications.
 
 Provider keys, the ntfy token and the proxy password are encrypted at rest (XChaCha20-Poly1305, key
-from `SECRET_KEY`). That protects a copied `stock-predicter.db`, a backup, or `sqlite3` open in a
+from `SECRET_KEY`). That protects a copied `stock-predictor.db`, a backup, or `sqlite3` open in a
 terminal. It does **not** protect a machine someone already has, and it is not authentication.
 
 If you run it behind the bundled Compose file, no port is published at all: the container is reachable

@@ -1,5 +1,5 @@
-use stock_predicter::db;
-use stock_predicter::store;
+use stock_predictor::db;
+use stock_predictor::store;
 
 mod common;
 use common::FakeMarket;

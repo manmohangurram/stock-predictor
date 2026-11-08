@@ -1,15 +1,15 @@
 use anyhow::Result;
 use chrono::{DateTime, TimeZone, Utc};
-use stock_predicter::rules::runtime::Runtime;
-use stock_predicter::db;
-use stock_predicter::engine::{self, EngineDeps, MarketSource, PollReport};
-use stock_predicter::llm::deepseek::FixtureTransport;
+use stock_predictor::rules::runtime::Runtime;
+use stock_predictor::db;
+use stock_predictor::engine::{self, EngineDeps, MarketSource, PollReport};
+use stock_predictor::llm::deepseek::FixtureTransport;
 mod common;
 use common::{headline, rising_bars as bars_n, FakeMarket};
-use stock_predicter::notify::FakeNotifier;
-use stock_predicter::rules::evaluate::RuleConfig;
-use stock_predicter::rules::settings;
-use stock_predicter::schedule;
+use stock_predictor::notify::FakeNotifier;
+use stock_predictor::rules::evaluate::RuleConfig;
+use stock_predictor::rules::settings;
+use stock_predictor::schedule;
 
 fn cfg() -> Runtime {
     Runtime {
@@ -51,7 +51,7 @@ async fn seed_with_key(pool: &sqlx::SqlitePool, symbols: &[&str], key: &str) {
     settings::set(
         pool,
         settings::SettingsPatch {
-            limits_long: Some(stock_predicter::rules::limits::Limits {
+            limits_long: Some(stock_predictor::rules::limits::Limits {
                 min_profit_pct: 0.0,
                 max_profit_pct: 1000.0,
                 min_trade_amount: 0.0,
@@ -89,7 +89,7 @@ async fn seed_with_key(pool: &sqlx::SqlitePool, symbols: &[&str], key: &str) {
 async fn poll(
     pool: &sqlx::SqlitePool,
     market: &dyn MarketSource,
-    notifier: &dyn stock_predicter::notify::Notifier,
+    notifier: &dyn stock_predictor::notify::Notifier,
     runtime: Runtime,
     now: DateTime<Utc>,
 ) -> Result<PollReport> {
@@ -99,10 +99,10 @@ async fn poll(
 async fn poll_with(
     pool: &sqlx::SqlitePool,
     market: &dyn MarketSource,
-    notifier: &dyn stock_predicter::notify::Notifier,
+    notifier: &dyn stock_predictor::notify::Notifier,
     runtime: Runtime,
     now: DateTime<Utc>,
-    replies: Vec<stock_predicter::llm::deepseek::HttpReply>,
+    replies: Vec<stock_predictor::llm::deepseek::HttpReply>,
 ) -> Result<PollReport> {
     let t = FixtureTransport::new(replies);
     let deps = EngineDeps {
@@ -242,7 +242,7 @@ async fn budget_exhaustion_records_blocked_and_never_notifies() {
         &notifier,
         cfg(),
         now(),
-        vec![stock_predicter::llm::deepseek::HttpReply {
+        vec![stock_predictor::llm::deepseek::HttpReply {
             status: 200,
             body: decided,
         }],
@@ -267,9 +267,9 @@ async fn with_no_affordable_quantity_the_model_is_still_asked_but_nothing_is_tra
         .await
         .unwrap();
     seed(&pool, &["INFY"]).await;
-    stock_predicter::rules::settings::set(
+    stock_predictor::rules::settings::set(
         &pool,
-        stock_predicter::rules::settings::SettingsPatch {
+        stock_predictor::rules::settings::SettingsPatch {
             budget: Some(100.0),
             currency: None,
             deepseek_key: None,
@@ -409,7 +409,7 @@ async fn a_failed_model_call_does_not_overwrite_the_standing_decision() {
         "usage": {"prompt_tokens": 10, "completion_tokens": 5}
     })
     .to_string();
-    let first_transport = FixtureTransport::new(vec![stock_predicter::llm::deepseek::HttpReply {
+    let first_transport = FixtureTransport::new(vec![stock_predictor::llm::deepseek::HttpReply {
         status: 200,
         body: decided,
     }]);
@@ -526,7 +526,7 @@ async fn the_model_confidence_is_stored_and_rules_only_signals_have_none() {
         "usage": {}
     })
     .to_string();
-    let transport = FixtureTransport::new(vec![stock_predicter::llm::deepseek::HttpReply {
+    let transport = FixtureTransport::new(vec![stock_predictor::llm::deepseek::HttpReply {
         status: 200,
         body: decided,
     }]);
@@ -581,7 +581,7 @@ async fn the_model_confidence_is_stored_and_rules_only_signals_have_none() {
 
 #[tokio::test]
 async fn the_call_gate_skips_small_moves_but_never_silences_for_more_than_an_hour() {
-    use stock_predicter::llm::memo::{self, CallGate};
+    use stock_predictor::llm::memo::{self, CallGate};
 
     let dir = tempfile::tempdir().unwrap();
     let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
@@ -672,7 +672,7 @@ async fn the_rules_layer_is_clamped_by_the_limits_too() {
         &pool,
         settings::SettingsPatch {
             budget: Some(200_000.0),
-            limits_long: Some(stock_predicter::rules::limits::Limits {
+            limits_long: Some(stock_predictor::rules::limits::Limits {
                 min_profit_pct: 0.0,
                 max_profit_pct: 1000.0,
                 min_trade_amount: 1_000.0,
@@ -728,7 +728,7 @@ async fn a_stop_hit_sells_even_when_the_model_tries_to_hold() {
 
     // Close 1200 is far below the recorded 2000 stop.
     let market = FakeMarket::ok(bars_n(250));
-    let hold = stock_predicter::llm::deepseek::HttpReply {
+    let hold = stock_predictor::llm::deepseek::HttpReply {
         status: 200,
         body: serde_json::json!({
             "choices": [{"message": {"content":

@@ -1,6 +1,6 @@
 {
   "name": "stock-predicter",
-  "short_name": "Ledger",
+  "short_name": "Predictor",
   "description": "A private ledger for stocks, mutual funds and IPOs, with model-backed buy and sell suggestions.",
   "start_url": "/",
   "display": "standalone",

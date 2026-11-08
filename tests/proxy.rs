@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
-use stock_predicter::http;
-use stock_predicter::rules::runtime::Runtime;
+use stock_predictor::http;
+use stock_predictor::rules::runtime::Runtime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
