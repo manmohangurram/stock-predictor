@@ -1,8 +1,9 @@
 import type { CallRow } from "../api";
-import { escapeHtml } from "../format";
+import { escapeHtml, money } from "../format";
 import { renderApp, renderHead } from "../components/shell";
 import {
   declaredTools,
+  parseReply,
   pretty,
   promptBlocks,
   replyText,
@@ -53,6 +54,47 @@ export function renderCalls(rows: CallRow[]): string {
   </section>`);
 }
 
+/** The reply as a decision, not as JSON: a verdict, its numbers, and what it wants next. */
+function decisionCard(reply: string): string {
+  const r = parseReply(reply);
+  if (!r.verdict) {
+    return `<section class="call-block"><pre>${
+      reply ? escapeHtml(reply) : "<em>no readable content — see the raw JSON</em>"
+    }</pre></section>`;
+  }
+  const stamp = r.verdict === "BUY" ? "buy" : r.verdict === "SELL" ? "sell" : "estimate";
+  const row = (label: string, value: string) =>
+    `<div class="decision-row"><span class="lbl">${label}</span><b class="num">${value}</b></div>`;
+  const figures = [
+    r.qty !== null ? row("Quantity", String(r.qty)) : "",
+    r.entry !== null ? row("Entry", money(r.entry)) : "",
+    r.stop !== null ? row("Stop", money(r.stop)) : "",
+    r.target !== null ? row("Target", money(r.target)) : "",
+    r.confidence ? row("Confidence", r.confidence) : "",
+  ].join("");
+  const wants = r.wantsHeadlines.length
+    ? `<p class="decision-note">Asked for headline ${r.wantsHeadlines.join(", ")}${
+        r.wantsHistory ? " and the 7-day history" : ""
+      } before deciding.</p>`
+    : "";
+  const prose = [r.rationale, r.why].filter(Boolean).join("\n\n");
+  const cites = r.cites.length
+    ? `<div class="decision-cites">${r.cites
+        .map((c) => `<span class="chip">source ${c}</span>`)
+        .join("")}</div>`
+    : "";
+  return `<article class="decision" data-verdict="${r.verdict.toLowerCase()}">
+    <div class="decision-head">
+      <span class="stamp" data-stamp="${stamp}">${r.verdict}</span>
+      <span class="sub">the model's answer, parsed</span>
+    </div>
+    ${figures ? `<div class="decision-grid">${figures}</div>` : ""}
+    ${prose ? `<p class="decision-prose">${escapeHtml(prose)}</p>` : ""}
+    ${wants}
+    ${cites}
+  </article>`;
+}
+
 /** The expanded exchange: prompt by role, the reply, then the raw bodies on demand. */
 export function renderExchangeDetail(d: CallDetail): string {
   const blocks = promptBlocks(d.request_json);
@@ -86,9 +128,7 @@ export function renderExchangeDetail(d: CallDetail): string {
     </div>
     <div class="call-col">
       <h3 class="lbl">What it replied</h3>
-      <section class="call-block">
-        <pre>${reply ? escapeHtml(reply) : "<em>no readable content — see the raw JSON</em>"}</pre>
-      </section>
+      ${decisionCard(reply)}
     </div>
   </div>
   <details class="raw">

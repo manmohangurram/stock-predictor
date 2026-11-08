@@ -87,11 +87,12 @@ describe("blotter row", () => {
     expect(html).toContain('role="link"');
   });
 
-  test("a fund is labelled so it is never mistaken for an intraday price", () => {
+  test("a fund row says units at NAV, not an intraday price", () => {
     const mf = position({ symbol: "AXISELSS", class: "mutual_fund", stop: null, ltp: 105.36, value: 25_000 });
     const html = renderRow(dashboard({ positions: [mf] }), mf);
-    expect(html).toContain('data-stamp="estimate"');
-    expect(html).toContain("MF");
+    expect(html).toContain("units at NAV");
+    // No MF badge any more: funds have their own table, so the label is redundant.
+    expect(html).not.toContain('data-stamp="estimate"');
   });
 
   test("no signal renders an em dash, not an empty cell", () => {
@@ -749,5 +750,48 @@ describe("reading a stored call", () => {
     const { declaredTools } = await import("./components/call-viewer");
     expect(declaredTools(request)).toEqual(["need_more"]);
     expect(declaredTools(null)).toEqual([]);
+  });
+});
+
+describe("reading a reply as a decision", () => {
+  test("a decide body becomes a verdict with its numbers", async () => {
+    const { parseReply } = await import("./components/call-viewer");
+    const r = parseReply(
+      JSON.stringify({
+        action: "decide",
+        signal: {
+          action: "SELL", qty: 24, entry: 1171.6, stop: 1080, target: 1420,
+          confidence: "medium", rationale: "structure broke", cites: [1, 2],
+        },
+      }),
+    );
+    expect(r.verdict).toBe("SELL");
+    expect(r.qty).toBe(24);
+    expect(r.entry).toBe(1171.6);
+    expect(r.confidence).toBe("medium");
+    expect(r.cites).toEqual([1, 2]);
+  });
+
+  test("a pass carries its reason and no numbers", async () => {
+    const { parseReply } = await import("./components/call-viewer");
+    const r = parseReply(JSON.stringify({ action: "pass", why: "nothing changed" }));
+    expect(r.verdict).toBe("PASS");
+    expect(r.why).toBe("nothing changed");
+    expect(r.entry).toBeNull();
+  });
+
+  test("need_more says what it wants", async () => {
+    const { parseReply } = await import("./components/call-viewer");
+    const r = parseReply(
+      JSON.stringify({ action: "need_more", need_more: { headlines: [3, 7], price_history: true } }),
+    );
+    expect(r.verdict).toBe("NEED_MORE");
+    expect(r.wantsHeadlines).toEqual([3, 7]);
+    expect(r.wantsHistory).toBe(true);
+  });
+
+  test("a body that is not JSON is not dressed up as a verdict", async () => {
+    const { parseReply } = await import("./components/call-viewer");
+    expect(parseReply("upstream timeout").verdict).toBeNull();
   });
 });

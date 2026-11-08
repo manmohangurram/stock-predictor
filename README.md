@@ -20,7 +20,7 @@ It is not a price oracle. The engine is a deterministic strategy plus a language
 the news, and every number it suggests is validated against your cash, your limits and the price band
 before you see it.
 
-<img src="docs/screenshots/ledger.png" alt="The ledger: holdings split into stocks and mutual funds, with P&L and exit plans">
+<img src="docs/screenshots/ledger-v2.png" alt="The ledger: holdings split into stocks and mutual funds, with P&L and exit plans">
 
 ## Current Features
 

@@ -61,13 +61,14 @@ export function renderRow(d: Dashboard, p: Dashboard["positions"][number]): stri
   return `<tr class="row" data-symbol="${escapeHtml(p.symbol)}" tabindex="0" role="link"
       aria-label="${escapeHtml(p.name)}, open details">
   <td class="holding"><div class="name">${escapeHtml(p.name)}</div>
-    <div class="sub">${escapeHtml(p.symbol)}${isFund ? ` <span class="stamp" data-stamp="estimate">MF</span>` : ""} · ${signal}</div></td>
+    <div class="sub">${escapeHtml(p.symbol)}</div></td>
   <td class="num hide-sm">${units(p.qty)}</td>
   <td class="num hide-sm">${money(p.avg_cost)}</td>
   <td class="num hide-sm">${money(invested)}</td>
   <td class="num">${nowCell}</td>
   <td class="num hide-sm">${valueCell}</td>
   <td class="num ${live ? (pnl >= 0 ? "up" : "down") : ""}">${pnlCell}</td>
+  <td class="signal-col">${signal}</td>
   <td class="right hide-sm">${plan}</td>
 </tr>`;
 }
@@ -85,11 +86,11 @@ function section(title: string, note: string, head: string, body: string, total?
 const STOCK_HEAD = `<tr><th scope="col">Holding</th><th scope="col" class="hide-sm">Qty</th>
   <th scope="col" class="hide-sm">Bought</th><th scope="col" class="hide-sm">Invested</th>
   <th scope="col">Now</th><th scope="col" class="hide-sm">Value</th>
-  <th scope="col">P&amp;L</th><th scope="col" class="hide-sm">Exit plan</th></tr>`;
+  <th scope="col">P&amp;L</th><th scope="col">Signal</th><th scope="col" class="hide-sm">Exit plan</th></tr>`;
 const FUND_HEAD = `<tr><th scope="col">Scheme</th><th scope="col" class="hide-sm">Units</th>
   <th scope="col" class="hide-sm">Avg NAV</th><th scope="col" class="hide-sm">Invested</th>
   <th scope="col">NAV today</th><th scope="col" class="hide-sm">Value</th>
-  <th scope="col">P&amp;L</th><th scope="col" class="hide-sm">Execution</th></tr>`;
+  <th scope="col">P&amp;L</th><th scope="col">Signal</th><th scope="col" class="hide-sm">Execution</th></tr>`;
 
 const subtotal = (label: string, invested: number, value: number): string => {
   const pnl = value - invested;
@@ -97,7 +98,7 @@ const subtotal = (label: string, invested: number, value: number): string => {
     <td class="num hide-sm">${money(invested)}</td><td>—</td>
     <td class="num hide-sm">${money(value)}</td>
     <td class="num ${pnl >= 0 ? "up" : "down"}">${pnl >= 0 ? "+" : "−"}${money(Math.abs(pnl))}</td>
-    <td class="sub hide-sm">—</td></tr>`;
+    <td>—</td><td class="sub hide-sm">—</td></tr>`;
 };
 
 const sum = (rows: Dashboard["positions"]): { invested: number; value: number } => ({
@@ -140,7 +141,7 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
     STOCK_HEAD,
     stocks.length
       ? stocks.map((p) => renderRow(d, p)).join("")
-      : `<tr><td colspan="8" class="empty">No stocks yet — search on the right.</td></tr>`,
+      : `<tr><td colspan="9" class="empty">No stocks yet — search on the right.</td></tr>`,
     stocks.length
       ? subtotal("Stocks", sum(stocks).invested, sum(stocks).value)
       : "",
@@ -152,7 +153,7 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
     FUND_HEAD,
     funds.length
       ? funds.map((p) => renderRow(d, p)).join("")
-      : `<tr><td colspan="8" class="empty">No funds yet. A fund is added at NAV and held.</td></tr>`,
+      : `<tr><td colspan="9" class="empty">No funds yet. A fund is added at NAV and held.</td></tr>`,
     funds.length
       ? subtotal("Funds", sum(funds).invested, sum(funds).value)
       : "",
@@ -172,7 +173,7 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
   )}
   <div class="mode-row">${renderModeTabs(d.mode)}<span class="sub">${d.currency} · as of the last poll</span></div>
   ${d.mode === "trade" ? section("Trading positions", `${d.positions.length} · all stocks`, STOCK_HEAD,
-      d.positions.length ? d.positions.map((p) => renderRow(d, p)).join("") : `<tr><td colspan="8" class="empty">Nothing in the trading pot.</td></tr>`) : stocksSection + fundsSection}
+      d.positions.length ? d.positions.map((p) => renderRow(d, p)).join("") : `<tr><td colspan="9" class="empty">Nothing in the trading pot.</td></tr>`) : stocksSection + fundsSection}
   <div class="cards">
     <section class="card">
       <div class="lbl">Add an instrument</div>

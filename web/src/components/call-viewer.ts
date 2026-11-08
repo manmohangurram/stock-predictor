@@ -101,3 +101,68 @@ export function pretty(raw: string | null, max = 20000): string {
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return text.length > max ? `${text.slice(0, max)}\n… truncated in the view; the database has it all` : text;
 }
+
+/** The model's answer, once its JSON is understood. */
+export interface Reply {
+  /** "BUY" | "SELL" | "PASS" | "NEED_MORE" — or null when the body was not that shape. */
+  verdict: string | null;
+  entry: number | null;
+  stop: number | null;
+  target: number | null;
+  qty: number | null;
+  confidence: string | null;
+  rationale: string | null;
+  /** PASS carries "why"; NEED_MORE carries what it wants. */
+  why: string | null;
+  wantsHeadlines: number[];
+  wantsHistory: boolean;
+  cites: number[];
+  /** Anything else the body said, so nothing is silently dropped. */
+  rest: Record<string, unknown> | null;
+}
+
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+/** `{"action":"decide","signal":{…}}` and its bare variants, from one parser. */
+export function parseReply(content: string): Reply {
+  const empty: Reply = {
+    verdict: null, entry: null, stop: null, target: null, qty: null, confidence: null,
+    rationale: null, why: null, wantsHeadlines: [], wantsHistory: false, cites: [], rest: null,
+  };
+  let body: unknown;
+  try {
+    body = JSON.parse(content);
+  } catch {
+    return empty;
+  }
+  const outer = asRecord(body);
+  if (!outer) return empty;
+  const decision = asRecord(outer.signal) ?? outer;
+  const action = str(decision.action) ?? str(outer.action);
+  const verdict =
+    action === null ? null : action === "decide" ? "DECIDE" : action.toUpperCase();
+  const confidence = asRecord(decision.confidence) ? null : str(decision.confidence);
+  const more = asRecord(decision.need_more) ?? asRecord(outer.need_more) ?? asRecord(outer.more);
+  const headlines = more?.headlines ?? decision.headlines;
+  return {
+    verdict,
+    entry: num(decision.entry),
+    stop: num(decision.stop),
+    target: num(decision.target),
+    qty: num(decision.qty),
+    confidence: typeof confidence === "string" ? confidence : null,
+    rationale: str(decision.rationale) ?? str(outer.rationale),
+    why: str(decision.why) ?? str(outer.why) ?? str(outer.reason),
+    wantsHeadlines: Array.isArray(headlines)
+      ? headlines
+          .map((h) => (typeof h === "number" ? h : num(asRecord(h)?.headline_id)))
+          .filter((n): n is number => n !== null)
+      : [],
+    wantsHistory: Boolean(more?.price_history ?? more?.history),
+    cites: Array.isArray(decision.cites)
+      ? decision.cites.filter((c): c is number => typeof c === "number")
+      : [],
+    rest: outer,
+  };
+}
