@@ -1,0 +1,104 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:oklch(0.985 0.006 85); --paper-raised:oklch(1 0 0); --paper-inset:oklch(0.965 0.008 85);
+  --paper-settled:oklch(0.955 0.02 155);
+  --ink:oklch(0.22 0.012 60); --ink-secondary:oklch(0.44 0.012 60); --ink-tertiary:oklch(0.58 0.01 60);
+  --ink-muted:oklch(0.7 0.008 60);
+  --rule-subtle:oklch(0.22 0.012 60 / .08); --rule:oklch(0.22 0.012 60 / .14);
+  --rule-strong:oklch(0.22 0.012 60 / .24);
+  --stamp-ink:oklch(0.42 0.12 262); --stamp-ink-bg:oklch(0.93 0.03 262);
+  --stamp-oxide:oklch(0.42 0.15 35); --stamp-oxide-bg:oklch(0.93 0.035 35);
+  --stamp-amber:oklch(0.45 0.1 70); --stamp-amber-bg:oklch(0.95 0.05 85);
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px; --space-8:32px; --space-12:48px;
+  --radius:3px;
+  --form:"IBM Plex Sans",system-ui,sans-serif; --ledger:"IBM Plex Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--form);font-size:.875rem;
+     -webkit-font-smoothing:antialiased}
+.mono{font-family:var(--ledger);font-variant-numeric:tabular-nums}
+h1{font-size:1.625rem;font-weight:600;letter-spacing:-.01em;margin:0}
+.lbl{font-size:.6875rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-tertiary);font-weight:600}
+.note{font-size:.75rem;color:var(--ink-tertiary);line-height:1.45}
+input,select{font-family:var(--ledger);font-size:.8125rem;background:var(--paper-inset);color:var(--ink);
+  border:1px solid var(--rule);border-radius:3px;padding:6px 8px;width:100%;height:32px}
+input:focus{outline:none;border-color:oklch(.42 .12 262);box-shadow:0 0 0 2px oklch(.42 .12 262 / .12)}
+.stamp{font-family:var(--form);font-size:.6875rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  background:var(--stamp-ink-bg);color:var(--stamp-ink);border:1px solid oklch(.42 .12 262 / .3);
+  border-radius:2px;padding:5px 10px;cursor:pointer}
+.ghost{background:transparent;color:var(--ink-secondary);border:1px solid var(--rule)}
+.pill{display:inline-block;font-size:.6875rem;letter-spacing:.05em;text-transform:uppercase;font-weight:600;
+  padding:2px 7px;border-radius:2px}
+.ok{color:oklch(.42 .1 155);background:oklch(.94 .03 155)}
+.todo{color:var(--stamp-oxide);background:var(--stamp-oxide-bg)}
+
+.top{display:flex;align-items:baseline;justify-content:space-between;padding:var(--space-6) var(--space-8) var(--space-4);
+     border-bottom:1.5px solid var(--rule-strong)}
+.wrap{display:grid;grid-template-columns:236px 1fr;min-height:calc(100vh - 76px)}
+.rail{border-right:1px solid var(--rule);padding:var(--space-4) 0;background:var(--paper-inset)}
+.rail a{display:flex;justify-content:space-between;align-items:baseline;gap:8px;text-decoration:none;color:var(--ink);
+  padding:9px var(--space-4) 9px var(--space-6);font-size:.8125rem;border-left:2px solid transparent}
+.rail a.on{background:var(--paper-raised);border-left:2px solid var(--stamp-ink);font-weight:600}
+.rail a .n{font-family:var(--ledger);font-size:.6875rem;color:var(--ink-muted)}
+.pane{padding:var(--space-6) var(--space-8);max-width:760px}
+.hd{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:var(--space-3);
+    border-bottom:1px solid var(--rule);margin-bottom:var(--space-4)}
+.hd h2{font-size:1.0625rem;font-weight:600;margin:0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4) var(--space-4)}
+.f{margin-bottom:var(--space-4)}
+.grid .f{margin-bottom:0}
+.wide{grid-column:1/-1}
+.cmp{border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.cmp table{width:100%;border-collapse:collapse;font-family:var(--ledger);font-size:.8125rem}
+.cmp th{text-align:left;font-family:var(--form);font-size:.6875rem;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-tertiary);padding:8px 10px;border-bottom:1px solid var(--rule);font-weight:600}
+.cmp td{padding:6px 10px;border-bottom:1px solid var(--rule-subtle)}
+.cmp td:first-child{font-family:var(--form);color:var(--ink-secondary)}
+.cmp td input{height:28px;text-align:right}
+.cmp tr:last-child td{border-bottom:0}
+.cmp .hint{font-size:.6875rem;color:var(--ink-muted);padding:6px 10px;border-top:1px solid var(--rule-subtle)}
+.sec{display:flex;gap:var(--space-2);align-items:center}
+</style></head><body>
+<div class="top">
+  <div><div class="lbl">stock-predicter</div><h1 style="margin-top:2px">Settings</h1></div>
+  <div class="note">Every value here lives in the database. Nothing is read from a config file.</div>
+</div>
+<div class="wrap">
+  <nav class="rail">
+    <a class="on"><span>Money</span><span class="n">2</span></a>
+    <a><span>Risk limits</span><span class="n">10</span></a>
+    <a><span>Model</span><span class="pill ok" style="font-size:.625rem">set</span></a>
+    <a><span>Notifications</span><span class="pill ok" style="font-size:.625rem">set</span></a>
+    <a><span>Cadence</span><span class="pill todo" style="font-size:.625rem">new</span></a>
+    <a><span>Network</span><span class="pill todo" style="font-size:.625rem">new</span></a>
+  </nav>
+  <main class="pane">
+    <div class="hd"><h2>Money</h2><button class="stamp">Stamp</button></div>
+    <div class="grid">
+      <div class="f"><div class="lbl">Long-term pot</div><div style="display:flex;align-items:center"><input value="5,00,000" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">INR</span></div><div class="note" style="margin-top:2px">Buy-and-hold money. Never shared with the trading pot.</div></div><div class="f"><div class="lbl">Trading pot</div><div style="display:flex;align-items:center"><input value="1,00,000" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">INR</span></div><div class="note" style="margin-top:2px">Swing capital. Its own limits, its own book.</div></div><div class="f"><div class="lbl">Currency</div><div style="display:flex;align-items:center"><select><option>INR</option><option>USD</option><option>EUR</option></select></div></div><div class="f"><div class="lbl">Public URL</div><div style="display:flex;align-items:center"><input value="https://ledger.example.in" placeholder=""></div><div class="note" style="margin-top:2px">Used for the notification deep link.</div></div>
+    </div>
+    <div style="margin-top:var(--space-8)"></div>
+    <div class="hd"><h2>Risk limits</h2><button class="stamp">Stamp</button></div>
+    <div class="cmp">
+      <table>
+        <tr><th>&nbsp;</th><th>Long-term</th><th>Trading</th></tr>
+        <tr><td>Minimum profit</td><td><input value="5.0"></td><td><input value="2.0"></td></tr>
+        <tr><td>Maximum profit</td><td><input value="50.0"></td><td><input value="12.0"></td></tr>
+        <tr><td>Smallest trade</td><td><input value="10,000"></td><td><input value="5,000"></td></tr>
+        <tr><td>Largest trade</td><td><input value="1,00,000"></td><td><input value="40,000"></td></tr>
+        <tr><td>One stock may be</td><td><input value="20"></td><td><input value="15"></td></tr>
+      </table>
+      <div class="hint">A stock's own profit expectation must fall inside its pot's band. All values in INR unless noted.</div>
+    </div>
+    <div style="margin-top:var(--space-8)"></div>
+    <div class="hd"><h2>Cadence</h2><button class="stamp">Stamp</button></div>
+    <div class="grid">
+      <div class="f"><div class="lbl">Poll while open</div><div style="display:flex;align-items:center"><input value="900" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">seconds</span></div><div class="note" style="margin-top:2px">Every 15 min, 09:00–16:00 IST.</div></div><div class="f"><div class="lbl">Poll when closed</div><div style="display:flex;align-items:center"><input value="7200" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">seconds</span></div><div class="note" style="margin-top:2px">Two hours. Only to catch evening headlines.</div></div><div class="f"><div class="lbl">Prompt window</div><div style="display:flex;align-items:center"><input value="4" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">hours of tape</span></div><div class="note" style="margin-top:2px">The biggest token lever.</div></div><div class="f"><div class="lbl">Daily call cap</div><div style="display:flex;align-items:center"><input value="200" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">calls</span></div></div><div class="f"><div class="lbl">Call only if price moved</div><div style="display:flex;align-items:center"><input value="2.0" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">INR</span></div></div><div class="f"><div class="lbl">…or after silence of</div><div style="display:flex;align-items:center"><input value="3600" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">seconds</span></div></div>
+    </div>
+  </main>
+</div>
+</body></html>

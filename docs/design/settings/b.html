@@ -1,0 +1,113 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:oklch(0.985 0.006 85); --paper-raised:oklch(1 0 0); --paper-inset:oklch(0.965 0.008 85);
+  --paper-settled:oklch(0.955 0.02 155);
+  --ink:oklch(0.22 0.012 60); --ink-secondary:oklch(0.44 0.012 60); --ink-tertiary:oklch(0.58 0.01 60);
+  --ink-muted:oklch(0.7 0.008 60);
+  --rule-subtle:oklch(0.22 0.012 60 / .08); --rule:oklch(0.22 0.012 60 / .14);
+  --rule-strong:oklch(0.22 0.012 60 / .24);
+  --stamp-ink:oklch(0.42 0.12 262); --stamp-ink-bg:oklch(0.93 0.03 262);
+  --stamp-oxide:oklch(0.42 0.15 35); --stamp-oxide-bg:oklch(0.93 0.035 35);
+  --stamp-amber:oklch(0.45 0.1 70); --stamp-amber-bg:oklch(0.95 0.05 85);
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px; --space-8:32px; --space-12:48px;
+  --radius:3px;
+  --form:"IBM Plex Sans",system-ui,sans-serif; --ledger:"IBM Plex Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--form);font-size:.875rem;
+     -webkit-font-smoothing:antialiased}
+.mono{font-family:var(--ledger);font-variant-numeric:tabular-nums}
+h1{font-size:1.625rem;font-weight:600;letter-spacing:-.01em;margin:0}
+.lbl{font-size:.6875rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-tertiary);font-weight:600}
+.note{font-size:.75rem;color:var(--ink-tertiary);line-height:1.45}
+input,select{font-family:var(--ledger);font-size:.8125rem;background:var(--paper-inset);color:var(--ink);
+  border:1px solid var(--rule);border-radius:3px;padding:6px 8px;width:100%;height:32px}
+input:focus{outline:none;border-color:oklch(.42 .12 262);box-shadow:0 0 0 2px oklch(.42 .12 262 / .12)}
+.stamp{font-family:var(--form);font-size:.6875rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  background:var(--stamp-ink-bg);color:var(--stamp-ink);border:1px solid oklch(.42 .12 262 / .3);
+  border-radius:2px;padding:5px 10px;cursor:pointer}
+.ghost{background:transparent;color:var(--ink-secondary);border:1px solid var(--rule)}
+.pill{display:inline-block;font-size:.6875rem;letter-spacing:.05em;text-transform:uppercase;font-weight:600;
+  padding:2px 7px;border-radius:2px}
+.ok{color:oklch(.42 .1 155);background:oklch(.94 .03 155)}
+.todo{color:var(--stamp-oxide);background:var(--stamp-oxide-bg)}
+
+.bar{position:sticky;top:0;z-index:5;display:flex;gap:var(--space-6);align-items:baseline;
+  padding:var(--space-3) var(--space-8);background:var(--paper-raised);border-bottom:1.5px solid var(--rule-strong)}
+.bar .k{font-size:.6875rem;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-tertiary)}
+.bar .v{font-family:var(--ledger);font-size:.8125rem;margin-left:4px}
+.spread{display:grid;grid-template-columns:1fr 1px 1fr;gap:0 var(--space-8);padding:var(--space-6) var(--space-8) 64px}
+.gutter{background:linear-gradient(var(--rule),var(--rule-subtle) 70%,transparent)}
+.sec{border-bottom:1px solid var(--rule);padding-bottom:var(--space-4);margin-bottom:var(--space-6)}
+.sec>summary{display:flex;justify-content:space-between;align-items:baseline;cursor:pointer;list-style:none}
+.sec>summary::-webkit-details-marker{display:none}
+.sec h2{font-size:.9375rem;font-weight:600;margin:0}
+.sec .meta{font-size:.75rem;color:var(--ink-tertiary)}
+.rows{margin-top:var(--space-4);display:grid;gap:var(--space-3)}
+.row{display:grid;grid-template-columns:1fr 132px;align-items:center;gap:var(--space-3)}
+.row .k{font-size:.8125rem;color:var(--ink-secondary)}
+.row .u{font-family:var(--ledger);font-size:.6875rem;color:var(--ink-muted);padding-left:4px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}
+.pair .row{grid-template-columns:1fr}
+.cmp{border:1px solid var(--rule);border-radius:3px;margin-top:var(--space-3)}
+.cmp .h{display:grid;grid-template-columns:1fr 84px 84px;gap:var(--space-2);padding:6px 10px;
+  border-bottom:1px solid var(--rule);font-size:.625rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-tertiary)}
+.cmp .r{display:grid;grid-template-columns:1fr 84px 84px;gap:var(--space-2);align-items:center;padding:4px 10px}
+.cmp .r span{font-size:.8125rem;color:var(--ink-secondary)}
+.cmp input{height:26px;text-align:right;font-size:.75rem}
+.saved{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;
+  padding:var(--space-3) var(--space-8);background:var(--paper-raised);border-top:1px solid var(--rule-strong)}
+</style></head><body>
+<div class="bar">
+  <div><span class="k">Pot</span><span class="v">₹5,00,000</span></div>
+  <div><span class="k">Trading</span><span class="v">₹1,00,000</span></div>
+  <div><span class="k">Model</span><span class="v">DeepSeek · chat</span></div>
+  <div><span class="k">Cadence</span><span class="v">15 min / 2 h</span></div>
+  <div><span class="k">Proxy</span><span class="v">none</span></div>
+</div>
+<div class="spread">
+  <div>
+    <details class="sec" open><summary><h2>Money</h2><span class="meta">2 pots</span></summary>
+      <div class="rows">
+        <div class="f"><div class="lbl">Long-term pot</div><div style="display:flex;align-items:center"><input value="5,00,000" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">INR</span></div></div><div class="f"><div class="lbl">Trading pot</div><div style="display:flex;align-items:center"><input value="1,00,000" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">INR</span></div></div><div class="f"><div class="lbl">Currency</div><div style="display:flex;align-items:center"><select><option>INR</option><option>USD</option><option>EUR</option></select></div></div><div class="f"><div class="lbl">Public URL</div><div style="display:flex;align-items:center"><input value="https://ledger.example.in" placeholder=""></div></div>
+      </div></details>
+    <details class="sec" open><summary><h2>Risk limits</h2><span class="meta">both pots</span></summary>
+      <div class="cmp">
+        <div class="h"><span></span><span>Long-term</span><span>Trading</span></div>
+        <div class="r"><span>Minimum profit %</span><input value="5.0"><input value="2.0"></div>
+        <div class="r"><span>Maximum profit %</span><input value="50.0"><input value="12.0"></div>
+        <div class="r"><span>Smallest trade</span><input value="10,000"><input value="5,000"></div>
+        <div class="r"><span>Largest trade</span><input value="1,00,000"><input value="40,000"></div>
+        <div class="r"><span>One stock, max %</span><input value="20"><input value="15"></div>
+      </div></details>
+    <details class="sec" open><summary><h2>Network</h2><span class="meta">new</span></summary>
+      <div class="rows">
+        <div class="f"><div class="lbl">Proxy URL</div><div style="display:flex;align-items:center"><input value="" placeholder=""></div><div class="note" style="margin-top:2px">All outbound calls. Leave blank for a direct connection.</div></div><div class="f"><div class="lbl">Bypass</div><div style="display:flex;align-items:center"><input value="localhost, 127.0.0.1" placeholder=""></div></div>
+        <div><button class="stamp ghost">Test proxy</button> <span class="note" style="margin-left:8px">last check: not run</span></div>
+      </div></details>
+  </div>
+  <div class="gutter"></div>
+  <div>
+    <details class="sec" open><summary><h2>Model</h2><span class="meta">DeepSeek</span></summary>
+      <div class="rows">
+        <div class="f"><div class="lbl">Provider</div><div style="display:flex;align-items:center"><select><option>DeepSeek</option><option>OpenAI</option><option>Gemini</option><option>Custom</option></select></div></div><div class="f"><div class="lbl">Model</div><div style="display:flex;align-items:center"><input value="deepseek-chat" placeholder=""></div></div><div class="f"><div class="lbl">Base URL</div><div style="display:flex;align-items:center"><input value="https://api.deepseek.com" placeholder=""></div></div><div class="f"><div class="lbl">API key</div><div style="display:flex;align-items:center"><input value="••••••••  set" placeholder="paste to replace"></div></div>
+      </div></details>
+    <details class="sec" open><summary><h2>Notifications</h2><span class="meta">ntfy</span></summary>
+      <div class="rows">
+        <div class="f"><div class="lbl">ntfy server</div><div style="display:flex;align-items:center"><input value="https://ntfy.sh" placeholder=""></div></div><div class="f"><div class="lbl">Topic</div><div style="display:flex;align-items:center"><input value="ledger-7f2a" placeholder=""></div></div><div class="f"><div class="lbl">Token</div><div style="display:flex;align-items:center"><input value="••••  set" placeholder=""></div></div>
+      </div></details>
+    <details class="sec" open><summary><h2>Cadence</h2><span class="meta">new</span></summary>
+      <div class="rows">
+        <div class="pair"><div class="f"><div class="lbl">While open</div><div style="display:flex;align-items:center"><input value="900" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">s</span></div></div><div class="f"><div class="lbl">When closed</div><div style="display:flex;align-items:center"><input value="7200" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">s</span></div></div></div>
+        <div class="pair"><div class="f"><div class="lbl">Prompt window</div><div style="display:flex;align-items:center"><input value="4" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">h</span></div></div><div class="f"><div class="lbl">Daily cap</div><div style="display:flex;align-items:center"><input value="200" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">calls</span></div></div></div>
+        <div class="pair"><div class="f"><div class="lbl">If moved</div><div style="display:flex;align-items:center"><input value="2.0" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">₹</span></div></div><div class="f"><div class="lbl">Or silent</div><div style="display:flex;align-items:center"><input value="3600" placeholder=""><span class="mono" style="color:var(--ink-tertiary);font-size:.75rem;padding-left:6px">s</span></div></div></div>
+      </div></details>
+  </div>
+</div>
+<div class="saved"><span class="note">Changes are stamped section by section.</span>
+  <button class="stamp">Stamp all</button></div>
+</body></html>
