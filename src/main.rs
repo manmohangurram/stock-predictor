@@ -32,11 +32,12 @@ async fn main() -> Result<()> {
     // Renaming the app changed the default database file. A database written under the old
     // spelling is moved to the new one on boot — checkpointed first, so no WAL commit is lost.
     let db_path = cfg.db_path.clone();
-    if std::env::var("DB_PATH").is_err() {
-        if let Some(moved) =
-            db::migrate_legacy_path("data/stock-predicter.db", &db_path).await?
-        {
-            tracing::info!(to = %moved, "moved the database from the old name");
+    // The old file lives beside the configured one, whatever DB_PATH says — the container sets
+    // DB_PATH=/data/stock-predictor.db, so keying this off "is DB_PATH set?" skipped the Docker case.
+    let legacy = db::legacy_sibling(&db_path);
+    if let Some(old) = legacy {
+        if let Some(moved) = db::migrate_legacy_path(&old, &db_path).await? {
+            tracing::info!(from = %old, to = %moved, "moved the database from the old name");
         }
     }
     tracing::info!(db = %db_path, "database");

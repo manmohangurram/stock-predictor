@@ -210,3 +210,19 @@ async fn an_empty_new_database_never_hides_the_one_with_data() {
         .collect();
     assert_eq!(aside.len(), 1, "the previous database should be kept");
 }
+
+#[test]
+fn the_legacy_file_is_looked_for_beside_the_configured_one() {
+    // The container sets DB_PATH=/data/stock-predictor.db, so the migration must not depend on
+    // DB_PATH being unset.
+    assert_eq!(
+        db::legacy_sibling("/data/stock-predictor.db").as_deref(),
+        Some("/data/stock-predicter.db")
+    );
+    assert_eq!(
+        db::legacy_sibling("data/stock-predictor.db").as_deref(),
+        Some("data/stock-predicter.db")
+    );
+    // A custom name has no old spelling to look for.
+    assert_eq!(db::legacy_sibling("/data/ledger.db"), None);
+}

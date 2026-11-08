@@ -35,6 +35,16 @@ pub fn path_of(path: &str) -> &str {
         .unwrap_or(path)
 }
 
+/// The path the database had before the rename, if this one is the renamed one:
+/// `/data/stock-predictor.db` → `/data/stock-predicter.db`.
+pub fn legacy_sibling(path: &str) -> Option<String> {
+    let p = std::path::Path::new(path_of(path));
+    if p.file_name()?.to_str()? != "stock-predictor.db" {
+        return None;
+    }
+    Some(p.with_file_name("stock-predicter.db").to_string_lossy().to_string())
+}
+
 /// Move a database written under an older name to the current one.
 ///
 /// Rule: **the file with the old name is the real one**, so it becomes the file with the new name.
