@@ -759,3 +759,77 @@ async fn the_dashboard_answers_304_when_nothing_changed() {
         .unwrap();
     assert_eq!(third.status(), StatusCode::OK, "stale tag must get fresh data");
 }
+
+#[tokio::test]
+async fn settings_expose_runtime_defaults_and_no_proxy_secret() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = get(&router, "/api/settings").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let r = &v["runtime"];
+    assert_eq!(r["poll_secs"], 900);
+    assert_eq!(r["off_hours_secs"], 7200);
+    assert_eq!(r["prompt_window_hours"], 4);
+    assert_eq!(r["min_price_move"], 2.0);
+    assert_eq!(r["max_silence_secs"], 3600);
+    assert_eq!(r["daily_cap"], 200);
+    assert_eq!(r["proxy_configured"], false);
+    assert_eq!(r["proxy_host"], "");
+}
+
+#[tokio::test]
+async fn a_runtime_patch_persists_and_echoes() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"poll_secs": 600, "daily_cap": 40, "prompt_window_hours": 2}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["runtime"]["poll_secs"], 600);
+    assert_eq!(v["runtime"]["daily_cap"], 40);
+    assert_eq!(v["runtime"]["prompt_window_hours"], 2);
+    // Untouched knobs keep their values: a per-tab stamp sends only its own fields.
+    assert_eq!(v["runtime"]["off_hours_secs"], 7200);
+}
+
+#[tokio::test]
+async fn out_of_range_runtime_values_are_rejected_with_the_range() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = send(&router, "PUT", "/api/settings", json!({"poll_secs": 5})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    assert!(v["error"].as_str().unwrap().contains("60"), "{v}");
+
+    let (s, _) = send(&router, "PUT", "/api/settings", json!({"prompt_window_hours": 99})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn proxy_credentials_are_never_echoed() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"proxy": "http://mohan:hunter2@10.0.0.2:3128", "proxy_bypass": "localhost"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["runtime"]["proxy_configured"], true);
+    assert_eq!(v["runtime"]["proxy_host"], "10.0.0.2:3128");
+    assert!(!v.to_string().contains("hunter2"), "the secret leaked: {v}");
+
+    // An empty string clears it.
+    let (s, v) = send(&router, "PUT", "/api/settings", json!({"proxy": ""})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["runtime"]["proxy_configured"], false);
+}
+
+#[tokio::test]
+async fn a_proxy_that_is_not_a_url_is_refused() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = send(&router, "PUT", "/api/settings", json!({"proxy": "10.0.0.2:3128"})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    assert!(v["error"].as_str().unwrap().contains("http://"), "{v}");
+}

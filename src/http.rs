@@ -12,6 +12,9 @@ use crate::rules::runtime::Runtime;
 /// A proxy must be an absolute http(s) URL with a host. reqwest is lenient about bare
 /// `host:port`, and a lenient value here would fail much later, at request time.
 pub fn validate_proxy(url: &str) -> Result<()> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        anyhow::bail!("proxy must be a http:// or https:// URL");
+    }
     let parsed = reqwest::Url::parse(url).map_err(|e| anyhow::anyhow!("proxy URL {url:?}: {e}"))?;
     if !matches!(parsed.scheme(), "http" | "https") {
         anyhow::bail!("proxy must be a http:// or https:// URL");

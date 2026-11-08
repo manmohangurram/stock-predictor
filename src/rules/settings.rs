@@ -33,6 +33,8 @@ pub struct Settings {
     /// Risk limits, one set per pot.
     pub limits_long: crate::rules::limits::Limits,
     pub limits_trade: crate::rules::limits::Limits,
+    /// Cadence, gate thresholds and the proxy — read by the scheduler, edited on its own tabs.
+    pub runtime: super::runtime::View,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -53,6 +55,15 @@ pub struct SettingsPatch {
     pub llm_key: Option<String>,
     pub limits_long: Option<crate::rules::limits::Limits>,
     pub limits_trade: Option<crate::rules::limits::Limits>,
+    pub poll_secs: Option<u64>,
+    pub off_hours_secs: Option<u64>,
+    pub prompt_window_hours: Option<u32>,
+    pub min_price_move: Option<f64>,
+    pub max_silence_secs: Option<i64>,
+    pub daily_cap: Option<u32>,
+    /// Empty string clears it; absent leaves it alone.
+    pub proxy: Option<String>,
+    pub proxy_bypass: Option<String>,
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -63,6 +74,17 @@ pub enum SettingsError {
     CurrencyLocked,
     #[error("invalid amount")]
     InvalidAmount,
+    #[error("{0}")]
+    BadRequest(String),
+}
+
+/// `900.0` shows as `900`, so the settings table stays readable in a query.
+fn trim_number(v: f64) -> String {
+    if (v.fract()).abs() < 1e-9 {
+        format!("{}", v as i64)
+    } else {
+        format!("{v}")
+    }
 }
 
 pub async fn get(pool: &SqlitePool) -> Result<Settings> {
@@ -111,10 +133,55 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         llm_key_configured,
         limits_long,
         limits_trade,
+        runtime: runtime(pool)
+            .await
+            .map_err(|_| SettingsError::InvalidAmount)?
+            .view(),
     })
 }
 
 pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), SettingsError> {
+    for (key, value) in [
+        ("poll_secs", patch.poll_secs.map(|v| v as f64)),
+        ("off_hours_secs", patch.off_hours_secs.map(|v| v as f64)),
+        (
+            "prompt_window_hours",
+            patch.prompt_window_hours.map(|v| v as f64),
+        ),
+        ("min_price_move", patch.min_price_move),
+        ("max_silence_secs", patch.max_silence_secs.map(|v| v as f64)),
+        ("daily_cap", patch.daily_cap.map(|v| v as f64)),
+    ] {
+        if let Some(v) = value {
+            super::runtime::Runtime::check(key, v).map_err(SettingsError::BadRequest)?;
+            put_setting(pool, key, &trim_number(v))
+                .await
+                .map_err(|_| SettingsError::InvalidAmount)?;
+        }
+    }
+
+    if let Some(proxy) = patch.proxy.as_deref() {
+        let proxy = proxy.trim();
+        if proxy.is_empty() {
+            sqlx::query("DELETE FROM settings WHERE key = 'proxy'")
+                .execute(pool)
+                .await
+                .map_err(|_| SettingsError::InvalidAmount)?;
+        } else {
+            crate::http::validate_proxy(proxy)
+                .map_err(|e| SettingsError::BadRequest(e.to_string()))?;
+            put_setting(pool, "proxy", proxy)
+                .await
+                .map_err(|_| SettingsError::InvalidAmount)?;
+        }
+    }
+
+    if let Some(bypass) = patch.proxy_bypass.as_deref() {
+        put_setting(pool, "proxy_bypass", bypass.trim())
+            .await
+            .map_err(|_| SettingsError::InvalidAmount)?;
+    }
+
     if let Some(budget) = patch.budget {
         if !budget.is_finite() || budget < 0.0 {
             return Err(SettingsError::InvalidAmount);

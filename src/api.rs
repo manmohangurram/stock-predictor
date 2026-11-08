@@ -63,6 +63,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/dashboard", get(dashboard))
         .route("/api/settings", get(get_settings).put(put_settings))
+        .route("/api/settings/proxy/test", post(test_proxy))
         .route("/api/instruments", post(add_instrument))
         .route("/api/instruments/{symbol}", get(instrument_detail))
         .route("/api/trades", get(all_trades))
@@ -298,6 +299,14 @@ pub struct PutSettings {
     pub llm_key: Option<String>,
     pub limits_long: Option<crate::rules::limits::Limits>,
     pub limits_trade: Option<crate::rules::limits::Limits>,
+    pub poll_secs: Option<u64>,
+    pub off_hours_secs: Option<u64>,
+    pub prompt_window_hours: Option<u32>,
+    pub min_price_move: Option<f64>,
+    pub max_silence_secs: Option<i64>,
+    pub daily_cap: Option<u32>,
+    pub proxy: Option<String>,
+    pub proxy_bypass: Option<String>,
 }
 
 async fn put_settings(
@@ -320,6 +329,14 @@ async fn put_settings(
             llm_key: body.llm_key,
             limits_long: body.limits_long,
             limits_trade: body.limits_trade,
+            poll_secs: body.poll_secs,
+            off_hours_secs: body.off_hours_secs,
+            prompt_window_hours: body.prompt_window_hours,
+            min_price_move: body.min_price_move,
+            max_silence_secs: body.max_silence_secs,
+            daily_cap: body.daily_cap,
+            proxy: body.proxy,
+            proxy_bypass: body.proxy_bypass,
         },
     )
     .await
@@ -327,8 +344,41 @@ async fn put_settings(
         SettingsError::BelowCommitted { committed } => ApiError::BelowCommitted { committed },
         SettingsError::CurrencyLocked => ApiError::CurrencyLocked,
         SettingsError::InvalidAmount => ApiError::BadRequest("invalid amount".into()),
+        SettingsError::BadRequest(message) => ApiError::BadRequest(message),
     })?;
     Ok(Json(settings::get(&st.pool).await?))
+}
+
+/// One real request through the stored proxy. A diagnostic, not a health check: it reports the
+/// failure instead of failing the call, because a wrong proxy otherwise shows up as silence.
+async fn test_proxy(State(st): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let rt = settings::runtime(&st.pool).await?;
+    let started = std::time::Instant::now();
+    let result = match crate::http::client(&rt, 5) {
+        Ok(client) => client
+            .get("https://api.deepseek.com/")
+            .send()
+            .await
+            .map(|r| r.status().as_u16()),
+        Err(e) => {
+            return Ok(Json(serde_json::json!({
+                "ok": false,
+                "status": null,
+                "millis": started.elapsed().as_millis() as u64,
+                "error": e.to_string(),
+            })))
+        }
+    };
+    let millis = started.elapsed().as_millis() as u64;
+    Ok(Json(match result {
+        Ok(status) => serde_json::json!({ "ok": true, "status": status, "millis": millis, "error": null }),
+        Err(e) => serde_json::json!({
+            "ok": false,
+            "status": null,
+            "millis": millis,
+            "error": e.to_string(),
+        }),
+    }))
 }
 
 #[derive(Debug, Serialize)]

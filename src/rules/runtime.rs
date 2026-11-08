@@ -7,7 +7,22 @@
 use std::collections::BTreeMap;
 
 use anyhow::Result;
+use serde::Serialize;
 use sqlx::SqlitePool;
+
+/// What the API is allowed to say about the proxy: that it exists, and where to.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct View {
+    pub poll_secs: u64,
+    pub off_hours_secs: u64,
+    pub prompt_window_hours: u32,
+    pub min_price_move: f64,
+    pub max_silence_secs: i64,
+    pub daily_cap: u32,
+    pub proxy_configured: bool,
+    pub proxy_host: String,
+    pub proxy_bypass: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Runtime {
@@ -87,6 +102,31 @@ impl Runtime {
             proxy: text("proxy"),
             proxy_bypass: text("proxy_bypass"),
         }
+    }
+
+    pub fn view(&self) -> View {
+        View {
+            poll_secs: self.poll_secs,
+            off_hours_secs: self.off_hours_secs,
+            prompt_window_hours: self.prompt_window_hours,
+            min_price_move: self.min_price_move,
+            max_silence_secs: self.max_silence_secs,
+            daily_cap: self.daily_cap,
+            proxy_configured: self.proxy.is_some(),
+            proxy_host: self.proxy.as_deref().map(crate::http::proxy_host).unwrap_or_default(),
+            proxy_bypass: self.proxy_bypass.clone(),
+        }
+    }
+
+    /// Range check used when a human writes a value: reject, never clamp. Clamping is for reads.
+    pub fn check(key: &str, value: f64) -> Result<(), String> {
+        let Some((_, _, lo, hi)) = KNOBS.iter().find(|(k, ..)| *k == key) else {
+            return Ok(());
+        };
+        if !value.is_finite() || value < *lo || value > *hi {
+            return Err(format!("{key} must be between {lo} and {hi}"));
+        }
+        Ok(())
     }
 
     /// Every key this struct owns, with the value the UI should show for it.

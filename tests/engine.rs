@@ -283,6 +283,7 @@ async fn with_no_affordable_quantity_the_model_is_still_asked_but_nothing_is_tra
             llm_key: None,
             limits_long: None,
             limits_trade: None,
+            ..Default::default()
         },
     )
     .await
