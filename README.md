@@ -350,6 +350,10 @@ To try it on a LAN without a reverse proxy, add `ports: ["8080:8080"]` and nothi
 `128m` is comfortable rather than tight: this process sits at about 21 MB resident with a 250-bar
 history loaded. Drop it to `64m` if you want the ceiling to actually bite.
 
+The container runs as uid **1000**, so a bind mount of `./data` is writable when your host user is
+1000 too — the default on most Linux desktops. If `docker logs` says *unable to open database
+file*, run `sudo chown -R 1000:1000 ./data` once.
+
 ### Environment declarations
 
 The **app** reads four variables. Compose substitutes `${…}` from a `.env` file next to
