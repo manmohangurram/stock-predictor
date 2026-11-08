@@ -1,20 +1,27 @@
 services:
   stock-predicter:
-    # Published image (built only on a v* tag). Comment `image` and uncomment `build` to build
-    # from this checkout instead.
     image: ghcr.io/manmohangurram/stock-predictor:latest
-    # build: .
     container_name: stock-predicter
     restart: unless-stopped
-    ports:
-      # LAN only on purpose: there is no authentication. Never publish this to the internet.
-      - "8080:8080"
-    volumes:
-      # The SQLite database, its WAL and the ledger live here. Back this up.
-      - ./data:/data
     environment:
-      RUST_LOG: "info"
-      # The only configuration that lives here. Everything else — budget, limits, model and keys,
-      # ntfy, polling cadence, the proxy — is a settings row edited on the Settings page.
-      # PUBLIC_URL: "http://192.168.1.10:8080"   # deep link on notifications
-      # DB_PATH: "/data/stock-predicter.db"      # the default; change only to relocate
+      # The only configuration that lives here. Budget, limits, model and key, ntfy, cadence and
+      # the proxy are settings rows edited on the Settings page.
+      # BIND (0.0.0.0:8080) and DB_PATH (/data/stock-predicter.db) are set by the image already.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — openssl rand -hex 32}
+      RUST_LOG: ${RUST_LOG:-info}
+    networks:
+      - proxy
+    volumes:
+      # The SQLite database, its WAL and (unless SECRET_KEY is set) secret.key live here. Back it up.
+      - ./data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    # No published ports on purpose: there is no authentication, so this is reachable only through
+    # the proxy network. To try it on the LAN instead, add:  ports: ["8080:8080"]
+
+networks:
+  proxy:
+    external: true

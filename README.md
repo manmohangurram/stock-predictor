@@ -312,46 +312,90 @@ rather than stopping the loop.
 
 ## Self-hosting with Docker
 
-Two ways to run it, and one way to publish it.
+One published image, one way to publish it: a `v*` tag builds `linux/amd64` and `linux/arm64` on
+native runners and merges them into a single manifest, so the same tag runs on a laptop and a Pi.
+The image is never built from `main`.
 
-**Published image (GHCR).** The image is built and pushed **only** when a `v*` tag is pushed —
-nothing is published from `main`. Two architectures are built on native runners (`linux/amd64`,
-`linux/arm64`) and merged into one manifest, so the same tag works on a laptop and a Raspberry Pi.
-The workflows are `.github/workflows/docker-publish.yml` (publishes) and `Dockerfile` (builds).
-
-```bash
-# plain Docker, published image
-docker run -d --name stock-predicter \
-  -p 8080:8080 \
-  -v "$PWD/data:/data" \
-  -e RUST_LOG=info \
-  ghcr.io/manmohangurram/stock-predictor:latest
-```
-
-```bash
-# Compose, published image: uncomment the image: line and comment out build:
-docker compose up -d
-```
+### Docker Compose (recommended)
 
 ```yaml
 services:
   stock-predicter:
     image: ghcr.io/manmohangurram/stock-predictor:latest
-    # build: .        # ← use this instead of image: to build from source
+    container_name: stock-predicter
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — openssl rand -hex 32}
+      RUST_LOG: ${RUST_LOG:-info}
+    networks:
+      - proxy
+    volumes:
+      - ./data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+networks:
+  proxy:
+    external: true
 ```
 
-**Build it yourself** — same result, from the `Dockerfile`, via either tool:
+`BIND` and `DB_PATH` need no lines here: the image already sets `0.0.0.0:8080` and
+`/data/stock-predicter.db`, and declares `/data` as its volume. Nothing is published to the host —
+the container is reachable only through the `proxy` network — because there is no authentication.
+To try it on a LAN without a reverse proxy, add `ports: ["8080:8080"]` and nothing else.
+
+`128m` is comfortable rather than tight: this process sits at about 21 MB resident with a 250-bar
+history loaded. Drop it to `64m` if you want the ceiling to actually bite.
+
+### Environment declarations
+
+The **app** reads four variables. Compose substitutes `${…}` from a `.env` file next to
+`docker-compose.yml` — that is Compose's feature, not the app's: the binary itself reads only the
+process environment and never opens a file.
+
+```sh
+# .env — for docker compose, next to docker-compose.yml (mode 0600). Copy .env.example.
+SECRET_KEY=    # openssl rand -hex 32 — encrypts the stored secrets
+PUBLIC_URL=http://192.168.1.10:8080
+RUST_LOG=info
+```
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BIND` | `127.0.0.1:8080` | Listen address. The image sets `0.0.0.0:8080`. |
+| `DB_PATH` | `data/stock-predicter.db` | SQLite file. The image sets `/data/stock-predicter.db`. |
+| `PUBLIC_URL` | *(empty)* | The address the app is reachable at, for the deep link on a notification. |
+| `SECRET_KEY` | *(key file)* | 32 bytes, 64 hex characters or base64, encrypting stored secrets. |
+
+### Plain Docker
+
+```bash
+docker run -d --name stock-predicter \
+  --restart unless-stopped \
+  --network proxy \
+  -e PUBLIC_URL=http://192.168.1.10:8080 \
+  -e SECRET_KEY="$(openssl rand -hex 32)" \
+  -e RUST_LOG=info \
+  -v "$PWD/data:/data" \
+  --memory 128m \
+  ghcr.io/manmohangurram/stock-predictor:latest
+```
+
+### Building from source instead
 
 ```bash
 docker build -t stock-predicter .
-# or
-docker compose up -d --build
+docker run -d --name stock-predicter -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" stock-predicter
 ```
 
-> Budget, currency, the model provider and its key, the risk limits and ntfy are **not** container
-> environment variables: they live in the database and are edited on the Settings page. The only
-> environment variables worth setting are `RUST_LOG`, `BIND` (already `0.0.0.0:8080` in the image)
-> and the tuning knobs listed above.
+Or with Compose: uncomment `build: .` in `docker-compose.yml` and drop the `image:` line.
+
+> Budget, currency, the model provider and its key, the risk limits, the polling cadence and the
+> proxy are **not** container environment variables: they live in the database and are edited on the
+> Settings page.
 
 **Back up the whole `data` directory**, not just the `.db` file — SQLite in WAL mode keeps recent
 commits in `-wal` beside it.
