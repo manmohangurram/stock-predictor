@@ -1,5 +1,7 @@
 # stock-predicter
 
+<img src="docs/icon.png" width="96" alt="stock-predicter icon: three rising candles with a trend arrow">
+
 A self-hosted portfolio ledger that watches your holdings, suggests buy and sell decisions with
 prices and an exit plan, and pushes one notification when something actually needs doing.
 
@@ -51,6 +53,10 @@ AMFI (India) ───┤ mutual fund NAV                                       
 **Ledger** — the portfolio strip, holdings with their latest signal, search-and-add, recent fills.
 
 ![Ledger](docs/screenshots/ledger.png)
+
+The icon is the same idea as the app: candles climbing under one rising line. It ships as
+`favicon.svg` plus PNGs at 512/192/180/32/16, a maskable variant for Android, and a
+`manifest.webmanifest`, so it installs to a phone home screen properly.
 
 **Instrument** — price history with both moving averages, a fill recorder, the decision stream,
 the full fills history, headlines, and the rule checklist. Each buy carries its whole exit plan
@@ -399,6 +405,10 @@ RUST_LOG=info
 | `PUBLIC_URL` | *(empty)* | The address the app is reachable at, for the deep link on a notification. |
 | `SECRET_KEY` | *(key file)* | 32 bytes, 64 hex characters or base64, encrypting stored secrets. |
 | `TZ` | `UTC` | The container clock's zone. Cosmetic: the NSE window is IST and storage is UTC. |
+
+The app also serves an icon set (`favicon.svg`, `icon-192.png`, `icon-512.png`,
+`apple-touch-icon.png`, `manifest.webmanifest`) so "Add to Home Screen" gives you the real icon and a
+standalone window rather than a browser tab.
 
 ### Plain Docker
 
