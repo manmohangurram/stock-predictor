@@ -64,7 +64,7 @@ function decisionCard(reply: string): string {
   }
   const stamp = r.verdict === "BUY" ? "buy" : r.verdict === "SELL" ? "sell" : "estimate";
   const row = (label: string, value: string) =>
-    `<div class="decision-row"><span class="lbl">${label}</span><b class="num">${value}</b></div>`;
+    `<div class="reply-figure"><span class="lbl">${label}</span><b class="num">${value}</b></div>`;
   const figures = [
     r.qty !== null ? row("Quantity", String(r.qty)) : "",
     r.entry !== null ? row("Entry", money(r.entry)) : "",

@@ -386,6 +386,7 @@
   .exit-plan b { font-size: var(--text-md); }
   .decision footer { margin-top: var(--space-2); font-size: var(--text-xs); color: var(--ink-tertiary); font-family: var(--font-ledger); }
 
+  .card .trade-form { border: 0; padding: 0; border-radius: 0; }
   .trade-form { border: 1px solid var(--rule-subtle); border-radius: var(--radius); padding: var(--space-3);
     background: var(--paper-raised); display: grid; gap: var(--space-2); }
   /* Wraps rather than clipping: six controls do not fit beside a 288px rail at 1280px. */
@@ -664,9 +665,9 @@
   .decision[data-verdict="pass"] { background: var(--paper-inset); }
   .decision-head { display: flex; gap: var(--space-3); align-items: baseline; }
   .decision-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px var(--space-4); }
-  .decision-row { display: flex; justify-content: space-between; gap: var(--space-2);
+  .reply-figure { display: flex; justify-content: space-between; gap: var(--space-2);
     border-bottom: 1px solid var(--rule-subtle); padding: 3px 0; }
-  .decision-row b { font-family: var(--font-ledger); font-weight: 500; }
+  .reply-figure b { font-family: var(--font-ledger); font-weight: 500; }
   .decision-prose { margin: 0; font-size: var(--text-sm); line-height: 1.55; white-space: pre-wrap; }
   .decision-note { margin: 0; font-size: var(--text-xs); color: var(--ink-tertiary); }
   .decision-cites { display: flex; gap: var(--space-2); flex-wrap: wrap; }
@@ -674,4 +675,83 @@
     background: var(--paper-inset); border: 1px solid var(--rule-subtle); border-radius: 2px;
     padding: 1px 6px; }
   .stamp[data-stamp="estimate"] { color: var(--ink-secondary); background: var(--paper-inset); }
+}
+
+@layer components {
+  /* Instrument page: chart and its evidence on the left, the numbers you act on at the right. */
+  .inst-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-4);
+    align-items: start; }
+  .inst-main, .inst-side { display: grid; gap: var(--space-4); align-content: start; }
+  .inst-side { position: sticky; top: var(--space-4); }
+  .card { background: var(--paper-raised); border: 1px solid var(--rule-subtle);
+    border-radius: var(--radius); padding: var(--space-3) var(--space-4) var(--space-4); }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2);
+    margin-bottom: var(--space-2); }
+  .chart-card .chart { margin: 0; }
+  .chart-card figcaption { margin-top: var(--space-1); }
+  .chart svg { display: block; width: 100%; height: auto; }
+  .facts .pair, .plan .pair { display: flex; justify-content: space-between; gap: var(--space-2);
+    padding: 5px 0; border-bottom: 1px solid var(--rule-subtle); font-size: var(--text-sm); }
+  .facts .pair:last-child, .plan .pair:last-child { border-bottom: 0; }
+  .rules { display: grid; gap: var(--space-2); }
+  .rule-row { display: flex; gap: var(--space-2); align-items: baseline; font-size: var(--text-sm); }
+  .decision-row { cursor: pointer; }
+  .decision-row:hover { background: var(--paper-inset); }
+  .decision-detail td { background: var(--paper-inset); padding: 0; }
+  .decision-body { padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-3); }
+  .decision-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--space-2) var(--space-3); }
+  .decision-grid > div { display: grid; gap: 1px; }
+  .decision-prose { margin: 0; font-size: var(--text-sm); line-height: 1.55; }
+  .decision-reasons { margin: 0; padding-left: 18px; font-size: var(--text-sm); color: var(--ink-secondary); }
+  @media (max-width: 1100px) {
+    .inst-grid { grid-template-columns: 1fr; }
+    .inst-side { position: static; }
+  }
+}
+
+@layer components {
+  /* Buy/Sell as a segmented control, and the fill fields in a two-column grid. */
+  .seg { display: flex; gap: 0; margin-bottom: var(--space-3); }
+  .seg-option { flex: 1; }
+  .seg-option input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg-option span {
+    display: block; text-align: center; padding: 6px 0; font-size: var(--text-sm);
+    border: 1px solid var(--rule); background: var(--paper-raised); color: var(--ink-secondary);
+    cursor: pointer;
+  }
+  .seg-option:first-child span { border-radius: var(--radius) 0 0 var(--radius); }
+  .seg-option:last-child span { border-radius: 0 var(--radius) var(--radius) 0; border-left: 0; }
+  .seg-option input:checked + span { background: var(--stamp-ink-bg); color: var(--stamp-ink);
+    border-color: var(--stamp-ink); font-weight: 600; }
+  .seg-option input:focus-visible + span { outline: 2px solid var(--rule-focus); outline-offset: 1px; }
+  .fill-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .fill-grid .field { display: grid; gap: 2px; }
+  .fill-grid .field input, .fill-grid .field select { width: 100%; }
+  .fill-grid .field .static {
+    height: 32px; display: flex; align-items: center; padding: 0 var(--space-2);
+    border: 1px dashed var(--rule); border-radius: var(--radius); font-size: var(--text-sm);
+    color: var(--ink-tertiary);
+  }
+  .btn.wide { width: 100%; margin-top: var(--space-3); }
+  .decisions { table-layout: auto; }
+  .decisions td, .decisions th { white-space: nowrap; }
+}
+
+@layer components {
+  /* On a phone the chart pans instead of shrinking its labels into mush. */
+  @media (max-width: 900px) {
+    .chart { overflow-x: auto; }
+    .chart svg { min-width: 560px; }
+    .decisions .conf-word { display: grid; gap: 0; }
+  }
+  .decisions .conf-word { white-space: nowrap; }
+  .blotter .empty { padding: var(--space-4) var(--space-3); }
+}
+
+@layer components {
+  /* Grid children default to min-width:auto, so one wide child (a 560px chart, a nowrap table)
+     stretched the whole page on a phone. */
+  .inst-grid > *, .inst-main > *, .inst-side > *, .card { min-width: 0; }
+  .chart, .table-wrap { max-width: 100%; }
 }

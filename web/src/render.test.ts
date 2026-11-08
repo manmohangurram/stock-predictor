@@ -270,7 +270,8 @@ describe("trade form dates", () => {
     expect(html).toContain('name="at"');
     expect(html).toContain('type="date"');
     expect(html).toContain(`value="${today(new Date("2026-10-27T12:00:00Z"))}"`);
-    expect(html).toContain("backfill an older fill");
+    // The backfill hint moved to the help line under the button.
+    expect(html).toContain("A buy is limited by cash");
   });
 
   test("caps the date at today — a fill cannot be in the future", async () => {
@@ -671,7 +672,8 @@ describe("mutual funds in the trading pot", () => {
   test("an MF is offered the long-term pot only", async () => {
     const { renderTradeForm } = await import("./pages/instrument");
     const html = renderTradeForm("AXISELSS", null, new Date("2026-11-08T12:00:00Z"), "mutual_fund");
-    expect(html).toContain("Long-term pot only");
+    // A fund gets no pot selector at all: the pot is a hidden input fixed to long.
+    expect(html).toContain("Long-term only");
     expect(html).not.toContain('<option value="trade">');
     expect(html).toContain('name="mode" value="long"');
   });
@@ -679,7 +681,7 @@ describe("mutual funds in the trading pot", () => {
   test("a stock still gets both pots", async () => {
     const { renderTradeForm } = await import("./pages/instrument");
     const html = renderTradeForm("INFY.NS", null, new Date("2026-11-08T12:00:00Z"), "stock");
-    expect(html).toContain('<option value="trade">Trading pot</option>');
+    expect(html).toContain('<option value="trade">Trading</option>');
   });
 });
 

@@ -42,6 +42,7 @@ async function route(): Promise<void> {
       const analysis = await api.analysis(symbol);
       app.innerHTML = renderInstrument(analysis, analysis, analysis.trades);
       wireTradeForm(symbol);
+      wireDecisions();
       wireTargetProfit(symbol);
     } else {
       const mode = (new URLSearchParams(location.search).get("mode") as
@@ -141,25 +142,27 @@ function wireSearch(): void {
 function wireTradeForm(symbol: string): void {
   const form = document.querySelector<HTMLFormElement>(".trade-form");
   const status = document.querySelector<HTMLElement>("#trade-status");
-  const sideSelect = form?.querySelector<HTMLSelectElement>('select[name="side"]');
+  const sideInputs = form ? Array.from(form.querySelectorAll<HTMLInputElement>('input[name="side"]')) : [];
+  const sideValue = (): "buy" | "sell" =>
+    (sideInputs.find((r) => r.checked)?.value as "buy" | "sell") ?? "buy";
   const qtyInput = form?.querySelector<HTMLInputElement>('input[name="qty"]');
 
   // Cap the quantity only while selling. Applying it to a buy made the browser reject any
   // purchase larger than the current holding before the request was ever sent.
   const syncLimit = () => {
-    if (!sideSelect || !qtyInput) return;
+    if (!qtyInput) return;
     const held = qtyInput.dataset.held ? Number(qtyInput.dataset.held) : null;
-    const limit = qtyLimit(sideSelect.value as "buy" | "sell", held);
+    const limit = qtyLimit(sideValue(), held);
     if (limit === null) qtyInput.removeAttribute("max");
     else qtyInput.max = String(limit);
     qtyInput.setCustomValidity("");
   };
-  sideSelect?.addEventListener("change", syncLimit);
+  sideInputs.forEach((r) => r.addEventListener("change", syncLimit));
   syncLimit();
   form?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const data = new FormData(form);
-    const side = String(data.get("side")) as "buy" | "sell";
+    const side = sideValue();
     const mode = (String(data.get("mode") ?? "long") as "long" | "trade");
     const qty = Number(data.get("qty"));
     const price = Number(data.get("price"));
@@ -190,6 +193,29 @@ function readLimits(data: FormData, mode: "long" | "trade") {
     max_trade_amount: num("max_trade_amount"),
     max_instrument_pct: num("max_instrument_pct"),
   };
+}
+
+/** A decision row opens to reveal the whole message: rationale, reasons and the risk. */
+function wireDecisions(): void {
+  document.querySelectorAll<HTMLTableRowElement>(".decision-row").forEach((row) => {
+    const toggle = () => {
+      const id = row.dataset.decision;
+      const detail = document.querySelector<HTMLTableRowElement>(`#decision-${id}`);
+      if (!detail) return;
+      const open = !detail.hidden;
+      detail.hidden = open;
+      row.setAttribute("aria-expanded", String(!open));
+      const label = row.querySelector("td.right .lbl");
+      if (label) label.textContent = open ? "Open" : "Close";
+    };
+    row.addEventListener("click", toggle);
+    row.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        toggle();
+      }
+    });
+  });
 }
 
 function wireTargetProfit(symbol: string): void {
