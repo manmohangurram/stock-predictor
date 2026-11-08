@@ -48,12 +48,11 @@ RUN case ${TARGETARCH} in \
 # Must match the builder's glibc: rust:1.98 is Debian trixie (2.41). A bookworm runtime here
 # produced binaries asking for GLIBC_2.38 and failing at startup on arm64.
 FROM debian:trixie-slim AS runtime
-# A fixed uid, not `useradd --system` (which picks 999): a bind mount of ./data stays writable
-# when the host user is 1000, the default on most Linux desktops.
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --uid 1000 --create-home --home-dir /data app \
-    && chown -R app:app /data
+# Runs as root inside the container, like the sibling financer image, so a bind mount of ./data
+# works whatever uid owns it on the host. No USER, no useradd: a mismatched uid was making
+# SQLite fail with "unable to open database file".
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/stock-predicter /usr/local/bin/stock-predicter
 COPY --from=frontend /app/web/dist ./web/dist
@@ -64,6 +63,5 @@ COPY --from=frontend /app/web/dist ./web/dist
 ENV BIND=0.0.0.0:8080 \
     DB_PATH=/data/stock-predicter.db
 VOLUME ["/data"]
-USER app
 EXPOSE 8080
 ENTRYPOINT ["stock-predicter"]

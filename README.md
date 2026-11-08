@@ -321,38 +321,42 @@ The image is never built from `main`.
 ```yaml
 services:
   stock-predicter:
-    image: ghcr.io/manmohangurram/stock-predictor:latest
+    image: ghcr.io/manmohangurram/stock-predictor:${IMAGE_TAG:-latest}
     container_name: stock-predicter
     restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — openssl rand -hex 32}
       RUST_LOG: ${RUST_LOG:-info}
-    networks:
-      - proxy
+      TZ: ${TZ:-Asia/Kolkata}
     volumes:
-      - ./data:/data
-    deploy:
-      resources:
-        limits:
-          memory: 128m
-
-networks:
-  proxy:
-    external: true
+      - ${DATA_DIR:-./data}:/data
 ```
 
-`BIND` and `DB_PATH` need no lines here: the image already sets `0.0.0.0:8080` and
-`/data/stock-predicter.db`, and declares `/data` as its volume. Nothing is published to the host —
-the container is reachable only through the `proxy` network — because there is no authentication.
-To try it on a LAN without a reverse proxy, add `ports: ["8080:8080"]` and nothing else.
+`BIND` and `DB_PATH` need no lines: the image already sets `0.0.0.0:8080` and
+`/data/stock-predicter.db`, and declares `/data` as its volume. Copy `.env.example` to `.env`
+(mode 0600) and Compose does the rest.
+
+The container runs as **root**, like the sibling financer image, because a bind mount of `./data`
+must work whatever uid owns it on the host. A fixed unprivileged uid is the tidier choice until
+that uid does not match your directory — which is exactly how *unable to open database file* starts.
+Root inside a container only sees the mounted directory, but it is still worth knowing.
 
 `128m` is comfortable rather than tight: this process sits at about 21 MB resident with a 250-bar
 history loaded. Drop it to `64m` if you want the ceiling to actually bite.
 
-The container runs as uid **1000**, so a bind mount of `./data` is writable when your host user is
-1000 too — the default on most Linux desktops. If `docker logs` says *unable to open database
-file*, run `sudo chown -R 1000:1000 ./data` once.
+### Time zone
+
+Not required for correctness, and deliberately so:
+
+- The NSE window is computed in **IST regardless of the container clock** (a fixed +05:30 offset in
+  `src/schedule.rs`), so polling opens at 09:00 IST on a server in UTC, Berlin or anywhere else.
+- Every timestamp is stored as **UTC RFC3339**; the browser renders it in its own zone.
+- `TZ` therefore only affects what other tools in the container see (`date` reads
+  `Sun Nov 8 17:13 IST 2026`). It is set to `Asia/Kolkata` in Compose and `tzdata` is installed, so it
+  works if you add tooling later. The app's own log lines stay in UTC.
 
 ### Environment declarations
 
@@ -373,16 +377,18 @@ RUST_LOG=info
 | `DB_PATH` | `data/stock-predicter.db` | SQLite file. The image sets `/data/stock-predicter.db`. |
 | `PUBLIC_URL` | *(empty)* | The address the app is reachable at, for the deep link on a notification. |
 | `SECRET_KEY` | *(key file)* | 32 bytes, 64 hex characters or base64, encrypting stored secrets. |
+| `TZ` | `UTC` | The container clock's zone. Cosmetic: the NSE window is IST and storage is UTC. |
 
 ### Plain Docker
 
 ```bash
 docker run -d --name stock-predicter \
   --restart unless-stopped \
-  --network proxy \
+  -p 8080:8080 \
   -e PUBLIC_URL=http://192.168.1.10:8080 \
   -e SECRET_KEY="$(openssl rand -hex 32)" \
   -e RUST_LOG=info \
+  -e TZ=Asia/Kolkata \
   -v "$PWD/data:/data" \
   --memory 128m \
   ghcr.io/manmohangurram/stock-predictor:latest

@@ -1,27 +1,27 @@
+# One container, SQLite storage, no external services.
+#
+#   docker compose up -d
+#
+# The four environment variables are the only configuration that lives here. Budget, limits, the
+# model and its key, ntfy, polling cadence and the proxy are settings rows edited on the Settings
+# page. Compose substitutes ${…} from a .env file next to this file (see .env.example); the
+# binary itself reads only the process environment and never opens a file.
 services:
   stock-predicter:
-    image: ghcr.io/manmohangurram/stock-predictor:latest
+    image: ghcr.io/manmohangurram/stock-predictor:${IMAGE_TAG:-latest}
     container_name: stock-predicter
     restart: unless-stopped
+    ports:
+      # LAN only on purpose: there is no authentication. Put it behind a reverse proxy, or publish
+      # to 127.0.0.1, and never forward this port to the internet.
+      - "${PORT:-8080}:8080"
     environment:
-      # The only configuration that lives here. Budget, limits, model and key, ntfy, cadence and
-      # the proxy are settings rows edited on the Settings page.
-      # BIND (0.0.0.0:8080) and DB_PATH (/data/stock-predicter.db) are set by the image already.
+      # BIND (0.0.0.0:8080) and DB_PATH (/data/stock-predicter.db) are set by the image.
       PUBLIC_URL: ${PUBLIC_URL:-}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — openssl rand -hex 32}
       RUST_LOG: ${RUST_LOG:-info}
-    networks:
-      - proxy
+      # Container clock: the market window and the timestamps are Indian.
+      TZ: ${TZ:-Asia/Kolkata}
     volumes:
-      # The SQLite database, its WAL and (unless SECRET_KEY is set) secret.key live here. Back it up.
-      - ./data:/data
-    deploy:
-      resources:
-        limits:
-          memory: 128m
-    # No published ports on purpose: there is no authentication, so this is reachable only through
-    # the proxy network. To try it on the LAN instead, add:  ports: ["8080:8080"]
-
-networks:
-  proxy:
-    external: true
+      # The SQLite database, its WAL and (unless SECRET_KEY is set) secret.key live here.
+      - ${DATA_DIR:-./data}:/data
