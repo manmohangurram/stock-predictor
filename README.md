@@ -20,7 +20,7 @@ It is not a price oracle. The engine is a deterministic strategy plus a language
 the news, and every number it suggests is validated against your cash, your limits and the price band
 before you see it.
 
-<img src="docs/screenshots/ledger-v2.png" alt="The ledger: holdings split into stocks and mutual funds, with P&L and exit plans">
+<img src="docs/screenshot.png" alt="The ledger: holdings split into stocks and mutual funds, with P&L and exit plans">
 
 ## Current Features
 
@@ -65,18 +65,6 @@ AMFI (India) ───┤ mutual fund NAV                                       
 ```
 
 Long version, including why the two pots are separate: [`docs/how-it-works.md`](docs/how-it-works.md).
-
-## Screens
-
-| | |
-|---|---|
-| <img src="docs/screenshots/instrument-v2.png" alt="Instrument page"> | <img src="docs/screenshots/audit-v2.png" alt="Audit page"> |
-| Price history, both moving averages, the fill recorder, the decision stream and the rule checklist | Every model call with its prompt and reply, kept verbatim |
-
-| | |
-|---|---|
-| <img src="docs/screenshots/settings-money-v2.png" alt="Settings: money"> | <img src="docs/screenshots/settings-network-v2.png" alt="Settings: network"> |
-| Six settings tabs; the money and limits are the first two | The proxy, with a button that proves it works |
 
 ## Getting Started
 
