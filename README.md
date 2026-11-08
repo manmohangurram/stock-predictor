@@ -50,7 +50,9 @@ AMFI (India) ───┤ mutual fund NAV                                       
 
 ## Screens
 
-**Ledger** — the portfolio strip, holdings with their latest signal, search-and-add, recent fills.
+**Ledger** — a rail with the free cash always visible, then the whole book: what you paid, what it is
+worth now, the P&L on each holding and its exit plan. **Stocks and mutual funds are separate
+tables**, because a fund has no intraday exit and wants different columns.
 
 ![Ledger](docs/screenshots/ledger.png)
 
@@ -66,10 +68,10 @@ decision above it is the model's, and the validator — not either of them — h
 
 ![Instrument](docs/screenshots/instrument.png)
 
-**Trading pot** — a separate ceiling, a separate book, separate limits. Same instrument set,
-different capital.
+**Audit** — every outbound model call with its prompt and its reply, kept verbatim. Opening a row
+shows the exchange as it happened, so a blocked signal can be reconstructed exactly.
 
-![Trading](docs/screenshots/trading.png)
+![Audit](docs/screenshots/audit.png)
 
 Both kinds of fund code work: AMFI's scheme code (`120503`, NAV from the AMFI list) and Yahoo's
 opaque fund symbol (`0P00012ALS.BO`, a real NAV series). Funds are found by searching the name —
