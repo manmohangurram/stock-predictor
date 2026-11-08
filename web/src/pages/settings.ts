@@ -65,6 +65,28 @@ function select(tab: Tab, name: string, label: string, value: string, options: [
   </div>`;
 }
 
+/** Seconds as a person would say them: 900 → "15 minutes", 7200 → "2 hours". */
+export function humanDuration(secs: number): string {
+  if (!Number.isFinite(secs) || secs <= 0) return "—";
+  const s = Math.round(secs);
+  if (s < 60) return `${s} second${s === 1 ? "" : "s"}`;
+  const minutes = s / 60;
+  if (minutes < 60) {
+    const m = Math.round(minutes * 10) / 10;
+    return `${m} minute${m === 1 ? "" : "s"}`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const rest = Math.round(minutes - hours * 60);
+  if (rest === 0) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  return `${hours} h ${rest} min`;
+}
+
+/** A line of help that recomputes itself as the field is typed. */
+function derived(name: string, value: number, template: string): string {
+  const shown = template.replace("{v}", humanDuration(value));
+  return `<span class="derived" data-seconds="${name}" data-template="${escapeHtml(template)}">${escapeHtml(shown)}</span>`;
+}
+
 const MONEY = (s: Settings, tab: Tab): string => {
   const below = shouldDisableSave(s.budget, s.committed);
   return `
@@ -173,15 +195,15 @@ const NOTIFICATIONS = (s: Settings, tab: Tab): string => `
 const CADENCE = (s: Settings, tab: Tab): string => `
   ${field(tab, "poll_secs", "Poll while the market is open", s.runtime.poll_secs, {
     type: "number", step: "60", unit: "seconds",
-    help: "09:00–16:00 IST, Monday to Friday. 900 is every 15 minutes.",
+    help: `09:00–16:00 IST, Monday to Friday — ${derived("poll_secs", s.runtime.poll_secs, "wakes every {v}")}.`,
   })}
   ${field(tab, "off_hours_secs", "Poll when the market is closed", s.runtime.off_hours_secs, {
     type: "number", step: "60", unit: "seconds",
-    help: "Only to catch evening headlines. 7200 is every two hours.",
+    help: `Outside that window, only to catch headlines — ${derived("off_hours_secs", s.runtime.off_hours_secs, "wakes every {v}")}.`,
   })}
   ${field(tab, "prompt_window_hours", "Tape in each prompt", s.runtime.prompt_window_hours, {
     type: "number", step: "1", unit: "hours",
-    help: "Hours of 15-minute bars the model sees. The biggest lever on token cost.",
+    help: "Hours of 15-minute bars the model sees — the biggest lever on token cost.",
   })}
   ${field(tab, "daily_cap", "Model calls per day, at most", s.runtime.daily_cap, {
     type: "number", step: "1", unit: "calls",
@@ -193,7 +215,7 @@ const CADENCE = (s: Settings, tab: Tab): string => `
   })}
   ${field(tab, "max_silence_secs", "…or after silence of", s.runtime.max_silence_secs, {
     type: "number", step: "60", unit: "seconds",
-    help: "Never stay quiet longer than this, whatever the price did.",
+    help: `Never stay quiet longer than this, whatever the price did — ${derived("max_silence_secs", s.runtime.max_silence_secs, "a call at least every {v}")}.`,
   })}
 `;
 

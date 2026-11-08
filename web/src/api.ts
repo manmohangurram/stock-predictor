@@ -123,6 +123,21 @@ export interface CallRow {
   error: string | null;
 }
 
+/** One call with its stored bodies. Fetched only when a row is opened. */
+export interface CallDetail {
+  id: number;
+  ts: string;
+  endpoint: string;
+  purpose: string | null;
+  round: number | null;
+  prompt_template: string | null;
+  request_json: string | null;
+  response_json: string | null;
+  prompt_tokens: number | null;
+  validator_verdict: string | null;
+  error: string | null;
+}
+
 export interface BarPoint {
   ts: string;
   close: number;
@@ -219,6 +234,7 @@ export const api = {
       { method: "POST" },
     ),
   calls: () => req<CallRow[]>("/api/calls"),
+  callDetail: (id: number) => req<CallDetail>(`/api/calls/${id}`),
   trades: () => req<Trade[]>("/api/trades"),
   instrument: (symbol: string) =>
     req<InstrumentDetail>(`/api/instruments/${encodeURIComponent(symbol)}`),

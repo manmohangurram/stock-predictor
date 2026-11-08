@@ -75,6 +75,10 @@ Recommendations come from the long-term pot only, and cover **stocks and mutual 
 plain BUY at NAV with no stop or target, because neither exists for it. The trading pot gets no
 recommendations yet; it is for fills you record yourself.
 
+Every call stores its prompt and its raw reply. The Audit page lists them; opening one shows the
+exchange as it happened — the prompt role by role on the left, what the model said on the right,
+the declared tools, the token count, and both JSON bodies on demand. `?call=12` opens one directly.
+
 **Settings is six tabs**, one section each, stamped on its own — every value is a database row, and
 a change applies on the next tick without a restart. On a phone the rail becomes a scrollable strip
 and the stamp bar pins to the bottom.

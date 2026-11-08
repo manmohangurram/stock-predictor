@@ -67,6 +67,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/instruments", post(add_instrument))
         .route("/api/instruments/{symbol}", get(instrument_detail))
         .route("/api/trades", get(all_trades))
+        .route("/api/calls/{id}", get(call_detail))
         .route(
             "/api/instruments/{symbol}/trades",
             get(instrument_trades).post(record_trade),
@@ -664,6 +665,52 @@ struct CallDbRow {
     completion_tokens: Option<i64>,
     validator_verdict: Option<String>,
     error: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct CallDetailRow {
+    id: i64,
+    ts: String,
+    endpoint: String,
+    purpose: Option<String>,
+    round: Option<i64>,
+    prompt_template: Option<String>,
+    request_json: Option<String>,
+    response_json: Option<String>,
+    prompt_tokens: Option<i64>,
+    validator_verdict: Option<String>,
+    error: Option<String>,
+}
+
+/// One call, with the prompt and the raw reply. Fetched on demand: the list must stay small.
+async fn call_detail(
+    State(st): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let row: Option<CallDetailRow> = sqlx::query_as(
+        "SELECT id, ts, endpoint, purpose, round, prompt_template, request_json, response_json,
+                prompt_tokens, validator_verdict, error
+         FROM api_calls WHERE id = ?",
+    )
+        .bind(id)
+        .fetch_optional(&st.pool)
+        .await?;
+    let Some(r) = row else {
+        return Err(ApiError::NotFound(format!("no call {id}")));
+    };
+    Ok(Json(serde_json::json!({
+        "id": r.id,
+        "ts": r.ts,
+        "endpoint": r.endpoint,
+        "purpose": r.purpose,
+        "round": r.round,
+        "prompt_template": r.prompt_template,
+        "request_json": r.request_json,
+        "response_json": r.response_json,
+        "prompt_tokens": r.prompt_tokens,
+        "validator_verdict": r.validator_verdict,
+        "error": r.error,
+    })))
 }
 
 async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiError> {

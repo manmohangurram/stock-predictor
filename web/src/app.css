@@ -304,10 +304,19 @@
 
 @layer components {
   /* ---------- app shell ---------- */
-  .shell { max-width: 1180px; margin: 0 auto; padding: var(--space-4) var(--space-4) var(--space-12); }
-  .topnav { display: flex; gap: var(--space-4); padding-block: var(--space-3); font-size: var(--text-sm); }
+  /* Wide by default: a ledger is a table, and tables want width. The side rail is fixed so the
+     blotter takes every spare pixel on a large screen instead of stranding them as margins. */
+  .shell { max-width: 1440px; margin: 0 auto;
+    padding: var(--space-4) clamp(var(--space-4), 2.5vw, var(--space-8)) var(--space-12); }
+  @media (min-width: 1600px) {
+    .shell { max-width: 1560px; }
+  }
+  .topnav { display: flex; gap: var(--space-6); align-items: baseline;
+    padding-block: var(--space-2) var(--space-3); margin-bottom: var(--space-4);
+    border-bottom: 1px solid var(--rule-subtle); font-size: var(--text-sm); }
   .topnav a { color: var(--ink-secondary); text-decoration: none; }
   .topnav a:hover { color: var(--ink); }
+  .topnav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
   .strip { display: flex; gap: var(--space-6); align-items: baseline; flex-wrap: wrap;
     padding: var(--space-3) var(--space-4); background: var(--paper-raised);
     border: 1px solid var(--rule-subtle); border-radius: var(--radius); }
@@ -320,7 +329,8 @@
   .exposure .stocks { background: var(--stamp-ink); }
   .exposure .cash { background: var(--rule-strong); }
 
-  .body { display: grid; grid-template-columns: 1fr 288px; gap: var(--space-4); margin-top: var(--space-4); align-items: start; }
+  .body { display: grid; grid-template-columns: minmax(0, 1fr) 320px;
+    gap: var(--space-6); margin-top: var(--space-4); align-items: start; }
   .main { min-width: 0; display: grid; gap: var(--space-4); }
   .side { border-left: 1px solid var(--rule-subtle); padding-left: var(--space-4); display: grid; gap: 2px; }
 
@@ -469,7 +479,8 @@
 @layer components {
   /* Settings: six tabs, one section at a time, each stamped on its own. */
   .settings-shell { display: grid; grid-template-columns: 236px 1fr; gap: 0 var(--space-6); }
-  .settings-shell > .strip { grid-column: 1 / -1; }
+  .settings-shell > .strip,
+  .settings-shell > .topnav { grid-column: 1 / -1; }
 
   .settings-rail {
     display: flex; flex-direction: column; padding: var(--space-2) 0;
@@ -526,5 +537,32 @@
     .settings-shell > .strip { flex-wrap: wrap; gap: var(--space-3); }
     .settings-shell > .strip > div { flex: 1 1 auto; }
     .pane-foot { position: sticky; bottom: 0; background: var(--paper); }
+  }
+}
+
+@layer components {
+  /* Audit: the stored exchange, opened under its row. */
+  .call-detail td { padding: 0 !important; background: var(--paper-inset); }
+  .call { padding: var(--space-4); display: grid; gap: var(--space-3); }
+  .call-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline; }
+  .call-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); align-items: start; }
+  .call-col { display: grid; gap: var(--space-2); }
+  .call-block { display: grid; gap: 2px; }
+  .call-block pre {
+    margin: 0; padding: var(--space-3); background: var(--paper-raised);
+    border: 1px solid var(--rule-subtle); border-radius: var(--radius);
+    font-family: var(--font-ledger); font-size: var(--text-xs); line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word; max-height: 340px; overflow: auto;
+  }
+  .call-col .call-block pre { max-height: 420px; }
+  .raw summary { cursor: pointer; font-size: var(--text-xs); letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-tertiary); }
+  .raw[open] summary { margin-bottom: var(--space-2); }
+  .call-loading { color: var(--ink-tertiary); font-size: var(--text-sm); }
+  /* Reads as prose, not as a value: only the number is emphasised. */
+  .derived { font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 900px) {
+    .call-grid { grid-template-columns: 1fr; }
   }
 }

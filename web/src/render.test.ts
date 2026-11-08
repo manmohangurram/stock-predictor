@@ -680,3 +680,73 @@ describe("mutual funds in the trading pot", () => {
     expect(html).toContain('<option value="trade">Trading pot</option>');
   });
 });
+
+describe("cadence help text", () => {
+  test("seconds read as a person would say them", async () => {
+    const { humanDuration } = await import("./pages/settings");
+    expect(humanDuration(900)).toBe("15 minutes");
+    expect(humanDuration(7200)).toBe("2 hours");
+    expect(humanDuration(3600)).toBe("1 hour");
+    expect(humanDuration(5400)).toBe("1 h 30 min");
+    expect(humanDuration(45)).toBe("45 seconds");
+    expect(humanDuration(0)).toBe("—");
+  });
+
+  test("the help line carries the value so it can be recomputed live", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const html = renderSettings(
+      {
+        budget: 1000, committed: 0, available: 1000, currency: "INR", currency_locked: false,
+        deepseek_configured: false, trading_budget: 0, trading_available: 0,
+        ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
+        llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "", llm_key_configured: false,
+        limits_long: limits(), limits_trade: limits(),
+        runtime: {
+          poll_secs: 7200, off_hours_secs: 900, prompt_window_hours: 4, min_price_move: 2,
+          max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+          proxy_user: null, proxy_pass_configured: false, proxy_bypass: null,
+        },
+      },
+      "cadence",
+    );
+    // The text follows the stored value, not a hardcoded "15 minutes".
+    expect(html).toContain("wakes every 2 hours");
+    expect(html).toContain("wakes every 15 minutes");
+    expect(html).toContain('data-seconds="poll_secs"');
+    expect(html).toContain('data-template="wakes every {v}"');
+  });
+});
+
+describe("reading a stored call", () => {
+  const request = JSON.stringify({
+    model: "deepseek-chat",
+    messages: [
+      { role: "system", content: "You are an analyst." },
+      { role: "user", content: "INFY.NS close 1167.40" },
+    ],
+    tools: [{ type: "function", function: { name: "need_more" } }],
+  });
+
+  test("the prompt is shown role by role, not as one blob", async () => {
+    const { promptBlocks } = await import("./components/call-viewer");
+    const blocks = promptBlocks(request);
+    expect(blocks.map((b) => b.label)).toEqual(["system", "user"]);
+    expect(blocks[1].text).toContain("close 1167.40");
+  });
+
+  test("the reply is the message content, not the envelope", async () => {
+    const { replyText } = await import("./components/call-viewer");
+    const openai = JSON.stringify({ choices: [{ message: { content: "PASS\nno entry" } }] });
+    expect(replyText(openai)).toBe("PASS\nno entry");
+    const gemini = JSON.stringify({ candidates: [{ content: { parts: [{ text: "BUY" }] } }] });
+    expect(replyText(gemini)).toBe("BUY");
+    // A body that is not JSON still shows something rather than nothing.
+    expect(replyText("upstream timed out")).toBe("upstream timed out");
+  });
+
+  test("declared tools are named, so the escalation is visible", async () => {
+    const { declaredTools } = await import("./components/call-viewer");
+    expect(declaredTools(request)).toEqual(["need_more"]);
+    expect(declaredTools(null)).toEqual([]);
+  });
+});

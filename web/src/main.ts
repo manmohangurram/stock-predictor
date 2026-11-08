@@ -1,5 +1,5 @@
 import { api, dashboardCached, type Hit, type Settings } from "./api";
-import { renderCalls } from "./pages/calls";
+import { renderCalls, renderExchangeDetail } from "./pages/calls";
 import { qtyLimit, renderInstrument } from "./pages/instrument";
 import { renderLedger } from "./pages/ledger";
 import { renderPositions } from "./pages/positions";
@@ -8,6 +8,7 @@ import {
   isTab,
   renderSettings,
   setDraft,
+  humanDuration,
   shouldDisableSave,
   TABS,
   type Tab,
@@ -43,6 +44,8 @@ async function route(): Promise<void> {
       wireRows();
     } else if (path === "/calls") {
       app.innerHTML = renderCalls(await api.calls());
+      await route2();
+      wireCallRows();
     } else if (path.startsWith("/i/")) {
       const symbol = decodeURIComponent(path.slice(3));
       // One request: the analysis payload carries the instrument, its signals and its fills.
@@ -60,7 +63,9 @@ async function route(): Promise<void> {
       if (res.notModified) return; // nothing changed: keep the DOM, and the user's open rows
       dashboardEtag = res.etag ?? null;
       const d = res.data!;
-      app.innerHTML = nav + renderLedger(d, d.recent_trades);
+      app.innerHTML = renderLedger(d, d.recent_trades);
+      // The nav belongs inside the content column, not floating in the page margin.
+      await route2();
       wireRows();
       wireSearch();
     }
@@ -224,9 +229,49 @@ function wireTargetProfit(symbol: string): void {
   });
 }
 
+/** Opening a call fetches one row's bodies and renders the exchange in place. */
+function wireCallRows(): void {
+  // ?call=12 opens that row directly, so a specific exchange can be linked to.
+  const wanted = new URLSearchParams(location.search).get("call");
+  document.querySelectorAll<HTMLButtonElement>(".view-call").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = Number(button.dataset.id);
+      const cell = document.querySelector<HTMLTableCellElement>(`#call-${id} td`);
+      const row = document.querySelector<HTMLTableRowElement>(`#call-${id}`);
+      if (!cell || !row) return;
+      const open = !row.hidden;
+      if (open) {
+        row.hidden = true;
+        button.setAttribute("aria-expanded", "false");
+        return;
+      }
+      row.hidden = false;
+      button.setAttribute("aria-expanded", "true");
+      cell.innerHTML = `<p class="empty">Reading the stored exchange…</p>`;
+      try {
+        cell.innerHTML = renderExchangeDetail(await api.callDetail(id));
+      } catch (e) {
+        cell.innerHTML = `<p class="empty">Could not read call ${id}: ${String(e)}</p>`;
+      }
+    });
+    if (wanted && Number(wanted) === Number(button.dataset.id)) button.click();
+  });
+}
+
 function wireSettings(tab: Tab, s: Settings): void {
   const form = document.querySelector<HTMLFormElement>("#tab-form");
   const status = document.querySelector<HTMLElement>("#tab-status");
+
+  // Help text that recomputes as the field is typed: "900 seconds" reads "every 15 minutes".
+  const refreshDerived = () => {
+    form?.querySelectorAll<HTMLElement>("[data-seconds]").forEach((el) => {
+      const input = form?.querySelector<HTMLInputElement>(`[name="${el.dataset.seconds}"]`);
+      if (!input) return;
+      const text = (el.dataset.template ?? "{v}").replace("{v}", humanDuration(Number(input.value)));
+      el.textContent = text;
+    });
+  };
+  form?.addEventListener("input", refreshDerived);
 
   // Drafts live in the settings module, so switching tabs keeps what was typed.
   form?.addEventListener("input", (ev) => {
