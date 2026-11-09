@@ -61,13 +61,14 @@ impl FundHistory {
     pub fn trailing_return(&self, years: f64) -> Option<f64> {
         let (last_date, last_nav) = self.navs.last()?;
         let cutoff = months_ago(last_date, (years * 12.0) as i64);
-        // The starting point must actually be at least `years` before the end — a one-week-old
-        // series must not report a 1-year return off its very first NAV.
+        // The starting point is the last NAV at or before the cutoff — the price `years` ago, not
+        // the fund's inception price. `find` would return the oldest point (sorted ascending), so
+        // walk from the back.
         let start = self
             .navs
             .iter()
-            .find(|(d, _)| d.as_str() <= cutoff.as_str())
-            .or_else(|| self.navs.first())?;
+            .rev()
+            .find(|(d, _)| d.as_str() <= cutoff.as_str())?;
         if start.1 <= 0.0 {
             return None;
         }

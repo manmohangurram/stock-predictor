@@ -150,6 +150,14 @@ async fn main() -> Result<()> {
             println!("DECISION {note}");
         }
         println!("poll: {report:#?}");
+
+        // A manual poll also runs the two discovery passes, so `--poll-once` means "do everything
+        // once" rather than "everything except the new stuff".
+        if let Ok(r) = stock_predictor::fundscan::run(&pool, &rt, Utc::now()).await {
+            if r.examined > 0 {
+                println!("fund scan: {r:#?}");
+            }
+        }
         if !flag("--serve") {
             return Ok(());
         }
