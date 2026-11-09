@@ -24,62 +24,62 @@ forced call.
 
 ### Task 1 — cash is a balance, and the month has a boundary
 
-- [ ] `budget::cash_in(mode)` = `SUM(amount)` over every kind; `available_in` returns it.
+- [x] `budget::cash_in(mode)` = `SUM(amount)` over every kind; `available_in` returns it.
       (`budget_total_in` keeps meaning "allowance granted", used only for display.)
-- [ ] `CashKind::Expiry` → `"expiry"`.
-- [ ] `rules/pot.rs`: `ensure_month(pool, mode, allowance, now) -> MonthReport`.
+- [x] `CashKind::Expiry` → `"expiry"`.
+- [x] `rules/pot.rs`: `ensure_month(pool, mode, allowance, now) -> MonthReport`.
       If `settings.pot_month_<mode>` ≠ `YYYY-MM` (IST): expire the positive balance
       (`expiry −cash`, reference "unspent allowance expired"), then `budget +allowance`
       (reference "allowance 2026-11"), then write the month row — one transaction per pot.
-- [ ] Called from the poll loop for both pots, using the configured allowance.
-- [ ] Tests: reset once per month; idempotent on a second tick; zero cash writes no expiry;
+- [x] Called from the poll loop for both pots, using the configured allowance.
+- [x] Tests: reset once per month; idempotent on a second tick; zero cash writes no expiry;
       expiry does not touch realised P&L; `cash_in` follows buys and sells.
 
 ### Task 2 — the gate stops inventing calls
 
-- [ ] `Runtime.max_silence_secs` default `0`; `should_call` only applies the interval when `> 0`.
-- [ ] Cadence copy: "0 means never call just because time passed".
-- [ ] Tests: unchanged price + unchanged headlines = no call at any elapsed time; new headline = call.
+- [x] `Runtime.max_silence_secs` default `0`; `should_call` only applies the interval when `> 0`.
+- [x] Cadence copy: "0 means never call just because time passed".
+- [x] Tests: unchanged price + unchanged headlines = no call at any elapsed time; new headline = call.
 
 ### Task 3 — delete or archive an instrument
 
-- [ ] `DELETE /api/instruments/{symbol}`: refused while a position is open; hard delete (and its
+- [x] `DELETE /api/instruments/{symbol}`: refused while a position is open; hard delete (and its
       bars, news, memos, pending signals, fills) when there is no history; `archived` (`active = 0`)
       when there is history. Response names which happened.
-- [ ] Tests: clean delete removes the row and its bars; held symbol is refused; symbol with a
+- [x] Tests: clean delete removes the row and its bars; held symbol is refused; symbol with a
       closed fill is archived and unreadable from polling but keeps its fills.
 
 ### Task 4 — decision status and approve-as-fill
 
-- [ ] Migration `0010_decision_status`: `status`, `status_at`, `status_reason`, `filled_qty`,
+- [x] Migration `0010_decision_status`: `status`, `status_at`, `status_reason`, `filled_qty`,
       `filled_price`, `pair_id`, `kind` on `signals`, default `pending`.
-- [ ] `POST /api/signals/{id}/approve` with `{qty?, price?, at?}`: validates and records the fill
+- [x] `POST /api/signals/{id}/approve` with `{qty?, price?, at?}`: validates and records the fill
       through `trades::record` in one transaction with the status update; a failure leaves `pending`.
-- [ ] `POST /api/signals/{id}/reject` with `{reason?}`: status only, no ledger write.
-- [ ] `/api/dashboard` and `/api/calls` carry status; `?decisions=pending|approved|rejected|all`.
-- [ ] Tests: approve with edited qty/price posts those numbers; a fill that fails leaves pending;
+- [x] `POST /api/signals/{id}/reject` with `{reason?}`: status only, no ledger write.
+- [x] `/api/dashboard` and `/api/calls` carry status; `?decisions=pending|approved|rejected|all`.
+- [x] Tests: approve with edited qty/price posts those numbers; a fill that fails leaves pending;
       reject writes nothing; the ledger payload returns pending only by default.
 
 ### Task 5 — rotation (two legs, one decision)
 
-- [ ] Prompt `rotate_v1.md`: holdings table in, `{"action":"rotate","sell":{…},"buy":{…}}` or `PASS` out.
-- [ ] Trigger: a BUY candidate exists, cash does not cover it, and some held position is above the
+- [x] Prompt `rotate_v1.md`: holdings table in, `{"action":"rotate","sell":{…},"buy":{…}}` or `PASS` out.
+- [x] Trigger: a BUY candidate exists, cash does not cover it, and some held position is above the
       pot's minimum profit.
-- [ ] Validator: `proceeds + cash ≥ cost`, sell quantity held, buy within limits, never a fund in the
+- [x] Validator: `proceeds + cash ≥ cost`, sell quantity held, buy within limits, never a fund in the
       trading pot.
-- [ ] Approval posts both legs or neither.
+- [x] Approval posts both legs or neither.
 
 ### Task 6 — UI
 
-- [ ] Ledger decisions: pending only, with a `Pending / Approved / Rejected / All` filter as a URL
+- [x] Ledger decisions: pending only, with a `Pending / Approved / Rejected / All` filter as a URL
       parameter; each pending row has `Approve` (inline qty/price/date form, pre-filled, editable) and
       `Reject` (reason).
-- [ ] Instrument page: status per decision; a rotation renders both legs in one row.
-- [ ] Audit: status column.
-- [ ] Instrument page: `Delete` / `Archive`, worded by what the server did.
-- [ ] Settings → Money: "Monthly allowance" wording, reset day, unspent expires.
+- [x] Instrument page: status per decision; a rotation renders both legs in one row.
+- [x] Audit: status column.
+- [x] Instrument page: `Delete` / `Archive`, worded by what the server did.
+- [x] Settings → Money: "Monthly allowance" wording, reset day, unspent expires.
 
 ### Task 7 — docs and release
 
-- [ ] `docs/configuration.md`, `docs/how-it-works.md`, README features table.
-- [ ] Fresh `docs/screenshot.png`; tag `v0.4.0`.
+- [x] `docs/configuration.md`, `docs/how-it-works.md`, README features table.
+- [x] Fresh `docs/screenshot.png`; tag `v0.4.0`.
