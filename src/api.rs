@@ -240,12 +240,16 @@ pub struct Dashboard {
 /// Cheap version tag for the dashboard: max signal id, trade id, position count, settings
 /// count. A minute-by-minute poll that finds nothing new costs a 304 with no body.
 async fn dashboard_etag(pool: &SqlitePool, mode: crate::models::Mode) -> Result<String, ApiError> {
-    let row: (i64, i64, i64, i64) = sqlx::query_as(
+    let row: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        // Approving or rejecting changes no id, so the pending count and the last status change
+        // are part of the tag — otherwise the page answers 304 and the list never updates.
         "SELECT (SELECT COALESCE(MAX(id),0) FROM signals WHERE mode = ?),
                 (SELECT COALESCE(MAX(id),0) FROM trades WHERE mode = ?),
                 (SELECT COUNT(*) FROM positions WHERE mode = ?),
-                (SELECT COUNT(*) FROM settings)",
+                (SELECT COUNT(*) FROM settings),
+                (SELECT COUNT(*) FROM signals WHERE mode = ? AND status = 'pending')",
     )
+    .bind(mode.as_str())
     .bind(mode.as_str())
     .bind(mode.as_str())
     .bind(mode.as_str())
@@ -253,7 +257,7 @@ async fn dashboard_etag(pool: &SqlitePool, mode: crate::models::Mode) -> Result<
     .await?;
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
-    h.update(format!("{}-{}-{}-{}-{}", row.0, row.1, row.2, row.3, mode.as_str()).as_bytes());
+    h.update(format!("{}-{}-{}-{}-{}-{}", row.0, row.1, row.2, row.3, row.4, mode.as_str()).as_bytes());
     Ok(format!("\"{}\"", crate::hex(&h.finalize())))
 }
 
@@ -1004,8 +1008,16 @@ pub struct ModeQuery {
 }
 
 fn mode_of(q: &Option<String>) -> Result<crate::models::Mode, ApiError> {
-    crate::models::Mode::parse(q.as_deref().unwrap_or(""))
-        .map_err(|e| ApiError::BadRequest(e.to_string()))
+    // Tolerate a hand-written URL: `?mode=long?decisions=rejected` puts the rest of the query into
+    // the value. Take the part that is actually the mode, and ignore the leftovers.
+    let raw = q
+        .as_deref()
+        .unwrap_or("")
+        .split(['?', '&'])
+        .next()
+        .unwrap_or("")
+        .trim();
+    crate::models::Mode::parse(raw).map_err(|e| ApiError::BadRequest(e.to_string()))
 }
 
 #[derive(Debug, Serialize)]

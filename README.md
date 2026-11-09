@@ -129,7 +129,8 @@ the proxy are **settings rows edited in the UI**, applied on the next tick. Prov
 token and the proxy password are encrypted at rest.
 
 Full reference — every setting, the proxy, the secrets, the risk limits, the provider table:
-[`docs/configuration.md`](docs/configuration.md).
+[`docs/configuration.md`](docs/configuration.md). Every endpoint, and which the UI uses:
+[`docs/api.md`](docs/api.md).
 
 ## Development
 

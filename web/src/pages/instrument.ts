@@ -370,6 +370,9 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
         </section>
         <section class="card">
           <div class="card-head"><h2>Manage</h2></div>
+          <button class="btn ghost" type="button" id="refresh-instrument"
+                  data-symbol="${escapeHtml(a.instrument.symbol)}">Refresh prices and headlines</button>
+          <p class="help" id="refresh-status" role="status">Fetches this symbol now, instead of waiting for the next poll.</p>
           <button class="btn ghost" type="button" id="delete-instrument"
                   data-symbol="${escapeHtml(a.instrument.symbol)}" data-held="${p ? p.qty : 0}">
             ${p ? "Sell it before deleting" : "Delete this instrument"}

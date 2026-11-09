@@ -43,7 +43,9 @@ export function isDecisionFilter(v: string | null): v is DecisionFilter {
 export function decisionFilterTabs(active: DecisionFilter, base = ""): string {
   return `<div class="seg-filter" role="group" aria-label="Decision status">${ITEMS.map((it) => {
     const on = it.id === active;
-    return `<a href="${base}?decisions=${it.id}" class="seg-item${on ? " on" : ""}"
+    // The base may already carry a query (?mode=long), so this cannot hard-code "?".
+    const href = `${base}${base.includes("?") ? "&" : "?"}decisions=${it.id}`;
+    return `<a href="${href}" class="seg-item${on ? " on" : ""}"
       ${on ? 'aria-current="page"' : ""} title="${it.label} — ${it.hint}"
       aria-label="${it.label}" aria-describedby="filter-hint">
       <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"

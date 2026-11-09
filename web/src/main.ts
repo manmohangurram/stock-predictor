@@ -45,6 +45,7 @@ async function route(): Promise<void> {
       wireDecisions();
       wireDecisionActions();
       wireDeleteInstrument();
+      wireRefreshInstrument();
       wireTargetProfit(symbol);
     } else {
       const mode = (new URLSearchParams(location.search).get("mode") as
@@ -318,6 +319,26 @@ function wireDecisions(): void {
   });
 }
 
+/** Fetch this symbol now; then re-render so the chart and decisions match. */
+function wireRefreshInstrument(): void {
+  const button = document.querySelector<HTMLButtonElement>("#refresh-instrument");
+  if (!button) return;
+  const status = document.querySelector<HTMLElement>("#refresh-status");
+  const symbol = button.dataset.symbol ?? "";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    if (status) status.textContent = "Fetching…";
+    try {
+      const r = await api.refreshInstrument(symbol);
+      if (status) status.textContent = `Stored ${r.bars} bars and ${r.news} headlines.`;
+      await route();
+    } catch (e) {
+      if (status) status.textContent = String(e);
+      button.disabled = false;
+    }
+  });
+}
+
 /** Delete or archive, whichever the server decides — and say which it did. */
 function wireDeleteInstrument(): void {
   const button = document.querySelector<HTMLButtonElement>("#delete-instrument");
@@ -547,6 +568,21 @@ function wireSettings(tab: Tab, s: Settings): void {
 }
 
 route();
+
+/**
+ * Keep every page current. Data pages refresh on a timer; a page you are typing into does not,
+ * because re-rendering would throw away the form.
+ */
 window.setInterval(() => {
-  if (window.location.pathname === "/") void route();
+  const path = window.location.pathname;
+  const dataPage = path === "/" || path.startsWith("/i/") || path === "/calls";
+  if (!dataPage) return;
+  const el = document.activeElement;
+  const typing =
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement;
+  const draftOpen = !!document.querySelector("form.approve-form:not([hidden]), form.reject-form:not([hidden])");
+  if (typing || draftOpen) return;
+  void route();
 }, 60_000);

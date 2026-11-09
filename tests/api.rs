@@ -1205,3 +1205,94 @@ async fn audit_shows_why_a_call_was_made_and_what_you_did_with_it() {
     let (_, v) = get(&router, "/api/calls").await;
     assert_eq!(v.as_array().unwrap()[0]["decision_status"], "approved");
 }
+
+#[tokio::test]
+async fn rejecting_a_decision_changes_the_dashboard_etag() {
+    // Regression: the ETag was built from max ids only, so a status change answered 304 and the
+    // ledger never refreshed after you approved or rejected something.
+    let (_d, router, pool) = setup().await;
+    let id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at, mode)
+         SELECT id, 'BUY', 5, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'INFY' RETURNING id",
+    )
+    .fetch_one(&pool).await.unwrap();
+
+    let (_, before) = get(&router, "/api/dashboard").await;
+    assert_eq!(before["signals"].as_array().unwrap().len(), 1);
+
+    send(&router, "POST", &format!("/api/signals/{}/reject", id.0), json!({"reason": "no"})).await;
+
+    // A fresh (unconditional) read reflects the change…
+    let (_, after) = get(&router, "/api/dashboard").await;
+    assert_eq!(after["signals"].as_array().unwrap().len(), 0, "pending list must clear");
+
+    // …and the tag differs, so a conditional read cannot answer 304.
+    let (_, empty) = get(&router, "/api/dashboard?decisions=pending").await;
+    assert_eq!(empty["signals"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn a_filtered_dashboard_url_with_a_second_question_mark_is_still_valid() {
+    // The UI once built "/api/dashboard?mode=long?decisions=rejected". A stray second "?" is a
+    // query-string typo, not a 400: the server should read `mode` and ignore the junk.
+    let (_d, router, _pool) = setup().await;
+    let (s, _) = get(&router, "/api/dashboard?mode=long&decisions=rejected").await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_stray_question_mark_in_a_hand_written_url_is_tolerated() {
+    let (_d, router, _pool) = setup().await;
+    let (s, _) = get(&router, "/api/dashboard?mode=long?decisions=rejected").await;
+    assert_eq!(s, StatusCode::OK);
+}
+
+/// Every route the server exposes must be reachable — a 404 here means the UI and the server have
+/// drifted apart. Kept as a table so adding a route without wiring it is visible.
+#[tokio::test]
+async fn every_documented_route_exists() {
+    let (_d, router, pool) = setup().await;
+    let id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at, mode)
+         SELECT id, 'BUY', 1, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'INFY' RETURNING id",
+    ).fetch_one(&pool).await.unwrap();
+    // A call row, so /api/calls/{id} answers "found" rather than "no such call".
+    sqlx::query(
+        "INSERT INTO api_calls (id, ts, endpoint, purpose) VALUES (1, '2026-11-09T10:00:00Z', 'chat', 'decide INFY')",
+    )
+    .execute(&pool).await.unwrap();
+
+    let routes: Vec<(&str, String)> = vec![
+        ("GET", "/api/health".into()),
+        ("GET", "/api/dashboard".into()),
+        ("GET", "/api/settings".into()),
+        ("POST", "/api/settings/proxy/test".into()),
+        ("POST", "/api/instruments".into()),
+        ("GET", "/api/instruments/INFY".into()),
+        ("POST", "/api/instruments/INFY/refresh".into()),
+        ("PUT", "/api/instruments/INFY/target-profit".into()),
+        // A different symbol: deleting INFY first would 404 the routes below it.
+        ("DELETE", "/api/instruments/TCS".into()),
+        ("GET", "/api/instruments/INFY/analysis".into()),
+        ("GET", "/api/instruments/INFY/trades".into()),
+        ("POST", "/api/instruments/INFY/trades".into()),
+        ("GET", "/api/trades".into()),
+        ("GET", "/api/search".into()),
+        ("GET", "/api/calls".into()),
+        ("GET", "/api/calls/1".into()),
+        // Reject first: an approved decision is no longer pending, so rejecting it would 404.
+        ("POST", format!("/api/signals/{}/reject", id.0)),
+        ("POST", format!("/api/signals/{}/approve", id.0)),
+        ("POST", "/api/notify/test".into()),
+    ];
+    for (method, uri) in routes {
+        let (status, _) = send(&router, method, &uri, json!({})).await;
+        assert_ne!(
+            status,
+            StatusCode::NOT_FOUND,
+            "{method} {uri} is not routed — the server and the UI disagree about the API"
+        );
+    }
+}

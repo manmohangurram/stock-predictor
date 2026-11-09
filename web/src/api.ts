@@ -255,6 +255,11 @@ export const api = {
     ),
   rejectSignal: (id: number, reason?: string) =>
     req<{ id: number; status: string }>(`/api/signals/${id}/reject`, json({ reason })),
+  refreshInstrument: (symbol: string) =>
+    req<{ ok: boolean; bars: number; news: number }>(
+      `/api/instruments/${encodeURIComponent(symbol)}/refresh`,
+      { method: "POST" },
+    ),
   deleteInstrument: (symbol: string) =>
     req<{ symbol: string; deleted: boolean; archived: boolean; reason?: string }>(
       `/api/instruments/${encodeURIComponent(symbol)}`,
