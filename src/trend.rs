@@ -23,7 +23,11 @@ pub struct TrendReport {
     pub examined: usize,
     pub called: usize,
     pub proposed: usize,
+    /// One line per proposal, ready to put in a notification.
+    pub ideas: Vec<String>,
     pub notes: Vec<String>,
+    /// 1 when a summary notification went out.
+    pub notified: usize,
 }
 
 /// The decision row a trend proposal becomes.
@@ -42,6 +46,7 @@ pub async fn run(
     pool: &SqlitePool,
     market: &dyn crate::market::MarketSource,
     transport: &dyn crate::llm::deepseek::Transport,
+    notifier: &dyn crate::notify::Notifier,
     runtime: &crate::rules::runtime::Runtime,
     now: DateTime<Utc>,
 ) -> Result<TrendReport> {
@@ -52,6 +57,14 @@ pub async fn run(
     report.examined = gainers.len();
     if gainers.is_empty() {
         report.notes.push("no gainers returned by NSE".into());
+        return Ok(report);
+    }
+
+    // The daily cap is a ceiling on *all* model calls, not just the long-term path.
+    let cap = runtime.daily_cap as i64;
+    let mut used = crate::llm::orchestrate::daily_chat_calls(pool).await?;
+    if used >= cap {
+        report.notes.push(format!("daily call cap reached ({used}/{cap})"));
         return Ok(report);
     }
 
@@ -108,7 +121,12 @@ pub async fn run(
             ),
         )?;
 
+        if used >= cap {
+            report.notes.push(format!("daily call cap reached ({used}/{cap})"));
+            break;
+        }
         report.called += 1;
+        used += 1;
         let reply = match crate::llm::deepseek::chat(
             pool,
             &model,
@@ -222,7 +240,54 @@ pub async fn run(
         ));
     }
 
+    if !report.ideas.is_empty() {
+        // One notification for the pass, not one per name: the ledger is where you act on them.
+        let n = crate::notify::Notification {
+            title: format!("Short-term · {} idea{}", report.ideas.len(), plural(report.ideas.len())),
+            body: report.ideas.join("\n"),
+            priority: crate::notify::Priority::Default,
+            dedupe_key: crate::llm::memo::fingerprint(
+                &report
+                    .ideas
+                    .iter()
+                    .map(|i| crate::models::Headline {
+                        id: 0,
+                        title: i.clone(),
+                        publisher: String::new(),
+                        published_at: ist_day(now),
+                        url: String::new(),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            signal_id: None,
+            symbol: report
+                .ideas
+                .first()
+                .and_then(|i| i.split(' ').next())
+                .unwrap_or("")
+                .to_string(),
+        };
+        if crate::notify::dispatch(pool, notifier, &n).await? {
+            report.notified = 1;
+        }
+    }
+
     Ok(report)
+}
+
+/// `YYYY-MM-DD` in IST — the day the tape belongs to, used for dedupe.
+fn ist_day(now: DateTime<Utc>) -> String {
+    (now + chrono::Duration::minutes(330))
+        .format("%Y-%m-%d")
+        .to_string()
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 {
+        ""
+    } else {
+        "s"
+    }
 }
 
 /// The instrument for a discovered symbol, created inactive so discovery never starts polling.

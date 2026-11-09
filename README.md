@@ -55,7 +55,8 @@ before you see it.
   tick.
 - **Short-term discovery.** NSE's daily movers (top ten across all securities) are checked on every
   tick; each name is asked about only when *it* changed, and the answer is a short-term decision with
-  a horizon and an expiry no longer than a week.
+  a horizon and an expiry no longer than a week — and the pass sends **one push per batch**, listing
+  the names with entry, stop and target, so you hear about them without opening the app.
 - **Everything is a settings row** — budget, limits, model and key, ntfy, polling cadence and an
   HTTP proxy — edited in the UI and applied on the next tick. Three environment variables remain.
 - **Auditable.** Every outbound call stores its prompt and its raw reply; the Audit page renders the

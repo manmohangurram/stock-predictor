@@ -1218,6 +1218,10 @@ async fn rotate_for_cash(
     );
     let rendered = crate::llm::prompts::render_rotation(&table, &wanted)?;
     let model = crate::rules::settings::model_config(deps.pool).await?;
+    if crate::llm::orchestrate::daily_chat_calls(deps.pool).await? >= deps.runtime.daily_cap as i64 {
+        tracing::info!("daily call cap reached — rotation not attempted");
+        return Ok(None);
+    }
     let reply = crate::llm::deepseek::chat(
         deps.pool,
         &model,

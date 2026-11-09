@@ -179,7 +179,16 @@ async fn main() -> Result<()> {
                 println!("fund scan: {r:#?}");
             }
         }
-        match stock_predictor::trend::run(&pool, &market, &transport, &rt, Utc::now()).await {
+        match stock_predictor::trend::run(
+            &pool,
+            &market,
+            &transport,
+            &notifier,
+            &rt,
+            Utc::now(),
+        )
+        .await
+        {
             Ok(r) if r.examined > 0 => println!("short-term pass: {r:#?}"),
             Ok(_) => {}
             Err(e) => println!("short-term pass failed: {e}"),
@@ -296,6 +305,7 @@ async fn main() -> Result<()> {
                     &poll_pool,
                     &market,
                     &transport,
+                    &notifier,
                     &runtime,
                     Utc::now(),
                 )
