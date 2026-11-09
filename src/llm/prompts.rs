@@ -33,6 +33,8 @@ pub struct PromptContext<'a> {
     pub price_window: &'a str,
     pub daily_days: u32,
     pub daily_summary: &'a str,
+    /// Revenue, profit and valuation as a few lines; "unavailable" when the source did not answer.
+    pub fundamentals: &'a str,
     pub positions: &'a str,
     pub recent_trades: &'a str,
     pub last_decision: &'a str,
@@ -156,6 +158,7 @@ pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
         .replace("{{price_window}}", ctx.price_window)
         .replace("{{daily_days}}", &ctx.daily_days.to_string())
         .replace("{{daily_summary}}", ctx.daily_summary)
+        .replace("{{fundamentals}}", ctx.fundamentals)
         .replace("{{positions}}", ctx.positions)
         .replace("{{recent_trades}}", ctx.recent_trades)
         .replace("{{last_decision}}", ctx.last_decision)

@@ -47,6 +47,8 @@ pub struct RunInput<'a> {
     pub headlines: &'a [Headline],
     pub price_window: &'a str,
     pub daily_summary: &'a str,
+    /// Revenue, profit and valuation as a few lines; "unavailable" when unfetched.
+    pub fundamentals: &'a str,
     pub positions: &'a str,
     pub recent_trades: &'a str,
     pub last_decision: &'a str,
@@ -106,6 +108,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         price_window: input.price_window,
         daily_days: 10,
         daily_summary: input.daily_summary,
+        fundamentals: input.fundamentals,
         positions: input.positions,
         recent_trades: input.recent_trades,
         last_decision: input.last_decision,

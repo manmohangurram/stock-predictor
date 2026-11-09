@@ -63,6 +63,27 @@ async fn main() -> Result<()> {
     }
     settings::seed(&pool).await?;
 
+    if flag("--fundamentals") {
+        let symbol = args
+            .iter()
+            .position(|a| a == "--fundamentals")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_else(|| "INFY.NS".into());
+        let rt = settings::runtime(&pool).await?;
+        let client = stock_predictor::http::client_with(&rt, 20, Some("Mozilla/5.0"))?;
+        use chrono::Datelike;
+        let f = stock_predictor::market::fundamentals::fetch(
+            &client,
+            &symbol,
+            chrono::Utc::now().year(),
+        )
+        .await?;
+        println!("{f:#?}");
+        println!("---\n{}", f.summary());
+        return Ok(());
+    }
+
     if flag("--seed") {
         let report = stock_predictor::seed::run(&pool, !flag("--no-positions")).await?;
         println!("seed: {report:?}");

@@ -78,6 +78,7 @@ fn run_input<'a>(
         headlines: hs,
         price_window: "27 09:30 100.00 101.00 99.00 100.50 1000",
         daily_summary: "2026-10-24 100.00, 2026-10-27 100.50",
+        fundamentals: "unavailable",
         positions: "not held",
         recent_trades: "none in the last 7 days",
         last_decision: "none",

@@ -93,6 +93,11 @@ Intraday tape, 15-minute bars, last {{window_hours}} hours, oldest first
 Daily closes, last {{daily_days}} sessions, oldest first:
 {{daily_summary}}
 
+## Financials
+Latest reported figures (annual, reporting currency). "unavailable" means the source did not answer —
+treat a missing number as unknown, never as zero.
+{{fundamentals}}
+
 ## Headlines
 Titles, publishers and dates only. Bodies were not read.
 {{headlines}}

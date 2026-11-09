@@ -48,6 +48,7 @@ fn ctx<'a>(i: &'a Instrument, x: &'a Indicators, h: &'a [Headline]) -> PromptCon
         price_window: "27 09:15 1161.20 1164.40 1160.80 1163.40 22100\n27 09:30 1163.40 1164.10 1162.50 1163.00 12500",
         daily_days: 10,
         daily_summary: "2026-10-24 1150.20, 2026-10-27 1163.00",
+        fundamentals: "unavailable",
         positions: "INFY.NS qty 17.000 at cost 1163.00, stop 1104.85, target 1279.30",
         recent_trades: "2026-10-20 BUY 17.000 @ 1163.00 (open)",
         last_decision: "none",

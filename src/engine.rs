@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use sqlx::SqlitePool;
 
 use crate::llm::deepseek::Transport;
@@ -242,6 +242,10 @@ async fn poll_instrument(
         .await
         .unwrap_or(true);
 
+    // Reported financials, fetched only when a call is actually going to happen — this is one
+    // extra request per call, not per tick.
+    let fundamentals = fetch_fundamentals(deps, &instrument.symbol, now).await;
+
     // Why this call is being made, in words a person can read later in the audit trail.
     let previous_price: Option<(Option<f64>,)> =
         sqlx::query_as("SELECT last_price FROM llm_memos WHERE instrument_id = ?")
@@ -360,6 +364,7 @@ async fn poll_instrument(
             ind,
             candidate: &candidate,
             call_reason: gate_reason.clone(),
+            fundamentals: &fundamentals,
             available_cash: available,
             held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
             limits: g.limits,
@@ -444,6 +449,7 @@ pub async fn advise(
         &llm_deps,
         RunInput {
             call_reason: None,
+            fundamentals: "",
             instrument,
             ind: &g.ind,
             candidate: &neutral,
@@ -1081,6 +1087,28 @@ async fn load_last_decision(pool: &SqlitePool, instrument_id: i64) -> Result<Str
 }
 
 /// Everything held in this pot, with the latest close as its price — the table a rotation reads.
+/// Revenue, profit and valuation, or "unavailable" — never a guess, and never a failed call.
+async fn fetch_fundamentals(deps: &EngineDeps<'_>, symbol: &str, now: DateTime<Utc>) -> String {
+    let Ok(client) = crate::http::client_with(&deps.runtime, 15, Some("Mozilla/5.0 stock-predictor"))
+    else {
+        return "unavailable".into();
+    };
+    match crate::market::fundamentals::fetch(&client, symbol, now.year()).await {
+        Ok(f) => {
+            let text = f.summary();
+            if text.trim().is_empty() {
+                "unavailable".into()
+            } else {
+                text
+            }
+        }
+        Err(e) => {
+            tracing::debug!(error = %e, symbol, "financials unavailable");
+            "unavailable".into()
+        }
+    }
+}
+
 async fn load_holdings(
     pool: &SqlitePool,
     mode: crate::models::Mode,

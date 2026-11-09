@@ -58,6 +58,7 @@ fn ctx<'a>(i: &'a Instrument, x: &'a Indicators, h: &'a [Headline]) -> PromptCon
         price_window: WINDOW,
         daily_days: 10,
         daily_summary: "2026-10-24 1150.20, 2026-10-27 1163.00",
+        fundamentals: "unavailable",
         positions: "INFY.NS qty 17.000 at cost 1163.00, stop 1104.85, target 1279.30",
         recent_trades: "2026-10-20 BUY 17.000 @ 1163.00 (open)",
         last_decision: "2026-10-27 SELL @ 1163.00 — rules only",
@@ -196,6 +197,7 @@ fn a_fund_prompt_carries_the_settlement_cost() {
         price_window: "",
         daily_days: 7,
         daily_summary: "",
+        fundamentals: "unavailable",
         positions: "none",
         recent_trades: "",
         last_decision: "",
@@ -211,5 +213,48 @@ fn a_fund_prompt_carries_the_settlement_cost() {
     assert!(
         r.text.contains("~4 days"),
         "the fund's settlement delay must be in the prompt"
+    );
+}
+
+#[test]
+fn the_prompt_carries_financials_or_says_unavailable() {
+    use stock_predictor::llm::prompts::{render, PromptContext};
+    use stock_predictor::models::{AssetClass, Instrument};
+    use stock_predictor::rules::indicators::Indicators;
+    use chrono::Utc;
+
+    let ind = Indicators {
+        sma50: 70.0, sma200: 65.0, rsi14: 55.0, atr14: 1.0, high52: 80.0, low52: 60.0,
+    };
+    let inst = Instrument {
+        id: 1, symbol: "INFY.NS".into(), class: AssetClass::Stock,
+        name: "Infosys".into(), currency: "INR".into(), active: true,
+    };
+    let ctx = PromptContext {
+        instrument: &inst,
+        ind: &ind,
+        last_close: 1142.0,
+        cash_available: 100_000.0,
+        target_profit_pct: None,
+        limits: "…",
+        headlines: &[],
+        window_hours: 4,
+        price_window: "",
+        daily_days: 10,
+        daily_summary: "",
+        fundamentals: "FY2026-03-31: revenue 20.2B INR, net income 3.3B INR",
+        positions: "none",
+        recent_trades: "",
+        last_decision: "",
+        now: Utc::now(),
+        extracts: &[],
+        price_history: "",
+    };
+    let r = render("decide_v1", &ctx).unwrap();
+    assert!(r.text.contains("## Financials"), "the section must exist");
+    assert!(r.text.contains("revenue 20.2B INR"), "the numbers must be in the prompt");
+    assert!(
+        r.text.contains("never as zero"),
+        "the prompt must say a missing number is unknown"
     );
 }

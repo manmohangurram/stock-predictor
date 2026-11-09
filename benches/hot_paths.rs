@@ -79,6 +79,7 @@ fn bench_prompt(c: &mut Criterion) {
         price_window: &tape,
         daily_days: 10,
         daily_summary: "2026-10-24 1150.20, 2026-10-27 1163.00",
+        fundamentals: "unavailable",
         positions: "INFY.NS qty 17.000 at cost 1163.00",
         recent_trades: "2026-10-20 BUY 17.000 @ 1163.00 (open)",
         last_decision: "none",
