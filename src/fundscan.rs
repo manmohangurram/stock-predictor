@@ -86,7 +86,40 @@ pub async fn run(
         return Ok(report);
     }
 
+    let held_categories: Vec<String> = sqlx::query_as::<_, (String,)>(
+        "SELECT i.name FROM positions p JOIN instruments i ON i.id = p.instrument_id
+         WHERE p.mode = 'long' AND p.state <> 'closed' AND i.class = 'mutual_fund'",
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| r.0)
+    .collect();
+
+    let mut proposed_categories: Vec<String> = Vec::new();
     for (code, name, score, history) in histories.into_iter().take(TOP_N) {
+        // Overlap is the cheapest real filter a fund can have: a second flexi cap is the same bet.
+        let category = history.category.clone();
+        let clashes = |existing: &[String]| {
+            !category.is_empty()
+                && existing.iter().any(|n| {
+                    let e = n.to_lowercase();
+                    let c = category.to_lowercase();
+                    (c.contains("flexi") && e.contains("flexi"))
+                        || (c.contains("elss") && e.contains("elss"))
+                        || (c.contains("large cap") && e.contains("large cap"))
+                        || (c.contains("mid cap") && e.contains("mid cap"))
+                        || (c.contains("small cap") && e.contains("small cap"))
+                })
+        };
+        if clashes(&held_categories) || clashes(&proposed_categories) {
+            report.notes.push(format!(
+                "{name}: skipped — you already hold a {} fund",
+                if category.is_empty() { "similar" } else { &category }
+            ));
+            continue;
+        }
+        proposed_categories.push(name.clone());
         // The latest NAV is the entry; a fund decision has no stop or target (NAV execution).
         let Some((_, nav)) = history.navs.last() else {
             continue;

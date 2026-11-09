@@ -21,6 +21,13 @@ struct Envelope {
 struct Meta {
     #[serde(default, rename = "scheme_name")]
     scheme_name: String,
+    /// Free from AMFI: "PPFAS Mutual Fund".
+    #[serde(default)]
+    fund_house: String,
+    /// Free from AMFI: "Equity Scheme - Flexi Cap Fund". Enough to spot two funds that are the
+    /// same bet.
+    #[serde(default)]
+    scheme_category: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,6 +59,8 @@ where
 pub struct FundHistory {
     pub code: String,
     pub name: String,
+    pub fund_house: String,
+    pub category: String,
     pub navs: Vec<(String, f64)>,
 }
 
@@ -135,6 +144,8 @@ pub fn parse(code: &str, body: &str) -> Result<FundHistory> {
     Ok(FundHistory {
         code: code.to_string(),
         name: env.meta.scheme_name,
+        fund_house: env.meta.fund_house,
+        category: env.meta.scheme_category,
         navs,
     })
 }
@@ -145,7 +156,9 @@ mod tests {
 
     const BODY: &str = r#"{
       "status":"SUCCESS",
-      "meta":{"scheme_name":"Axis ELSS - Direct - Growth"},
+      "meta":{"scheme_name":"Axis ELSS - Direct - Growth",
+               "fund_house":"Axis Mutual Fund",
+               "scheme_category":"Equity Scheme - ELSS"},
       "data":[
         {"date":"01-01-2023","nav":"100.00"},
         {"date":"01-01-2024","nav":"112.00"},
