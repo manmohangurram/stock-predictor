@@ -81,6 +81,10 @@ pub fn router(state: AppState) -> Router {
             "/api/instruments/{symbol}/target-profit",
             put(set_target_profit),
         )
+        .route(
+            "/api/instruments/{symbol}",
+            axum::routing::delete(delete_instrument),
+        )
         .route("/api/notify/test", post(test_notify))
         .route("/api/instruments/{symbol}/analysis", get(analysis))
         .route("/api/calls", get(calls))
@@ -395,6 +399,74 @@ pub struct InstrumentDetail {
     pub instrument: InstrumentRow,
     pub headlines: Vec<HeadlineRow>,
     pub signals: Vec<SignalRow>,
+}
+
+/// Remove an instrument, or hide it when it has history.
+///
+/// A symbol you never traded is deleted outright — its bars, headlines, memos and signals go with
+/// it. A symbol with any fill is archived instead (`active = 0`): the history is the reason the
+/// ledger and the audit mean anything, so it is never thrown away. Anything still held is refused.
+async fn delete_instrument(
+    State(st): State<AppState>,
+    axum::extract::Path(symbol): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let row: Option<(i64,)> = sqlx::query_as("SELECT id FROM instruments WHERE symbol = ?")
+        .bind(&symbol)
+        .fetch_optional(&st.pool)
+        .await?;
+    let Some((id,)) = row else {
+        return Err(ApiError::NotFound(format!("no instrument {symbol}")));
+    };
+
+    let held: (f64,) = sqlx::query_as(
+        // CAST: an empty SUM comes back as INTEGER 0, which sqlx refuses to decode as f64.
+        "SELECT CAST(COALESCE(SUM(qty), 0) AS REAL) FROM positions
+         WHERE instrument_id = ? AND state <> 'closed'",
+    )
+    .bind(id)
+    .fetch_one(&st.pool)
+    .await?;
+    if held.0 > 0.0 {
+        return Err(ApiError::BadRequest(format!(
+            "cannot delete {symbol} while {} units are held — sell it first",
+            held.0
+        )));
+    }
+
+    let fills: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM trades WHERE instrument_id = ?")
+        .bind(id)
+        .fetch_one(&st.pool)
+        .await?;
+
+    if fills.0 > 0 {
+        sqlx::query("UPDATE instruments SET active = 0 WHERE id = ?")
+            .bind(id)
+            .execute(&st.pool)
+            .await?;
+        return Ok(Json(serde_json::json!({
+            "symbol": symbol,
+            "archived": true,
+            "deleted": false,
+            "reason": format!("it has {} recorded fills, so its history is kept", fills.0),
+        })));
+    }
+
+    let mut tx = st.pool.begin().await?;
+    for sql in [
+        "DELETE FROM signals WHERE instrument_id = ?",
+        "DELETE FROM news WHERE instrument_id = ?",
+        "DELETE FROM llm_memos WHERE instrument_id = ?",
+        "DELETE FROM bars WHERE instrument_id = ?",
+        "DELETE FROM instruments WHERE id = ?",
+    ] {
+        sqlx::query(sql).bind(id).execute(&mut *tx).await?;
+    }
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({
+        "symbol": symbol,
+        "deleted": true,
+        "archived": false,
+    })))
 }
 
 #[derive(Debug, Serialize)]

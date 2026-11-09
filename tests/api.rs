@@ -933,3 +933,56 @@ async fn a_mutual_fund_cannot_be_filled_into_the_trading_pot() {
     .await;
     assert_eq!(s, StatusCode::OK, "{v}");
 }
+
+#[tokio::test]
+async fn a_symbol_without_history_is_deleted_with_its_bars() {
+    let (_d, router, pool) = setup().await;
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'TCS'")
+        .fetch_one(&pool).await.unwrap();
+    sqlx::query("INSERT INTO bars (instrument_id, ts, open, high, low, close, volume) VALUES (?, '2026-11-06T00:00:00Z', 1,1,1,1,1)")
+        .bind(id.0).execute(&pool).await.unwrap();
+
+    let (s, v) = send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["deleted"], true);
+    let left: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM instruments WHERE symbol = 'TCS'")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(left.0, 0);
+    let bars: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM bars WHERE instrument_id = ?")
+        .bind(id.0).fetch_one(&pool).await.unwrap();
+    assert_eq!(bars.0, 0, "orphaned bars");
+}
+
+#[tokio::test]
+async fn a_held_symbol_cannot_be_deleted() {
+    let (_d, router, _pool) = setup().await;
+    let (s, _) = send(&router, "POST", "/api/instruments/INFY/trades",
+        json!({"side":"buy","qty":5.0,"price":100.0,"mode":"long"})).await;
+    assert_eq!(s, StatusCode::OK);
+    let (s, v) = send(&router, "DELETE", "/api/instruments/INFY", json!({})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("held"), "{v}");
+}
+
+#[tokio::test]
+async fn a_symbol_with_fills_is_archived_not_deleted() {
+    let (_d, router, pool) = setup().await;
+    send(&router, "POST", "/api/instruments/INFY/trades",
+        json!({"side":"buy","qty":5.0,"price":100.0,"mode":"long"})).await;
+    send(&router, "POST", "/api/instruments/INFY/trades",
+        json!({"side":"sell","qty":5.0,"price":110.0,"mode":"long"})).await;
+
+    let (s, v) = send(&router, "DELETE", "/api/instruments/INFY", json!({})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["archived"], true, "{v}");
+    assert_eq!(v["deleted"], false);
+
+    let active: (i64,) = sqlx::query_as("SELECT active FROM instruments WHERE symbol = 'INFY'")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(active.0, 0, "it should be hidden from polling");
+    let fills: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM trades t JOIN instruments i ON i.id = t.instrument_id WHERE i.symbol = 'INFY'",
+    )
+    .fetch_one(&pool).await.unwrap();
+    assert_eq!(fills.0, 2, "history must survive");
+}
