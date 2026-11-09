@@ -23,3 +23,4 @@ pub mod secrets;
 pub mod seed;
 pub mod store;
 pub mod trades;
+pub mod trend;

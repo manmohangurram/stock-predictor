@@ -1,4 +1,5 @@
 pub mod amfi;
+pub mod nse;
 pub mod search;
 pub mod yahoo;
 

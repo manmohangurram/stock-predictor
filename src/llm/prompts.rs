@@ -8,6 +8,7 @@ use crate::rules::indicators::Indicators;
 pub const DECIDE_V1: &str = include_str!("../../prompts/decide_v1.md");
 pub const ESCALATE_V1: &str = include_str!("../../prompts/escalate_v1.md");
 pub const ROTATE_V1: &str = include_str!("../../prompts/rotate_v1.md");
+pub const TREND_V1: &str = include_str!("../../prompts/trend_v1.md");
 
 #[derive(Debug, Clone)]
 pub struct RenderedPrompt {
@@ -47,6 +48,7 @@ pub fn template(name: &str) -> Result<&'static str> {
         "decide_v1" => Ok(DECIDE_V1),
         "escalate_v1" => Ok(ESCALATE_V1),
         "rotate_v1" => Ok(ROTATE_V1),
+        "trend_v1" => Ok(TREND_V1),
         other => Err(anyhow!("unknown prompt template {other:?}")),
     }
 }
@@ -68,6 +70,25 @@ pub fn render_rotation(holdings: &str, candidate: &str) -> Result<RenderedPrompt
         text: template
             .replace("{{holdings}}", holdings)
             .replace("{{candidate}}", candidate),
+    })
+}
+
+/// The short-term prompt: one mover, its tape, its headlines, and the book's cash.
+pub fn render_trend(
+    candidate: &str,
+    tape: &str,
+    headlines: &str,
+    book: &str,
+) -> Result<RenderedPrompt> {
+    let template = template("trend_v1")?;
+    Ok(RenderedPrompt {
+        template: "trend_v1".into(),
+        hash: template_hash("trend_v1")?,
+        text: template
+            .replace("{{candidate}}", candidate)
+            .replace("{{tape}}", tape)
+            .replace("{{headlines}}", headlines)
+            .replace("{{book}}", book),
     })
 }
 

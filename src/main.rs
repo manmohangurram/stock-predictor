@@ -239,6 +239,21 @@ async fn main() -> Result<()> {
                 Err(e) => tracing::error!(error = %e, "poll failed"),
             }
 
+            // Short-term mode: what moved today, asked about only when it has actually changed.
+            match stock_predictor::trend::run(
+                &poll_pool,
+                &market,
+                &transport,
+                &runtime,
+                Utc::now(),
+            )
+            .await
+            {
+                Ok(r) if r.examined > 0 => tracing::info!(?r, "short-term pass"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "short-term pass failed"),
+            }
+
             // 15 minutes while the market is open, two hours otherwise.
             let secs = if schedule::in_stock_window(Utc::now()) {
                 runtime.poll_secs
