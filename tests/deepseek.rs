@@ -29,6 +29,7 @@ fn base() -> &'static str {
 
 fn req() -> ChatRequest {
     ChatRequest {
+        trigger: None,
         conversation_id: "conv-1".into(),
         round: 1,
         prompt: "decide".into(),

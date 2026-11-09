@@ -112,6 +112,8 @@ impl Transport for FixtureTransport {
 
 #[derive(Debug, Clone)]
 pub struct ChatRequest {
+    /// Why the model is being asked, for the audit trail.
+    pub trigger: Option<String>,
     pub conversation_id: String,
     pub round: i64,
     pub prompt: String,
@@ -155,6 +157,7 @@ pub async fn chat(
         prompt_template: Some(req.prompt_template.clone()),
         prompt_hash: Some(req.prompt_hash.clone()),
         request_json: Some(body.clone()),
+        trigger: req.trigger.clone(),
         latency_ms: Some(latency),
         ..Default::default()
     };

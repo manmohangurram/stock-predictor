@@ -12,6 +12,15 @@ import {
 
 export type { CallDetail };
 
+/** What you did with the decision this call produced. */
+function reviewBadge(r: CallRow): string {
+  if (!r.decision_status) return `<span class="muted">no decision</span>`;
+  const tone = r.decision_status === "approved" ? "ok" : r.decision_status === "rejected" ? "todo" : "";
+  const label =
+    r.decision_status === "pending" ? "awaiting you" : r.decision_status;
+  return `<span class="pill ${tone}" ${r.decision_id ? `title="decision #${r.decision_id}"` : ""}>${label}</span>`;
+}
+
 export function renderCalls(rows: CallRow[]): string {
   const failures = rows.filter((r) => r.error).length;
   const tokens = rows.reduce(
@@ -26,6 +35,12 @@ export function renderCalls(rows: CallRow[]): string {
   <td>${escapeHtml(r.purpose ?? "")}</td>
   <td class="num right">${r.round ?? "—"}</td>
   <td class="num right">${r.prompt_tokens ?? 0}/${r.completion_tokens ?? 0}</td>
+  <td>
+    <div class="why">
+      ${r.trigger ? `<span class="why-text">${escapeHtml(r.trigger)}</span>` : `<span class="muted">—</span>`}
+    </div>
+  </td>
+  <td>${reviewBadge(r)}</td>
   <td class="${r.error ? "negative" : ""}">${escapeHtml(r.error ?? r.validator_verdict ?? "ok")}</td>
   <td class="right">
     <button class="btn ghost view-call" type="button" data-id="${r.id}"
@@ -47,9 +62,10 @@ export function renderCalls(rows: CallRow[]): string {
       <thead><tr>
         <th scope="col">Time</th><th scope="col">Call</th><th scope="col">Purpose</th>
         <th scope="col" class="right">Round</th><th scope="col" class="right">Prompt/Reply</th>
+        <th scope="col">Why it was asked</th><th scope="col">Review</th>
         <th scope="col">Outcome</th><th scope="col" class="right"><span class="hide-sm">Exchange</span></th>
       </tr></thead>
-      <tbody>${body || `<tr><td colspan="7" class="empty">No calls yet.</td></tr>`}</tbody>
+      <tbody>${body || `<tr><td colspan="9" class="empty">No calls yet.</td></tr>`}</tbody>
     </table>
   </section>`);
 }

@@ -783,3 +783,9 @@
   .decision-row-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
   .decisions td.decision-row-actions { padding-inline: var(--space-2); }
 }
+
+@layer components {
+  /* Audit: the reason a call happened, and what you did with it. */
+  .why-text { font-size: var(--text-xs); color: var(--ink-secondary); font-family: var(--font-ledger); }
+  .call-detail td { padding: 0 !important; }
+}

@@ -114,6 +114,14 @@ pub async fn run(
                 prompt: prompt.text,
                 prompt_template: prompt.template,
                 prompt_hash: prompt.hash,
+                trigger: Some(if headlines_changed {
+                    format!(
+                        "short-term scan: {:+.2}% today, new headlines since the last call",
+                        g.per_change
+                    )
+                } else {
+                    format!("short-term scan: {:+.2}% today, price moved", g.per_change)
+                }),
                 purpose: format!("trend {symbol}"),
             },
         )

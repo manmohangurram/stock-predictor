@@ -1176,3 +1176,32 @@ async fn a_rotation_that_does_not_balance_is_refused_before_any_money_moves() {
     ).fetch_one(&pool).await.unwrap();
     assert_eq!(held.0, 1.0, "nothing should have been sold");
 }
+
+#[tokio::test]
+async fn audit_shows_why_a_call_was_made_and_what_you_did_with_it() {
+    let (_d, router, pool) = setup().await;
+    // A call and the pending decision it produced, linked by conversation.
+    sqlx::query(
+        "INSERT INTO api_calls (ts, conversation_id, endpoint, purpose, trigger, http_status)
+         VALUES ('2026-11-09T10:00:00Z', 'conv-1', 'chat', 'decide INFY', 'price moved 1,150.20 → 1,171.60', 200)",
+    ).execute(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at,
+            mode, conversation_id)
+         SELECT id, 'BUY', 5, 1171.6, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:01Z', 'long', 'conv-1'
+         FROM instruments WHERE symbol = 'INFY'",
+    ).execute(&pool).await.unwrap();
+
+    let (s, v) = get(&router, "/api/calls").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let row = &v.as_array().unwrap()[0];
+    assert_eq!(row["trigger"], "price moved 1,150.20 → 1,171.60");
+    assert_eq!(row["decision_status"], "pending");
+
+    // Approve it; the review state follows.
+    let id: (i64,) = sqlx::query_as("SELECT id FROM signals LIMIT 1")
+        .fetch_one(&pool).await.unwrap();
+    send(&router, "POST", &format!("/api/signals/{}/approve", id.0), json!({})).await;
+    let (_, v) = get(&router, "/api/calls").await;
+    assert_eq!(v.as_array().unwrap()[0]["decision_status"], "approved");
+}

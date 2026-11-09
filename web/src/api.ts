@@ -122,6 +122,10 @@ export interface CallRow {
   id: number;
   ts: string;
   endpoint: string;
+  /** Why the model was asked: "price moved …", "new headline …". */
+  trigger: string | null;
+  decision_id: number | null;
+  decision_status: "pending" | "approved" | "rejected" | null;
   purpose: string | null;
   round: number | null;
   prompt_tokens: number | null;

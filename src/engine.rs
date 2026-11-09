@@ -242,8 +242,30 @@ async fn poll_instrument(
         .await
         .unwrap_or(true);
 
-    // Do not spend a call on a price that has not moved, but never leave a stock unwatched
-    // for more than the gate's interval.
+    // Why this call is being made, in words a person can read later in the audit trail.
+    let previous_price: Option<(Option<f64>,)> =
+        sqlx::query_as("SELECT last_price FROM llm_memos WHERE instrument_id = ?")
+            .bind(instrument.id)
+            .fetch_optional(deps.pool)
+            .await?;
+    let gate_reason = if deps.force {
+        Some("asked by hand".to_string())
+    } else if headlines_changed {
+        Some(format!("new headline on {}", instrument.symbol))
+    } else {
+        match previous_price.and_then(|r| r.0) {
+            Some(prev) if (prev - candidate.entry).abs() >= deps.runtime.min_price_move => Some(
+                format!("price moved {prev:.2} → {:.2}", candidate.entry),
+            ),
+            None => Some("never asked about this instrument".to_string()),
+            _ if deps.runtime.max_silence_secs > 0 => {
+                Some("the silence interval elapsed".to_string())
+            }
+            _ => None,
+        }
+    };
+
+    // Do not spend a call on a price that has not moved, and keep quiet otherwise.
     if !deps.force {
         let gate = crate::llm::memo::CallGate {
             min_move: deps.runtime.min_price_move,
@@ -300,6 +322,7 @@ async fn poll_instrument(
                 atr: ind.atr14,
             },
             now,
+            None,
             report,
         )
         .await;
@@ -334,6 +357,7 @@ async fn poll_instrument(
             instrument,
             ind,
             candidate: &candidate,
+            call_reason: gate_reason.clone(),
             available_cash: available,
             held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
             limits: g.limits,
@@ -375,6 +399,7 @@ async fn poll_instrument(
             atr: ind.atr14,
         },
         now,
+        Some(&decision.conversation_id),
         report,
     )
     .await
@@ -414,6 +439,7 @@ pub async fn advise(
     let decision = orchestrate::run(
         &llm_deps,
         RunInput {
+            call_reason: None,
             instrument,
             ind: &g.ind,
             candidate: &neutral,
@@ -480,6 +506,7 @@ struct Sizing {
     atr: f64,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn finish(
     deps: &EngineDeps<'_>,
     instrument: &Instrument,
@@ -487,6 +514,8 @@ async fn finish(
     candidate: &Candidate,
     sizing: Sizing,
     now: DateTime<Utc>,
+    // The model conversation this came from, so Audit can show what happened to it.
+    conversation_id: Option<&str>,
     report: &mut PollReport,
 ) -> Result<()> {
     // A HOLD is the absence of a decision, not a decision to record.
@@ -560,7 +589,15 @@ async fn finish(
         }
     }
 
-    let signal_id = insert_signal(deps.pool, instrument.id, &resolved, candidate, now).await?;
+    let signal_id = insert_signal(
+        deps.pool,
+        instrument.id,
+        &resolved,
+        candidate,
+        now,
+        conversation_id,
+    )
+    .await?;
     report.signals += 1;
 
     let mut as_candidate = candidate.clone();
@@ -832,6 +869,7 @@ async fn insert_signal(
     r: &Resolved,
     candidate: &Candidate,
     now: DateTime<Utc>,
+    conversation_id: Option<&str>,
 ) -> Result<i64> {
     let _ = candidate;
     let reason = serde_json::json!({
@@ -841,8 +879,8 @@ async fn insert_signal(
     .to_string();
     let row: (i64,) = sqlx::query_as(
         "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-            reason_json, created_at, confidence)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+            reason_json, created_at, confidence, conversation_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
     )
     .bind(instrument_id)
     .bind(r.action.as_str())
@@ -854,6 +892,7 @@ async fn insert_signal(
     .bind(reason)
     .bind(now.to_rfc3339())
     .bind(&r.confidence)
+    .bind(conversation_id)
     .fetch_one(pool)
     .await?;
     Ok(row.0)
@@ -1115,6 +1154,10 @@ async fn rotate_for_cash(
             prompt: rendered.text,
             prompt_template: rendered.template,
             prompt_hash: rendered.hash,
+            trigger: Some(format!(
+                "rotation: {} units at {:.2} costs {:.2}, cash {:.2} — looked for a profit to sell",
+                candidate.qty, candidate.entry, cost, available
+            )),
             purpose: format!("rotate {}", instrument.symbol),
         },
     )

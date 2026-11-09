@@ -8,6 +8,8 @@ pub struct ApiCallRow {
     pub conversation_id: Option<String>,
     pub round: Option<i64>,
     pub endpoint: String,
+    /// Why this call happened: "price moved 1,150.20 → 1,171.60", "new headline: …".
+    pub trigger: Option<String>,
     pub purpose: Option<String>,
     pub prompt_template: Option<String>,
     pub prompt_hash: Option<String>,
@@ -25,8 +27,8 @@ pub async fn record(pool: &SqlitePool, row: ApiCallRow) -> Result<()> {
     sqlx::query(
         "INSERT INTO api_calls (ts, conversation_id, round, endpoint, purpose, prompt_template,
             prompt_hash, request_json, response_json, http_status, prompt_tokens,
-            completion_tokens, latency_ms, validator_verdict, error)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            completion_tokens, latency_ms, validator_verdict, error, trigger)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(chrono::Utc::now().to_rfc3339())
     .bind(row.conversation_id)
@@ -43,6 +45,7 @@ pub async fn record(pool: &SqlitePool, row: ApiCallRow) -> Result<()> {
     .bind(row.latency_ms)
     .bind(row.validator_verdict)
     .bind(row.error)
+    .bind(row.trigger)
     .execute(pool)
     .await?;
     Ok(())

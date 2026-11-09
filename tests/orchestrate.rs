@@ -62,6 +62,7 @@ fn run_input<'a>(
     hs: &'a [Headline],
 ) -> RunInput<'a> {
     RunInput {
+        call_reason: None,
         instrument: i,
         ind: x,
         candidate: c,

@@ -106,6 +106,7 @@ async fn deepseek_returns_a_response_the_system_can_use() {
         &model,
         &real,
         ChatRequest {
+            trigger: None,
             conversation_id: "live-check".into(),
             round: 1,
             prompt: rendered.text.clone(),
@@ -210,6 +211,7 @@ async fn deepseek_buy_carries_both_exits() {
         &model,
         &real,
         ChatRequest {
+            trigger: None,
             conversation_id: "live-buy".into(),
             round: 1,
             prompt: rendered.text.clone(),

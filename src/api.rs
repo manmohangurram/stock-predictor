@@ -734,6 +734,11 @@ pub struct CallRow {
     pub id: i64,
     pub ts: String,
     pub endpoint: String,
+    /// Why the model was asked: "price moved …", "new headline …", "rotation …".
+    pub trigger: Option<String>,
+    /// The decision this call produced, and what you did with it.
+    pub decision_id: Option<i64>,
+    pub decision_status: Option<String>,
     pub purpose: Option<String>,
     pub round: Option<i64>,
     pub prompt_tokens: Option<i64>,
@@ -747,6 +752,9 @@ struct CallDbRow {
     id: i64,
     ts: String,
     endpoint: String,
+    trigger: Option<String>,
+    decision_id: Option<i64>,
+    decision_status: Option<String>,
     purpose: Option<String>,
     round: Option<i64>,
     prompt_tokens: Option<i64>,
@@ -803,10 +811,16 @@ async fn call_detail(
 
 async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiError> {
     let rows: Vec<CallDbRow> = sqlx::query_as(
-        "SELECT id AS id, ts AS ts, endpoint AS endpoint, purpose AS purpose, round AS round,
-                prompt_tokens AS prompt_tokens, completion_tokens AS completion_tokens,
-                validator_verdict AS validator_verdict, error AS error
-         FROM api_calls ORDER BY id DESC LIMIT 100",
+        "SELECT a.id AS id, a.ts AS ts, a.endpoint AS endpoint, a.purpose AS purpose,
+                a.round AS round, a.prompt_tokens AS prompt_tokens,
+                a.completion_tokens AS completion_tokens,
+                a.validator_verdict AS validator_verdict, a.error AS error,
+                a.trigger AS trigger,
+                (SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
+                 ORDER BY s.id DESC LIMIT 1) AS decision_id,
+                (SELECT s.status FROM signals s WHERE s.conversation_id = a.conversation_id
+                 ORDER BY s.id DESC LIMIT 1) AS decision_status
+         FROM api_calls a ORDER BY a.id DESC LIMIT 100",
     )
     .fetch_all(&st.pool)
     .await?;
@@ -816,6 +830,9 @@ async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiErro
                 id: r.id,
                 ts: r.ts,
                 endpoint: r.endpoint,
+                trigger: r.trigger,
+                decision_id: r.decision_id,
+                decision_status: r.decision_status,
                 purpose: r.purpose,
                 round: r.round,
                 prompt_tokens: r.prompt_tokens,

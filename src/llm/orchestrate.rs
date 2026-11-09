@@ -28,6 +28,8 @@ pub struct LlmDeps<'a> {
 }
 
 pub struct RunInput<'a> {
+    /// Why the gate let this call through, carried into the audit row.
+    pub call_reason: Option<String>,
     pub instrument: &'a Instrument,
     pub ind: &'a Indicators,
     pub candidate: &'a Candidate,
@@ -124,6 +126,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
             prompt: rendered.text,
             prompt_template: rendered.template,
             prompt_hash: rendered.hash,
+            trigger: input.call_reason.clone(),
             purpose: format!("decide {}", input.instrument.symbol),
         },
     )
@@ -230,6 +233,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                     prompt: rendered2.text,
                     prompt_template: rendered2.template,
                     prompt_hash: rendered2.hash,
+                    trigger: Some("the first answer asked for more data".into()),
                     purpose: format!("escalate {}", input.instrument.symbol),
                 },
             )
