@@ -36,6 +36,8 @@ pub struct PollReport {
     pub signals: usize,
     pub notifications: usize,
     pub blocked: usize,
+    /// Plan calls that produced a plan. Zero is the normal answer.
+    pub plans: usize,
     pub errors: Vec<String>,
 }
 
@@ -64,12 +66,215 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
         }
     }
 
+    // The book call runs after the per-instrument passes, and only if one of them actually spent
+    // a call this tick — the same "something moved" gate the rest of the poll obeys.
+    let calls_before = report.llm_calls;
+    let calls_after = orchestrate::daily_chat_calls(deps.pool).await.unwrap_or(0);
+    if calls_after > calls_before {
+        match plan_book(deps, now).await {
+            Ok(Some(())) => report.plans += 1,
+            Ok(None) => {}
+            Err(e) => report.errors.push(format!("plan: {e:#}")),
+        }
+    }
     report.llm_calls = orchestrate::daily_chat_calls(deps.pool).await.unwrap_or(0);
     Ok(report)
 }
 
 /// Everything one instrument's decision needs, gathered once. \`poll_instrument\` and \`advise\`
 /// shared this logic by copy before, and had already drifted apart.
+/// One book call: the model sees every holding, the cash and today's list, and may answer with up
+/// to three moves that stand or fall together. Returns `Some(())` only when a plan was stored.
+async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<()>> {
+    let holdings = load_holdings(deps.pool, crate::models::Mode::Long).await?;
+    if holdings.is_empty() {
+        return Ok(None); // nothing to reason about, and nothing to pay a call for
+    }
+    let settings = crate::rules::settings::get(deps.pool).await?;
+    let available = budget::available_in(deps.pool, crate::models::Mode::Long).await?;
+    if orchestrate::daily_chat_calls(deps.pool).await? >= deps.runtime.daily_cap as i64 {
+        tracing::info!("daily call cap reached — plan not attempted");
+        return Ok(None);
+    }
+
+    let candidates = candidates_for_plan(deps.pool, &settings.currency).await?;
+    let limits = format!(
+        "spend at most {:.2} {currency} across the plan; no single buy above {:.2}; a take-profit between {:.0}% and {:.0}%",
+        settings.limits_long.max_trade_amount,
+        settings.limits_long.max_trade_amount,
+        settings.limits_long.min_profit_pct,
+        settings.limits_long.max_profit_pct,
+        currency = settings.currency
+    );
+    let rendered = crate::llm::prompts::render_plan(
+        &crate::llm::plan::book_block(&holdings, &settings.currency),
+        &crate::llm::prompts::cap_line(available, &settings.currency),
+        available,
+        &settings.currency,
+        &limits,
+        &candidates,
+    )?;
+    let model = crate::rules::settings::model_config(deps.pool).await?;
+    let reply = crate::llm::deepseek::chat(
+        deps.pool,
+        &model,
+        deps.transport,
+        crate::llm::deepseek::ChatRequest {
+            conversation_id: format!("plan-{}", now.timestamp_millis()),
+            round: 1,
+            prompt: rendered.text,
+            prompt_template: rendered.template,
+            prompt_hash: rendered.hash,
+            trigger: Some(format!(
+                "book call: {} holdings, {:.2} {} free — looked for moves that fit together",
+                holdings.len(),
+                available,
+                settings.currency
+            )),
+            purpose: "plan book".to_string(),
+        },
+    )
+    .await?;
+
+    let answer = match crate::llm::plan::parse(&reply.content) {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::warn!(error = %e, "plan reply unreadable");
+            return Ok(None);
+        }
+    };
+    let crate::llm::plan::Answer::Plan(plan) = answer else {
+        return Ok(None);
+    };
+
+    if let Err(e) = crate::llm::plan::validate(
+        &plan,
+        &holdings,
+        available,
+        &settings.limits_long,
+        &settings.currency,
+        now,
+    ) {
+        tracing::warn!(error = %e, "plan refused by the validator");
+        record_plan_refusal(deps.pool, &e.to_string(), now).await?;
+        return Ok(None);
+    }
+
+    let mut plan_id: Option<i64> = None;
+    for m in &plan.moves {
+        let id: Option<(i64,)> = sqlx::query_as(
+            "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+                reason_json, created_at, confidence, mode, kind, status, plan_id)
+             SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'long', 'plan', 'pending', ?
+             FROM instruments WHERE symbol = ? RETURNING id",
+        )
+        .bind(m.action.as_str())
+        .bind(m.qty)
+        .bind(m.price)
+        .bind(m.stop)
+        .bind(m.target)
+        .bind((now + chrono::Duration::hours(18)).to_rfc3339())
+        .bind(
+            serde_json::json!({
+                "reasons": [],
+                "rationale": m.why,
+                "plan_rationale": plan.rationale,
+                "plan": true,
+            })
+            .to_string(),
+        )
+        .bind(now.to_rfc3339())
+        .bind(Option::<String>::None)
+        .bind(plan_id)
+        .bind(&m.symbol)
+        .fetch_optional(deps.pool)
+        .await?;
+        let Some((id,)) = id else {
+            // A move on a symbol that is not an instrument cannot be stored; the plan is refused
+            // whole rather than half-recorded.
+            record_plan_refusal(
+                deps.pool,
+                &format!("{} is not in the book, so the plan cannot be stored", m.symbol),
+                now,
+            )
+            .await?;
+            return Ok(None);
+        };
+        // The first leg is its own group: every later leg points at it, and so does it.
+        if plan_id.is_none() {
+            sqlx::query("UPDATE signals SET plan_id = ? WHERE id = ?")
+                .bind(id)
+                .bind(id)
+                .execute(deps.pool)
+                .await?;
+            plan_id = Some(id);
+        }
+    }
+    Ok(Some(()))
+}
+
+/// A refused plan is a decision too: it is recorded with the reason, so the ledger can say why
+/// nothing happened, the way a blocked single proposal already does.
+async fn record_plan_refusal(pool: &SqlitePool, why: &str, now: DateTime<Utc>) -> Result<()> {
+    let reason = serde_json::json!({
+        "blocked": "plan_refused",
+        "reasons": [why],
+    })
+    .to_string();
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status)
+         SELECT id, 'BLOCKED', 0, 0, ?, ?, ?, 'long', 'plan', 'pending'
+         FROM instruments WHERE class = 'stock' AND active = 1
+         ORDER BY id LIMIT 1",
+    )
+    .bind((now + chrono::Duration::hours(18)).to_rfc3339())
+    .bind(reason)
+    .bind(now.to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Today's list for the book call: the active instruments and their last two closes, so the model
+/// can weigh a holding against what else is on offer.
+async fn candidates_for_plan(pool: &SqlitePool, currency: &str) -> Result<String> {
+    #[derive(sqlx::FromRow)]
+    struct Line {
+        symbol: String,
+        name: String,
+        last: f64,
+        prev: Option<f64>,
+    }
+    let rows: Vec<Line> = sqlx::query_as(
+        "SELECT i.symbol AS symbol, i.name AS name,
+                (SELECT b.close FROM bars b WHERE b.instrument_id = i.id
+                 ORDER BY b.ts DESC LIMIT 1) AS last,
+                (SELECT b.close FROM bars b WHERE b.instrument_id = i.id
+                 ORDER BY b.ts DESC LIMIT 1 OFFSET 1) AS prev
+         FROM instruments i WHERE i.active = 1
+         ORDER BY i.symbol",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut out = String::new();
+    for r in rows {
+        let change = r
+            .prev
+            .filter(|p| *p > 0.0)
+            .map(|p| format!("{:+.2}% today", (r.last - p) / p * 100.0))
+            .unwrap_or_else(|| "no prior close".into());
+        out.push_str(&format!(
+            "{} {} at {:.2} {currency}, {change}\n",
+            r.symbol, r.name, r.last
+        ));
+    }
+    if out.is_empty() {
+        out.push_str("nothing on offer today\n");
+    }
+    Ok(out)
+}
+
 struct Gathered {
     bars: Vec<Bar>,
     news: Vec<Headline>,

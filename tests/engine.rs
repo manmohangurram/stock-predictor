@@ -758,14 +758,23 @@ async fn a_stop_hit_sells_even_when_the_model_tries_to_hold() {
         .to_string(),
     };
     let notifier = FakeNotifier::default();
-    let report = poll_with(&pool, &market, &notifier, cfg(), now(), vec![hold])
+    // The book call follows every deciding call, so the fixture owes it an answer too.
+    let pass = stock_predictor::llm::deepseek::HttpReply {
+        status: 200,
+        body: serde_json::json!({
+            "choices": [{"message": {"content": r#"{"moves":[],"pass_reason":"nothing worth doing"}"#}}],
+            "usage": {}
+        })
+        .to_string(),
+    };
+    let report = poll_with(&pool, &market, &notifier, cfg(), now(), vec![hold, pass])
         .await
         .unwrap();
 
     assert_eq!(report.signals, 1, "{report:#?}");
     assert_eq!(
-        report.llm_calls, 1,
-        "the model was never consulted: {report:#?}"
+        report.llm_calls, 2,
+        "the deciding call and the book call: {report:#?}"
     );
     let action: (String,) = sqlx::query_as("SELECT action FROM signals ORDER BY id DESC LIMIT 1")
         .fetch_one(&pool)
@@ -776,4 +785,154 @@ async fn a_stop_hit_sells_even_when_the_model_tries_to_hold() {
     let sent = notifier.sent.lock().unwrap();
     assert_eq!(sent.len(), 1);
     assert!(sent[0].title.starts_with("SELL"), "{}", sent[0].title);
+}
+
+/// The book call answers with a plan; every leg must land in one group, and the buy must carry its
+/// exit plan, or the ledger cannot show it as one decision.
+#[tokio::test]
+async fn a_plan_is_stored_as_one_group_of_moves() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY.NS", "HDFCBANK.NS"]).await;
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+
+    // A holding, so the book is not empty.
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'INFY.NS'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode, stop, target)
+         VALUES (?, 24, 1042.30, '2026-09-01T00:00:00Z', 'open', 'long', 1080, 1420)",
+    )
+    .bind(id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let pass = serde_json::json!({
+        "choices": [{"message": {"content": "{\"action\":\"pass\",\"why\":\"nothing new\"}"}}],
+        "usage": {}
+    })
+    .to_string();
+    let plan = include_str!("fixtures/plan_reply.json").to_string();
+    let planned = serde_json::json!({
+        "choices": [{"message": {"content": plan}}],
+        "usage": {}
+    })
+    .to_string();
+
+    let transport = FixtureTransport::new(vec![
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass },
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: planned },
+    ]);
+    let deps = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &transport,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: true,
+    };
+    let report = engine::poll_once(&deps, now()).await.unwrap();
+    assert_eq!(report.plans, 1, "{report:?}");
+
+    #[derive(sqlx::FromRow)]
+    struct Leg {
+        action: String,
+        plan_id: Option<i64>,
+        mode: String,
+        stop: Option<f64>,
+        target: Option<f64>,
+    }
+    let rows: Vec<Leg> = sqlx::query_as(
+        "SELECT action, plan_id, mode, stop, target FROM signals WHERE kind = 'plan' ORDER BY id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 2, "both legs stored");
+    assert_eq!(rows[0].action, "SELL");
+    assert_eq!(rows[1].action, "BUY");
+    assert_eq!(rows[0].mode, "long");
+    assert!(rows[0].plan_id.is_some(), "a plan id");
+    assert_eq!(rows[0].plan_id, rows[1].plan_id, "both legs share the plan id");
+    assert!(
+        rows[1].stop.is_some() && rows[1].target.is_some(),
+        "the buy keeps its exits"
+    );
+}
+
+/// A plan that cannot be paid for is refused whole, and the refusal is a record with its reason.
+#[tokio::test]
+async fn an_unbalanced_plan_is_refused_and_recorded() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY.NS", "HDFCBANK.NS"]).await;
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'INFY.NS'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode, stop, target)
+         VALUES (?, 1, 1042.30, '2026-09-01T00:00:00Z', 'open', 'long', 1080, 1420)",
+    )
+    .bind(id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let pass = serde_json::json!({
+        "choices": [{"message": {"content": "{\"action\":\"pass\",\"why\":\"nothing new\"}"}}],
+        "usage": {}
+    })
+    .to_string();
+    let greedy = serde_json::json!({
+        "choices": [{"message": {"content": r#"{"moves":[
+            {"action":"SELL","symbol":"INFY.NS","qty":1,"price":100.0},
+            {"action":"BUY","symbol":"HDFCBANK.NS","qty":9999,"price":1000.0,"stop":900,"target":1200}
+        ],"rationale":"wants the world"}"#}}],
+        "usage": {}
+    })
+    .to_string();
+    let transport = FixtureTransport::new(vec![
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass },
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: greedy },
+    ]);
+    let deps = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &transport,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: true,
+    };
+    let report = engine::poll_once(&deps, now()).await.unwrap();
+    assert_eq!(report.plans, 0, "{report:?}");
+
+    let blocked: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM signals WHERE action = 'BLOCKED' AND kind = 'plan'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(blocked.0, 1, "one refusal, recorded");
+    let reason: (String,) = sqlx::query_as(
+        "SELECT reason_json FROM signals WHERE action = 'BLOCKED' AND kind = 'plan'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(reason.0.contains("does not balance"), "{}", reason.0);
 }
