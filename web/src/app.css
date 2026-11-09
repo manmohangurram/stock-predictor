@@ -218,6 +218,8 @@
     border-block-end: 1px solid var(--rule-subtle);
   }
   .empty { color: var(--ink-tertiary); padding-block: var(--space-6); }
+  /* In the call drawer the empty line is a sentence, not a placeholder for rows. */
+  .call-col .empty, .call .decision .empty { padding-block: 0; margin: 0; }
 
   .nav { display: flex; gap: var(--space-4); padding-block: var(--space-3); }
   .nav a { color: var(--ink-secondary); text-decoration: none; font-size: var(--text-sm); }
@@ -967,13 +969,16 @@
 @layer components {
   /* The expanded call opens with its facts, so the prompt and the reply have a context. */
   .call-facts {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: var(--space-3) var(--space-6); padding: var(--space-3) 0;
     border-bottom: 1px solid var(--rule-subtle); margin-bottom: var(--space-3);
   }
-  .call-facts .fact { display: grid; gap: 2px; align-content: start; }
-  .call-facts .fact b { font-family: var(--font-ledger); font-size: var(--text-md); font-weight: 500; }
-  .call-facts .fact .sub { font-size: var(--text-xs); color: var(--ink-muted); }
+  .call-facts .fact { display: grid; gap: 2px; align-content: start; min-width: 0; }
+  .call-facts .fact b, .call-facts .fact .sub { overflow-wrap: anywhere; }
+  .call-facts .fact-value { font-family: var(--font-ledger); font-size: var(--text-md); }
+  .call-facts .fact-value b { font-weight: 500; }
+  .call-facts .fact-value .sub { display: block; font-family: var(--font-form);
+    font-size: var(--text-xs); color: var(--ink-muted); }
   .why-line.refused { color: var(--neg); }
 }
 
@@ -1096,4 +1101,96 @@
   .figures .fig-line { display: flex; align-items: baseline; gap: var(--space-2); }
   .figures .fig-note { font-family: var(--font-ledger); font-size: var(--text-xs);
     color: var(--ink-tertiary); }
+}
+
+@layer components {
+  /* A plan inside the audit drawer reads like the ledger's: legs in a column, why under each. */
+  .plan-legs { display: grid; gap: 2px; }
+  .plan-legs .plan-leg { border-top: 1px solid var(--rule-subtle); }
+  .plan-legs .plan-leg:first-child { border-top: 0; }
+  .plan-legs .plan-leg .sub { margin-left: auto; }
+}
+
+@layer components {
+  /* The drawer is a sheet: one left edge, one spacing scale, and a hairline between sections.
+     Nothing in it repeats a column from the row above. */
+  .call { display: grid; gap: var(--space-6); padding: var(--space-4) var(--space-4) var(--space-3); }
+
+  .call-bar { display: flex; flex-wrap: wrap; align-items: baseline;
+    gap: var(--space-2) var(--space-6); padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--rule); }
+  .call-fact { display: inline-flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+  .call-fact .lbl { color: var(--ink-tertiary); }
+  .call-fact b { font-family: var(--font-ledger); font-size: var(--text-sm); font-weight: 500;
+    min-width: 0; overflow-wrap: anywhere; }
+  .call-fact .sub { font-family: var(--font-form); font-size: var(--text-xs);
+    color: var(--ink-muted); margin-left: var(--space-1); }
+  .call-fact.why, .call-fact.refused { flex-basis: 100%; }
+  .call-fact.refused b, .call-fact.refused .lbl { color: var(--neg); }
+
+  .call-sec { display: grid; gap: var(--space-3); }
+  .call-h { margin: 0; font-family: var(--font-form); font-size: var(--text-xs); font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-tertiary); }
+
+  .call-exchange { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6);
+    align-items: start; }
+  .call-verbatim { margin: 0; padding: var(--space-3); background: var(--paper-raised);
+    border: 1px solid var(--rule-subtle); border-radius: var(--radius);
+    font-family: var(--font-ledger); font-size: var(--text-xs); line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word; max-height: 420px; overflow: auto; }
+  .call-empty { margin: 0; color: var(--ink-tertiary); font-size: var(--text-sm); }
+  .call .raw { border-top: 1px solid var(--rule-subtle); padding-top: var(--space-3); }
+}
+
+@layer components {
+  /* The drawer sits on the inset paper, inset from the row's own padding, so it reads as one
+     sheet opened under the row rather than more table rows. */
+  .call-detail > td { padding: 0; background: var(--paper-inset);
+    border-bottom: 1px solid var(--rule); }
+  .call-detail > td .call { background: var(--paper-inset); }
+  /* No double rule where the sheet meets the row it belongs to. */
+  .blotter tbody tr:has(+ tr.call-detail:not([hidden])) > td { border-bottom: 0; }
+  .blotter tbody tr.call-detail:has(+ tr) > td { border-bottom: 0; }
+}
+
+@layer components {
+  /* The answer card: a verdict head, then its evidence, then its words — one shape for a plan,
+     a single decision and a pass. */
+  .answer { background: var(--paper-raised); border: 1px solid var(--rule-subtle);
+    border-radius: var(--radius); overflow: hidden; }
+  .answer-head { display: flex; align-items: baseline; gap: var(--space-2);
+    padding: var(--space-2) var(--space-4); background: var(--paper-inset);
+    border-bottom: 1px solid var(--rule-subtle); }
+  .answer-title { font-family: var(--font-form); font-weight: 500; font-size: var(--text-sm); }
+  .answer-when { margin-left: auto; font-family: var(--font-ledger);
+    font-size: var(--text-xs); color: var(--ink-tertiary); }
+  .answer-body { display: grid; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+  .answer-figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: var(--space-3) var(--space-4); }
+  .answer-figure { display: grid; gap: 1px; }
+  .answer-figure b { font-family: var(--font-ledger); font-size: var(--text-md); font-weight: 500; }
+  .answer-prose { margin: 0; max-width: 72ch; color: var(--ink-secondary); }
+  .answer-note { margin: 0; font-size: var(--text-sm); color: var(--ink-tertiary); }
+  .answer-cites { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .answer-raw { margin: 0; font-family: var(--font-ledger); font-size: var(--text-xs);
+    white-space: pre-wrap; word-break: break-word; color: var(--ink-secondary); }
+
+  .answer-moves { width: 100%; border-collapse: collapse; }
+  .answer-moves th { text-align: left; font-family: var(--font-form); font-size: var(--text-xs);
+    font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-tertiary);
+    padding: 0 var(--space-2) var(--space-2); border-bottom: 1px solid var(--rule-subtle); }
+  .answer-moves th.num, .answer-moves td.num { text-align: right; }
+  /* Explicit, because these cells sit inside the audit blotter and would otherwise inherit
+     its right-aligned number rules. */
+  .answer-moves td { padding: 8px var(--space-2); border-bottom: 1px solid var(--rule-subtle);
+    vertical-align: top; font-size: var(--text-sm); text-align: left; }
+  .answer-moves td:first-child { width: 54px; }
+  .answer-moves tr:last-child td { border-bottom: 0; }
+  .answer-moves td.num { font-family: var(--font-ledger); }
+  .answer-sym { font-family: var(--font-form); font-weight: 500; }
+  .answer-why { font-family: var(--font-form); font-weight: 400; font-size: var(--text-xs);
+    color: var(--ink-tertiary); max-width: 56ch; margin-top: 2px; }
+
+  /* The prompt block's label sits over its own text, not at the card's edge. */
+  .call-block .lbl { padding-left: var(--space-3); }
 }

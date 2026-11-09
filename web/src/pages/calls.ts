@@ -1,5 +1,5 @@
 import type { CallRow } from "../api";
-import { escapeHtml, money } from "../format";
+import { escapeHtml, money, units } from "../format";
 import { renderApp, renderHead } from "../components/shell";
 import {
   declaredTools,
@@ -103,43 +103,93 @@ export function renderCalls(rows: CallRow[]): string {
 }
 
 /** The reply as a decision, not as JSON: a verdict, its numbers, and what it wants next. */
-function decisionCard(reply: string): string {
+/** One answer card, always the same shape: a verdict head, its figures or moves, then its words. */
+function decisionCard(reply: string, when: string): string {
   const r = parseReply(reply);
-  if (!r.verdict) {
-    return `<section class="call-block"><pre>${
-      reply ? escapeHtml(reply) : "<em>no readable content — see the raw JSON</em>"
-    }</pre></section>`;
+  const head = (stamp: string, tone: string, title: string) =>
+    `<div class="answer-head">
+      <span class="stamp" data-stamp="${tone}">${escapeHtml(stamp)}</span>
+      <span class="answer-title">${title}</span>
+      <span class="answer-when">${escapeHtml(when)}</span>
+    </div>`;
+
+  // A plan: one stamped row per move, then why it was made.
+  if (r.moves.length) {
+    const legs = r.moves
+      .map((m) => {
+        const buy = m.action === "BUY";
+        return `<tr>
+          <td><span class="stamp" data-stamp="${buy ? "buy" : "sell"}">${escapeHtml(m.action)}</span></td>
+          <td class="answer-sym">${escapeHtml(m.symbol)}${
+            m.why ? `<div class="answer-why">${escapeHtml(m.why)}</div>` : ""
+          }</td>
+          <td class="num">${m.qty === null ? "—" : units(m.qty)}</td>
+          <td class="num">${m.price === null ? "—" : money(m.price)}</td>
+          <td class="num">${m.stop === null ? "—" : money(m.stop)}</td>
+          <td class="num">${m.target === null ? "—" : money(m.target)}</td>
+        </tr>`;
+      })
+      .join("");
+    return `<article class="answer" data-verdict="plan">
+      ${head("STOCK PLAN", "estimate", `${r.moves.length} move${r.moves.length === 1 ? "" : "s"}`)}
+      <div class="answer-body">
+        <table class="answer-moves">
+          <thead><tr><th></th><th>Holding</th><th class="num">Qty</th><th class="num">Price</th>
+            <th class="num">Stop</th><th class="num">Target</th></tr></thead>
+          <tbody>${legs}</tbody>
+        </table>
+        ${r.rationale ? `<p class="answer-prose">${escapeHtml(r.rationale)}</p>` : ""}
+      </div>
+    </article>`;
   }
-  const stamp = r.verdict === "BUY" ? "buy" : r.verdict === "SELL" ? "sell" : "estimate";
-  const row = (label: string, value: string) =>
-    `<div class="reply-figure"><span class="lbl">${label}</span><b class="num">${value}</b></div>`;
+
+  // An empty move list is a real answer: the model looked and proposed nothing.
+  if (Array.isArray(r.rest?.moves)) {
+    return `<article class="answer" data-verdict="pass">
+      ${head("PASS", "estimate", "No moves")}
+      <div class="answer-body">${
+        r.why ? `<p class="answer-prose">${escapeHtml(r.why)}</p>` : ""
+      }</div>
+    </article>`;
+  }
+
+  if (!r.verdict) {
+    return `<article class="answer" data-verdict="raw">
+      ${head("UNPARSED", "estimate", "The reply did not parse")}
+      <div class="answer-body"><pre class="answer-raw">${
+        reply ? escapeHtml(reply) : "<em>no readable content — see the raw JSON</em>"
+      }</pre></div>
+    </article>`;
+  }
+
+  const tone = r.verdict === "BUY" ? "buy" : r.verdict === "SELL" ? "sell" : "estimate";
+  const figure = (label: string, value: string) =>
+    `<div class="answer-figure"><span class="lbl">${label}</span><b class="num">${value}</b></div>`;
   const figures = [
-    r.qty !== null ? row("Quantity", String(r.qty)) : "",
-    r.entry !== null ? row("Entry", money(r.entry)) : "",
-    r.stop !== null ? row("Stop", money(r.stop)) : "",
-    r.target !== null ? row("Target", money(r.target)) : "",
-    r.confidence ? row("Confidence", r.confidence) : "",
+    r.qty !== null ? figure("Quantity", String(r.qty)) : "",
+    r.entry !== null ? figure("Entry", money(r.entry)) : "",
+    r.stop !== null ? figure("Stop", money(r.stop)) : "",
+    r.target !== null ? figure("Target", money(r.target)) : "",
+    r.confidence ? figure("Confidence", r.confidence) : "",
   ].join("");
   const wants = r.wantsHeadlines.length
-    ? `<p class="decision-note">Asked for headline ${r.wantsHeadlines.join(", ")}${
+    ? `<p class="answer-note">Asked for headline ${r.wantsHeadlines.join(", ")}${
         r.wantsHistory ? " and the 7-day history" : ""
       } before deciding.</p>`
     : "";
-  const prose = [r.rationale, r.why].filter(Boolean).join("\n\n");
   const cites = r.cites.length
-    ? `<div class="decision-cites">${r.cites
+    ? `<div class="answer-cites">${r.cites
         .map((c) => `<span class="chip">source ${c}</span>`)
         .join("")}</div>`
     : "";
-  return `<article class="decision" data-verdict="${r.verdict.toLowerCase()}">
-    <div class="decision-head">
-      <span class="stamp" data-stamp="${stamp}">${r.verdict}</span>
-      <span class="sub">the model's answer, parsed</span>
+  return `<article class="answer" data-verdict="${r.verdict.toLowerCase()}">
+    ${head(r.verdict, tone, r.verdict === "PASS" ? "Passed" : "Decision")}
+    <div class="answer-body">
+      ${figures ? `<div class="answer-figures">${figures}</div>` : ""}
+      ${r.rationale || r.why ? `<p class="answer-prose">${escapeHtml(r.rationale ?? r.why ?? "")}</p>` : ""}
+      ${wants}
+      ${cites}
     </div>
-    ${figures ? `<div class="decision-grid">${figures}</div>` : ""}
-    ${prose ? `<p class="decision-prose">${escapeHtml(prose)}</p>` : ""}
-    ${wants}
-    ${cites}
   </article>`;
 }
 
@@ -147,7 +197,6 @@ function firstWord(text: string | null): string {
   return (text ?? "").split(/\s+/)[0] || "—";
 }
 
-/** The expanded exchange: prompt by role, the reply, then the raw bodies on demand. */
 export function renderExchangeDetail(d: CallDetail): string {
   const blocks = promptBlocks(d.request_json);
   const reply = replyText(d.response_json);
@@ -161,52 +210,50 @@ export function renderExchangeDetail(d: CallDetail): string {
     </section>`,
         )
         .join("")
-    : `<p class="empty">The request body is not a message list — see the raw JSON.</p>`;
+    : `<p class="call-empty">The request body is not a message list — see the raw JSON.</p>`;
 
+  // Only what the row above cannot say. The type, the channel, the holding and the verdict are
+  // already on the row; repeating them here was the duplication.
   const fact = (label: string, value: string) =>
-    `<div class="fact"><span class="lbl">${label}</span><b>${value}</b></div>`;
-  const holding = d.instrument_name
-    ? `<b>${escapeHtml(d.instrument_name)}</b>${
-        d.instrument_symbol ? ` <span class="sub">${escapeHtml(d.instrument_symbol)}</span>` : ""
-      }`
-    : firstWord(d.purpose) === "plan"
-      ? `<b>Whole book</b> <span class="sub">every holding</span>`
-      : escapeHtml(d.purpose ?? "—");
+    `<span class="call-fact"><span class="lbl">${label}</span><b>${value}</b></span>`;
 
   return `<div class="call">
-  <div class="call-facts">
-    ${fact("Prompt type", d.prompt_template ? `<span class="pill ok">${escapeHtml(d.prompt_template)}</span>` : escapeHtml(firstWord(d.purpose)))}
-    ${fact("Call", escapeHtml(d.endpoint))}
-    ${fact("Holding", holding)}
+  <div class="call-bar">
+    ${fact("Model", escapeHtml(d.prompt_template ?? firstWord(d.purpose)))}
+    ${fact("Time", escapeHtml(localTime(d.ts)))}
     ${d.round ? fact("Round", String(d.round)) : ""}
     ${fact("Tokens", `${d.prompt_tokens ?? 0} in · ${d.completion_tokens ?? 0} out`)}
-    ${fact("Outcome", escapeHtml(d.error ?? d.validator_verdict ?? "ok"))}
+    ${tools.length ? fact("Tools", escapeHtml(tools.join(", "))) : ""}
+    ${d.trigger ? `<span class="call-fact why"><span class="lbl">Asked because</span><b>${escapeHtml(d.trigger)}</b></span>` : ""}
+    ${d.decision_reason ? `<span class="call-fact refused"><span class="lbl">Refused</span><b>${escapeHtml(d.decision_reason)}</b></span>` : ""}
+    ${d.error ? `<span class="call-fact refused"><span class="lbl">Failed</span><b>${escapeHtml(d.error)}</b></span>` : ""}
   </div>
+
   ${
-    d.trigger
-      ? `<p class="why-line"><span class="lbl">Why it was asked</span> ${escapeHtml(d.trigger)}</p>`
-      : ""
+    d.error
+      ? ""
+      : `<section class="call-sec">
+    <h3 class="call-h">The answer</h3>
+    ${decisionCard(reply, localTime(d.ts))}
+  </section>`
   }
-  ${
-    d.decision_reason
-      ? `<p class="why-line refused"><span class="lbl">Refused</span> ${escapeHtml(d.decision_reason)}</p>`
-      : ""
-  }
-  <div class="call-grid">
+
+  <section class="call-sec call-exchange">
     <div class="call-col">
-      <h3 class="lbl">What the model was sent</h3>
+      <h3 class="call-h">Sent to the model</h3>
       ${prompt}
     </div>
     <div class="call-col">
-      <h3 class="lbl">What it replied</h3>
-      ${decisionCard(reply)}
+      <h3 class="call-h">Received, verbatim</h3>
+      <pre class="call-verbatim">${reply ? escapeHtml(reply) : "no content"}</pre>
     </div>
-  </div>
+  </section>
+
   <details class="raw">
     <summary>Raw request and response</summary>
-    <div class="call-grid">
-      <section class="call-block"><h3 class="lbl">request_json</h3><pre>${escapeHtml(pretty(d.request_json))}</pre></section>
-      <section class="call-block"><h3 class="lbl">response_json</h3><pre>${escapeHtml(pretty(d.response_json))}</pre></section>
+    <div class="call-exchange">
+      <section class="call-block"><h3 class="call-h">request_json</h3><pre>${escapeHtml(pretty(d.request_json))}</pre></section>
+      <section class="call-block"><h3 class="call-h">response_json</h3><pre>${escapeHtml(pretty(d.response_json))}</pre></section>
     </div>
   </details>
 </div>`;

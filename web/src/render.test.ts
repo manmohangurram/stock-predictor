@@ -963,10 +963,12 @@ describe("audit", () => {
       instrument_symbol: "INFY.NS",
       plan_legs: 0,
     });
-    expect(detail).toContain("Why it was asked");
+    expect(detail).toContain("Asked because");
     expect(detail).toContain("Refused");
-    expect(detail).toContain("Prompt type");
-    expect(detail).toContain("Infosys");
+    expect(detail).toContain("Model");
+    // The row already says the type, channel and holding; the drawer must not repeat them.
+    expect(detail).not.toContain("Prompt type");
+    expect(detail).not.toContain("Holding");
     expect(detail).toContain("insufficient_cash");
   });
 });

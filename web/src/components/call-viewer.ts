@@ -108,6 +108,17 @@ export function pretty(raw: string | null, max = 20000): string {
 }
 
 /** The model's answer, once its JSON is understood. */
+/** One leg of a plan: the reply's unit when the model answered with several moves. */
+export interface ReplyMove {
+  action: string;
+  symbol: string;
+  qty: number | null;
+  price: number | null;
+  stop: number | null;
+  target: number | null;
+  why: string | null;
+}
+
 export interface Reply {
   /** "BUY" | "SELL" | "PASS" | "NEED_MORE" — or null when the body was not that shape. */
   verdict: string | null;
@@ -122,6 +133,8 @@ export interface Reply {
   wantsHeadlines: number[];
   wantsHistory: boolean;
   cites: number[];
+  /** A plan's legs, in the order the model gave them. Empty for a single decision. */
+  moves: ReplyMove[];
   /** Anything else the body said, so nothing is silently dropped. */
   rest: Record<string, unknown> | null;
 }
@@ -133,7 +146,8 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? 
 export function parseReply(content: string): Reply {
   const empty: Reply = {
     verdict: null, entry: null, stop: null, target: null, qty: null, confidence: null,
-    rationale: null, why: null, wantsHeadlines: [], wantsHistory: false, cites: [], rest: null,
+    rationale: null, why: null, wantsHeadlines: [], wantsHistory: false, cites: [],
+    moves: [], rest: null,
   };
   let body: unknown;
   try {
@@ -158,7 +172,7 @@ export function parseReply(content: string): Reply {
     qty: num(decision.qty),
     confidence: typeof confidence === "string" ? confidence : null,
     rationale: str(decision.rationale) ?? str(outer.rationale),
-    why: str(decision.why) ?? str(outer.why) ?? str(outer.reason),
+    why: str(decision.why) ?? str(outer.why) ?? str(outer.reason) ?? str(outer.pass_reason),
     wantsHeadlines: Array.isArray(headlines)
       ? headlines
           .map((h) => (typeof h === "number" ? h : num(asRecord(h)?.headline_id)))
@@ -167,6 +181,20 @@ export function parseReply(content: string): Reply {
     wantsHistory: Boolean(more?.price_history ?? more?.history),
     cites: Array.isArray(decision.cites)
       ? decision.cites.filter((c): c is number => typeof c === "number")
+      : [],
+    moves: Array.isArray(outer.moves)
+      ? outer.moves
+          .map(asRecord)
+          .filter((m): m is Record<string, unknown> => m !== null)
+          .map((m) => ({
+            action: (str(m.action) ?? "").toUpperCase(),
+            symbol: str(m.symbol) ?? "",
+            qty: num(m.qty),
+            price: num(m.price),
+            stop: num(m.stop),
+            target: num(m.target),
+            why: str(m.why),
+          }))
       : [],
     rest: outer,
   };
