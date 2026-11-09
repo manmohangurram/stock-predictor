@@ -742,6 +742,13 @@ pub struct CallRow {
     pub id: i64,
     pub ts: String,
     pub endpoint: String,
+    /// "BLOCKED" when the proposal could not be funded, so the review column can say so.
+    pub decision_action: Option<String>,
+    /// Why it was refused, when it was.
+    pub decision_reason: Option<String>,
+    /// The holding's name, which is what a person reads; the symbol is secondary.
+    pub instrument_name: Option<String>,
+    pub instrument_symbol: Option<String>,
     /// Why the model was asked: "price moved …", "new headline …", "rotation …".
     pub trigger: Option<String>,
     /// The decision this call produced, and what you did with it.
@@ -760,6 +767,10 @@ struct CallDbRow {
     id: i64,
     ts: String,
     endpoint: String,
+    decision_action: Option<String>,
+    decision_reason: Option<String>,
+    instrument_name: Option<String>,
+    instrument_symbol: Option<String>,
     trigger: Option<String>,
     decision_id: Option<i64>,
     decision_status: Option<String>,
@@ -778,10 +789,18 @@ struct CallDetailRow {
     endpoint: String,
     purpose: Option<String>,
     round: Option<i64>,
+    /// Recorded when the poll decided a call was warranted — the sentence the audit table used
+    /// to print inline, now part of the expanded view.
+    trigger: Option<String>,
+    /// Set when the proposal was refused for want of money; the expanded view says why.
+    decision_reason: Option<String>,
+    instrument_name: Option<String>,
+    instrument_symbol: Option<String>,
     prompt_template: Option<String>,
     request_json: Option<String>,
     response_json: Option<String>,
     prompt_tokens: Option<i64>,
+    completion_tokens: Option<i64>,
     validator_verdict: Option<String>,
     error: Option<String>,
 }
@@ -792,9 +811,17 @@ async fn call_detail(
     axum::extract::Path(id): axum::extract::Path<i64>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let row: Option<CallDetailRow> = sqlx::query_as(
-        "SELECT id, ts, endpoint, purpose, round, prompt_template, request_json, response_json,
-                prompt_tokens, validator_verdict, error
-         FROM api_calls WHERE id = ?",
+        "SELECT a.id, a.ts, a.endpoint, a.purpose, a.round, a.trigger, a.prompt_template,
+                a.request_json, a.response_json, a.prompt_tokens, a.completion_tokens,
+                a.validator_verdict, a.error,
+                d.reason_json AS decision_reason,
+                i.name AS instrument_name, i.symbol AS instrument_symbol
+         FROM api_calls a
+         LEFT JOIN signals d ON d.id = (
+             SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
+             ORDER BY s.id DESC LIMIT 1)
+         LEFT JOIN instruments i ON i.id = d.instrument_id
+         WHERE a.id = ?",
     )
     .bind(id)
     .fetch_optional(&st.pool)
@@ -808,10 +835,15 @@ async fn call_detail(
         "endpoint": r.endpoint,
         "purpose": r.purpose,
         "round": r.round,
+        "trigger": r.trigger,
+        "decision_reason": blocked_reason(r.decision_reason.as_deref()),
+        "instrument_name": r.instrument_name,
+        "instrument_symbol": r.instrument_symbol,
         "prompt_template": r.prompt_template,
         "request_json": r.request_json,
         "response_json": r.response_json,
         "prompt_tokens": r.prompt_tokens,
+        "completion_tokens": r.completion_tokens,
         "validator_verdict": r.validator_verdict,
         "error": r.error,
     })))
@@ -823,11 +855,14 @@ async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiErro
                 a.round AS round, a.prompt_tokens AS prompt_tokens,
                 a.completion_tokens AS completion_tokens,
                 a.validator_verdict AS validator_verdict, a.error AS error,
-                a.trigger AS trigger, d.id AS decision_id, d.status AS decision_status
+                a.trigger AS trigger, d.id AS decision_id, d.status AS decision_status,
+                d.action AS decision_action, d.reason_json AS decision_reason,
+                i.name AS instrument_name, i.symbol AS instrument_symbol
          FROM api_calls a
          LEFT JOIN signals d ON d.id = (
              SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
              ORDER BY s.id DESC LIMIT 1)
+         LEFT JOIN instruments i ON i.id = d.instrument_id
          ORDER BY a.id DESC LIMIT 100",
     )
     .fetch_all(&st.pool)
@@ -838,6 +873,10 @@ async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiErro
                 id: r.id,
                 ts: r.ts,
                 endpoint: r.endpoint,
+                decision_action: r.decision_action,
+                decision_reason: blocked_reason(r.decision_reason.as_deref()),
+                instrument_name: r.instrument_name,
+                instrument_symbol: r.instrument_symbol,
                 trigger: r.trigger,
                 decision_id: r.decision_id,
                 decision_status: r.decision_status,
@@ -850,6 +889,18 @@ async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiErro
             })
             .collect(),
     ))
+}
+
+/// The sentence a blocked row already carries, pulled out of its JSON for the audit table.
+fn blocked_reason(raw: Option<&str>) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(raw?).ok()?;
+    let kind = v.get("blocked")?.as_str()?;
+    let cost = v.get("cost").and_then(|c| c.as_f64());
+    let available = v.get("available").and_then(|c| c.as_f64());
+    Some(match (cost, available) {
+        (Some(c), Some(a)) => format!("{kind}: cost {c:.2}, available {a:.2}"),
+        _ => kind.to_string(),
+    })
 }
 
 #[derive(Debug, Deserialize)]

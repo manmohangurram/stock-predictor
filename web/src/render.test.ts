@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { Dashboard, PositionRow, Settings, SignalRow } from "./api";
+import type { CallRow, Dashboard, PositionRow, Settings, SignalRow } from "./api";
 import { renderLedger, renderModeTabs, renderRow, renderStrip } from "./pages/ledger";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
 import type { Limits } from "./api";
@@ -34,7 +34,12 @@ const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
   symbol: "INFY.NS",
   class: "stock",
   action: "SELL",
+  status: "pending",
+  status_reason: null,
+  filled_qty: null,
+  filled_price: null,
   qty: 17,
+  confidence: null,
   entry: 1163,
   stop: 1200,
   target: 1279.3,
@@ -57,6 +62,7 @@ const dashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
   positions: [],
   signals: [],
   blocked: [],
+  recent_trades: [],
   ...over,
 });
 
@@ -939,5 +945,60 @@ describe("decisions filter on the overview", () => {
     // Both rows present: the overview is the record of this stock, not just a to-do list.
     expect(html).toContain('data-approve="1"');
     expect(html).toContain(">rejected<");
+  });
+});
+
+describe("audit", () => {
+  test("a blocked call keeps the row short and explains itself inside View", async () => {
+    const { renderCalls, renderExchangeDetail } = await import("./pages/calls");
+    const row: CallRow = {
+      id: 7,
+      ts: "2026-11-09T05:34:20Z",
+      endpoint: "chat",
+      purpose: "decide INFY.NS",
+      round: 1,
+      prompt_tokens: 10,
+      completion_tokens: 2,
+      validator_verdict: "pass",
+      error: null,
+      trigger: "price moved 1,150.20 → 1,171.60",
+      decision_id: 4,
+      decision_status: "pending",
+      decision_action: "BLOCKED",
+      decision_reason: "insufficient_cash: cost 1148700.00, available 200000.00",
+      instrument_name: "Infosys",
+      instrument_symbol: "INFY.NS",
+    };
+    const list = renderCalls([row]);
+    expect(list).toContain("Infosys");
+    expect(list).toContain("blocked");
+    // The reason must not render in the row — as visible text it pushed the table off the page.
+    // A tooltip is fine.
+    expect(list).not.toContain('<div class="sub">insufficient');
+    expect(list).toContain('title="insufficient_cash');
+
+    const detail = renderExchangeDetail({
+      id: 7,
+      ts: row.ts,
+      endpoint: "chat",
+      purpose: row.purpose,
+      round: 1,
+      trigger: row.trigger,
+      decision_reason: row.decision_reason,
+      prompt_template: "decide_v1",
+      request_json: null,
+      response_json: null,
+      prompt_tokens: 10,
+      completion_tokens: 2,
+      validator_verdict: "pass",
+      error: null,
+      instrument_name: "Infosys",
+      instrument_symbol: "INFY.NS",
+    });
+    expect(detail).toContain("Why it was asked");
+    expect(detail).toContain("Refused");
+    expect(detail).toContain("Prompt type");
+    expect(detail).toContain("Infosys");
+    expect(detail).toContain("insufficient_cash");
   });
 });

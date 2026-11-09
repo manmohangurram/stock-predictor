@@ -29,7 +29,7 @@ async fn pool() -> (tempfile::TempDir, sqlx::SqlitePool) {
 async fn same_dedupe_key_sends_once() {
     let (_d, pool) = pool().await;
     let fake = FakeNotifier::default();
-    let n = Notification::from_candidate("INFY", "INR", &candidate(Action::Buy, false)).unwrap();
+    let n = Notification::from_candidate("INFY", "Infosys", "INR", &candidate(Action::Buy, false)).unwrap();
     assert!(notify::dispatch(&pool, &fake, &n).await.unwrap());
     assert!(!notify::dispatch(&pool, &fake, &n).await.unwrap());
     assert_eq!(fake.count(), 1);
@@ -37,25 +37,29 @@ async fn same_dedupe_key_sends_once() {
 
 #[tokio::test]
 async fn sell_uses_high_priority() {
-    let n = Notification::from_candidate("INFY", "INR", &candidate(Action::Sell, true)).unwrap();
+    let n = Notification::from_candidate("INFY", "Infosys", "INR", &candidate(Action::Sell, true)).unwrap();
     assert_eq!(n.priority, Priority::High);
     assert!(n.title.starts_with("SELL"));
-    let b = Notification::from_candidate("INFY", "INR", &candidate(Action::Buy, false)).unwrap();
+    let b = Notification::from_candidate("INFY", "Infosys", "INR", &candidate(Action::Buy, false)).unwrap();
     assert_eq!(b.priority, Priority::Default);
-    assert!(b.title.contains("limit 1405.20"));
+    assert!(b.title.contains("at 1405.20"), "{}", b.title);
+    // A push names the holding, not the ticker; the ticker stays in the body for precision.
+    assert!(b.title.contains("Infosys"), "{}", b.title);
+    assert!(!b.title.contains("INFY"), "the ticker should not lead: {}", b.title);
+    assert!(b.body.contains("INFY"), "the body keeps the symbol: {}", b.body);
 }
 
 #[tokio::test]
 async fn hold_and_none_never_produce_a_notification() {
-    assert!(Notification::from_candidate("INFY", "INR", &candidate(Action::Hold, false)).is_none());
-    assert!(Notification::from_candidate("INFY", "INR", &candidate(Action::None, false)).is_none());
+    assert!(Notification::from_candidate("INFY", "Infosys", "INR", &candidate(Action::Hold, false)).is_none());
+    assert!(Notification::from_candidate("INFY", "Infosys", "INR", &candidate(Action::None, false)).is_none());
 }
 
 #[tokio::test]
 async fn notifier_failure_returns_err_and_leaves_no_row() {
     let (_d, pool) = pool().await;
     let fake = FakeNotifier::failing();
-    let n = Notification::from_candidate("INFY", "INR", &candidate(Action::Buy, false)).unwrap();
+    let n = Notification::from_candidate("INFY", "Infosys", "INR", &candidate(Action::Buy, false)).unwrap();
     assert!(notify::dispatch(&pool, &fake, &n).await.is_err());
     let rows: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notifications")
         .fetch_one(&pool)
@@ -67,7 +71,7 @@ async fn notifier_failure_returns_err_and_leaves_no_row() {
 #[tokio::test]
 async fn failed_send_is_retried_on_the_next_tick() {
     let (_d, pool) = pool().await;
-    let n = Notification::from_candidate("INFY", "INR", &candidate(Action::Buy, false)).unwrap();
+    let n = Notification::from_candidate("INFY", "Infosys", "INR", &candidate(Action::Buy, false)).unwrap();
     assert!(notify::dispatch(&pool, &FakeNotifier::failing(), &n)
         .await
         .is_err());
@@ -78,7 +82,7 @@ async fn failed_send_is_retried_on_the_next_tick() {
 
 #[tokio::test]
 async fn non_ascii_titles_do_not_break_the_header() {
-    let n = Notification::from_candidate("INFY", "INR", &candidate(Action::Sell, true)).unwrap();
+    let n = Notification::from_candidate("INFY", "Infosys", "INR", &candidate(Action::Sell, true)).unwrap();
     assert!(n.title.contains('·'));
     // the header encoder is exercised by Ntfy::send; here we assert the copy is as designed
     assert!(n.body.contains("stop 1412.00 hit"));
@@ -87,16 +91,16 @@ async fn non_ascii_titles_do_not_break_the_header() {
 #[test]
 fn a_buy_notification_carries_the_whole_exit_plan() {
     let c = candidate(Action::Buy, false);
-    let n = Notification::from_candidate("INFY", "INR", &c).unwrap();
+    let n = Notification::from_candidate("INFY", "Infosys", "INR", &c).unwrap();
     assert!(n.body.contains("sell if ≤ 1412.00"), "{}", n.body);
     assert!(n.body.contains("take profit ≥ 1510.00"), "{}", n.body);
-    assert!(n.title.contains("limit 1405.20"), "{}", n.title);
+    assert!(n.title.contains("at 1405.20"), "{}", n.title);
 }
 
 #[test]
 fn a_sell_notification_still_names_the_trigger() {
     let c = candidate(Action::Sell, true);
-    let n = Notification::from_candidate("INFY", "INR", &c).unwrap();
+    let n = Notification::from_candidate("INFY", "Infosys", "INR", &c).unwrap();
     assert!(n.body.contains("stop 1412.00 hit"), "{}", n.body);
 }
 
@@ -178,7 +182,7 @@ fn a_target_reached_is_notified_as_a_profit_not_a_stop() {
         timing_note: AssetClass::Stock.timing_note().into(),
         urgent: true,
     };
-    let n = stock_predictor::notify::Notification::from_candidate("INFY.NS", "INR", &c).unwrap();
+    let n = stock_predictor::notify::Notification::from_candidate("INFY.NS", "Infosys", "INR", &c).unwrap();
     assert!(n.body.contains("target 1318.00 reached"), "{}", n.body);
     assert!(!n.body.contains("stop"), "{}", n.body);
 }

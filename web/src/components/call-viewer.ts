@@ -12,7 +12,12 @@ export interface CallDetail {
   endpoint: string;
   purpose: string | null;
   round: number | null;
+  trigger: string | null;
+  decision_reason: string | null;
+  instrument_name: string | null;
+  instrument_symbol: string | null;
   prompt_template: string | null;
+  completion_tokens: number | null;
   request_json: string | null;
   response_json: string | null;
   prompt_tokens: number | null;

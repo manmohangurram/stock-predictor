@@ -129,6 +129,13 @@ export interface CallRow {
   trigger: string | null;
   decision_id: number | null;
   decision_status: "pending" | "approved" | "rejected" | null;
+  /** "BLOCKED" when the proposal could not be funded. */
+  decision_action: string | null;
+  /** Why it was refused, when it was. */
+  decision_reason: string | null;
+  /** The holding's name — what a person reads. The symbol is secondary. */
+  instrument_name: string | null;
+  instrument_symbol: string | null;
   purpose: string | null;
   round: number | null;
   prompt_tokens: number | null;
@@ -155,7 +162,13 @@ export interface CallDetail {
   endpoint: string;
   purpose: string | null;
   round: number | null;
+  trigger: string | null;
+  /** Why a proposal was refused, shown inside View rather than under the pill. */
+  decision_reason: string | null;
+  instrument_name: string | null;
+  instrument_symbol: string | null;
   prompt_template: string | null;
+  completion_tokens: number | null;
   request_json: string | null;
   response_json: string | null;
   prompt_tokens: number | null;

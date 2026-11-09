@@ -575,7 +575,16 @@ async fn finish(
     if resolved.action == Action::Buy {
         let cost = resolved.qty * resolved.entry;
         if !budget::fits(deps.pool, cost).await? {
-            record_blocked(deps.pool, instrument, &resolved, candidate, available, now).await?;
+            record_blocked(
+                deps.pool,
+                instrument,
+                &resolved,
+                candidate,
+                available,
+                now,
+                conversation_id,
+            )
+            .await?;
             report.blocked += 1;
             return Ok(());
         }
@@ -653,7 +662,12 @@ async fn finish(
     as_candidate.qty = resolved.qty;
 
     if let Some(mut n) =
-        Notification::from_candidate(&instrument.symbol, &instrument.currency, &as_candidate)
+        Notification::from_candidate(
+            &instrument.symbol,
+            &instrument.name,
+            &instrument.currency,
+            &as_candidate,
+        )
     {
         n.signal_id = Some(signal_id);
         if notify::dispatch(deps.pool, deps.notifier, &n).await? {
@@ -950,6 +964,8 @@ async fn record_blocked(
     candidate: &Candidate,
     available: f64,
     now: DateTime<Utc>,
+    // The model conversation that proposed it, so Audit can show it beside the call.
+    conversation_id: Option<&str>,
 ) -> Result<()> {
     let cost = r.qty * r.entry;
     let shortfall = cost - available;
@@ -964,8 +980,8 @@ async fn record_blocked(
     .to_string();
     sqlx::query(
         "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-            reason_json, created_at)
-         VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?)",
+            reason_json, created_at, conversation_id)
+         VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(instrument.id)
     .bind(r.qty)
@@ -975,6 +991,7 @@ async fn record_blocked(
     .bind(&r.valid_until)
     .bind(reason)
     .bind(now.to_rfc3339())
+    .bind(conversation_id)
     .execute(pool)
     .await?;
     Ok(())

@@ -19,7 +19,7 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | POST | `/api/instruments/{symbol}/trades` | yes | Record a fill (backdatable, pot-aware) |
 | GET | `/api/trades` | yes | The last 200 fills, all instruments |
 | GET | `/api/search?q=` | yes | Yahoo + AMFI search |
-| GET | `/api/calls` | yes | Audit list: reason, review state, tokens, verdict |
+| GET | `/api/calls` | yes | Audit list: prompt type, call, holding name, review state, verdict, tokens |
 | GET | `/api/calls/{id}` | yes | One call with its prompt and raw reply |
 | POST | `/api/signals/{id}/approve` | yes | Record the fill you got; approves the decision (both legs of a rotation) |
 | POST | `/api/signals/{id}/reject` | yes | Reject with an optional reason; no money moves |

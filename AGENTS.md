@@ -2,15 +2,16 @@
 
 ## Reading code: never open a whole file to inspect one function
 
-**Use the `code-read` skill if it is available** — it encodes this whole flow. The commands
-below are the concrete spelling (CLI) and the fallback when the skill is not loaded.
+**Always load the `code-read` skill before touching code** (`/skill:code-read`, or `read`
+its `SKILL.md`). It encodes this whole flow. The commands below are the concrete spelling (CLI)
+for when the skill is already known.
 
 One index, three queries, then one narrow read.
 
 **1. Index the repo** (once; persists and re-syncs):
 
 ```sh
-codebase-memory-mcp cli index_repository --repo-path /home/mohan/projects/stock-predictor
+codebase-memory-mcp cli index_repository --repo-path /home/mohan/projects/stock-predicter
 ```
 
 **2. Locate.** Never guess a path:
@@ -51,10 +52,23 @@ files directly when you need exact wording.
 - The proxy is chosen only by the database: `src/http.rs` is the one client builder and calls
   `.no_proxy()` first, so `HTTP_PROXY` can never win.
 
+## Front-end work: always use the `ui-ux-design-pro` skill
+
+Before any UI change, load `ui-ux-design-pro` (`/skill:ui-ux-design-pro`, or read its `SKILL.md`
+and the reference it points at). It carries the token architecture, the type scale and the
+checklist that keep this app looking like one hand drew it. Then obey `.interface-design/system.md`.
+
+Non-negotiables it enforces here: one alignment rule per table (text left, numbers right), no
+column whose content can force the table wider than the page (long text wraps in its own cell),
+and no new rail item appended to a growing list — a page joins a group.
+
+A UI change is done when a headless screenshot shows it, at 1440 and 390, not when the file is
+written.
+
 ## Quality gates
 
 ```sh
-cargo test                                   # 139 tests, no network
+cargo test                                   # 241 tests, no network
 cargo clippy --all-targets                   # must be warning-free
 cargo bench --bench hot_paths                # indicators, prompt render, bar upsert
 cd web && npx vitest run && npm run build

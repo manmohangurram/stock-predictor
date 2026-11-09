@@ -6,11 +6,13 @@
  */
 export type Section = "ledger" | "audit" | "settings" | "archived";
 
-const LINKS: { id: Section; label: string; href: string }[] = [
-  { id: "ledger", label: "Ledger", href: "/" },
-  { id: "audit", label: "Audit", href: "/calls" },
-  { id: "settings", label: "Settings", href: "/settings" },
-  { id: "archived", label: "Archived", href: "/archived" },
+/// Two groups: the daily work, then the things you configure or clean up. A new page joins a group
+/// instead of extending one long list.
+const LINKS: { id: Section; label: string; href: string; group: "work" | "setup" }[] = [
+  { id: "ledger", label: "Ledger", href: "/", group: "work" },
+  { id: "audit", label: "Audit", href: "/calls", group: "work" },
+  { id: "settings", label: "Settings", href: "/settings", group: "setup" },
+  { id: "archived", label: "Archived", href: "/archived", group: "setup" },
 ];
 
 export interface RailFoot {
@@ -20,11 +22,14 @@ export interface RailFoot {
 }
 
 export function renderRail(active: Section, foot?: RailFoot, badges: Partial<Record<Section, string>> = {}): string {
-  const items = LINKS.map(
-    (l) => `<a href="${l.href}" ${l.id === active ? 'aria-current="page" class="on"' : ""}>
+  const link = (l: (typeof LINKS)[number]) =>
+    `<a href="${l.href}" ${l.id === active ? 'aria-current="page" class="on"' : ""}>
       <span>${l.label}</span>${badges[l.id] ? `<span class="rail-badge">${badges[l.id]}</span>` : ""}
-    </a>`,
-  ).join("");
+    </a>`;
+  const group = (g: "work" | "setup") =>
+    LINKS.filter((l) => l.group === g).map(link).join("");
+  // A sibling rule, not a wrapper: the rail lays its children out as a column.
+  const items = `${group("work")}<div class="rail-sep" role="presentation"></div>${group("setup")}`;
   const footHtml = foot
     ? `<div class="rail-foot">
         <span class="lbl">${foot.label}</span>

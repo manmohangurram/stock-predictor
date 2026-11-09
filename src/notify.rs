@@ -38,18 +38,25 @@ pub struct Notification {
 impl Notification {
     /// Copy follows the design system: one line, figures in mono, no adjectives.
     /// BLOCKED never produces a Notification — there is nothing to do about it.
-    pub fn from_candidate(symbol: &str, currency: &str, c: &Candidate) -> Option<Self> {
+    /// `name` is what a person recognises ("Infosys"), `symbol` is for the link and the footnote —
+    /// a push that says only INFY.NS makes you stop and translate before you know what happened.
+    pub fn from_candidate(
+        symbol: &str,
+        name: &str,
+        currency: &str,
+        c: &Candidate,
+    ) -> Option<Self> {
         if !matches!(c.action, Action::Buy | Action::Sell) {
             return None;
         }
         let (title, priority) = match c.action {
             Action::Sell => (
-                format!("SELL · {symbol} {:.0} units", c.qty),
+                format!("SELL · {name} · {:.0} units", c.qty),
                 Priority::High,
             ),
             Action::Buy => (
                 format!(
-                    "BUY · {symbol} {} units · limit {:.2}",
+                    "BUY · {name} · {} units at {:.2}",
                     fmt_qty(c.qty),
                     c.entry
                 ),
@@ -65,7 +72,7 @@ impl Notification {
                     (_, Some(t)) if c.entry >= t => format!("target {t:.2} reached — take it, "),
                     _ => String::new(),
                 };
-                format!("{why}now {:.2} · {}", c.entry, c.timing_note)
+                format!("{why}now {:.2} · {} · {symbol}", c.entry, c.timing_note)
             }
             _ => {
                 // A buy is only actionable if it says where to get out on both sides.
@@ -76,7 +83,7 @@ impl Notification {
                     _ => String::new(),
                 };
                 format!(
-                    "cost {:.2} {currency} · {exits}{}",
+                    "cost {:.2} {currency} · {exits}{} · {symbol}",
                     c.qty * c.entry,
                     c.timing_note
                 )

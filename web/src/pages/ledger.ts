@@ -117,7 +117,11 @@ function decisionRow(s: Dashboard["signals"][number]): string {
       <div><span class="stamp" data-stamp="${tone}">${s.action}</span>
         <b title="${escapeHtml(s.symbol)}">${escapeHtml(s.symbol)}</b>
         ${s.entry === null ? "" : `<span class="num">${money(s.entry)}</span>`}
-        ${s.qty === null ? "" : `<span class="lbl">${units(s.qty)} units</span>`}
+        ${
+          s.qty === null || s.qty === 0
+            ? `<span class="lbl">size on approval</span>`
+            : `<span class="lbl">${units(s.qty)} units</span>`
+        }
         ${status}
         <span class="sub">${histDate(s.created_at)}</span></div>
       ${s.rationale ? `<p class="decision-prose">${escapeHtml(s.rationale)}</p>` : ""}
@@ -208,8 +212,15 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
     ],
   )}
   <div class="mode-row">${renderModeTabs(d.mode)}<span class="sub">${d.currency} · as of the last poll</span></div>
+  <section class="card" id="decisions-card">
+    <div class="card-head">
+      <div class="lbl">Decisions</div>
+      ${decisionFilterTabs(filter, `/?mode=${d.mode}`)}
+    </div>
+    <div class="feed decisions-feed">${advice}</div>
+  </section>
   ${d.mode === "trade" ? section("Short-term positions", `${d.positions.length} · all stocks`, STOCK_HEAD,
-      d.positions.length ? d.positions.map((p) => renderRow(d, p)).join("") : `<tr><td colspan="9" class="empty">Nothing in the short-term pot.</td></tr>`) : stocksSection + fundsSection}
+      d.positions.length ? d.positions.map((p) => renderRow(d, p)).join("") : `<tr><td colspan="8" class="empty">Nothing in the short-term pot.</td></tr>`) : stocksSection + fundsSection}
   <div class="cards">
     <section class="card">
       <div class="lbl">Add an instrument</div>
@@ -218,13 +229,6 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
       <div id="results" class="results" role="listbox" aria-label="Search results"></div></div>
       <div class="lbl" style="margin-top:var(--space-4)">Recent fills</div>
       <div class="feed">${history}</div>
-    </section>
-    <section class="card" id="decisions-card">
-      <div class="card-head">
-        <div class="lbl">Decisions</div>
-        ${decisionFilterTabs(filter, `/?mode=${d.mode}`)}
-      </div>
-      <div class="feed decisions-feed">${advice}</div>
     </section>
   </div>`;
 
