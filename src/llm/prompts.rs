@@ -7,6 +7,7 @@ use crate::rules::indicators::Indicators;
 
 pub const DECIDE_V1: &str = include_str!("../../prompts/decide_v1.md");
 pub const ESCALATE_V1: &str = include_str!("../../prompts/escalate_v1.md");
+pub const ROTATE_V1: &str = include_str!("../../prompts/rotate_v1.md");
 
 #[derive(Debug, Clone)]
 pub struct RenderedPrompt {
@@ -45,6 +46,7 @@ pub fn template(name: &str) -> Result<&'static str> {
     match name {
         "decide_v1" => Ok(DECIDE_V1),
         "escalate_v1" => Ok(ESCALATE_V1),
+        "rotate_v1" => Ok(ROTATE_V1),
         other => Err(anyhow!("unknown prompt template {other:?}")),
     }
 }
@@ -55,6 +57,18 @@ pub fn template_hash(name: &str) -> Result<String> {
     let mut h = Sha256::new();
     h.update(template(name)?.as_bytes());
     Ok(crate::hex(&h.finalize()))
+}
+
+/// The rotation prompt: a holdings table and one candidate, no market context.
+pub fn render_rotation(holdings: &str, candidate: &str) -> Result<RenderedPrompt> {
+    let template = template("rotate_v1")?;
+    Ok(RenderedPrompt {
+        template: "rotate_v1".into(),
+        hash: template_hash("rotate_v1")?,
+        text: template
+            .replace("{{holdings}}", holdings)
+            .replace("{{candidate}}", candidate),
+    })
 }
 
 pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {

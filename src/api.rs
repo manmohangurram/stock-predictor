@@ -1354,9 +1354,12 @@ async fn approve_signal(
         entry: Option<f64>,
         mode: String,
         status: String,
+        kind: Option<String>,
+        pair_id: Option<i64>,
     }
     let row: Option<PendingDecision> = sqlx::query_as(
-        "SELECT instrument_id, action, qty, entry, mode, status FROM signals WHERE id = ?",
+        "SELECT instrument_id, action, qty, entry, mode, status, kind, pair_id
+         FROM signals WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(&st.pool)
@@ -1368,6 +1371,8 @@ async fn approve_signal(
         entry,
         mode: mode_raw,
         status,
+        kind,
+        pair_id,
     }) = row
     else {
         return Err(ApiError::NotFound(format!("no decision {id}")));
@@ -1398,6 +1403,47 @@ async fn approve_signal(
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    // A rotation is approved as a pair, and only if both legs can actually post: the buy is paid
+    // for by the sell, so the affordability check has to happen before any money moves.
+    let pair = if kind.as_deref() == Some("rotation") {
+        let primary = pair_id.unwrap_or(id);
+        let sell: Option<(i64, i64, f64, f64, String)> = sqlx::query_as(
+            "SELECT id, instrument_id, qty, entry, mode FROM signals
+             WHERE id = ? AND action = 'SELL'",
+        )
+        .bind(primary)
+        .fetch_optional(&st.pool)
+        .await?;
+        let buy: Option<(i64, i64, f64, f64)> = sqlx::query_as(
+            "SELECT id, instrument_id, qty, entry FROM signals
+             WHERE pair_id = ? AND action = 'BUY' AND status = 'pending'",
+        )
+        .bind(primary)
+        .fetch_optional(&st.pool)
+        .await?;
+        match (sell, buy) {
+            (Some(s), Some(b)) => Some((s, b)),
+            _ => {
+                return Err(ApiError::BadRequest(
+                    "this rotation is missing a leg; it cannot be approved".into(),
+                ))
+            }
+        }
+    } else {
+        None
+    };
+
+    if let Some(((_, _, sell_qty, sell_price, _), (_, _, buy_qty, buy_price))) = pair {
+        let proceeds = sell_qty * sell_price;
+        let cash = crate::rules::budget::available_in(&st.pool, mode).await?;
+        let cost = buy_qty * buy_price;
+        if cost > proceeds + cash + 1e-9 {
+            return Err(ApiError::BadRequest(format!(
+                "the swap does not balance: cost {cost:.2} exceeds proceeds {proceeds:.2} plus cash {cash:.2}"
+            )));
+        }
+    }
 
     let note = format!("decision {id}");
     let already: Option<(i64,)> =
@@ -1432,6 +1478,42 @@ async fn approve_signal(
     .bind(id)
     .execute(&st.pool)
     .await?;
+
+    if let Some(((sell_id, _, _, _, sell_mode), (buy_id, buy_instrument, buy_qty, buy_price))) = pair {
+        let buy_note = format!("decision {buy_id}");
+        let already: Option<(i64,)> =
+            sqlx::query_as("SELECT id FROM trades WHERE note = ?")
+                .bind(&buy_note)
+                .fetch_optional(&st.pool)
+                .await?;
+        if already.is_none() {
+            let pair_mode = crate::models::Mode::parse(&sell_mode)
+                .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+            crate::trades::record(
+                &st.pool,
+                buy_instrument,
+                crate::trades::Side::Buy,
+                buy_qty,
+                buy_price,
+                Some(&buy_note),
+                Some(when),
+                pair_mode,
+            )
+            .await
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        }
+        sqlx::query(
+            "UPDATE signals SET status = 'approved', status_at = ?, filled_qty = ?, filled_price = ?
+             WHERE id = ?",
+        )
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(buy_qty)
+        .bind(buy_price)
+        .bind(buy_id)
+        .execute(&st.pool)
+        .await?;
+        let _ = sell_id;
+    }
 
     Ok(Json(serde_json::json!({
         "id": id,

@@ -305,6 +305,23 @@ async fn poll_instrument(
         .await;
     }
 
+    // A buy that the cash cannot fund is where a rotation belongs: one call that names what to
+    // sell to pay for it. If nothing is in profit, this returns immediately without a call.
+    if !deps.force {
+        match rotate_for_cash(deps, instrument, &candidate, now).await {
+            Ok(Some((sell_id, buy_id))) => {
+                report.signals += 2;
+                report.notes.push(format!(
+                    "{}: swap proposed — sell (decision {sell_id}) to fund this (decision {buy_id})",
+                    instrument.symbol
+                ));
+                return Ok(());
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!(error = %e, "rotation attempt failed"),
+        }
+    }
+
     let llm_deps = LlmDeps {
         pool: deps.pool,
         runtime: deps.runtime.clone(),
@@ -1007,4 +1024,169 @@ async fn load_last_decision(pool: &SqlitePool, instrument_id: i64) -> Result<Str
             )
         }
     })
+}
+
+/// Everything held in this pot, with the latest close as its price — the table a rotation reads.
+async fn load_holdings(
+    pool: &SqlitePool,
+    mode: crate::models::Mode,
+) -> Result<Vec<crate::llm::rotate::HoldingLine>> {
+    #[derive(sqlx::FromRow)]
+    struct HeldRow {
+        symbol: String,
+        name: String,
+        qty: f64,
+        avg_cost: f64,
+        stop: Option<f64>,
+        target: Option<f64>,
+        ltp: Option<f64>,
+    }
+    let rows: Vec<HeldRow> = sqlx::query_as(
+            "SELECT i.symbol, i.name, p.qty, p.avg_cost, p.stop, p.target,
+                    (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
+                     ORDER BY b.ts DESC LIMIT 1) AS ltp
+             FROM positions p JOIN instruments i ON i.id = p.instrument_id
+             WHERE p.state = 'open' AND p.mode = ?",
+        )
+        .bind(mode.as_str())
+        .fetch_all(pool)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| crate::llm::rotate::HoldingLine {
+            symbol: r.symbol,
+            name: r.name,
+            qty: r.qty,
+            avg_cost: r.avg_cost,
+            ltp: r.ltp,
+            stop: r.stop,
+            target: r.target,
+        })
+        .collect())
+}
+
+/// Ask for a swap when a buy is right but the cash is not there.
+///
+/// Returns the two signal ids (primary sell, paired buy) when a swap was proposed and stored.
+async fn rotate_for_cash(
+    deps: &EngineDeps<'_>,
+    instrument: &Instrument,
+    candidate: &crate::models::Candidate,
+    now: DateTime<Utc>,
+) -> Result<Option<(i64, i64)>> {
+    if candidate.action != Action::Buy {
+        return Ok(None);
+    }
+    let available = budget::available_in(deps.pool, crate::models::Mode::Long).await?;
+    let cost = budget::cost(candidate.qty, candidate.entry, instrument.class);
+    if cost <= available + 1e-9 {
+        return Ok(None); // it fits; nothing to sell
+    }
+
+    let holdings = load_holdings(deps.pool, crate::models::Mode::Long).await?;
+    let settings = crate::rules::settings::get(deps.pool).await?;
+    let profitable = holdings.iter().any(|h| {
+        h.profit_pct()
+            .is_some_and(|p| p >= settings.limits_long.min_profit_pct)
+    });
+    if !profitable {
+        return Ok(None); // nothing worth selling, so do not spend a call on it
+    }
+
+    let table = crate::llm::rotate::holdings_table(&holdings, available, &settings.currency);
+    let wanted = format!(
+        "{} ({}) at {:.2}, {} units = {:.2} {}",
+        instrument.symbol,
+        instrument.name,
+        candidate.entry,
+        candidate.qty,
+        cost,
+        settings.currency
+    );
+    let rendered = crate::llm::prompts::render_rotation(&table, &wanted)?;
+    let model = crate::rules::settings::model_config(deps.pool).await?;
+    let reply = crate::llm::deepseek::chat(
+        deps.pool,
+        &model,
+        deps.transport,
+        crate::llm::deepseek::ChatRequest {
+            conversation_id: format!("rotate-{}-{}", instrument.symbol, now.timestamp_millis()),
+            round: 1,
+            prompt: rendered.text,
+            prompt_template: rendered.template,
+            prompt_hash: rendered.hash,
+            purpose: format!("rotate {}", instrument.symbol),
+        },
+    )
+    .await?;
+
+    let rotation = match crate::llm::rotate::parse(&reply.content) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "rotation reply unreadable");
+            return Ok(None);
+        }
+    };
+    if let crate::llm::rotate::Rotation::Pass { why } = &rotation {
+        tracing::info!(%why, "rotation declined");
+        return Ok(None);
+    }
+    if let Err(e) = crate::llm::rotate::validate(
+        &rotation,
+        &holdings,
+        available,
+        &settings,
+        crate::models::Mode::Long,
+    ) {
+        tracing::warn!(error = %e, "rotation refused by the validator");
+        return Ok(None);
+    }
+
+    let crate::llm::rotate::Rotation::Swap(swap) = rotation else {
+        return Ok(None);
+    };
+    let (sell, buy) = (swap.sell, swap.buy);
+    let sell_id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, confidence, mode, kind, status)
+         SELECT id, 'SELL', ?, ?, ?, ?, ?, ?, 'long', 'rotation', 'pending'
+         FROM instruments WHERE symbol = ? RETURNING id",
+    )
+    .bind(sell.qty)
+    .bind(sell.price)
+    .bind((now + chrono::Duration::hours(18)).to_rfc3339())
+    .bind(serde_json::json!({ "reasons": [sell.why.clone().unwrap_or_default()] }).to_string())
+    .bind(now.to_rfc3339())
+    .bind(sell.confidence.clone())
+    .bind(&sell.symbol)
+    .fetch_one(deps.pool)
+    .await?;
+
+    let buy_id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, confidence, mode, kind, status, pair_id)
+         SELECT id, 'BUY', ?, ?, ?, ?, ?, ?, ?, ?, 'long', 'rotation', 'pending', ?
+         FROM instruments WHERE symbol = ? RETURNING id",
+    )
+    .bind(buy.qty)
+    .bind(buy.price)
+    .bind(buy.stop)
+    .bind(buy.target)
+    .bind((now + chrono::Duration::hours(18)).to_rfc3339())
+    .bind(
+        serde_json::json!({
+            "reasons": [],
+            "rationale": buy.rationale,
+            "paired_with": sell.symbol,
+        })
+        .to_string(),
+    )
+    .bind(now.to_rfc3339())
+    .bind(buy.confidence.clone())
+    .bind(sell_id.0)
+    .bind(&buy.symbol)
+    .fetch_one(deps.pool)
+    .await?;
+
+    Ok(Some((sell_id.0, buy_id.0)))
 }

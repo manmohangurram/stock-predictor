@@ -1100,3 +1100,77 @@ async fn the_ledger_shows_pending_decisions_only_unless_filtered() {
         .map(|s| s["status"].as_str().unwrap().to_string()).collect();
     assert_eq!(statuses, vec!["approved"], "{statuses:?}");
 }
+
+#[tokio::test]
+async fn approving_a_rotation_posts_both_legs_together() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES ('HDFCBANK','stock','HDFC Bank','INR')")
+        .execute(&pool).await.unwrap();
+    // Buy HDFC Bank first so there is something to sell, at a profit.
+    send(&router, "POST", "/api/instruments/HDFCBANK/trades",
+        json!({"side":"buy","qty":10.0,"price":100.0,"mode":"long"})).await;
+    sqlx::query("INSERT INTO bars (instrument_id, ts, open, high, low, close, volume)
+                 SELECT id, '2026-11-08T00:00:00Z', 150,151,149,150,1 FROM instruments WHERE symbol='HDFCBANK'")
+        .execute(&pool).await.unwrap();
+
+    let sell_id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at,
+            mode, kind, status)
+         SELECT id, 'SELL', 10, 150.0, '2030-01-01T00:00:00Z', '{}', '2026-11-08T10:00:00Z',
+                'long', 'rotation', 'pending'
+         FROM instruments WHERE symbol='HDFCBANK' RETURNING id",
+    ).fetch_one(&pool).await.unwrap();
+    let buy_id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, mode, kind, status, pair_id)
+         SELECT id, 'BUY', 2, 500.0, 460.0, 600.0, '2030-01-01T00:00:00Z', '{}',
+                '2026-11-08T10:00:00Z', 'long', 'rotation', 'pending', ?
+         FROM instruments WHERE symbol='INFY' RETURNING id",
+    ).bind(sell_id.0).fetch_one(&pool).await.unwrap();
+
+    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", sell_id.0), json!({})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let statuses: Vec<(i64, String)> = sqlx::query_as("SELECT id, status FROM signals ORDER BY id")
+        .fetch_all(&pool).await.unwrap();
+    assert_eq!(statuses, vec![(sell_id.0, "approved".into()), (buy_id.0, "approved".into())]);
+
+    let sold: (f64,) = sqlx::query_as(
+        "SELECT qty FROM positions p JOIN instruments i ON i.id=p.instrument_id WHERE i.symbol='HDFCBANK'",
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(sold.0, 0.0, "the sell leg should have posted");
+    let bought: (f64,) = sqlx::query_as(
+        "SELECT qty FROM positions p JOIN instruments i ON i.id=p.instrument_id WHERE i.symbol='INFY'",
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(bought.0, 2.0, "the buy leg should have posted");
+}
+
+#[tokio::test]
+async fn a_rotation_that_does_not_balance_is_refused_before_any_money_moves() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES ('HDFCBANK','stock','HDFC Bank','INR')")
+        .execute(&pool).await.unwrap();
+    send(&router, "POST", "/api/instruments/HDFCBANK/trades",
+        json!({"side":"buy","qty":1.0,"price":100.0,"mode":"long"})).await;
+    let sell_id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at,
+            mode, kind, status)
+         SELECT id, 'SELL', 1, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-08T10:00:00Z',
+                'long', 'rotation', 'pending' FROM instruments WHERE symbol='HDFCBANK' RETURNING id",
+    ).fetch_one(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at,
+            mode, kind, status, pair_id)
+         SELECT id, 'BUY', 1000, 500.0, '2030-01-01T00:00:00Z', '{}', '2026-11-08T10:00:00Z',
+                'long', 'rotation', 'pending', ? FROM instruments WHERE symbol='INFY'",
+    ).bind(sell_id.0).execute(&pool).await.unwrap();
+
+    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", sell_id.0), json!({})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("does not balance"), "{v}");
+
+    let held: (f64,) = sqlx::query_as(
+        "SELECT qty FROM positions p JOIN instruments i ON i.id=p.instrument_id WHERE i.symbol='HDFCBANK'",
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(held.0, 1.0, "nothing should have been sold");
+}
