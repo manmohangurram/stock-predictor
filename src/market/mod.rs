@@ -37,7 +37,7 @@ pub async fn search(
     query: &str,
     amfi_text: Option<&str>,
 ) -> Result<Vec<search::Hit>> {
-    let url = "https://query1.finance.yahoo.com/v1/finance/search";
+    let url = "https://query2.finance.yahoo.com/v1/finance/search";
     let body = client
         .get(url)
         .query(&[("q", query), ("quotesCount", "10"), ("newsCount", "0")])

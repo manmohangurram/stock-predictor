@@ -64,7 +64,7 @@ fn chart_url_carries_the_symbol_as_a_path_segment() {
     // which Yahoo answers with 404 for every request.
     assert_eq!(
         yahoo::chart_url("INFY.NS"),
-        "https://query1.finance.yahoo.com/v8/finance/chart/INFY.NS"
+        "https://query2.finance.yahoo.com/v8/finance/chart/INFY.NS"
     );
 }
 
