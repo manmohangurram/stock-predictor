@@ -304,3 +304,56 @@ fn the_long_book_says_its_horizon_is_months() {
         "a week-long setup must be handed to the short-term pot"
     );
 }
+
+#[test]
+fn the_prompt_states_the_purse_ceiling_as_one_sentence() {
+    // The model proposed 1,000 units against a 2,00,000 purse. Percentages did not stop it;
+    // one sentence with the number might.
+    let line = prompts::cap_line(200_000.0, "INR");
+    assert_eq!(
+        line,
+        "You may spend at most 200000.00 INR in this purse.\n\
+         A buy costing more than that is refused, not shrunk."
+    );
+}
+
+#[test]
+fn a_rendered_prompt_carries_the_cap_and_the_purse_number() {
+    let i = instrument();
+    let x = ind();
+    let h = headlines();
+    let c = ctx(&i, &x, &h);
+    let rendered = prompts::render("decide_v1", &c).unwrap();
+    assert!(rendered.text.contains("at most 96388.86 INR"), "{}", rendered.text);
+    assert!(rendered.text.contains("Your book:"), "{}", rendered.text);
+}
+
+#[test]
+fn the_book_marks_the_instrument_under_review_and_truncates() {
+    use stock_predictor::llm::rotate::HoldingLine;
+    let rows: Vec<HoldingLine> = (0..20)
+        .map(|n| HoldingLine {
+            symbol: format!("S{n}.NS"),
+            name: format!("Stock {n}"),
+            qty: 1.0,
+            avg_cost: 100.0,
+            ltp: Some(110.0),
+            stop: None,
+            target: None,
+        })
+        .collect();
+    let book = stock_predictor::engine::format_book_for_test(&rows, "S3.NS");
+    assert!(
+        book.contains("S3.NS Stock 3: 1.000 units at 100.00, now 110.00, +10.0%"),
+        "{book}"
+    );
+    assert!(book.contains("← this one"), "{book}");
+    assert!(book.contains("+8 more not shown"), "{book}");
+    assert!(book.lines().count() <= 14, "{book}");
+}
+
+#[test]
+fn an_empty_book_says_so() {
+    let book = stock_predictor::engine::format_book_for_test(&[], "INFY.NS");
+    assert_eq!(book, "empty — nothing is held");
+}

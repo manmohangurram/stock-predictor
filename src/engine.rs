@@ -138,7 +138,10 @@ async fn gather(
     Ok(Some(Gathered {
         tape,
         daily_summary: format_daily(&bars, 10),
-        positions_text: format_positions(position.as_ref(), &instrument.symbol),
+        positions_text: format_book(
+            &load_holdings(deps.pool, crate::models::Mode::Long).await?,
+            &instrument.symbol,
+        ),
         recent_trades: load_recent_trades(deps.pool, instrument.id, now).await?,
         last_decision: load_last_decision(deps.pool, instrument.id).await?,
         limits,
@@ -997,6 +1000,15 @@ async fn record_blocked(
     Ok(())
 }
 
+/// The book renderer is private to the engine; tests outside the crate still need to pin the
+/// exact wording the model reads.
+pub fn format_book_for_test(
+    rows: &[crate::llm::rotate::HoldingLine],
+    current: &str,
+) -> String {
+    format_book(rows, current)
+}
+
 /// Half-width of the validator band, surfaced for the UI's chart rules.
 pub fn band_for(last_close: f64, atr14: f64) -> indicators::Bands {
     atr_bands(last_close, atr14)
@@ -1045,22 +1057,52 @@ fn format_daily(bars: &[Bar], days: usize) -> String {
     }
 }
 
-fn format_positions(position: Option<&Position>, symbol: &str) -> String {
-    match position {
-        None => format!("{symbol}: not held"),
-        Some(p) => format!(
-            "{} qty {:.3} at cost {:.2}, stop {}, target {}",
-            symbol,
-            p.qty,
-            p.avg_cost,
-            p.stop
-                .map(|v| format!("{v:.2}"))
-                .unwrap_or_else(|| "none".into()),
-            p.target
-                .map(|v| format!("{v:.2}"))
-                .unwrap_or_else(|| "none".into()),
-        ),
+/// How many holdings a prompt will enumerate before summarising the rest. A prompt that grows
+/// with the portfolio is a bill that grows with the portfolio.
+const BOOK_LINES: usize = 12;
+
+/// One line per holding, richest first, with the instrument under review marked. The model is
+/// being asked about the whole book, not one stock in a vacuum: "sell this to buy that" is only
+/// a thinkable answer if it can see both.
+fn format_book(rows: &[crate::llm::rotate::HoldingLine], current: &str) -> String {
+    if rows.is_empty() {
+        return "empty — nothing is held".to_string();
     }
+    let mut sorted: Vec<&crate::llm::rotate::HoldingLine> = rows.iter().collect();
+    sorted.sort_by(|a, b| {
+        let v = |h: &crate::llm::rotate::HoldingLine| h.qty * h.ltp.unwrap_or(h.avg_cost);
+        v(b).partial_cmp(&v(a)).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut out = String::new();
+    for h in sorted.iter().take(BOOK_LINES) {
+        out.push_str(&format!(
+            "{} {}: {:.3} units at {:.2}, now {}, {}, stop {}, target {}",
+            h.symbol,
+            h.name,
+            h.qty,
+            h.avg_cost,
+            h.ltp
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".into()),
+            h.profit_pct()
+                .map(|p| format!("{p:+.1}%"))
+                .unwrap_or_else(|| "P&L unknown".into()),
+            h.stop
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "none".into()),
+            h.target
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "none".into()),
+        ));
+        if h.symbol == current {
+            out.push_str("  ← this one");
+        }
+        out.push('\n');
+    }
+    if rows.len() > BOOK_LINES {
+        out.push_str(&format!("+{} more not shown\n", rows.len() - BOOK_LINES));
+    }
+    out
 }
 
 async fn load_recent_trades(

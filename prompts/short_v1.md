@@ -49,8 +49,10 @@ Daily closes, last {{daily_days}} sessions, oldest first:
 
 ## Book
 Limits you must respect: {{limits}}
+{{cap}}
 Cash available: {{cash}}
-Open position: {{positions}}
+Your book:
+{{positions}}
 Trades in the last 7 days: {{recent_trades}}
 Your previous view: {{last_decision}}
 

@@ -48,6 +48,15 @@ pub struct PromptContext<'a> {
     pub price_history: &'a str,
 }
 
+/// The one sentence that stops an unbuyable proposal. Percentages of a pot and a per-trade
+/// ceiling are fences; this is the fact.
+pub fn cap_line(available: f64, currency: &str) -> String {
+    format!(
+        "You may spend at most {available:.2} {currency} in this purse.\n\
+         A buy costing more than that is refused, not shrunk."
+    )
+}
+
 pub fn template(name: &str) -> Result<&'static str> {
     match name {
         "decide_v1" => Ok(DECIDE_V1),
@@ -177,6 +186,10 @@ pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
         .replace("{{recent_trades}}", ctx.recent_trades)
         .replace("{{last_decision}}", ctx.last_decision)
         .replace("{{cash}}", &format!("{:.2}", ctx.cash_available))
+        .replace(
+            "{{cap}}",
+            &cap_line(ctx.cash_available, &ctx.instrument.currency),
+        )
         .replace("{{limits}}", ctx.limits)
         .replace(
             "{{target_profit}}",

@@ -84,10 +84,12 @@ Time now: {{now}}
 Indicators (daily): {{indicators}}
 Profit expected on this position: {{target_profit}}
 Limits you must respect: {{limits}}
+{{cap}}
 Cash available: {{cash}}
 Execution for this class: {{class_rules}}
 Settlement and liquidity for this class: {{liquidity_rules}}
-Open position: {{positions}}
+Your book:
+{{positions}}
 Trades recorded in the last 7 days: {{recent_trades}}
 Your previous view: {{last_decision}}
 
