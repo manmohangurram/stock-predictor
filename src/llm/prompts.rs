@@ -10,7 +10,8 @@ pub const ESCALATE_V1: &str = include_str!("../../prompts/escalate_v1.md");
 pub const ROTATE_V1: &str = include_str!("../../prompts/rotate_v1.md");
 pub const TREND_V1: &str = include_str!("../../prompts/trend_v1.md");
 pub const SHORT_V1: &str = include_str!("../../prompts/short_v1.md");
-pub const PLAN_V1: &str = include_str!("../../prompts/plan_v1.md");
+pub const PLAN_STOCK_V1: &str = include_str!("../../prompts/plan_stock_v1.md");
+pub const PLAN_MF_V1: &str = include_str!("../../prompts/plan_mf_v1.md");
 
 #[derive(Debug, Clone)]
 pub struct RenderedPrompt {
@@ -65,7 +66,10 @@ pub fn template(name: &str) -> Result<&'static str> {
         "rotate_v1" => Ok(ROTATE_V1),
         "trend_v1" => Ok(TREND_V1),
         "short_v1" => Ok(SHORT_V1),
-        "plan_v1" => Ok(PLAN_V1),
+        "plan_stock_v1" => Ok(PLAN_STOCK_V1),
+        "plan_mf_v1" => Ok(PLAN_MF_V1),
+        // The old name still resolves, so an audit row written before the split still renders.
+        "plan_v1" => Ok(PLAN_STOCK_V1),
         other => Err(anyhow!("unknown prompt template {other:?}")),
     }
 }
@@ -81,6 +85,7 @@ pub fn template_hash(name: &str) -> Result<String> {
 /// The book call: the whole book, the cash, today's candidates, and room for up to three moves.
 #[allow(clippy::too_many_arguments)]
 pub fn render_plan(
+    scope: crate::llm::plan::Scope,
     book: &str,
     cap: &str,
     cash: f64,
@@ -88,7 +93,11 @@ pub fn render_plan(
     limits: &str,
     candidates: &str,
 ) -> Result<RenderedPrompt> {
-    let text = PLAN_V1
+    let template = scope.template();
+    let text = match scope {
+        crate::llm::plan::Scope::Stock => PLAN_STOCK_V1,
+        crate::llm::plan::Scope::Fund => PLAN_MF_V1,
+    }
         .replace("{{book}}", book)
         .replace("{{cap}}", cap)
         .replace("{{cash}}", &format!("{cash:.2}"))
@@ -97,8 +106,8 @@ pub fn render_plan(
         .replace("{{candidates}}", candidates);
     Ok(RenderedPrompt {
         text,
-        hash: template_hash("plan_v1")?,
-        template: "plan_v1".to_string(),
+        hash: template_hash(template)?,
+        template: template.to_string(),
     })
 }
 

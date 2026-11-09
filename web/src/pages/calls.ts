@@ -166,7 +166,7 @@ function decisionCard(reply: string, when: string): string {
       })
       .join("");
     return `<article class="answer" data-verdict="plan">
-      ${head("STOCK PLAN", "estimate", `${r.moves.length} move${r.moves.length === 1 ? "" : "s"}`)}
+      ${head("PLAN", "estimate", `${r.moves.length} move${r.moves.length === 1 ? "" : "s"}`)}
       <div class="answer-body">
         <table class="answer-moves">
           <thead><tr><th></th><th>Holding</th><th class="num">Qty</th><th class="num">Price</th>

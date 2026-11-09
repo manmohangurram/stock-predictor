@@ -35,6 +35,7 @@ const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
   name: "Infosys",
   plan_id: null,
   plan_rationale: null,
+  plan_scope: "stock",
   class: "stock",
   action: "SELL",
   status: "pending",
@@ -1004,7 +1005,7 @@ describe("a plan", () => {
       leg({ id: 2, action: "SELL", name: "Infosys", qty: 24, entry: 1146.3, rationale: "target reached" }),
       leg({ id: 3, action: "BUY", name: "HDFC Bank", symbol: "HDFCBANK.NS", qty: 15, entry: 793.65 }),
     ]);
-    expect(html).toContain("PLAN");
+    expect(html).toContain("STOCK PLAN");
     expect(html).toContain("2 moves");
     expect(html).toContain("Infosys");
     expect(html).toContain("HDFC Bank");

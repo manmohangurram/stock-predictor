@@ -21,8 +21,14 @@ pub struct Move {
     #[serde(deserialize_with = "action_of")]
     pub action: Action,
     pub symbol: String,
-    pub qty: f64,
-    pub price: f64,
+    /// Units for a stock plan; a fund plan sizes in rupees instead, because units arrive at NAV.
+    #[serde(default)]
+    pub qty: Option<f64>,
+    #[serde(default)]
+    pub price: Option<f64>,
+    /// Rupees, for a fund plan. The purse is denominated in money, not units.
+    #[serde(default)]
+    pub amount: Option<f64>,
     #[serde(default)]
     pub stop: Option<f64>,
     #[serde(default)]
@@ -106,8 +112,28 @@ fn extract_json(content: &str) -> Option<serde_json::Value> {
     serde_json::from_str(&content[start..=end]).ok()
 }
 
-/// Which purse a move draws on. A plan is stocks-only, so this exists to *refuse* funds rather
-/// than to balance them: a fund belongs to the daily arithmetic scan, which needs no model call.
+/// What a plan call may look at. Two prompts, two purses, two books: a stock plan cannot name a
+/// fund, and a fund plan cannot name a stock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    Stock,
+    Fund,
+}
+
+impl Scope {
+    pub fn template(self) -> &'static str {
+        match self {
+            Scope::Stock => "plan_stock_v1",
+            Scope::Fund => "plan_mf_v1",
+        }
+    }
+
+    pub fn is_fund(self) -> bool {
+        self == Scope::Fund
+    }
+}
+
+/// Which purse a move draws on.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Purse {
     Stock,
@@ -135,6 +161,7 @@ impl Cash {
 /// Leg by leg first — a symbol that is not held, a stop on the wrong side, a quantity that is not a
 /// number — then the plan as a whole: buys may not cost more than cash plus what the plan's own
 /// sells free, and no symbol may appear twice.
+#[allow(clippy::too_many_arguments)]
 pub fn validate(
     plan: &Plan,
     book: &[HoldingLine],
@@ -142,99 +169,129 @@ pub fn validate(
     limits: &Limits,
     currency: &str,
     now: DateTime<Utc>,
-    // Symbols that are mutual funds: they draw on the fund purse, never on stock money.
+    // Symbols that are mutual funds: a stock plan may not name one, a fund plan may name nothing else.
     funds: &[String],
+    scope: Scope,
 ) -> Result<()> {
-    // Money is counted per purse. A plan is stocks-only, so only the stock purse is ever spent;
-    // the fund purse is kept in the check so a mixed plan is refused for a stated reason.
-    let purse_of = |symbol: &str| {
-        if funds.iter().any(|f| f == symbol) {
-            Purse::Fund
-        } else {
-            Purse::Stock
-        }
+    // A plan has one purse. The other is reported as zero, so a mixed plan cannot balance.
+    let purse = if scope.is_fund() {
+        Purse::Fund
+    } else {
+        Purse::Stock
     };
-    let mut freed = [0.0f64; 2];
-    let mut spent = [0.0f64; 2];
-    let slot = |p: Purse| match p {
-        Purse::Stock => 0,
-        Purse::Fund => 1,
-    };
+    let mut freed = 0.0;
+    let mut spent = 0.0;
     let mut seen: Vec<&str> = Vec::new();
+    let _ = now;
 
     for m in &plan.moves {
+        let is_fund = funds.iter().any(|f| f == &m.symbol);
+        match (scope, is_fund) {
+            (Scope::Stock, true) => {
+                return Err(anyhow!(
+                    "{} is a mutual fund: it belongs to the fund plan, not the stock plan",
+                    m.symbol
+                ))
+            }
+            (Scope::Fund, false) => {
+                return Err(anyhow!(
+                    "{} is a stock: the fund plan may only move mutual funds",
+                    m.symbol
+                ))
+            }
+            _ => {}
+        }
         if seen.contains(&m.symbol.as_str()) {
             return Err(anyhow!("plan moves {} twice", m.symbol));
         }
         seen.push(&m.symbol);
-        if funds.iter().any(|f| f == &m.symbol) {
-            return Err(anyhow!(
-                "{} is a mutual fund: funds are chosen by the daily scan from their own purse, not in a stock plan",
-                m.symbol
-            ));
-        }
-        if !m.qty.is_finite() || m.qty <= 0.0 {
-            return Err(anyhow!("{} has no usable quantity", m.symbol));
-        }
-        if !m.price.is_finite() || m.price <= 0.0 {
-            return Err(anyhow!("{} has no usable price", m.symbol));
-        }
-        let _ = now;
+
+        // Money is the unit of account: stock plans price it as qty × price, fund plans take rupees.
+        let value = match scope {
+            Scope::Fund => m.amount.filter(|a| a.is_finite() && *a > 0.0).ok_or_else(|| {
+                anyhow!("{} has no amount — a fund move is sized in rupees", m.symbol)
+            })?,
+            Scope::Stock => {
+                let qty = m
+                    .qty
+                    .filter(|q| q.is_finite() && *q > 0.0)
+                    .ok_or_else(|| anyhow!("{} has no usable quantity", m.symbol))?;
+                let price = m
+                    .price
+                    .filter(|p| p.is_finite() && *p > 0.0)
+                    .ok_or_else(|| anyhow!("{} has no usable price", m.symbol))?;
+                qty * price
+            }
+        };
+
         match m.action {
             Action::Sell => {
                 let held = book
                     .iter()
                     .find(|h| h.symbol == m.symbol)
                     .ok_or_else(|| anyhow!("{} is not held", m.symbol))?;
-                if m.qty > held.qty + 1e-9 {
-                    return Err(anyhow!(
-                        "{} sells {:.3} but only {:.3} is held",
-                        m.symbol,
-                        m.qty,
-                        held.qty
-                    ));
-                }
-                freed[slot(purse_of(&m.symbol))] += m.qty * m.price;
-            }
-            Action::Buy => {
-                if m.stop.is_none() || m.target.is_none() {
-                    return Err(anyhow!("{} needs a stop and a target", m.symbol));
-                }
-                if let Some(stop) = m.stop {
-                    if !stop.is_finite() || stop >= m.price {
-                        return Err(anyhow!("{}: stop on the wrong side of entry", m.symbol));
+                if let Some(qty) = m.qty {
+                    if qty > held.qty + 1e-9 {
+                        return Err(anyhow!(
+                            "{} sells {:.3} but only {:.3} is held",
+                            m.symbol,
+                            qty,
+                            held.qty
+                        ));
                     }
                 }
-                if let Some(target) = m.target {
-                    if !target.is_finite() || target <= m.price {
+                // A fund is sized in rupees, so its sale is checked against what the holding is
+                // worth. A stock's units are checked above, and its price is the model's own.
+                if scope.is_fund() {
+                    let held_value = held.qty * held.ltp.unwrap_or(held.avg_cost);
+                    if value > held_value + 1e-6 {
+                        return Err(anyhow!(
+                            "{} sells {value:.2} but only {held_value:.2} is held",
+                            m.symbol
+                        ));
+                    }
+                }
+                freed += value;
+            }
+            Action::Buy => {
+                // A stock buy without an exit is a position with no way out.
+                if !scope.is_fund() {
+                    let stop = m
+                        .stop
+                        .ok_or_else(|| anyhow!("{} needs a stop and a target", m.symbol))?;
+                    let target = m
+                        .target
+                        .ok_or_else(|| anyhow!("{} needs a stop and a target", m.symbol))?;
+                    let price = m.price.unwrap_or_default();
+                    if !stop.is_finite() || stop >= price {
+                        return Err(anyhow!("{}: stop on the wrong side of entry", m.symbol));
+                    }
+                    if !target.is_finite() || target <= price {
                         return Err(anyhow!(
                             "{}: target on the wrong side of entry",
                             m.symbol
                         ));
                     }
                 }
-                spent[slot(purse_of(&m.symbol))] += m.qty * m.price;
+                spent += value
             }
             Action::Hold | Action::None => {}
         }
     }
 
-    for (purse, name) in [(Purse::Stock, "stock"), (Purse::Fund, "fund")] {
-        let i = slot(purse);
-        if spent[i] > freed[i] + cash.get(purse) + 1e-6 {
-            return Err(anyhow!(
-                "the {name} purse does not balance: buys cost {:.2} but the plan frees {:.2} plus {:.2} {currency} of {name} cash — the two purses never lend to each other",
-                spent[i],
-                freed[i],
-                cash.get(purse)
-            ));
-        }
-    }
-    let total_spent = spent[0] + spent[1];
-    let total_freed = freed[0] + freed[1];
-    if total_spent > limits.max_trade_amount + total_freed + 1e-6 {
+    if spent > freed + cash.get(purse) + 1e-6 {
         return Err(anyhow!(
-            "the plan spends {total_spent:.2}, above the {:.2} ceiling for one plan",
+            "the {} purse does not balance: buys cost {:.2} but the plan frees {:.2} plus {:.2} {currency} of {} cash",
+            if scope.is_fund() { "fund" } else { "stock" },
+            spent,
+            freed,
+            cash.get(purse),
+            if scope.is_fund() { "fund" } else { "stock" }
+        ));
+    }
+    if spent > limits.max_trade_amount + freed + 1e-6 {
+        return Err(anyhow!(
+            "the plan spends {spent:.2}, above the {:.2} ceiling for one plan",
             limits.max_trade_amount
         ));
     }

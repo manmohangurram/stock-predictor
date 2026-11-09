@@ -143,7 +143,9 @@ export function renderPlan(legs: Dashboard["signals"]): string {
   const actions = first.status === "pending" ? planActions(first, legs) : "";
   return `<div class="feed-row decision-feed plan-card">
     <div class="decision-main">
-      <div><span class="stamp" data-stamp="estimate">STOCK PLAN</span>
+      <div><span class="stamp" data-stamp="estimate">${
+        first.plan_scope === "fund" ? "FUND PLAN" : "STOCK PLAN"
+      }</span>
         <b>${legs.length} moves</b>
         ${status}
         <span class="sub">${histDate(first.created_at)}</span></div>

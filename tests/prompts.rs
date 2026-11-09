@@ -361,6 +361,7 @@ fn an_empty_book_says_so() {
 #[test]
 fn the_plan_prompt_carries_the_book_the_cap_and_the_candidates() {
     let rendered = prompts::render_plan(
+        stock_predictor::llm::plan::Scope::Stock,
         "INFY.NS | Infosys | 24.000 | 1042.30 | 1146.30 | +10.0% | 1080.00 | 1420.00",
         &prompts::cap_line(200_000.0, "INR"),
         200_000.0,
@@ -369,13 +370,57 @@ fn the_plan_prompt_carries_the_book_the_cap_and_the_candidates() {
         "HDFCBANK.NS at 793.65, +2.1% today",
     )
     .unwrap();
-    assert_eq!(rendered.template, "plan_v1");
+    assert_eq!(rendered.template, "plan_stock_v1");
     assert!(rendered.text.contains("at most 200000.00 INR"), "{}", rendered.text);
     assert!(rendered.text.contains("INFY.NS | Infosys"), "{}", rendered.text);
     assert!(rendered.text.contains("HDFCBANK.NS at 793.65"), "{}", rendered.text);
-    assert!(rendered.text.contains("six months or more"), "{}", rendered.text);
-    // A plan is stocks-only: funds are the daily scan's business, said plainly.
-    assert!(rendered.text.contains("This plan is stocks only"), "{}", rendered.text);
-    assert!(!rendered.text.contains("Fund purse"), "{}", rendered.text);
+    assert!(rendered.text.contains("Six months or more"), "{}", rendered.text);
+    // A plan is stocks-only: the fund book has its own prompt.
+    assert!(rendered.text.contains("Zero to three moves"), "{}", rendered.text);
+    // The stock prompt says it cannot touch the fund purse; it must not offer it.
+    assert!(!rendered.text.contains("## Fund purse"), "{}", rendered.text);
     assert!(!rendered.text.contains("{{"), "an unfilled placeholder: {}", rendered.text);
+}
+
+/// The two plan prompts are different arguments, not the same one reworded.
+#[test]
+fn the_fund_plan_prompt_is_about_funds_and_sized_in_rupees() {
+    let rendered = prompts::render_plan(
+        stock_predictor::llm::plan::Scope::Fund,
+        "120503 | Nifty 50 index fund | 40.000 | 110.00 | 125.00 | +13.6% | — | —",
+        &prompts::cap_line(50_000.0, "INR"),
+        50_000.0,
+        "INR",
+        "the fund purse is everything this plan may spend",
+        "120503 — Nifty 50 index, 3y trailing 14.2%",
+    )
+    .unwrap();
+    assert_eq!(rendered.template, "plan_mf_v1");
+    assert!(rendered.text.contains("mutual-fund side"), "{}", rendered.text);
+    assert!(rendered.text.contains("Sizes are in rupees"), "{}", rendered.text);
+    assert!(rendered.text.contains("Zero to two moves"), "{}", rendered.text);
+    assert!(rendered.text.contains("no intraday exit"), "{}", rendered.text);
+    // Nothing about stops or the stock purse belongs here.
+    assert!(!rendered.text.contains("stock purse plus"), "{}", rendered.text);
+    assert!(!rendered.text.contains("{{"), "unfilled: {}", rendered.text);
+}
+
+#[test]
+fn the_stock_plan_prompt_demands_exits_and_forbids_funds() {
+    let rendered = prompts::render_plan(
+        stock_predictor::llm::plan::Scope::Stock,
+        "INFY.NS | Infosys | 24.000 | 1042.30 | 1146.30 | +10.0% | 1080.00 | 1420.00",
+        &prompts::cap_line(200_000.0, "INR"),
+        200_000.0,
+        "INR",
+        "trade size 500 to 50000 per fill",
+        "HDFCBANK.NS at 793.65",
+    )
+    .unwrap();
+    assert_eq!(rendered.template, "plan_stock_v1");
+    assert!(rendered.text.contains("Six months or more"), "{}", rendered.text);
+    assert!(rendered.text.contains("A **stop is not optional**"), "{}", rendered.text);
+    assert!(rendered.text.contains("Zero to three moves"), "{}", rendered.text);
+    // The stock prompt says it cannot touch the fund purse; it must not offer it.
+    assert!(!rendered.text.contains("## Fund purse"), "{}", rendered.text);
 }

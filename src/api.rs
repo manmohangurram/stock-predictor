@@ -226,6 +226,8 @@ pub struct SignalRow {
     pub plan_id: Option<i64>,
     /// The sentence that explains the whole plan, carried on every leg.
     pub plan_rationale: Option<String>,
+    /// "stock" or "fund" — the two plans are different arguments, and the card says which.
+    pub plan_scope: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2106,6 +2108,10 @@ async fn load_signals(
                 plan_id: r.plan_id,
                 plan_rationale: reason
                     .get("plan_rationale")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                plan_scope: reason
+                    .get("scope")
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
             }

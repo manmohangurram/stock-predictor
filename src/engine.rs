@@ -71,7 +71,7 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
     let calls_before = report.llm_calls;
     let calls_after = orchestrate::daily_chat_calls(deps.pool).await.unwrap_or(0);
     if calls_after > calls_before {
-        match plan_book(deps, now).await {
+        match plan_book(deps, now, crate::llm::plan::Scope::Stock).await {
             Ok(Some(())) => report.plans += 1,
             Ok(None) => {}
             Err(e) => report.errors.push(format!("plan: {e:#}")),
@@ -85,29 +85,54 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
 /// shared this logic by copy before, and had already drifted apart.
 /// One book call: the model sees every holding, the cash and today's list, and may answer with up
 /// to three moves that stand or fall together. Returns `Some(())` only when a plan was stored.
-async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<()>> {
-    let holdings = load_holdings(deps.pool, crate::models::Mode::Long).await?;
-    if holdings.is_empty() {
+async fn plan_book(
+    deps: &EngineDeps<'_>,
+    now: DateTime<Utc>,
+    scope: crate::llm::plan::Scope,
+) -> Result<Option<()>> {
+    let fund = scope.is_fund();
+    let funds = fund_symbols(deps.pool).await?;
+    // Two books, two prompts: this call only ever sees its own half.
+    let book: Vec<crate::llm::rotate::HoldingLine> =
+        load_holdings(deps.pool, crate::models::Mode::Long)
+            .await?
+            .into_iter()
+            .filter(|h| funds.contains(&h.symbol) == fund)
+            .collect();
+    if book.is_empty() {
         return Ok(None); // nothing to reason about, and nothing to pay a call for
     }
     let settings = crate::rules::settings::get(deps.pool).await?;
-    let available = budget::available_in(deps.pool, crate::models::Mode::Long).await?;
+    // A fund plan draws on the fund purse; a stock plan on the stock purse. Never both.
+    let available = if fund {
+        budget::available_mf(deps.pool).await?
+    } else {
+        budget::available_in(deps.pool, crate::models::Mode::Long).await?
+    };
     if orchestrate::daily_chat_calls(deps.pool).await? >= deps.runtime.daily_cap as i64 {
         tracing::info!("daily call cap reached — plan not attempted");
         return Ok(None);
     }
 
-    let candidates = candidates_for_plan(deps.pool, &settings.currency).await?;
-    let limits = format!(
-        "spend at most {:.2} {currency} across the plan; no single buy above {:.2}; a take-profit between {:.0}% and {:.0}%",
-        settings.limits_long.max_trade_amount,
-        settings.limits_long.max_trade_amount,
-        settings.limits_long.min_profit_pct,
-        settings.limits_long.max_profit_pct,
-        currency = settings.currency
-    );
+    let candidates = candidates_for_plan(deps.pool, &settings.currency, scope).await?;
+    let limits = if fund {
+        format!(
+            "the whole plan may spend at most {:.2} {currency}, which is everything the fund purse holds; there is no per-trade ceiling for funds",
+            available, currency = settings.currency
+        )
+    } else {
+        format!(
+            "spend at most {:.2} {currency} across the plan; no single buy above {:.2}; a take-profit between {:.0}% and {:.0}%",
+            settings.limits_long.max_trade_amount,
+            settings.limits_long.max_trade_amount,
+            settings.limits_long.min_profit_pct,
+            settings.limits_long.max_profit_pct,
+            currency = settings.currency
+        )
+    };
     let rendered = crate::llm::prompts::render_plan(
-        &crate::llm::plan::book_block(&holdings, &settings.currency),
+        scope,
+        &crate::llm::plan::book_block(&book, &settings.currency),
         &crate::llm::prompts::cap_line(available, &settings.currency),
         available,
         &settings.currency,
@@ -127,12 +152,17 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
             prompt_template: rendered.template,
             prompt_hash: rendered.hash,
             trigger: Some(format!(
-                "book call: {} holdings, {:.2} {} free — looked for moves that fit together",
-                holdings.len(),
+                "{} plan: {} holdings, {:.2} {} free — looked for moves that fit together",
+                if fund { "fund" } else { "stock" },
+                book.len(),
                 available,
                 settings.currency
             )),
-            purpose: "plan book".to_string(),
+            purpose: if fund {
+                "plan funds".to_string()
+            } else {
+                "plan stocks".to_string()
+            },
         },
     )
     .await?;
@@ -148,23 +178,30 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
         return Ok(None);
     };
 
-    let funds = fund_symbols(deps.pool).await?;
-    // A plan is stocks-only: the fund purse is not offered to it at all.
-    let cash = crate::llm::plan::Cash {
-        stock: available,
-        fund: 0.0,
+    // One purse per plan: the other is reported as zero, so a mixed plan cannot balance.
+    let cash = if fund {
+        crate::llm::plan::Cash {
+            stock: 0.0,
+            fund: available,
+        }
+    } else {
+        crate::llm::plan::Cash {
+            stock: available,
+            fund: 0.0,
+        }
     };
     if let Err(e) = crate::llm::plan::validate(
         &plan,
-        &holdings,
+        &book,
         cash,
         &settings.limits_long,
         &settings.currency,
         now,
         &funds,
+        scope,
     ) {
         tracing::warn!(error = %e, "plan refused by the validator");
-        record_plan_refusal(deps.pool, &e.to_string(), now, Some(&conversation)).await?;
+        record_plan_refusal(deps.pool, &e.to_string(), now, Some(&conversation), scope).await?;
         return Ok(None);
     }
 
@@ -188,6 +225,7 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
                 "rationale": m.why,
                 "plan_rationale": plan.rationale,
                 "plan": true,
+                "scope": if fund { "fund" } else { "stock" },
             })
             .to_string(),
         )
@@ -206,6 +244,7 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
                 &format!("{} is not in the book, so the plan cannot be stored", m.symbol),
                 now,
                 Some(&conversation),
+                scope,
             )
             .await?;
             return Ok(None);
@@ -230,6 +269,7 @@ async fn record_plan_refusal(
     why: &str,
     now: DateTime<Utc>,
     conversation_id: Option<&str>,
+    scope: crate::llm::plan::Scope,
 ) -> Result<()> {
     let reason = serde_json::json!({
         "blocked": "plan_refused",
@@ -240,16 +280,25 @@ async fn record_plan_refusal(
         "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
             created_at, mode, kind, status, conversation_id)
          SELECT id, 'BLOCKED', 0, 0, ?, ?, ?, 'long', 'plan', 'pending', ?
-         FROM instruments WHERE class = 'stock' AND active = 1
+         FROM instruments WHERE (class = 'mutual_fund') = ? AND active = 1
          ORDER BY id LIMIT 1",
     )
     .bind((now + chrono::Duration::hours(18)).to_rfc3339())
     .bind(reason)
     .bind(now.to_rfc3339())
     .bind(conversation_id)
+    .bind(scope.is_fund())
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// The fund plan, run once a day after the arithmetic scan has ranked today's funds. Separate
+/// entry point because it is a different question, not a second pass over the same one.
+pub async fn plan_funds(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<bool> {
+    Ok(plan_book(deps, now, crate::llm::plan::Scope::Fund)
+        .await?
+        .is_some())
 }
 
 /// The symbols that are mutual funds, so the plan's money can be counted per purse.
@@ -262,7 +311,11 @@ async fn fund_symbols(pool: &SqlitePool) -> Result<Vec<String>> {
 
 /// Today's list for the book call: the active instruments and their last two closes, so the model
 /// can weigh a holding against what else is on offer.
-async fn candidates_for_plan(pool: &SqlitePool, currency: &str) -> Result<String> {
+async fn candidates_for_plan(
+    pool: &SqlitePool,
+    currency: &str,
+    scope: crate::llm::plan::Scope,
+) -> Result<String> {
     #[derive(sqlx::FromRow)]
     struct Line {
         symbol: String,
@@ -276,9 +329,11 @@ async fn candidates_for_plan(pool: &SqlitePool, currency: &str) -> Result<String
                  ORDER BY b.ts DESC LIMIT 1) AS last,
                 (SELECT b.close FROM bars b WHERE b.instrument_id = i.id
                  ORDER BY b.ts DESC LIMIT 1 OFFSET 1) AS prev
-         FROM instruments i WHERE i.active = 1
+         FROM instruments i
+         WHERE i.active = 1 AND (i.class = 'mutual_fund') = ?
          ORDER BY i.symbol",
     )
+    .bind(scope.is_fund())
     .fetch_all(pool)
     .await?;
     let mut out = String::new();

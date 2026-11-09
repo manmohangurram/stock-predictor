@@ -1,5 +1,5 @@
 use chrono::{TimeZone, Utc};
-use stock_predictor::llm::plan::{self, Answer, Cash, Move, Plan};
+use stock_predictor::llm::plan::{self, Answer, Cash, Move, Plan, Scope};
 use stock_predictor::llm::rotate::HoldingLine;
 use stock_predictor::models::Action;
 use stock_predictor::rules::limits::Limits;
@@ -59,7 +59,7 @@ fn the_fixture_parses_into_two_ordered_moves() {
 fn a_balanced_swap_passes() {
     // Sells 24 * 1146.30 = 27,511.20; buys 15 * 793.65 = 11,904.75; cash 500 is spare.
     let cash = Cash { stock: 500.0, fund: 0.0 };
-    plan::validate(&parsed(), &book(), cash, &at(1_000_000.0), "INR", now(), &[]).unwrap();
+    plan::validate(&parsed(), &book(), cash, &at(1_000_000.0), "INR", now(), &[], Scope::Stock).unwrap();
 }
 
 #[test]
@@ -69,8 +69,9 @@ fn a_plan_that_buys_more_than_it_frees_is_refused() {
             Move {
                 action: Action::Sell,
                 symbol: "INFY.NS".into(),
-                qty: 1.0,
-                price: 100.0,
+                qty: Some(1.0),
+                price: Some(100.0),
+                amount: None,
                 stop: None,
                 target: None,
                 why: "token sale".into(),
@@ -78,8 +79,9 @@ fn a_plan_that_buys_more_than_it_frees_is_refused() {
             Move {
                 action: Action::Buy,
                 symbol: "HDFCBANK.NS".into(),
-                qty: 100.0,
-                price: 100.0,
+                qty: Some(100.0),
+                price: Some(100.0),
+                amount: None,
                 stop: Some(90.0),
                 target: Some(120.0),
                 why: "big".into(),
@@ -88,7 +90,7 @@ fn a_plan_that_buys_more_than_it_frees_is_refused() {
         rationale: "unbalanced".into(),
     };
     let cash = Cash { stock: 500.0, fund: 0.0 };
-    let e = plan::validate(&p, &book(), cash, &at(1_000_000.0), "INR", now(), &[]).unwrap_err();
+    let e = plan::validate(&p, &book(), cash, &at(1_000_000.0), "INR", now(), &[], Scope::Stock).unwrap_err();
     assert!(e.to_string().contains("does not balance"), "{e}");
 }
 
@@ -98,8 +100,9 @@ fn a_plan_selling_what_is_not_held_is_refused() {
         moves: vec![Move {
             action: Action::Sell,
             symbol: "TCS.NS".into(),
-            qty: 1.0,
-            price: 100.0,
+            qty: Some(1.0),
+            price: Some(100.0),
+            amount: None,
             stop: None,
             target: None,
             why: "not mine".into(),
@@ -107,7 +110,7 @@ fn a_plan_selling_what_is_not_held_is_refused() {
         rationale: String::new(),
     };
     let cash = Cash { stock: 10_000.0, fund: 0.0 };
-    let e = plan::validate(&p, &book(), cash, &at(1_000_000.0), "INR", now(), &[]).unwrap_err();
+    let e = plan::validate(&p, &book(), cash, &at(1_000_000.0), "INR", now(), &[], Scope::Stock).unwrap_err();
     assert!(e.to_string().contains("not held"), "{e}");
 }
 
@@ -117,15 +120,16 @@ fn selling_more_than_is_held_is_refused() {
         moves: vec![Move {
             action: Action::Sell,
             symbol: "INFY.NS".into(),
-            qty: 25.0,
-            price: 1146.30,
+            qty: Some(25.0),
+            price: Some(1146.30),
+            amount: None,
             stop: None,
             target: None,
             why: "too much".into(),
         }],
         rationale: String::new(),
     };
-    let e = plan::validate(&p, &book(), Cash::default(), &at(1_000_000.0), "INR", now(), &[])
+    let e = plan::validate(&p, &book(), Cash::default(), &at(1_000_000.0), "INR", now(), &[], Scope::Stock)
         .unwrap_err();
     assert!(e.to_string().contains("only 24.000 is held"), "{e}");
 }
@@ -137,8 +141,9 @@ fn a_symbol_may_not_appear_twice() {
             Move {
                 action: Action::Sell,
                 symbol: "INFY.NS".into(),
-                qty: 10.0,
-                price: 1146.30,
+                qty: Some(10.0),
+                price: Some(1146.30),
+                amount: None,
                 stop: None,
                 target: None,
                 why: "a".into(),
@@ -146,8 +151,9 @@ fn a_symbol_may_not_appear_twice() {
             Move {
                 action: Action::Buy,
                 symbol: "INFY.NS".into(),
-                qty: 10.0,
-                price: 1146.30,
+                qty: Some(10.0),
+                price: Some(1146.30),
+                amount: None,
                 stop: Some(1000.0),
                 target: Some(1300.0),
                 why: "b".into(),
@@ -155,7 +161,7 @@ fn a_symbol_may_not_appear_twice() {
         ],
         rationale: String::new(),
     };
-    let e = plan::validate(&p, &book(), Cash::default(), &at(1_000_000.0), "INR", now(), &[])
+    let e = plan::validate(&p, &book(), Cash::default(), &at(1_000_000.0), "INR", now(), &[], Scope::Stock)
         .unwrap_err();
     assert!(e.to_string().contains("twice"), "{e}");
 }
@@ -214,8 +220,9 @@ fn selling_stocks_never_funds_a_mutual_fund() {
             Move {
                 action: Action::Sell,
                 symbol: "AMBUJACEM.NS".into(),
-                qty: 5.0,
-                price: 387.35,
+                qty: Some(5.0),
+                price: Some(387.35),
+                amount: None,
                 stop: None,
                 target: None,
                 why: "dead money".into(),
@@ -223,8 +230,9 @@ fn selling_stocks_never_funds_a_mutual_fund() {
             Move {
                 action: Action::Buy,
                 symbol: "0P0000XUY3.BO".into(),
-                qty: 37.0,
-                price: 265.04,
+                qty: Some(37.0),
+                price: Some(265.04),
+                amount: None,
                 stop: Some(240.0),
                 target: Some(320.0),
                 why: "park the proceeds in an index fund".into(),
@@ -234,8 +242,129 @@ fn selling_stocks_never_funds_a_mutual_fund() {
     };
     let cash = Cash { stock: 4_000.0, fund: 0.0 };
     let funds = vec!["0P0000XUY3.BO".to_string()];
-    let e = plan::validate(&plan, &held, cash, &at(1_000_000.0), "INR", now(), &funds)
+    let e = plan::validate(&plan, &held, cash, &at(1_000_000.0), "INR", now(), &funds, Scope::Stock)
         .unwrap_err();
     assert!(e.to_string().contains("is a mutual fund"), "{e}");
-    assert!(e.to_string().contains("daily scan"), "{e}");
+    assert!(e.to_string().contains("fund plan"), "{e}");
+}
+
+/// The fund plan: rupees, no stops, and only funds. A stock in a fund plan is refused, and so is
+/// a fund plan that spends the stock purse.
+#[test]
+fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
+    let mut held = book();
+    held.push(HoldingLine {
+        symbol: "120503".into(),
+        name: "Nifty 50 index fund".into(),
+        qty: 40.0,
+        avg_cost: 110.0,
+        ltp: Some(125.0),
+        stop: None,
+        target: None,
+    });
+    let funds = vec!["120503".to_string()];
+    let plan = Plan {
+        moves: vec![
+            Move {
+                action: Action::Sell,
+                symbol: "120503".into(),
+                qty: None,
+                price: None,
+                amount: Some(5_000.0),
+                stop: None,
+                target: None,
+                why: "duplicates the large-cap holding".into(),
+            },
+            Move {
+                action: Action::Buy,
+                symbol: "120503".into(),
+                qty: None,
+                price: None,
+                amount: Some(5_000.0),
+                stop: None,
+                target: None,
+                why: "re-cut the same money".into(),
+            },
+        ],
+        rationale: String::new(),
+    };
+    // Same symbol twice is refused, so keep it honest: a separate fund for the buy.
+    let e = plan::validate(
+        &plan,
+        &held,
+        Cash { stock: 0.0, fund: 5_000.0 },
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &funds,
+        Scope::Fund,
+    )
+    .unwrap_err();
+    assert!(e.to_string().contains("twice"), "{e}");
+
+    let buy_only = Plan {
+        moves: vec![Move {
+            action: Action::Buy,
+            symbol: "120503".into(),
+            qty: None,
+            price: None,
+            amount: Some(5_000.0),
+            stop: None,
+            target: None,
+            why: "fills the large-cap gap".into(),
+        }],
+        rationale: String::new(),
+    };
+    plan::validate(
+        &buy_only,
+        &held,
+        Cash { stock: 100_000.0, fund: 5_000.0 },
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &funds,
+        Scope::Fund,
+    )
+    .unwrap();
+
+    // Stock money does not count for a fund.
+    let e = plan::validate(
+        &buy_only,
+        &held,
+        Cash { stock: 100_000.0, fund: 0.0 },
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &funds,
+        Scope::Fund,
+    )
+    .unwrap_err();
+    assert!(e.to_string().contains("fund purse does not balance"), "{e}");
+
+    // And a stock has no business in a fund plan.
+    let stock_plan = Plan {
+        moves: vec![Move {
+            action: Action::Buy,
+            symbol: "INFY.NS".into(),
+            qty: Some(1.0),
+            price: Some(100.0),
+            amount: None,
+            stop: Some(90.0),
+            target: Some(120.0),
+            why: "wrong book".into(),
+        }],
+        rationale: String::new(),
+    };
+    let e = plan::validate(
+        &stock_plan,
+        &held,
+        Cash { stock: 0.0, fund: 9_999.0 },
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &funds,
+        Scope::Fund,
+    )
+    .unwrap_err();
+    assert!(e.to_string().contains("may only move mutual funds"), "{e}");
 }

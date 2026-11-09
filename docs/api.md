@@ -21,7 +21,7 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | GET | `/api/search?q=` | yes | Yahoo + AMFI search — feeds the add-instrument dialog (⌘K on the ledger) |
 | GET | `/api/calls?offset=&limit=` | yes | One window of the audit list; total in `x-total-count` (also accepts `page`/`per_page`) |
 | GET | `/api/calls/{id}` | yes | One call with its prompt and raw reply |
-| POST | `/api/signals/{id}/approve` | yes | Record the fill you got; approves the whole group (both legs of a rotation, every move of a plan) |
+| POST | `/api/signals/{id}/approve` | yes | Record the fill you got; approves the whole group (both legs of a rotation, every move of a plan). A plan takes `fills: [{id, qty, price}]`, one per leg |
 | POST | `/api/signals/{id}/reject` | yes | Reject with an optional reason; a plan is rejected whole; no money moves |
 | POST | `/api/notify/test` | yes | Send one push |
 | POST | `/api/positions` | — | Add a position without a ledger entry (import path) |

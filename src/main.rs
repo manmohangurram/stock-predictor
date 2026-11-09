@@ -298,9 +298,30 @@ async fn main() -> Result<()> {
                 Err(e) => tracing::error!(error = %e, "poll failed"),
             }
 
-            // Best-fund discovery: once a day, rank the curated list by trailing return.
+            // Best-fund discovery: once a day, rank the curated list by trailing return. On a day
+            // the scan actually ran, the fund plan follows it — arithmetic first, opinion second.
             match stock_predictor::fundscan::run(&poll_pool, &runtime, Utc::now()).await {
-                Ok(r) if r.examined > 0 => tracing::info!(?r, "fund scan"),
+                Ok(r) if r.examined > 0 => {
+                    tracing::info!(?r, "fund scan");
+                    match stock_predictor::engine::plan_funds(
+                        &stock_predictor::engine::EngineDeps {
+                            pool: &poll_pool,
+                            runtime: runtime.clone(),
+                            market: &market,
+                            transport: &transport,
+                            notifier: &notifier,
+                            rules: RuleConfig::default(),
+                            force: false,
+                        },
+                        Utc::now(),
+                    )
+                    .await
+                    {
+                        Ok(true) => tracing::info!("fund plan stored"),
+                        Ok(false) => {}
+                        Err(e) => tracing::warn!(error = %e, "fund plan failed"),
+                    }
+                }
                 Ok(_) => {}
                 Err(e) => tracing::warn!(error = %e, "fund scan failed"),
             }

@@ -24,6 +24,8 @@ export interface SignalRow {
   plan_id: number | null;
   /** The sentence that explains the whole plan, carried on every leg. */
   plan_rationale: string | null;
+  /** "stock" or "fund" — the two plans are different arguments. */
+  plan_scope: string | null;
 }
 
 export interface PositionRow {

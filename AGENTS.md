@@ -49,8 +49,11 @@ files directly when you need exact wording.
   budget, limits, provider and keys, ntfy, polling cadence, the proxy — is a `settings` row,
   edited on the Settings page and applied without a restart.
 - The settings page is six routed tabs (`/settings/:tab`), each stamped on its own.
-- Prompt files: `prompts/{decide_v1,escalate_v1,rotate_v1,trend_v1,short_v1,plan_v1}.md`.
-  `plan_v1` is the book call: whole book, cash cap, up to three moves, stored as one `plan_id` group.
+- Prompt files: `prompts/{decide_v1,escalate_v1,rotate_v1,trend_v1,short_v1,plan_stock_v1,plan_mf_v1}.md`.
+  Two book calls, two books, two purses: `plan_stock_v1` (whole stock book, 0–3 moves, every buy
+  carries a stop and target, stored as one `plan_id` group) and `plan_mf_v1` (fund book only, 0–2
+  moves sized in rupees, no stops — a fund has no price to stop at). The fund plan runs after the
+  daily arithmetic scan; `plan_v1` still resolves to the stock prompt for old audit rows.
 - The proxy is chosen only by the database: `src/http.rs` is the one client builder and calls
   `.no_proxy()` first, so `HTTP_PROXY` can never win.
 
