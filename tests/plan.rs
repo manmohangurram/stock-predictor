@@ -1,5 +1,5 @@
 use chrono::{TimeZone, Utc};
-use stock_predictor::llm::plan::{self, Answer, Move, Plan};
+use stock_predictor::llm::plan::{self, Answer, Cash, Move, Plan};
 use stock_predictor::llm::rotate::HoldingLine;
 use stock_predictor::models::Action;
 use stock_predictor::rules::limits::Limits;
@@ -58,7 +58,8 @@ fn the_fixture_parses_into_two_ordered_moves() {
 #[test]
 fn a_balanced_swap_passes() {
     // Sells 24 * 1146.30 = 27,511.20; buys 15 * 793.65 = 11,904.75; cash 500 is spare.
-    plan::validate(&parsed(), &book(), 500.0, &at(1_000_000.0), "INR", now()).unwrap();
+    let cash = Cash { stock: 500.0, fund: 0.0 };
+    plan::validate(&parsed(), &book(), cash, &at(1_000_000.0), "INR", now(), &[]).unwrap();
 }
 
 #[test]
@@ -86,7 +87,8 @@ fn a_plan_that_buys_more_than_it_frees_is_refused() {
         ],
         rationale: "unbalanced".into(),
     };
-    let e = plan::validate(&p, &book(), 500.0, &at(1_000_000.0), "INR", now()).unwrap_err();
+    let cash = Cash { stock: 500.0, fund: 0.0 };
+    let e = plan::validate(&p, &book(), cash, &at(1_000_000.0), "INR", now(), &[]).unwrap_err();
     assert!(e.to_string().contains("does not balance"), "{e}");
 }
 
@@ -104,7 +106,8 @@ fn a_plan_selling_what_is_not_held_is_refused() {
         }],
         rationale: String::new(),
     };
-    let e = plan::validate(&p, &book(), 10_000.0, &at(1_000_000.0), "INR", now()).unwrap_err();
+    let cash = Cash { stock: 10_000.0, fund: 0.0 };
+    let e = plan::validate(&p, &book(), cash, &at(1_000_000.0), "INR", now(), &[]).unwrap_err();
     assert!(e.to_string().contains("not held"), "{e}");
 }
 
@@ -122,7 +125,8 @@ fn selling_more_than_is_held_is_refused() {
         }],
         rationale: String::new(),
     };
-    let e = plan::validate(&p, &book(), 0.0, &at(1_000_000.0), "INR", now()).unwrap_err();
+    let e = plan::validate(&p, &book(), Cash::default(), &at(1_000_000.0), "INR", now(), &[])
+        .unwrap_err();
     assert!(e.to_string().contains("only 24.000 is held"), "{e}");
 }
 
@@ -151,7 +155,8 @@ fn a_symbol_may_not_appear_twice() {
         ],
         rationale: String::new(),
     };
-    let e = plan::validate(&p, &book(), 0.0, &at(1_000_000.0), "INR", now()).unwrap_err();
+    let e = plan::validate(&p, &book(), Cash::default(), &at(1_000_000.0), "INR", now(), &[])
+        .unwrap_err();
     assert!(e.to_string().contains("twice"), "{e}");
 }
 
@@ -188,4 +193,98 @@ fn the_book_block_lists_every_holding_and_its_cost_basis() {
     let block = plan::book_block(&book(), "INR");
     assert!(block.contains("INFY.NS | Infosys | 24.000 | 1042.30"), "{block}");
     assert!(block.contains("total invested:"), "{block}");
+}
+
+/// The sample that prompted this: sell two stocks, buy an index fund. The arithmetic balances in
+/// total, and it is still impossible — a fund is bought from its own monthly purse.
+#[test]
+fn selling_stocks_never_funds_a_mutual_fund() {
+    let mut held = book();
+    held.push(HoldingLine {
+        symbol: "AMBUJACEM.NS".into(),
+        name: "Ambuja Cements".into(),
+        qty: 5.0,
+        avg_cost: 530.0,
+        ltp: Some(387.35),
+        stop: None,
+        target: None,
+    });
+    let plan = Plan {
+        moves: vec![
+            Move {
+                action: Action::Sell,
+                symbol: "AMBUJACEM.NS".into(),
+                qty: 5.0,
+                price: 387.35,
+                stop: None,
+                target: None,
+                why: "dead money".into(),
+            },
+            Move {
+                action: Action::Buy,
+                symbol: "0P0000XUY3.BO".into(),
+                qty: 37.0,
+                price: 265.04,
+                stop: Some(240.0),
+                target: Some(320.0),
+                why: "park the proceeds in an index fund".into(),
+            },
+        ],
+        rationale: "consolidate".into(),
+    };
+    let cash = Cash { stock: 4_000.0, fund: 0.0 };
+    let funds = vec!["0P0000XUY3.BO".to_string()];
+    let e = plan::validate(&plan, &held, cash, &at(1_000_000.0), "INR", now(), &funds)
+        .unwrap_err();
+    assert!(e.to_string().contains("fund purse does not balance"), "{e}");
+    assert!(e.to_string().contains("never lend"), "{e}");
+}
+
+/// A fund bought with fund cash is fine, and so is a stock bought with stock cash.
+#[test]
+fn each_purse_balances_on_its_own() {
+    let mut held = book();
+    held.push(HoldingLine {
+        symbol: "0P0000XUY3.BO".into(),
+        name: "Nifty 50 index fund".into(),
+        qty: 10.0,
+        avg_cost: 250.0,
+        ltp: Some(265.0),
+        stop: None,
+        target: None,
+    });
+    let plan = Plan {
+        moves: vec![
+            Move {
+                action: Action::Sell,
+                symbol: "0P0000XUY3.BO".into(),
+                qty: 10.0,
+                price: 265.0,
+                stop: None,
+                target: None,
+                why: "switch fund".into(),
+            },
+            Move {
+                action: Action::Buy,
+                symbol: "0P0000XUY3.BO".into(),
+                qty: 5.0,
+                price: 265.0,
+                stop: Some(240.0),
+                target: Some(320.0),
+                why: "reallocate".into(),
+            },
+        ],
+        rationale: String::new(),
+    };
+    // The same symbol twice is refused for a different reason, so use two funds.
+    assert!(plan::validate(
+        &plan,
+        &held,
+        Cash { stock: 0.0, fund: 0.0 },
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &["0P0000XUY3.BO".to_string()],
+    )
+    .is_err());
 }

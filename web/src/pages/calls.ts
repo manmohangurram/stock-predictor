@@ -29,8 +29,14 @@ function localTime(iso: string): string {
 /** What you did with the decision this call produced — or why it never reached you. */
 function reviewBadge(r: CallRow): string {
   if (r.decision_action === "BLOCKED") {
+    // A refused plan is the model's answer, recorded with its reason in View.
     // The reason is long; it lives in View, so the row stays one line.
     return `<span class="pill todo" title="${escapeHtml(r.decision_reason ?? "")}">blocked</span>`;
+  }
+  if (r.decision_action === "PLAN") {
+    const state = r.decision_status ?? "pending";
+    const label = state === "pending" ? "plan · awaiting you" : `plan · ${state}`;
+    return `<span class="pill ${state === "approved" ? "ok" : state === "rejected" ? "todo" : ""}">${label}</span>`;
   }
   if (!r.decision_status) return `<span class="muted">no decision</span>`;
   const tone = r.decision_status === "approved" ? "ok" : r.decision_status === "rejected" ? "todo" : "";
@@ -49,11 +55,17 @@ export function renderCalls(rows: CallRow[]): string {
     .map((r) => {
       // "decide INFY.NS" is two facts: what the call was for, and which holding it was about.
       const [kind, ...rest] = (r.purpose ?? "").split(/\s+/);
-      const holding = r.instrument_name
-        ? `<b>${escapeHtml(r.instrument_name)}</b>${
-            r.instrument_symbol ? `<div class="sub">${escapeHtml(r.instrument_symbol)}</div>` : ""
-          }`
-        : `<span class="muted">${escapeHtml(rest.join(" ") || "—")}</span>`;
+      // A book call is about no single holding: say so, instead of printing "book".
+      const holding =
+        kind === "plan"
+          ? `<b>Whole book</b><div class="sub">every holding</div>`
+          : r.instrument_name
+            ? `<b>${escapeHtml(r.instrument_name)}</b>${
+                r.instrument_symbol
+                  ? `<div class="sub">${escapeHtml(r.instrument_symbol)}</div>`
+                  : ""
+              }`
+            : `<span class="muted">${escapeHtml(rest.join(" ") || "—")}</span>`;
       return `<tr>
   <td class="time num" title="${escapeHtml(r.ts)}">${escapeHtml(localTime(r.ts))}</td>
   <td>${escapeHtml(kind || "—")}</td>
@@ -157,7 +169,9 @@ export function renderExchangeDetail(d: CallDetail): string {
     ? `<b>${escapeHtml(d.instrument_name)}</b>${
         d.instrument_symbol ? ` <span class="sub">${escapeHtml(d.instrument_symbol)}</span>` : ""
       }`
-    : escapeHtml(d.purpose ?? "—");
+    : firstWord(d.purpose) === "plan"
+      ? `<b>Whole book</b> <span class="sub">every holding</span>`
+      : escapeHtml(d.purpose ?? "—");
 
   return `<div class="call">
   <div class="call-facts">

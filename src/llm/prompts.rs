@@ -79,10 +79,12 @@ pub fn template_hash(name: &str) -> Result<String> {
 }
 
 /// The book call: the whole book, the cash, today's candidates, and room for up to three moves.
+#[allow(clippy::too_many_arguments)]
 pub fn render_plan(
     book: &str,
     cap: &str,
     cash: f64,
+    fund_cash: f64,
     currency: &str,
     limits: &str,
     candidates: &str,
@@ -90,6 +92,7 @@ pub fn render_plan(
     let text = PLAN_V1
         .replace("{{book}}", book)
         .replace("{{cap}}", cap)
+        .replace("{{fund_cash}}", &format!("{fund_cash:.2}"))
         .replace("{{cash}}", &format!("{cash:.2}"))
         .replace("{{currency}}", currency)
         .replace("{{limits}}", limits)

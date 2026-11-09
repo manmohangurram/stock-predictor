@@ -223,10 +223,10 @@ function trades(list: Trade[]): string {
     const cls = diff > 0.0005 ? "up" : diff < -0.0005 ? "down" : "";
     return `<span class="num ${cls}">${diff >= 0 ? "+" : ""}${(diff * 100).toFixed(2)}%</span>`;
   };
-  return `<div class="table-wrap"><table class="blotter">
+  return `<div class="table-wrap"><table class="blotter fills">
     <thead><tr><th scope="col">Date</th><th scope="col">Side</th><th scope="col">Qty</th>
       <th scope="col">Your price</th><th scope="col" class="hide-sm">Close that day</th>
-      <th scope="col" class="hide-sm">vs close</th></tr></thead>
+      <th scope="col" class="hide-sm">vs close</th><th scope="col"></th></tr></thead>
     <tbody>${list
       .map(
         (t) => `<tr><td class="mono">${day(t.traded_at)}</td>
@@ -234,7 +234,29 @@ function trades(list: Trade[]): string {
       <td class="num">${units(t.qty)}</td>
       <td class="num">${money(t.price)}</td>
       <td class="num hide-sm">${t.market_close === null ? "—" : money(t.market_close)}</td>
-      <td class="hide-sm">${vsClose(t)}</td></tr>`,
+      <td class="hide-sm">${vsClose(t)}</td>
+      <td class="right"><button class="btn ghost icon-btn" type="button" data-edit-fill="${t.id}"
+          aria-expanded="false" title="Correct this fill" aria-label="Correct this fill">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11.2 2.3l2.5 2.5-8 8-3.2.7.7-3.2 8-8z" /></svg></button></td></tr>
+      <tr class="fill-edit" data-fill-edit="${t.id}" hidden><td colspan="7">
+        <form class="edit-fill-form" data-edit-form="${t.id}">
+          <div class="fill-grid">
+            <label class="field"><span class="lbl">Quantity</span>
+              <input name="qty" type="number" min="0" step="any" value="${t.qty}" /></label>
+            <label class="field"><span class="lbl">Price</span>
+              <input name="price" type="number" min="0" step="any" value="${t.price}" /></label>
+            <label class="field"><span class="lbl">Date</span>
+              <input name="at" type="date" value="${t.traded_at.slice(0, 10)}" max="${today()}" /></label>
+          </div>
+          <div class="row">
+            <button class="btn primary" type="submit">Save the correction</button>
+            <button class="btn ghost" type="button" data-cancel-fill="${t.id}">Cancel</button>
+            <span class="help" data-fill-status="${t.id}" role="status">The position and the cash move by the difference.</span>
+          </div>
+        </form>
+      </td></tr>`,
       )
       .join("")}</tbody></table></div>`;
 }
@@ -318,31 +340,30 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
           ${chart(a)}
         </section>
         <section class="card">
+          <div class="card-head">
+            <h2>Fills</h2>
+            <div class="row">
+              <span class="sub">${list.length ? `${list.length} recorded · what you actually paid` : "nothing recorded yet"}</span>
+              <button class="btn" type="button" data-record-toggle="${escapeHtml(a.instrument.symbol)}"
+                      aria-expanded="false" aria-controls="record-panel">Record a fill</button>
+            </div>
+          </div>
+          <div class="record-panel" id="record-panel" hidden>
+            ${renderTradeForm(a.instrument.symbol, p ? { qty: p.qty } : null, new Date(), klass)}
+          </div>
+          ${trades(list)}
+        </section>
+        <section class="card">
           <div class="card-head"><h2>Decisions</h2>
             ${decisionFilterTabs(filter, typeof location === "undefined" ? "" : location.pathname)}</div>
           ${decisions(d, a.instrument.target_profit_pct, filter)}
         </section>
-        ${
-          list.length
-            ? `<section class="card">
-          <div class="card-head"><h2>Fills</h2><span class="sub">what you actually paid</span></div>
-          ${trades(list)}
-        </section>`
-            : `<section class="card compact">
-          <div class="card-head"><h2>Fills</h2>
-            <span class="sub">no fills yet — record the first one on the right</span></div>
-        </section>`
-        }
         <section class="card">
           <div class="card-head"><h2>Headlines</h2></div>
           ${headlines}
         </section>
       </div>
       <aside class="inst-side">
-        <section class="card">
-          <div class="card-head"><h2>Record a fill</h2><span class="sub">held ${p ? units(p.qty) : "0"}</span></div>
-          ${renderTradeForm(a.instrument.symbol, p ? { qty: p.qty } : null, new Date(), klass)}
-        </section>
         <section class="card">
           <div class="card-head"><h2>Exit plan</h2></div>
           ${

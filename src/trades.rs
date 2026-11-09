@@ -247,6 +247,127 @@ pub async fn record(
     Ok(())
 }
 
+/// Correct a recorded fill.
+///
+/// The trade row is rewritten, the position moves by the difference, and the cash difference is
+/// posted as its own `adjust` entry — the ledger stays append-only, so a correction is a visible
+/// event rather than a silent rewrite of history.
+pub async fn edit(
+    pool: &SqlitePool,
+    id: i64,
+    qty: Option<f64>,
+    price: Option<f64>,
+    at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<()> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        instrument_id: i64,
+        side: String,
+        qty: f64,
+        price: f64,
+        traded_at: String,
+        mode: String,
+    }
+    let row: Row = sqlx::query_as(
+        "SELECT instrument_id, side, qty, price, traded_at, mode FROM trades WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!("no fill {id}"))?;
+    let mode = Mode::parse(&row.mode)?;
+    let side = Side::parse(&row.side)?;
+    let new_qty = qty.unwrap_or(row.qty);
+    let new_price = price.unwrap_or(row.price);
+    ensure!(new_qty.is_finite() && new_qty > 0.0, "qty must be positive");
+    ensure!(
+        new_price.is_finite() && new_price > 0.0,
+        "price must be positive"
+    );
+    let when = at.unwrap_or_else(|| {
+        chrono::DateTime::parse_from_rfc3339(&row.traded_at)
+            .map(|d| d.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| chrono::Utc::now())
+    });
+
+    let open: Option<(i64, f64, f64)> = sqlx::query_as(
+        "SELECT id, qty, avg_cost FROM positions
+         WHERE instrument_id = ? AND mode = ? ORDER BY state = 'open' DESC, id DESC LIMIT 1",
+    )
+    .bind(row.instrument_id)
+    .bind(mode.as_str())
+    .fetch_optional(pool)
+    .await?;
+    let (position_id, held, cost) = open.unwrap_or((0, 0.0, 0.0));
+
+    let old_value = row.qty * row.price;
+    let new_value = new_qty * new_price;
+    // A fill is a movement of units and of money; an edit moves the difference.
+    let delta_units = match side {
+        Side::Buy => new_qty - row.qty,
+        Side::Sell => row.qty - new_qty,
+    };
+    let delta_cash = match side {
+        Side::Buy => old_value - new_value,
+        Side::Sell => new_value - old_value,
+    };
+    ensure!(
+        held + delta_units >= -1e-9,
+        "that edit would leave {:.3} units held, which is less than nothing",
+        held + delta_units
+    );
+
+    if position_id != 0 {
+        let new_held = held + delta_units;
+        let basis = held * cost + match side {
+            Side::Buy => new_value - old_value,
+            Side::Sell => 0.0,
+        };
+        let new_cost = if new_held > 1e-9 { basis / new_held } else { cost };
+        sqlx::query(
+            "UPDATE positions SET qty = ?, avg_cost = ?, state = ? WHERE id = ?",
+        )
+        .bind(new_held)
+        .bind(new_cost)
+        .bind(if new_held > 1e-9 { "open" } else { "closed" })
+        .bind(position_id)
+        .execute(pool)
+        .await?;
+    }
+
+    let realised = match side {
+        Side::Sell => Some(new_qty * (new_price - cost)),
+        Side::Buy => None,
+    };
+    sqlx::query(
+        "UPDATE trades SET qty = ?, price = ?, realised = ?, traded_at = ? WHERE id = ?",
+    )
+    .bind(new_qty)
+    .bind(new_price)
+    .bind(realised)
+    .bind(when.to_rfc3339())
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    if delta_cash.abs() > 1e-9 {
+        // Money back when the fill was overstated, more when it was understated.
+        budget::record_at_mode(
+            pool,
+            NewCashEntry {
+                kind: CashKind::Adjust,
+                amount: delta_cash,
+                reference: format!("correct fill {id}"),
+                bucket: None,
+            },
+            &when.to_rfc3339(),
+            mode,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn insert_trade(
     pool: &SqlitePool,

@@ -26,9 +26,14 @@ propose a buy you cannot pay for with cash plus the proceeds of the sales in the
 
 {{cap}}
 
-## Cash
+## Cash, and the two purses
 
-Available in this purse: {{cash}} {{currency}}
+Stock purse: {{cash}} {{currency}} — stock buys are paid from this, plus what your stock sales free.
+Fund purse: {{fund_cash}} {{currency}} — mutual funds are paid from this and nothing else.
+
+**The two purses never lend to each other.** Selling a stock does not free money for a fund, and
+selling a fund does not free money for a stock. A plan that moves money between them is refused.
+
 Trading ceiling for one plan: {{limits}}
 
 ## Today's candidates

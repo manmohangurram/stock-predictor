@@ -10,6 +10,8 @@ pub enum CashKind {
     Sell,
     /// Unspent allowance removed at a month boundary. Not a trading loss.
     Expiry,
+    /// The cash difference when a recorded fill is corrected. Never a trade of its own.
+    Adjust,
 }
 
 impl CashKind {
@@ -19,6 +21,7 @@ impl CashKind {
             CashKind::Buy => "buy",
             CashKind::Sell => "sell",
             CashKind::Expiry => "expiry",
+            CashKind::Adjust => "adjust",
         }
     }
 }

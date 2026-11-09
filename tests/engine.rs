@@ -936,3 +936,70 @@ async fn an_unbalanced_plan_is_refused_and_recorded() {
     .unwrap();
     assert!(reason.0.contains("does not balance"), "{}", reason.0);
 }
+
+/// A plan's rows belong to the call that proposed it, or the audit page can only say "no decision".
+#[tokio::test]
+async fn a_plan_is_linked_to_the_call_that_proposed_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY.NS", "HDFCBANK.NS"]).await;
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'INFY.NS'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode, stop, target)
+         VALUES (?, 24, 1042.30, '2026-09-01T00:00:00Z', 'open', 'long', 1080, 1420)",
+    )
+    .bind(id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let pass = serde_json::json!({
+        "choices": [{"message": {"content": "{\"action\":\"pass\",\"why\":\"nothing new\"}"}}],
+        "usage": {}
+    })
+    .to_string();
+    let planned = serde_json::json!({
+        "choices": [{"message": {"content": include_str!("fixtures/plan_reply.json")}}],
+        "usage": {}
+    })
+    .to_string();
+    let transport = FixtureTransport::new(vec![
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass },
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: planned },
+    ]);
+    let deps = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &transport,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: true,
+    };
+    let _ = engine::poll_once(&deps, now()).await.unwrap();
+
+    let unlinked: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM signals WHERE kind = 'plan' AND conversation_id IS NULL",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(unlinked.0, 0, "every leg names its call");
+
+    let calls: (i64,) = sqlx::query_as(
+        "SELECT COUNT(DISTINCT a.id) FROM api_calls a
+         JOIN signals s ON s.conversation_id = a.conversation_id
+         WHERE s.kind = 'plan'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(calls.0, 1, "the plan call is the one the legs point at");
+}

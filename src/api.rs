@@ -67,6 +67,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/instruments", post(add_instrument))
         .route("/api/instruments/{symbol}", get(instrument_detail))
         .route("/api/trades", get(all_trades))
+        .route("/api/trades/{id}", patch(edit_trade))
         .route("/api/archived", get(archived_instruments))
         .route("/api/calls/{id}", get(call_detail))
         .route(
@@ -757,6 +758,8 @@ pub struct CallRow {
     /// The holding's name, which is what a person reads; the symbol is secondary.
     pub instrument_name: Option<String>,
     pub instrument_symbol: Option<String>,
+    /// How many moves a book call produced. Zero for every other kind of call.
+    pub plan_legs: i64,
     /// Why the model was asked: "price moved …", "new headline …", "rotation …".
     pub trigger: Option<String>,
     /// The decision this call produced, and what you did with it.
@@ -779,6 +782,7 @@ struct CallDbRow {
     decision_reason: Option<String>,
     instrument_name: Option<String>,
     instrument_symbol: Option<String>,
+    plan_legs: i64,
     trigger: Option<String>,
     decision_id: Option<i64>,
     decision_status: Option<String>,
@@ -823,7 +827,9 @@ async fn call_detail(
                 a.request_json, a.response_json, a.prompt_tokens, a.completion_tokens,
                 a.validator_verdict, a.error,
                 d.reason_json AS decision_reason,
-                i.name AS instrument_name, i.symbol AS instrument_symbol
+                i.name AS instrument_name, i.symbol AS instrument_symbol,
+                (SELECT COUNT(*) FROM signals p
+                  WHERE p.conversation_id = a.conversation_id AND p.kind = 'plan') AS plan_legs
          FROM api_calls a
          LEFT JOIN signals d ON d.id = (
              SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
@@ -865,7 +871,9 @@ async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiErro
                 a.validator_verdict AS validator_verdict, a.error AS error,
                 a.trigger AS trigger, d.id AS decision_id, d.status AS decision_status,
                 d.action AS decision_action, d.reason_json AS decision_reason,
-                i.name AS instrument_name, i.symbol AS instrument_symbol
+                i.name AS instrument_name, i.symbol AS instrument_symbol,
+                (SELECT COUNT(*) FROM signals p
+                  WHERE p.conversation_id = a.conversation_id AND p.kind = 'plan') AS plan_legs
          FROM api_calls a
          LEFT JOIN signals d ON d.id = (
              SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
@@ -881,10 +889,24 @@ async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiErro
                 id: r.id,
                 ts: r.ts,
                 endpoint: r.endpoint,
-                decision_action: r.decision_action,
+                // A book call decided several things; the row says so instead of naming one leg.
+                decision_action: if r.plan_legs > 0 {
+                    Some("PLAN".to_string())
+                } else {
+                    r.decision_action.clone()
+                },
                 decision_reason: blocked_reason(r.decision_reason.as_deref()),
-                instrument_name: r.instrument_name,
-                instrument_symbol: r.instrument_symbol,
+                instrument_name: if r.plan_legs > 0 {
+                    None
+                } else {
+                    r.instrument_name.clone()
+                },
+                instrument_symbol: if r.plan_legs > 0 {
+                    None
+                } else {
+                    r.instrument_symbol.clone()
+                },
+                plan_legs: r.plan_legs,
                 trigger: r.trigger,
                 decision_id: r.decision_id,
                 decision_status: r.decision_status,
@@ -1348,6 +1370,33 @@ async fn instrument_trades(
     Ok(Json(crate::trades::history(&st.pool, Some(id), 200).await?))
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct EditTradeBody {
+    pub qty: Option<f64>,
+    pub price: Option<f64>,
+    pub at: Option<String>,
+}
+
+/// Correct a recorded fill: a typo in the quantity, a price you read wrong. The position and the
+/// ledger move by the difference; history is not rewritten, a correction is posted.
+async fn edit_trade(
+    State(st): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+    Json(body): Json<EditTradeBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let when = match body.at.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(raw) => Some(
+            crate::trades::parse_when(raw, chrono::Utc::now())
+                .map_err(|e| ApiError::BadRequest(e.to_string()))?,
+        ),
+        None => None,
+    };
+    crate::trades::edit(&st.pool, id, body.qty, body.price, when)
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    Ok(Json(serde_json::json!({ "id": id, "edited": true })))
+}
+
 async fn all_trades(
     State(st): State<AppState>,
 ) -> Result<Json<Vec<crate::trades::Trade>>, ApiError> {
@@ -1484,6 +1533,16 @@ pub struct ApproveBody {
     pub qty: Option<f64>,
     pub price: Option<f64>,
     pub at: Option<String>,
+    /// A plan is several fills: one entry per leg, each with its own quantity and price.
+    #[serde(default)]
+    pub fills: Vec<LegFill>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct LegFill {
+    pub id: i64,
+    pub qty: Option<f64>,
+    pub price: Option<f64>,
 }
 
 /// Approve a decision by recording the fill you actually got.
@@ -1720,10 +1779,28 @@ async fn approve_plan(
     }
     let mode = crate::models::Mode::parse(&legs[0].mode)
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    // The fills you are about to post, before any of them is posted: the balance is checked on
+    // what you actually got, not on what was proposed.
+    let mut planned = Vec::new();
+    for leg in &legs {
+        let given = body.fills.iter().find(|f| f.id == leg.id);
+        let qty = given
+            .and_then(|f| f.qty)
+            .or(leg.qty)
+            .filter(|q| *q > 0.0)
+            .ok_or_else(|| ApiError::BadRequest(format!("move {} has no quantity", leg.id)))?;
+        let price = given
+            .and_then(|f| f.price)
+            .or(leg.entry)
+            .filter(|p| p.is_finite() && *p > 0.0)
+            .ok_or_else(|| ApiError::BadRequest(format!("move {} has no price", leg.id)))?;
+        planned.push((leg, qty, price));
+    }
     let money = |action: &str| -> f64 {
-        legs.iter()
-            .filter(|l| l.action == action)
-            .map(|l| l.qty.unwrap_or(0.0) * l.entry.unwrap_or(0.0))
+        planned
+            .iter()
+            .filter(|(l, _, _)| l.action == action)
+            .map(|(_, q, p)| q * p)
             .sum()
     };
     let (proceeds, cost) = (money("SELL"), money("BUY"));
@@ -1737,15 +1814,7 @@ async fn approve_plan(
     let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let mut posted = Vec::new();
-    for leg in &legs {
-        let qty = leg
-            .qty
-            .filter(|q| *q > 0.0)
-            .ok_or_else(|| ApiError::BadRequest(format!("move {} has no quantity", leg.id)))?;
-        let price = leg
-            .entry
-            .filter(|p| p.is_finite() && *p > 0.0)
-            .ok_or_else(|| ApiError::BadRequest(format!("move {} has no price", leg.id)))?;
+    for (leg, qty, price) in planned {
         let side = match leg.action.as_str() {
             "BUY" => crate::trades::Side::Buy,
             "SELL" => crate::trades::Side::Sell,

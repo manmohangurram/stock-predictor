@@ -142,6 +142,8 @@ export interface CallRow {
   /** The holding's name — what a person reads. The symbol is secondary. */
   instrument_name: string | null;
   instrument_symbol: string | null;
+  /** How many moves a book call produced. Zero for every other kind of call. */
+  plan_legs: number;
   purpose: string | null;
   round: number | null;
   prompt_tokens: number | null;
@@ -285,11 +287,25 @@ export const api = {
     req<{ id: number; symbol: string; name: string; class: string; fills: number; decisions: number; last_fill: string | null }[]>(
       "/api/archived",
     ),
-  approveSignal: (id: number, body: { qty?: number; price?: number; at?: string }) =>
+  approveSignal: (
+    id: number,
+    body: {
+      qty?: number;
+      price?: number;
+      at?: string;
+      /** A plan carries one fill per leg. */
+      fills?: { id: number; qty: number; price: number }[];
+    },
+  ) =>
     req<{ id: number; status: string; recorded: boolean }>(
       `/api/signals/${id}/approve`,
       json(body),
     ),
+  editTrade: (id: number, body: { qty?: number; price?: number; at?: string }) =>
+    req<{ id: number; edited: boolean }>(`/api/trades/${id}`, {
+      ...json(body),
+      method: "PATCH",
+    }),
   rejectSignal: (id: number, reason?: string) =>
     req<{ id: number; status: string }>(`/api/signals/${id}/reject`, json({ reason })),
   refreshInstrument: (symbol: string) =>

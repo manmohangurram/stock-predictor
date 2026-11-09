@@ -46,6 +46,7 @@ async function route(): Promise<void> {
       const analysis = await api.analysis(symbol);
       app.innerHTML = renderInstrument(analysis, analysis, analysis.trades);
       wireTradeForm(symbol);
+      wireFillEdits();
       wireDecisions();
       wireDecisionActions();
       wireDeleteInstrument();
@@ -195,10 +196,20 @@ function wireDecisionActions(): void {
       const el = status(String(id));
       if (el) el.textContent = "Posting…";
       try {
+        // A plan posts one fill per leg; a single decision posts its own.
+        const plan = form.dataset.plan;
+        const fills = plan
+          ? plan.split(",").map((leg) => ({
+              id: Number(leg),
+              qty: Number(form.querySelector<HTMLInputElement>(`[name="qty-${leg}"]`)?.value),
+              price: Number(form.querySelector<HTMLInputElement>(`[name="price-${leg}"]`)?.value),
+            }))
+          : undefined;
         await api.approveSignal(id, {
-          qty: Number(field(String(id), "qty")?.value),
-          price: Number(field(String(id), "price")?.value),
+          qty: fills ? undefined : Number(field(String(id), "qty")?.value),
+          price: fills ? undefined : Number(field(String(id), "price")?.value),
           at: field(String(id), "at")?.value || undefined,
+          fills,
         });
         await route();
       } catch (e) {
@@ -221,6 +232,63 @@ function wireDecisionActions(): void {
       }
     });
   });
+}
+
+/**
+ * Fills are correctable. The panel opens in place of the row it corrects, so you can see the
+ * number you are changing next to the one you are changing it to.
+ */
+function wireFillEdits(): void {
+  const panel = document.querySelector<HTMLElement>("#record-panel");
+  document.querySelectorAll<HTMLButtonElement>("[data-record-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+      button.setAttribute("aria-expanded", String(!panel.hidden));
+      if (!panel.hidden) panel.querySelector<HTMLInputElement>('input[name="qty"]')?.focus();
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>("[data-edit-fill]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.editFill!;
+      const row = document.querySelector<HTMLElement>(`[data-fill-edit="${id}"]`);
+      if (!row) return;
+      row.hidden = !row.hidden;
+      button.setAttribute("aria-expanded", String(!row.hidden));
+      if (!row.hidden) row.querySelector<HTMLInputElement>('input[name="qty"]')?.focus();
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-cancel-fill]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.cancelFill!;
+      const row = document.querySelector<HTMLElement>(`[data-fill-edit="${id}"]`);
+      if (row) row.hidden = true;
+    });
+  });
+
+  document
+    .querySelectorAll<HTMLFormElement>("[data-edit-form]")
+    .forEach((form) => {
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const id = Number(form.dataset.editForm);
+        const status = document.querySelector<HTMLElement>(`[data-fill-status="${id}"]`);
+        const value = (name: string) =>
+          form.querySelector<HTMLInputElement>(`[name="${name}"]`)?.value ?? "";
+        if (status) status.textContent = "Saving…";
+        try {
+          await api.editTrade(id, {
+            qty: Number(value("qty")),
+            price: Number(value("price")),
+            at: value("at") || undefined,
+          });
+          await route();
+        } catch (e) {
+          if (status) status.textContent = String(e);
+        }
+      });
+    });
 }
 
 function wireTradeForm(symbol: string): void {

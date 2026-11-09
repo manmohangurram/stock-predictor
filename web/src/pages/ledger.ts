@@ -106,9 +106,10 @@ const subtotal = (label: string, invested: number, value: number): string => {
 
 /** One decision: what it says, and the two things you can do about it. */
 /**
- * A plan is one decision with several legs: read as a whole, approved as a whole. Rendering the
- * legs as separate cards was the confusion this replaced — two unrelated-looking decisions that
- * only make sense together.
+ * A plan is one decision with several legs: read as a whole, approved as a whole.
+ *
+ * Approving opens one editable fill per leg — you rarely get the exact price a proposal named, and
+ * a plan is not approved one stock at a time: half a swap is not a swap.
  */
 export function renderPlan(legs: Dashboard["signals"]): string {
   const first = legs[0];
@@ -123,16 +124,16 @@ export function renderPlan(legs: Dashboard["signals"]): string {
     <span class="sub">${escapeHtml(l.symbol)}</span>
     <span class="num">${l.entry === null ? "" : money(l.entry)}</span>
     <span class="lbl">${l.qty === null || l.qty === 0 ? "size on approval" : `${units(l.qty)} units`}</span>
-  </div>${
-    l.rationale ? `<p class="plan-why">${escapeHtml(l.rationale)}</p>` : ""
-  }`;
-  const arithmetic = sells.length && buys.length
-    ? `<p class="decision-note">${money(proceeds)} from the sale${sells.length > 1 ? "s" : ""} covers ${money(cost)}, and ${money(Math.abs(left))} is ${left >= 0 ? "left in" : "short of"} the purse.</p>`
-    : "";
+  </div>${l.rationale ? `<p class="plan-why">${escapeHtml(l.rationale)}</p>` : ""}`;
+  const arithmetic =
+    sells.length && buys.length
+      ? `<p class="decision-note">${money(proceeds)} from the sale${sells.length > 1 ? "s" : ""} covers ${money(cost)}, and ${money(Math.abs(left))} is ${left >= 0 ? "left in" : "short of"} the purse.</p>`
+      : "";
   const status =
     first.status === "pending"
       ? ""
       : `<span class="pill ${first.status === "approved" ? "ok" : "todo"}">${first.status}</span>`;
+  const actions = first.status === "pending" ? planActions(first, legs) : "";
   return `<div class="feed-row decision-feed plan-card">
     <div class="decision-main">
       <div><span class="stamp" data-stamp="estimate">PLAN</span>
@@ -142,9 +143,63 @@ export function renderPlan(legs: Dashboard["signals"]): string {
       ${legs.map(leg).join("")}
       ${arithmetic}
       ${first.plan_rationale ? `<p class="decision-prose">${escapeHtml(first.plan_rationale)}</p>` : ""}
-      ${renderDecisionActions(first)}
+      ${actions}
     </div>
   </div>`;
+}
+
+/** Approve and reject the plan, with a fill row per leg. */
+function planActions(
+  first: Dashboard["signals"][number],
+  legs: Dashboard["signals"],
+): string {
+  // One header, then one aligned row per leg: a stamp column, the holding, then the two numbers.
+  const fills = `<div class="plan-fill plan-fill-head" aria-hidden="true">
+      <span></span><span>Holding</span><span>Quantity</span><span>Price</span>
+    </div>${legs
+      .map(
+        (l) => `<div class="plan-fill">
+        <span class="stamp" data-stamp="${l.action === "SELL" ? "sell" : "buy"}">${l.action}</span>
+        <span class="plan-fill-name">${escapeHtml(l.name || l.symbol)}
+          <span class="sub">${escapeHtml(l.symbol)}</span></span>
+        <input name="qty-${l.id}" type="number" min="0" step="any" value="${l.qty ?? ""}"
+               aria-label="Quantity for ${escapeHtml(l.name || l.symbol)}" />
+        <input name="price-${l.id}" type="number" min="0" step="any" value="${l.entry ?? ""}"
+               aria-label="Price for ${escapeHtml(l.name || l.symbol)}" />
+      </div>`,
+      )
+      .join("")}`;
+  return `<div class="decision-actions">
+    <button class="btn icon-btn" type="button" data-approve="${first.id}" aria-expanded="false"
+            title="Approve the plan — record the fill you actually got on each leg"
+            aria-label="Approve the plan">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3.4 8.4l3 3 7-7" /></svg>
+    </button>
+    <button class="btn ghost icon-btn" type="button" data-reject="${first.id}" aria-expanded="false"
+            title="Reject the plan — no money moves" aria-label="Reject the plan">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 4l8 8M12 4l-8 8" /></svg>
+    </button>
+  </div>
+  <form class="approve-form" data-approve-form="${first.id}" data-plan="${legs.map((l) => l.id).join(",")}" hidden>
+    <div class="plan-fills">${fills}</div>
+    <div class="row">
+      <button class="btn primary" type="submit">Post all fills</button>
+      <button class="btn ghost" type="button" data-cancel="${first.id}">Cancel</button>
+      <span class="help" data-status="${first.id}" role="status"></span>
+    </div>
+  </form>
+  <form class="reject-form" data-reject-form="${first.id}" hidden>
+    <div class="row">
+      <input name="reason" placeholder="Why not? (optional)" aria-label="Reason" />
+      <button class="btn" type="submit">Reject</button>
+      <button class="btn ghost" type="button" data-cancel="${first.id}">Cancel</button>
+      <span class="help" data-status="${first.id}" role="status"></span>
+    </div>
+  </form>`;
 }
 
 function decisionRow(s: Dashboard["signals"][number]): string {

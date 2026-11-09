@@ -364,6 +364,7 @@ fn the_plan_prompt_carries_the_book_the_cap_and_the_candidates() {
         "INFY.NS | Infosys | 24.000 | 1042.30 | 1146.30 | +10.0% | 1080.00 | 1420.00",
         &prompts::cap_line(200_000.0, "INR"),
         200_000.0,
+        50_000.0,
         "INR",
         "trade size 500 to 50000 per fill",
         "HDFCBANK.NS at 793.65, +2.1% today",
@@ -374,5 +375,8 @@ fn the_plan_prompt_carries_the_book_the_cap_and_the_candidates() {
     assert!(rendered.text.contains("INFY.NS | Infosys"), "{}", rendered.text);
     assert!(rendered.text.contains("HDFCBANK.NS at 793.65"), "{}", rendered.text);
     assert!(rendered.text.contains("six months or more"), "{}", rendered.text);
+    // The two purses, said plainly: this is the rule the model broke by funding a fund with a sale.
+    assert!(rendered.text.contains("Fund purse: 50000.00 INR"), "{}", rendered.text);
+    assert!(rendered.text.contains("never lend to each other"), "{}", rendered.text);
     assert!(!rendered.text.contains("{{"), "an unfilled placeholder: {}", rendered.text);
 }

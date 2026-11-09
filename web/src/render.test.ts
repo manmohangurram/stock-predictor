@@ -1022,5 +1022,10 @@ describe("a plan", () => {
     // One approve control for the whole plan, keyed to the first leg.
     expect((html.match(/data-approve=/g) ?? []).length).toBe(1);
     expect(html).toContain('data-approve="2"');
+    // Each leg carries its own editable fill: a plan is not approved one stock at a time.
+    expect(html).toContain('name="qty-2"');
+    expect(html).toContain('name="qty-3"');
+    expect(html).toContain('name="price-3"');
+    expect(html).toContain("Post all fills");
   });
 });

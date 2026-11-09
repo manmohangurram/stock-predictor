@@ -106,6 +106,30 @@ fn extract_json(content: &str) -> Option<serde_json::Value> {
     serde_json::from_str(&content[start..=end]).ok()
 }
 
+/// Which purse a move draws on. Stocks have one; mutual funds have their own monthly allowance,
+/// and the two never lend to each other.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Purse {
+    Stock,
+    Fund,
+}
+
+/// Cash free in each purse, before this plan's own sales.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Cash {
+    pub stock: f64,
+    pub fund: f64,
+}
+
+impl Cash {
+    fn get(self, purse: Purse) -> f64 {
+        match purse {
+            Purse::Stock => self.stock,
+            Purse::Fund => self.fund,
+        }
+    }
+}
+
 /// Why a plan is not allowed. Every message is user-facing.
 ///
 /// Leg by leg first — a symbol that is not held, a stop on the wrong side, a quantity that is not a
@@ -114,13 +138,27 @@ fn extract_json(content: &str) -> Option<serde_json::Value> {
 pub fn validate(
     plan: &Plan,
     book: &[HoldingLine],
-    cash: f64,
+    cash: Cash,
     limits: &Limits,
     currency: &str,
     now: DateTime<Utc>,
+    // Symbols that are mutual funds: they draw on the fund purse, never on stock money.
+    funds: &[String],
 ) -> Result<()> {
-    let mut freed = 0.0;
-    let mut spent = 0.0;
+    let purse_of = |symbol: &str| {
+        if funds.iter().any(|f| f == symbol) {
+            Purse::Fund
+        } else {
+            Purse::Stock
+        }
+    };
+    // Money is counted per purse: selling a stock frees stock money, and a fund cannot spend it.
+    let mut freed = [0.0f64; 2];
+    let mut spent = [0.0f64; 2];
+    let slot = |p: Purse| match p {
+        Purse::Stock => 0,
+        Purse::Fund => 1,
+    };
     let mut seen: Vec<&str> = Vec::new();
 
     for m in &plan.moves {
@@ -149,7 +187,7 @@ pub fn validate(
                         held.qty
                     ));
                 }
-                freed += m.qty * m.price;
+                freed[slot(purse_of(&m.symbol))] += m.qty * m.price;
             }
             Action::Buy => {
                 if m.stop.is_none() || m.target.is_none() {
@@ -168,20 +206,28 @@ pub fn validate(
                         ));
                     }
                 }
-                spent += m.qty * m.price;
+                spent[slot(purse_of(&m.symbol))] += m.qty * m.price;
             }
             Action::Hold | Action::None => {}
         }
     }
 
-    if spent > freed + cash + 1e-6 {
-        return Err(anyhow!(
-            "the plan does not balance: buys cost {spent:.2} but it frees {freed:.2} plus {cash:.2} {currency} cash"
-        ));
+    for (purse, name) in [(Purse::Stock, "stock"), (Purse::Fund, "fund")] {
+        let i = slot(purse);
+        if spent[i] > freed[i] + cash.get(purse) + 1e-6 {
+            return Err(anyhow!(
+                "the {name} purse does not balance: buys cost {:.2} but the plan frees {:.2} plus {:.2} {currency} of {name} cash — the two purses never lend to each other",
+                spent[i],
+                freed[i],
+                cash.get(purse)
+            ));
+        }
     }
-    if spent > limits.max_trade_amount + freed + 1e-6 {
+    let total_spent = spent[0] + spent[1];
+    let total_freed = freed[0] + freed[1];
+    if total_spent > limits.max_trade_amount + total_freed + 1e-6 {
         return Err(anyhow!(
-            "the plan spends {spent:.2}, above the {:.2} ceiling for one plan",
+            "the plan spends {total_spent:.2}, above the {:.2} ceiling for one plan",
             limits.max_trade_amount
         ));
     }

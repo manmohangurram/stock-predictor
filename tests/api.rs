@@ -1717,3 +1717,191 @@ async fn rejecting_one_leg_of_a_plan_rejects_every_move() {
             .unwrap();
     assert_eq!(pending.0, 0, "no leg is left pending");
 }
+
+/// You rarely get the exact prices a plan named. Each leg carries its own fill, and the plan is
+/// checked for balance on what you actually got.
+#[tokio::test]
+async fn a_plan_is_approved_with_a_fill_for_each_leg() {
+    let (_d, router, pool) = setup().await;
+    let sell_id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status, plan_id)
+         SELECT id, 'SELL', 5, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:00Z',
+                'long', 'plan', 'pending', 99
+         FROM instruments WHERE symbol = 'INFY' RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE signals SET plan_id = ? WHERE id = ?")
+        .bind(sell_id.0)
+        .bind(sell_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, stop, target, state, mode, opened_at)
+         SELECT id, 5, 90.0, 80.0, 120.0, 'open', 'long', '2026-09-01T00:00:00Z'
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let buy_id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, mode, kind, status, plan_id)
+         SELECT id, 'BUY', 1, 40.0, 36.0, 60.0, '2030-01-01T00:00:00Z', '{}',
+                '2026-11-09T10:00:01Z', 'long', 'plan', 'pending', ?
+         FROM instruments WHERE symbol = 'TCS' RETURNING id",
+    )
+    .bind(sell_id.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // Different from the proposal on both legs: 5 @ 101.50 sold, 2 @ 40.25 bought.
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", buy_id.0),
+        json!({"fills": [
+            {"id": sell_id.0, "qty": 5.0, "price": 101.5},
+            {"id": buy_id.0, "qty": 2.0, "price": 40.25}
+        ]}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let filled: Vec<(String, f64, f64)> = sqlx::query_as(
+        "SELECT action, filled_qty, filled_price FROM signals WHERE plan_id = ? ORDER BY action",
+    )
+    .bind(sell_id.0)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(filled[0], ("BUY".to_string(), 2.0, 40.25));
+    assert_eq!(filled[1], ("SELL".to_string(), 5.0, 101.5));
+}
+
+/// A fill is corrected, not rewritten: the position moves by the difference and the ledger gets a
+/// visible `adjust` entry, because cash_ledger is append-only.
+#[tokio::test]
+async fn editing_a_fill_moves_the_position_and_posts_the_cash_difference() {
+    let (_d, router, pool) = setup().await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 100.0, "mode": "long"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let trade: (i64,) = sqlx::query_as("SELECT MAX(id) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // You transposed the price: it was 90, not 100.
+    let (s, v) = send(
+        &router,
+        "PATCH",
+        &format!("/api/trades/{}", trade.0),
+        json!({"price": 90.0}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let (qty, cost): (f64, f64) = sqlx::query_as(
+        "SELECT qty, avg_cost FROM positions WHERE instrument_id =
+         (SELECT id FROM instruments WHERE symbol = 'INFY') AND state = 'open'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(qty, 10.0);
+    assert!((cost - 90.0).abs() < 1e-6, "cost basis follows the correction: {cost}");
+
+    let adjust: (f64,) =
+        sqlx::query_as("SELECT COALESCE(SUM(amount), 0) FROM cash_ledger WHERE kind = 'adjust'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!((adjust.0 - 100.0).abs() < 1e-6, "10 units × 10 too much: {adjust:?}");
+}
+
+/// An edit that would sell more than is held is refused, and nothing moves.
+#[tokio::test]
+async fn an_edit_that_would_go_negative_is_refused() {
+    let (_d, router, pool) = setup().await;
+    send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 100.0, "mode": "long"}),
+    )
+    .await;
+    let trade: (i64,) = sqlx::query_as("SELECT MAX(id) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "sell", "qty": 4.0, "price": 110.0, "mode": "long"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let sell: (i64,) = sqlx::query_as("SELECT MAX(id) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let (s, v) = send(
+        &router,
+        "PATCH",
+        &format!("/api/trades/{}", sell.0),
+        json!({"qty": 40.0}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    let held: (f64,) = sqlx::query_as(
+        "SELECT qty FROM positions WHERE instrument_id =
+         (SELECT id FROM instruments WHERE symbol = 'INFY') AND state = 'open'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(held.0, 6.0, "the refused edit moved nothing");
+    let _ = trade;
+}
+
+/// A book call decided several things: the audit row says "plan", not the last leg's name.
+#[tokio::test]
+async fn a_book_call_reads_as_a_plan_in_the_audit() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO api_calls (ts, conversation_id, endpoint, purpose, trigger, http_status)
+         VALUES ('2026-11-09T10:00:00Z', 'plan-1', 'chat', 'plan book', 'book call', 200)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status, conversation_id, plan_id)
+         SELECT id, 'BUY', 1, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:01Z',
+                'long', 'plan', 'pending', 'plan-1', 5
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (s, v) = get(&router, "/api/calls").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let row = &v.as_array().unwrap()[0];
+    assert_eq!(row["decision_action"], "PLAN", "{row}");
+    assert_eq!(row["plan_legs"], 1);
+    assert!(row["instrument_name"].is_null(), "{row}");
+}

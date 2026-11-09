@@ -106,21 +106,24 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
         settings.limits_long.max_profit_pct,
         currency = settings.currency
     );
+    let fund_cash = budget::available_mf(deps.pool).await?;
     let rendered = crate::llm::prompts::render_plan(
         &crate::llm::plan::book_block(&holdings, &settings.currency),
         &crate::llm::prompts::cap_line(available, &settings.currency),
         available,
+        fund_cash,
         &settings.currency,
         &limits,
         &candidates,
     )?;
     let model = crate::rules::settings::model_config(deps.pool).await?;
+    let conversation = format!("plan-{}", now.timestamp_millis());
     let reply = crate::llm::deepseek::chat(
         deps.pool,
         &model,
         deps.transport,
         crate::llm::deepseek::ChatRequest {
-            conversation_id: format!("plan-{}", now.timestamp_millis()),
+            conversation_id: conversation.clone(),
             round: 1,
             prompt: rendered.text,
             prompt_template: rendered.template,
@@ -147,16 +150,22 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
         return Ok(None);
     };
 
+    let funds = fund_symbols(deps.pool).await?;
+    let cash = crate::llm::plan::Cash {
+        stock: available,
+        fund: budget::available_mf(deps.pool).await?,
+    };
     if let Err(e) = crate::llm::plan::validate(
         &plan,
         &holdings,
-        available,
+        cash,
         &settings.limits_long,
         &settings.currency,
         now,
+        &funds,
     ) {
         tracing::warn!(error = %e, "plan refused by the validator");
-        record_plan_refusal(deps.pool, &e.to_string(), now).await?;
+        record_plan_refusal(deps.pool, &e.to_string(), now, Some(&conversation)).await?;
         return Ok(None);
     }
 
@@ -164,8 +173,8 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
     for m in &plan.moves {
         let id: Option<(i64,)> = sqlx::query_as(
             "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-                reason_json, created_at, confidence, mode, kind, status, plan_id)
-             SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'long', 'plan', 'pending', ?
+                reason_json, created_at, confidence, mode, kind, status, plan_id, conversation_id)
+             SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'long', 'plan', 'pending', ?, ?
              FROM instruments WHERE symbol = ? RETURNING id",
         )
         .bind(m.action.as_str())
@@ -186,6 +195,7 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
         .bind(now.to_rfc3339())
         .bind(Option::<String>::None)
         .bind(plan_id)
+        .bind(&conversation)
         .bind(&m.symbol)
         .fetch_optional(deps.pool)
         .await?;
@@ -196,6 +206,7 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
                 deps.pool,
                 &format!("{} is not in the book, so the plan cannot be stored", m.symbol),
                 now,
+                Some(&conversation),
             )
             .await?;
             return Ok(None);
@@ -215,7 +226,12 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
 
 /// A refused plan is a decision too: it is recorded with the reason, so the ledger can say why
 /// nothing happened, the way a blocked single proposal already does.
-async fn record_plan_refusal(pool: &SqlitePool, why: &str, now: DateTime<Utc>) -> Result<()> {
+async fn record_plan_refusal(
+    pool: &SqlitePool,
+    why: &str,
+    now: DateTime<Utc>,
+    conversation_id: Option<&str>,
+) -> Result<()> {
     let reason = serde_json::json!({
         "blocked": "plan_refused",
         "reasons": [why],
@@ -223,17 +239,26 @@ async fn record_plan_refusal(pool: &SqlitePool, why: &str, now: DateTime<Utc>) -
     .to_string();
     sqlx::query(
         "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
-            created_at, mode, kind, status)
-         SELECT id, 'BLOCKED', 0, 0, ?, ?, ?, 'long', 'plan', 'pending'
+            created_at, mode, kind, status, conversation_id)
+         SELECT id, 'BLOCKED', 0, 0, ?, ?, ?, 'long', 'plan', 'pending', ?
          FROM instruments WHERE class = 'stock' AND active = 1
          ORDER BY id LIMIT 1",
     )
     .bind((now + chrono::Duration::hours(18)).to_rfc3339())
     .bind(reason)
     .bind(now.to_rfc3339())
+    .bind(conversation_id)
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// The symbols that are mutual funds, so the plan's money can be counted per purse.
+async fn fund_symbols(pool: &SqlitePool) -> Result<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT symbol FROM instruments WHERE class = 'mutual_fund'")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
 /// Today's list for the book call: the active instruments and their last two closes, so the model
