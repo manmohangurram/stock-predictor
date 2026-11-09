@@ -36,7 +36,7 @@ before you see it.
 - **Two pots, one process.** Long-term and trading books with separate capital, separate limits and
   separate history. Neither can starve the other; the same stock can sit in both.
 - **Stocks and mutual funds, handled as what they are.** Funds are bought at NAV and held — no
-  intraday exit exists, so they cannot be filled into the trading pot, and their table has its own
+  intraday exit exists, so they cannot be filled into the short-term pot, and their table has its own
   columns.
 - **Buy *and* sell.** A breached stop or a reached target is a SELL signal and a high-priority push
   on the very next poll. The model may explain that, never talk the app out of it.
@@ -157,7 +157,7 @@ protects a copied database — not a machine. The full note is in
 - **Indian markets only.** NSE/BSE via Yahoo, mutual fund NAV via AMFI. The session window is IST.
 - **Yahoo and AMFI are unofficial.** A shape change breaks the fetch; the parsers fail loudly rather
   than inventing a number.
-- **The trading pot gets no recommendations of its own** — it accepts the fills you record. A swing
+- **The short-term pot gets no recommendations of its own** — it accepts the fills you record. A swing
   strategy is not built.
 - **No stop-loss automation.** The app never trades; it tells you what it would do.
 - **One process, one SQLite file.** No clustering, no read replicas. That is the point.

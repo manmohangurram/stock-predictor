@@ -101,7 +101,7 @@ const MONEY = (s: Settings, tab: Tab): string => {
       type: "number",
       step: "1",
       unit: s.currency,
-      help: `A separate monthly allowance for the trading pot, ${money(s.trading_available, 0)} left this month. Neither pot draws on the other.`,
+      help: `A separate monthly allowance for the short-term pot, ${money(s.trading_available, 0)} left this month. Neither pot draws on the other.`,
     })}
     ${select(tab, "currency", "Currency", s.currency, ["INR", "USD", "EUR", "GBP"].map((c) => [c, c]),
       s.currency_locked
@@ -122,7 +122,7 @@ const LIMIT_ROWS: [keyof Settings["limits_long"], string, string, string][] = [
 const RISK = (s: Settings, tab: Tab): string => `
   <table class="limits-table">
     <thead><tr><th scope="col">Limit</th>
-      <th scope="col">Long-term limits</th><th scope="col">Trading limits</th></tr></thead>
+      <th scope="col">Long-term limits</th><th scope="col">Short-term limits</th></tr></thead>
     <tbody>
       ${LIMIT_ROWS.map(([key, label, step, unit]) => {
         const cell = (mode: "long" | "trade") => {
@@ -283,7 +283,7 @@ export function renderSettings(s: Settings, tab: Tab = "money"): string {
     "settings",
     `${renderHead("Settings", "Every value is a database row, applied on the next tick", [
       { label: "Long-term", value: money(s.budget, 0) },
-      { label: "Trading", value: money(s.trading_budget, 0) },
+      { label: "Short-term", value: money(s.trading_budget, 0) },
       { label: "Free", value: money(s.available, 0) },
     ])}
     <div class="tabs-row">${tabRail(tab, s)}</div>

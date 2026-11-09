@@ -24,7 +24,7 @@ The pipeline, the two pots, and why the two books are separate even for the same
 
 Two books, one process. The difference is *capital and rules*, not a different engine.
 
-| | Long-term | Trading |
+| | Long-term | Short-term |
 |---|---|---|
 | Capital | Long-term pot | Its own pot; never draws on the other, and the other never draws on it |
 | Limits | Its own five numbers | Its own five numbers, usually tighter |
@@ -35,7 +35,7 @@ Two books, one process. The difference is *capital and rules*, not a different e
 
 **How the server behaves differently for them:** the poll tick walks the watchlist once and
 evaluates each instrument against the pot it belongs to, using that pot's limits — so a switch to
-the Trading tab changes which book you see, not how often anything is fetched. Cash, exposure and
+the Short-term tab changes which book you see, not how often anything is fetched. Cash, exposure and
 the per-trade caps are computed per pot, which is why a swing trade cannot block a long-term buy.
 Because both live in one process, one instrument can appear in both books with two independent
 positions (the screenshot above shows TCS in the trading book while the long-term book holds it
@@ -44,7 +44,7 @@ separately).
 **What is *not* different yet, plainly:** there is no separate trading strategy and no candidate
 discovery. Both pots run the same rules (trend, RSI, ATR) and the same prompt, with the trading
 pot distinguished by its capital, its limit set and its own books. A momentum scanner and a
-swing-specific prompt are the missing half of the trading mode, and they are not built.
+swing-specific prompt are the missing half of the short-term mode, and they are not built.
 
 ---
 

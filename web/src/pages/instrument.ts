@@ -93,7 +93,7 @@ export function renderTradeForm(
   symbol: string,
   position: { qty: number } | null,
   now = new Date(),
-  /** A mutual fund is bought at NAV and held: the trading pot is not offered for it. */
+  /** A mutual fund is bought at NAV and held: the short-term pot is not offered for it. */
   klass: "stock" | "mutual_fund" | "ipo" = "stock",
 ): string {
   const held = position?.qty ?? null;
@@ -118,7 +118,7 @@ export function renderTradeForm(
     <label class="field"><span class="lbl">Pot</span>
       ${
         klass === "stock"
-          ? `<select name="mode"><option value="long">Long-term</option><option value="trade">Trading</option></select>`
+          ? `<select name="mode"><option value="long">Long-term</option><option value="trade">Short-term</option></select>`
           : `<input type="hidden" name="mode" value="long" /><span class="static">Long-term only</span>`
       }</label>
   </div>

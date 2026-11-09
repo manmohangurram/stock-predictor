@@ -24,7 +24,7 @@ without a restart — the scheduler reads them at the top of every tick:
 
 | Tab | What it holds |
 |---|---|
-| **Money** | the long-term pot, the trading pot, the currency |
+| **Money** | the long-term pot, the short-term pot, the currency |
 | **Risk limits** | both pots side by side: min and max profit %, smallest and largest trade, one-stock cap |
 | **Model** | provider, model, base URL, API key |
 | **Notifications** | ntfy server, topic, token, and a test button |

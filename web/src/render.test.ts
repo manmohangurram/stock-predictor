@@ -352,7 +352,7 @@ describe("two pots in the UI", () => {
     const html = renderModeTabs("trade");
     expect(html).toContain('href="/?mode=long"');
     expect(html).toContain('href="/?mode=trade"');
-    expect(html).toContain('aria-current="page">Trading');
+    expect(html).toContain('aria-current="page">Short-term');
   });
 
   test("only trades from the current pot are listed", () => {
@@ -365,7 +365,7 @@ describe("two pots in the UI", () => {
       dashboard({ mode: "trade", positions: [position()] }),
       [trade(1, "long"), trade(2, "trade")],
     );
-    expect(html).toContain("Trading book");
+    expect(html).toContain("Short-term book");
     expect(html.match(/class="feed-row"/g)?.length).toBe(1);
   });
 });
@@ -642,7 +642,7 @@ describe("per-pot limits", () => {
       }
     }
     expect(html).toContain("Long-term limits");
-    expect(html).toContain("Trading limits");
+    expect(html).toContain("Short-term limits");
     // different values per pot
     expect(html).toContain('id="long_max_trade_amount"');
     expect(html).toContain('value="25000"');
@@ -682,7 +682,7 @@ describe("mutual funds in the trading pot", () => {
   test("a stock still gets both pots", async () => {
     const { renderTradeForm } = await import("./pages/instrument");
     const html = renderTradeForm("INFY.NS", null, new Date("2026-11-08T12:00:00Z"), "stock");
-    expect(html).toContain('<option value="trade">Trading</option>');
+    expect(html).toContain('<option value="trade">Short-term</option>');
   });
 });
 

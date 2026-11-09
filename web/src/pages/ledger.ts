@@ -10,7 +10,7 @@ export function renderModeTabs(mode: Mode): string {
   const tab = (m: Mode, label: string) =>
     `<a class="mode-tab" href="/?mode=${m}" ${m === mode ? 'aria-current="page"' : ""}>${label}</a>`;
   return `<nav class="modes" aria-label="Strategy">
-    ${tab("long", "Long-term")}${tab("trade", "Trading")}
+    ${tab("long", "Long-term")}${tab("trade", "Short-term")}
   </nav>`;
 }
 
@@ -194,9 +194,9 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
   );
 
   const content = `${renderHead(
-    d.mode === "trade" ? "Trading book" : "Holdings",
+    d.mode === "trade" ? "Short-term book" : "Holdings",
     d.mode === "trade"
-      ? "Trading pot · separate capital, separate limits"
+      ? "Short-term pot · separate capital, separate limits"
       : `Long-term book · ${stocks.length} ${stocks.length === 1 ? "stock" : "stocks"} and ${funds.length} ${funds.length === 1 ? "fund" : "funds"}`,
     [
       { label: "Invested", value: money(all.invested, 0) },
@@ -206,8 +206,8 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
     ],
   )}
   <div class="mode-row">${renderModeTabs(d.mode)}<span class="sub">${d.currency} · as of the last poll</span></div>
-  ${d.mode === "trade" ? section("Trading positions", `${d.positions.length} · all stocks`, STOCK_HEAD,
-      d.positions.length ? d.positions.map((p) => renderRow(d, p)).join("") : `<tr><td colspan="9" class="empty">Nothing in the trading pot.</td></tr>`) : stocksSection + fundsSection}
+  ${d.mode === "trade" ? section("Short-term positions", `${d.positions.length} · all stocks`, STOCK_HEAD,
+      d.positions.length ? d.positions.map((p) => renderRow(d, p)).join("") : `<tr><td colspan="9" class="empty">Nothing in the short-term pot.</td></tr>`) : stocksSection + fundsSection}
   <div class="cards">
     <section class="card">
       <div class="lbl">Add an instrument</div>
