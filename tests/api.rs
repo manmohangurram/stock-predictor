@@ -2055,3 +2055,68 @@ async fn the_audit_list_accepts_offset_and_limit() {
     assert_eq!(s, StatusCode::OK);
     assert_eq!(rows.as_array().unwrap().len(), 10);
 }
+
+/// The dashboard tag must move when values change in place — an edited fill, an archived
+/// instrument — or the client gets a 304 and the screen goes stale until a hard refresh.
+#[tokio::test]
+async fn the_dashboard_tag_notices_in_place_changes() {
+    use tower::ServiceExt;
+    let (_d, router, pool) = setup().await;
+    let tag = |router: axum::Router| async move {
+        let resp = router
+            .oneshot(
+                Request::builder()
+                    .uri("/api/dashboard")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        resp.headers()
+            .get("etag")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
+    };
+
+    let before = tag(router.clone()).await;
+
+    // A fill, then a correction to it: no new trade id, only changed numbers.
+    send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 100.0, "mode": "long"}),
+    )
+    .await;
+    let after_fill = tag(router.clone()).await;
+    assert_ne!(before, after_fill, "a new fill changes the tag");
+
+    let trade: (i64,) = sqlx::query_as("SELECT MAX(id) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    send(
+        &router,
+        "PATCH",
+        &format!("/api/trades/{}", trade.0),
+        json!({"qty": 12.0}),
+    )
+    .await;
+    let after_edit = tag(router.clone()).await;
+    assert_ne!(
+        after_fill, after_edit,
+        "editing a fill in place changes the tag"
+    );
+
+    // Archiving flips a flag; the ledger must stop showing the row. (INFY is held, so it cannot
+    // be archived — TCS is the one that can.)
+    let (status, _) = send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;
+    assert!(status.is_success(), "archive should succeed for an unheld instrument");
+    let after_archive = tag(router.clone()).await;
+    assert_ne!(
+        after_edit, after_archive,
+        "archiving changes the tag"
+    );
+}

@@ -84,3 +84,7 @@ Token knobs: `PROMPT_WINDOW_HOURS` (default 4) is the intraday tape length, the 
 lever; the static prompt block is a prefix so DeepSeek's context cache can hit it.
 Request count: one per page (`/api/dashboard` carries recent trades, `/analysis` carries signals
 and fills), and the dashboard answers 304 when its version tag is unchanged.
+
+The tag fingerprints the **data**, not row counts: an edited fill changes no id, an archive changes
+no id, and a count-based tag answered 304 through both — the screen then looked frozen until a
+hard refresh. Any new in-place write needs to be in that hash, or it will be invisible.

@@ -752,7 +752,8 @@ route();
  */
 window.setInterval(() => {
   const path = window.location.pathname;
-  const dataPage = path === "/" || path.startsWith("/i/") || path === "/calls";
+  const dataPage =
+    path === "/" || path.startsWith("/i/") || path === "/calls" || path === "/archived";
   if (!dataPage) return;
   const el = document.activeElement;
   const typing =

@@ -58,6 +58,16 @@ impl AppState {
     }
 }
 
+/// API responses may be cached for reuse only after revalidation — so the ETag still saves the
+/// body, but a changed row is never served from a stale copy.
+async fn no_store(mut res: axum::response::Response) -> axum::response::Response {
+    res.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-cache, must-revalidate"),
+    );
+    res
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
@@ -95,6 +105,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/positions", post(post_position))
         .route("/api/positions/{id}", patch(patch_position))
         .route("/api/ipo", post(post_ipo))
+        // Every answer must be revalidated: a stale 200 in the browser's cache is exactly the
+        // "nothing updates until I hard refresh" report.
+        .layer(axum::middleware::map_response(no_store))
         .with_state(state)
 }
 
@@ -253,16 +266,34 @@ pub struct Dashboard {
 
 /// Cheap version tag for the dashboard: max signal id, trade id, position count, settings
 /// count. A minute-by-minute poll that finds nothing new costs a 304 with no body.
+/// A fingerprint of everything the dashboard renders.
+///
+/// Counting rows was not enough: approving changes no id, editing a fill changes values in place,
+/// and archiving flips a flag. Each of those left the tag unchanged, so the page answered 304 and
+/// the screen went stale until a hard refresh. The tag now hashes the *data*, not just its size.
 async fn dashboard_etag(pool: &SqlitePool, mode: crate::models::Mode) -> Result<String, ApiError> {
-    let row: (i64, i64, i64, i64, i64) = sqlx::query_as(
-        // Approving or rejecting changes no id, so the pending count and the last status change
-        // are part of the tag — otherwise the page answers 304 and the list never updates.
-        "SELECT (SELECT COALESCE(MAX(id),0) FROM signals WHERE mode = ?),
-                (SELECT COALESCE(MAX(id),0) FROM trades WHERE mode = ?),
-                (SELECT COUNT(*) FROM positions WHERE mode = ?),
-                (SELECT COUNT(*) FROM settings),
-                (SELECT COUNT(*) FROM signals WHERE mode = ? AND status = 'pending')",
+    #[derive(sqlx::FromRow)]
+    struct Fingerprint {
+        signals: i64,
+        pending: i64,
+        trades: i64,
+        ledger: i64,
+        positions: String,
+        instruments: i64,
+        settings: String,
+    }
+    let row: Fingerprint = sqlx::query_as(
+        "SELECT (SELECT COALESCE(MAX(id),0) FROM signals WHERE mode = ?) AS signals,
+                (SELECT COUNT(*) FROM signals WHERE mode = ? AND status = 'pending') AS pending,
+                (SELECT COALESCE(MAX(id),0) FROM trades WHERE mode = ?) AS trades,
+                (SELECT COALESCE(MAX(id),0) FROM cash_ledger WHERE mode = ?) AS ledger,
+                (SELECT COALESCE(group_concat(id || ':' || qty || ':' || avg_cost || ':'
+                         || COALESCE(stop, '') || ':' || COALESCE(target, '') || ':' || state), '')
+                   FROM positions WHERE mode = ?) AS positions,
+                (SELECT COUNT(*) FROM instruments WHERE active = 1) AS instruments,
+                (SELECT COALESCE(group_concat(key || '=' || value), '') FROM settings) AS settings",
     )
+    .bind(mode.as_str())
     .bind(mode.as_str())
     .bind(mode.as_str())
     .bind(mode.as_str())
@@ -273,12 +304,14 @@ async fn dashboard_etag(pool: &SqlitePool, mode: crate::models::Mode) -> Result<
     let mut h = Sha256::new();
     h.update(
         format!(
-            "{}-{}-{}-{}-{}-{}",
-            row.0,
-            row.1,
-            row.2,
-            row.3,
-            row.4,
+            "{}-{}-{}-{}-{}-{}-{}-{}",
+            row.signals,
+            row.pending,
+            row.trades,
+            row.ledger,
+            row.positions,
+            row.instruments,
+            row.settings,
             mode.as_str()
         )
         .as_bytes(),
