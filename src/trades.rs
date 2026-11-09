@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::models::Mode;
-use crate::rules::budget::{self, CashKind, NewCashEntry};
+use crate::rules::budget::{self, bucket_for, CashKind, NewCashEntry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -106,20 +106,8 @@ pub async fn record(
         class.as_str()
     );
 
-    // A fund buy is also capped by the long-term pot's MF earmark, so a fund cannot silently
-    // consume the money meant for stocks.
-    if side == Side::Buy && class == crate::models::AssetClass::MutualFund {
-        let earmark = crate::rules::settings::mf_allowance(pool).await?;
-        let committed = crate::rules::settings::mf_committed(pool).await?;
-        let cost = qty * price;
-        if cost > (earmark - committed) + 1e-9 {
-            ensure!(
-                false,
-                "the fund costs {cost:.2} but only {:.2} of the mutual-fund allowance is free",
-                (earmark - committed).max(0.0)
-            );
-        }
-    }
+    // A fund draws on its own monthly purse, so it can never consume the money meant for stocks.
+    // That is now structural: the purse is a different set of ledger rows, not a check.
 
     let when = at.unwrap_or_else(chrono::Utc::now);
     let now = when.to_rfc3339();
@@ -136,7 +124,8 @@ pub async fn record(
     match side {
         Side::Buy => {
             let value = qty * price;
-            let available = budget::available_in(pool, mode).await?;
+            let purse = budget::bucket_for(class);
+            let available = budget::cash_in_bucket(pool, mode, purse).await?;
             ensure!(
                 value <= available + 1e-9,
                 "cost {value:.2} exceeds available cash {available:.2}"
@@ -195,6 +184,7 @@ pub async fn record(
                     kind: CashKind::Buy,
                     amount: -value,
                     reference: format!("buy {qty} @ {price}"),
+                    bucket: bucket_for(class).map(str::to_string),
                 },
                 &now,
                 mode,
@@ -246,6 +236,7 @@ pub async fn record(
                     kind: CashKind::Sell,
                     amount: qty * price,
                     reference: format!("sell {qty} @ {price}"),
+                    bucket: bucket_for(class).map(str::to_string),
                 },
                 &now,
                 mode,

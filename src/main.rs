@@ -246,16 +246,23 @@ async fn main() -> Result<()> {
                     continue;
                 }
             };
-            // The month boundary: expire what is left, then grant the allowance. Idempotent.
-            for mode in [
-                stock_predictor::models::Mode::Long,
-                stock_predictor::models::Mode::Trade,
-            ] {
-                match settings::allowance(&poll_pool, mode).await {
+            // The month boundary, once per purse: stocks, mutual funds, short-term.
+            let purses = [
+                (stock_predictor::models::Mode::Long, None),
+                (stock_predictor::models::Mode::Long, Some("mf")),
+                (stock_predictor::models::Mode::Trade, None),
+            ];
+            for (mode, bucket) in purses {
+                let allowance = match bucket {
+                    Some("mf") => settings::mf_allowance(&poll_pool).await,
+                    _ => settings::allowance(&poll_pool, mode).await,
+                };
+                match allowance {
                     Ok(allowance) => {
                         match stock_predictor::rules::pot::ensure_month(
                             &poll_pool,
                             mode,
+                            bucket,
                             allowance,
                             Utc::now(),
                         )
@@ -264,6 +271,7 @@ async fn main() -> Result<()> {
                             Ok(r) if r.granted > 0.0 || r.expired > 0.0 => tracing::info!(
                                 month = %r.month,
                                 mode = mode.as_str(),
+                                purse = bucket.unwrap_or("main"),
                                 expired = r.expired,
                                 granted = r.granted,
                                 "month rolled over"

@@ -108,6 +108,7 @@ async fn currency_change_is_refused_once_ledger_has_entries() {
             kind: CashKind::Buy,
             amount: -100.0,
             reference: "test buy".into(),
+            bucket: None,
         },
     )
     .await
@@ -348,6 +349,7 @@ async fn a_backdated_cash_entry_keeps_its_own_timestamp() {
             kind: CashKind::Buy,
             amount: -100.0,
             reference: "old buy".into(),
+            bucket: None,
         },
         "2026-03-02T10:00:00+00:00",
     )

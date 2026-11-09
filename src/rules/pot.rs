@@ -28,8 +28,18 @@ pub fn ist_month(now: DateTime<Utc>) -> String {
     format!("{:04}-{:02}", ist.year(), ist.month())
 }
 
-fn month_key(mode: Mode) -> String {
-    format!("pot_month_{}", mode.as_str())
+fn month_key(mode: Mode, bucket: Option<&str>) -> String {
+    match bucket {
+        Some(b) => format!("pot_month_{}_{b}", mode.as_str()),
+        None => format!("pot_month_{}", mode.as_str()),
+    }
+}
+
+fn granted_key(mode: Mode, bucket: Option<&str>) -> String {
+    match bucket {
+        Some(b) => format!("pot_granted_{}_{b}", mode.as_str()),
+        None => format!("pot_granted_{}", mode.as_str()),
+    }
 }
 
 /// Idempotent for a given allowance: it grants on the first call of a month, and again only if the
@@ -38,14 +48,15 @@ fn month_key(mode: Mode) -> String {
 pub async fn ensure_month(
     pool: &SqlitePool,
     mode: Mode,
+    bucket: Option<&str>,
     allowance: f64,
     now: DateTime<Utc>,
 ) -> Result<MonthReport> {
     let month = ist_month(now);
-    let granted_key = format!("pot_granted_{}", mode.as_str());
+    let granted_key = granted_key(mode, bucket);
 
     let seen: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
-        .bind(month_key(mode))
+        .bind(month_key(mode, bucket))
         .fetch_optional(pool)
         .await?;
     let granted: f64 = sqlx::query_as::<_, (String,)>("SELECT value FROM settings WHERE key = ?")
@@ -64,7 +75,7 @@ pub async fn ensure_month(
         });
     }
 
-    let existing = budget::cash_in(pool, mode).await?;
+    let existing = budget::cash_in_bucket(pool, mode, bucket).await?;
     // Only a month *boundary* expires what is left. Adjusting the allowance mid-month is a
     // top-up (or a claw-back of the unspent part), never a reset.
     let expired = if !same_month && existing > 0.0 {
@@ -80,32 +91,40 @@ pub async fn ensure_month(
 
     let mut tx = pool.begin().await.context("begin the month reset")?;
     if expired > 0.0 {
-        sqlx::query("INSERT INTO cash_ledger (ts, kind, amount, ref, mode) VALUES (?, ?, ?, ?, ?)")
-            .bind(now.to_rfc3339())
-            .bind(CashKind::Expiry.as_str())
-            .bind(-expired)
-            .bind(format!("unspent allowance expired {}", month))
-            .bind(mode.as_str())
+        sqlx::query(
+            "INSERT INTO cash_ledger (ts, kind, amount, ref, mode, bucket)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(now.to_rfc3339())
+        .bind(CashKind::Expiry.as_str())
+        .bind(-expired)
+        .bind(format!("unspent allowance expired {}", month))
+        .bind(mode.as_str())
+        .bind(bucket)
             .execute(&mut *tx)
             .await?;
     }
     if delta.abs() > 1e-9 {
-        sqlx::query("INSERT INTO cash_ledger (ts, kind, amount, ref, mode) VALUES (?, ?, ?, ?, ?)")
-            .bind(now.to_rfc3339())
-            .bind(CashKind::Budget.as_str())
-            .bind(delta)
-            .bind(if same_month {
-                format!("allowance changed to {allowance}")
-            } else {
-                format!("allowance {month}")
-            })
-            .bind(mode.as_str())
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "INSERT INTO cash_ledger (ts, kind, amount, ref, mode, bucket)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(now.to_rfc3339())
+        .bind(CashKind::Budget.as_str())
+        .bind(delta)
+        .bind(if same_month {
+            format!("allowance changed to {allowance}")
+        } else {
+            format!("allowance {month}")
+        })
+        .bind(mode.as_str())
+        .bind(bucket)
+        .execute(&mut *tx)
+        .await?;
     }
     for (key, value) in [
-        (month_key(mode).as_str(), month.clone()),
-        (granted_key.as_str(), allowance.to_string()),
+        (month_key(mode, bucket), month.clone()),
+        (granted_key.clone(), allowance.to_string()),
     ] {
         sqlx::query(
             "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
@@ -146,7 +165,7 @@ mod tests {
     #[tokio::test]
     async fn a_new_month_grants_the_allowance() {
         let (_d, pool) = pool().await;
-        let r = ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 2))
+        let r = ensure_month(&pool, Mode::Long, None, 50_000.0, at(2026, 11, 2))
             .await
             .unwrap();
         assert_eq!(r.granted, 50_000.0);
@@ -157,10 +176,10 @@ mod tests {
     #[tokio::test]
     async fn the_same_month_is_never_granted_twice() {
         let (_d, pool) = pool().await;
-        ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 2))
+        ensure_month(&pool, Mode::Long, None, 50_000.0, at(2026, 11, 2))
             .await
             .unwrap();
-        let second = ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 20))
+        let second = ensure_month(&pool, Mode::Long, None, 50_000.0, at(2026, 11, 20))
             .await
             .unwrap();
         assert_eq!(second.granted, 0.0);
@@ -170,10 +189,10 @@ mod tests {
     #[tokio::test]
     async fn unspent_cash_expires_and_is_not_a_trading_loss() {
         let (_d, pool) = pool().await;
-        ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 2))
+        ensure_month(&pool, Mode::Long, None, 50_000.0, at(2026, 11, 2))
             .await
             .unwrap();
-        let december = ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 12, 2))
+        let december = ensure_month(&pool, Mode::Long, None, 50_000.0, at(2026, 12, 2))
             .await
             .unwrap();
         assert_eq!(
@@ -194,7 +213,7 @@ mod tests {
     #[tokio::test]
     async fn a_month_with_no_cash_writes_no_expiry() {
         let (_d, pool) = pool().await;
-        let r = ensure_month(&pool, Mode::Trade, 0.0, at(2026, 11, 2))
+        let r = ensure_month(&pool, Mode::Trade, None, 0.0, at(2026, 11, 2))
             .await
             .unwrap();
         assert_eq!(r.expired, 0.0);

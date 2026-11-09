@@ -133,7 +133,7 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         trading_budget,
         trading_available,
         mf_budget,
-        mf_available: (mf_budget - mf_committed(pool).await?).max(0.0),
+        mf_available: budget::available_mf(pool).await.unwrap_or(0.0),
         ntfy_url,
         ntfy_topic,
         ntfy_token_configured,
@@ -219,7 +219,13 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
         put_setting(pool, "allowance_long", &trim_number(budget))
             .await
             .map_err(|_| SettingsError::InvalidAmount)?;
-        super::pot::ensure_month(pool, crate::models::Mode::Long, budget, chrono::Utc::now())
+        super::pot::ensure_month(
+            pool,
+            crate::models::Mode::Long,
+            None,
+            budget,
+            chrono::Utc::now(),
+        )
             .await
             .map_err(|_| SettingsError::InvalidAmount)?;
     }
@@ -230,6 +236,15 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
         put_setting(pool, "allowance_long_mf", &trim_number(budget))
             .await
             .map_err(|_| SettingsError::InvalidAmount)?;
+        super::pot::ensure_month(
+            pool,
+            crate::models::Mode::Long,
+            Some("mf"),
+            budget,
+            chrono::Utc::now(),
+        )
+        .await
+        .map_err(|_| SettingsError::InvalidAmount)?;
     }
 
     if let Some(budget) = patch.trading_budget {
@@ -240,7 +255,13 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
             .await
             .map_err(|_| SettingsError::InvalidAmount)?;
         // Apply it now, not on the 1st: setting an allowance should make it spendable.
-        super::pot::ensure_month(pool, crate::models::Mode::Trade, budget, chrono::Utc::now())
+        super::pot::ensure_month(
+            pool,
+            crate::models::Mode::Trade,
+            None,
+            budget,
+            chrono::Utc::now(),
+        )
             .await
             .map_err(|_| SettingsError::InvalidAmount)?;
     }

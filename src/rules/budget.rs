@@ -29,6 +29,16 @@ pub struct NewCashEntry {
     /// Signed. A budget delta, a negative buy, a positive sell, and so on.
     pub amount: f64,
     pub reference: String,
+    /// Which purse inside the pot: `Some("mf")` for mutual funds, `None` for the pot's main one.
+    pub bucket: Option<String>,
+}
+
+/// The purse a purchase draws on. A fund and a stock in the same pot are different money.
+pub fn bucket_for(class: AssetClass) -> Option<&'static str> {
+    match class {
+        AssetClass::MutualFund => Some("mf"),
+        _ => None,
+    }
 }
 
 /// Units round **down** to 3 decimals before costing, so rounding can only under-spend.
@@ -99,12 +109,26 @@ pub async fn available(pool: &SqlitePool) -> Result<f64> {
 /// The money that is actually there: every ledger row, not just the allowances. That is what
 /// makes a sold profit spendable and an expired allowance gone.
 pub async fn cash_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
-    let row: (Option<f64>,) = sqlx::query_as("SELECT SUM(amount) FROM cash_ledger WHERE mode = ?")
-        .bind(mode.as_str())
-        .fetch_one(pool)
-        .await
-        .context("sum cash")?;
+    cash_in_bucket(pool, mode, None).await
+}
+
+/// Cash in one purse. `None` is the pot's main purse; `Some("mf")` is the mutual-fund purse.
+pub async fn cash_in_bucket(pool: &SqlitePool, mode: Mode, bucket: Option<&str>) -> Result<f64> {
+    let row: (Option<f64>,) = sqlx::query_as(
+        "SELECT SUM(amount) FROM cash_ledger
+         WHERE mode = ? AND COALESCE(bucket, '') = ?",
+    )
+    .bind(mode.as_str())
+    .bind(bucket.unwrap_or(""))
+    .fetch_one(pool)
+    .await
+    .context("sum cash")?;
     Ok(row.0.unwrap_or(0.0))
+}
+
+/// Free money in the mutual-fund purse of the long-term pot.
+pub async fn available_mf(pool: &SqlitePool) -> Result<f64> {
+    cash_in_bucket(pool, Mode::Long, Some("mf")).await
 }
 
 pub async fn available_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
@@ -146,12 +170,15 @@ pub async fn record_at_mode(
     ts: &str,
     mode: Mode,
 ) -> Result<()> {
-    sqlx::query("INSERT INTO cash_ledger (ts, kind, amount, ref, mode) VALUES (?, ?, ?, ?, ?)")
-        .bind(ts)
-        .bind(entry.kind.as_str())
-        .bind(entry.amount)
-        .bind(entry.reference)
-        .bind(mode.as_str())
+    sqlx::query(
+        "INSERT INTO cash_ledger (ts, kind, amount, ref, mode, bucket) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(ts)
+    .bind(entry.kind.as_str())
+    .bind(entry.amount)
+    .bind(entry.reference)
+    .bind(mode.as_str())
+    .bind(entry.bucket.as_deref())
         .execute(pool)
         .await
         .context("insert cash ledger")?;

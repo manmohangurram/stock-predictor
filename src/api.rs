@@ -896,6 +896,7 @@ async fn post_position(
             kind: CashKind::Buy,
             amount: -cost,
             reference: format!("buy {} @ {}", body.symbol, body.avg_cost),
+            bucket: None,
         },
     )
     .await?;
@@ -941,6 +942,7 @@ async fn patch_position(
                     kind: CashKind::Sell,
                     amount: sold * avg_cost,
                     reference: format!("sell position {id}"),
+                    bucket: None,
                 },
             )
             .await?;

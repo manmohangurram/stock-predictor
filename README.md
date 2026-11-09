@@ -24,8 +24,9 @@ before you see it.
 
 ## Current Features
 
-- **A monthly allowance per pot, not a ceiling.** Money is granted on the 1st and unspent allowance
-  expires at month end — recorded as its own ledger kind, never as a trading loss. Raising the
+- **Three monthly allowances, not ceilings.** Long-term stocks, mutual funds and the short-term book
+  each get their own purse — granted on the 1st, expiring at month end, and never sharing money: the
+  fund purse cannot buy a stock and a leftover does not top up another pot — recorded as its own ledger kind, never as a trading loss. Raising the
   allowance mid-month tops the pot up; lowering it claws the unspent part back.
 - **Decisions need your say-so.** Every suggestion is `pending` until you approve it — with the fill
   you actually got, quantity and price editable — or reject it with a reason. The ledger shows what

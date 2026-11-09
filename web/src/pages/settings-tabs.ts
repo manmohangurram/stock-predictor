@@ -15,7 +15,7 @@ export const TABS: TabSpec[] = [
     id: "money",
     label: "Money",
     title: "Money",
-    lede: "Two pots that never touch. The long-term pot buys and holds; the short-term pot trades moves that last hours or days, with its own book and its own limits.",
+    lede: "Three purses, each granted monthly and each expiring: long-term stocks, mutual funds, and the short-term book. They never share money.",
   },
   {
     id: "risk",

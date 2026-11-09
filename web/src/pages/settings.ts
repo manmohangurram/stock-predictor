@@ -89,25 +89,34 @@ function derived(name: string, value: number, template: string): string {
 }
 
 const MONEY = (s: Settings, tab: Tab): string => {
-  const below = shouldDisableSave(s.budget, s.committed);
   return `
-    ${field(tab, "budget", "Monthly allowance, long-term", Math.round(s.budget), {
+    <p class="help" style="margin-bottom:var(--space-3)">
+      Three purses, each granted on the 1st and each expiring at month end. They never share money:
+      the short-term purse cannot buy a fund, the fund purse cannot buy a stock, and a leftover in one
+      does not top up another.
+    </p>
+    ${field(tab, "budget", "Monthly allowance · long-term stocks", Math.round(s.budget), {
       type: "number",
       step: "1",
       unit: s.currency,
-      help: `Granted on the 1st of each month. Unspent allowance expires at month end — it is not carried over, and it is not counted as a trading loss.`,
+      help: `Bought and held for six months or more. ${money(s.available, 0)} free this month. Unspent expires.`,
     })}
-    ${field(tab, "trading_budget", "Monthly allowance, trading", Math.round(s.trading_budget), {
+    ${field(tab, "mf_budget", "Monthly allowance · mutual funds", Math.round(s.mf_budget), {
       type: "number",
       step: "1",
       unit: s.currency,
-      help: `A separate monthly allowance for the short-term pot, ${money(s.trading_available, 0)} left this month. Neither pot draws on the other.`,
+      help: `A fund is a six-month-plus commitment: a buy settles in about a day, but selling returns the cash only after about four days. ${money(s.mf_available, 0)} free this month.`,
+    })}
+    ${field(tab, "trading_budget", "Monthly allowance · short-term", Math.round(s.trading_budget), {
+      type: "number",
+      step: "1",
+      unit: s.currency,
+      help: `One hour to one week, stocks only. ${money(s.trading_available, 0)} free this month.`,
     })}
     ${select(tab, "currency", "Currency", s.currency, ["INR", "USD", "EUR", "GBP"].map((c) => [c, c]),
       s.currency_locked
         ? "Currency is fixed once the ledger has entries."
         : "Locked permanently after the first recorded transaction.")}
-    ${below ? `<p class="guard">Committed is ${money(s.committed, 0)} — the budget cannot go below it.</p>` : ""}
   `;
 };
 

@@ -193,7 +193,7 @@ describe("settings", () => {
 
   test("the budget tab warns when committed is above the ceiling", () => {
     const html = renderSettings(settings({ committed: 142_000, available: -42_000 }), "money");
-    expect(html).toContain("Committed is");
+    expect(html).toContain("free this month");
   });
 
   test("a configured key is masked and offers to keep it", () => {
@@ -388,7 +388,7 @@ describe("settings, second pot", () => {
     });
     expect(html).toContain('name="trading_budget"');
     expect(html).toContain("80,000");
-    expect(html).toContain("Neither pot draws on the other");
+    expect(html).toContain("never share money");
   });
 });
 

@@ -1500,9 +1500,10 @@ async fn a_fund_buy_is_capped_by_the_fund_earmark() {
     )
     .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
-    assert!(v["error"].as_str().unwrap().contains("fund"), "{v}");
+    // The fund purse is its own money: 1,000 cannot buy 5,500 of units.
+    assert!(v["error"].as_str().unwrap().contains("exceeds available cash"), "{v}");
 
-    // Within the earmark, it passes.
+    // Within the purse, it passes.
     let (s, v) = send(
         &router,
         "POST",
@@ -1511,4 +1512,29 @@ async fn a_fund_buy_is_capped_by_the_fund_earmark() {
     )
     .await;
     assert_eq!(s, StatusCode::OK, "{v}");
+}
+
+#[tokio::test]
+async fn the_three_monthly_purses_do_not_share_money() {
+    // Long-term stocks, mutual funds and short-term are separate purses, each with its own
+    // allowance; spending one must never move another.
+    let (_d, router, pool) = setup().await;
+    sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')")
+        .execute(&pool).await.unwrap();
+
+    send(&router, "PUT", "/api/settings",
+        json!({"budget": 20_000.0, "mf_budget": 5_000.0, "trading_budget": 7_000.0})).await;
+
+    let (_, v) = get(&router, "/api/settings").await;
+    assert_eq!(v["available"], 20_000.0, "stock purse");
+    assert_eq!(v["mf_available"], 5_000.0, "fund purse");
+    assert_eq!(v["trading_available"], 7_000.0, "short-term purse");
+
+    // Spending the fund purse leaves the stock purse untouched.
+    let (s, _) = send(&router, "POST", "/api/instruments/AXISELSS/trades",
+        json!({"side":"buy","qty":50.0,"price":55.0,"mode":"long"})).await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, v) = get(&router, "/api/settings").await;
+    assert_eq!(v["available"], 20_000.0, "a fund buy must not touch the stock purse");
+    assert_eq!(v["mf_available"], 2_250.0, "50 × 55 came out of the fund purse");
 }
