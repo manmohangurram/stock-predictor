@@ -474,11 +474,12 @@ function wireSettings(tab: Tab, s: Settings): void {
     switch (tab) {
       case "money": {
         const budget = num("budget");
-        if (shouldDisableSave(budget, s.committed)) {
-          if (status) status.textContent = `Committed is ${s.committed} — the budget cannot go below it.`;
-          return;
-        }
-        patch = { budget, trading_budget: num("trading_budget"), currency: text("currency") };
+        patch = {
+          budget,
+          trading_budget: num("trading_budget"),
+          mf_budget: num("mf_budget"),
+          currency: text("currency"),
+        };
         break;
       }
       case "risk":

@@ -106,6 +106,21 @@ pub async fn record(
         class.as_str()
     );
 
+    // A fund buy is also capped by the long-term pot's MF earmark, so a fund cannot silently
+    // consume the money meant for stocks.
+    if side == Side::Buy && class == crate::models::AssetClass::MutualFund {
+        let earmark = crate::rules::settings::mf_allowance(pool).await?;
+        let committed = crate::rules::settings::mf_committed(pool).await?;
+        let cost = qty * price;
+        if cost > (earmark - committed) + 1e-9 {
+            ensure!(
+                false,
+                "the fund costs {cost:.2} but only {:.2} of the mutual-fund allowance is free",
+                (earmark - committed).max(0.0)
+            );
+        }
+    }
+
     let when = at.unwrap_or_else(chrono::Utc::now);
     let now = when.to_rfc3339();
     let open: Option<(i64, f64, f64, String)> = sqlx::query_as(

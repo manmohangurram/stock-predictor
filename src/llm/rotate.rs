@@ -238,6 +238,8 @@ mod tests {
             deepseek_configured: false,
             trading_budget: 0.0,
             trading_available: 0.0,
+            mf_budget: 0.0,
+            mf_available: 0.0,
             ntfy_url: String::new(),
             ntfy_topic: String::new(),
             ntfy_token_configured: false,

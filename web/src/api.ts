@@ -82,6 +82,9 @@ export interface Settings {
   deepseek_configured: boolean;
   trading_budget: number;
   trading_available: number;
+  /** Long-term is split: this is the monthly allowance earmarked for mutual funds. */
+  mf_budget: number;
+  mf_available: number;
   ntfy_url: string;
   ntfy_topic: string;
   ntfy_token_configured: boolean;
@@ -314,7 +317,7 @@ export const api = {
     ),
   putSettings: async (
     patch: Partial<
-      Pick<Settings, "budget" | "currency" | "trading_budget" | "ntfy_url" | "ntfy_topic" | "llm_base_url" | "llm_model" | "llm_provider">
+      Pick<Settings, "budget" | "currency" | "trading_budget" | "mf_budget" | "ntfy_url" | "ntfy_topic" | "llm_base_url" | "llm_model" | "llm_provider">
     > & {
       deepseek_key?: string;
       ntfy_token?: string;

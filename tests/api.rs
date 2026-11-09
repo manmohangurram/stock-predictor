@@ -925,7 +925,8 @@ async fn a_mutual_fund_cannot_be_filled_into_the_trading_pot() {
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     assert!(v["error"].as_str().unwrap().contains("long-term only"), "{v}");
 
-    // The long-term pot is the point of it.
+    // The long-term pot is the point of it — once money is earmarked for funds.
+    send(&router, "PUT", "/api/settings", json!({"mf_budget": 5000.0})).await;
     let (s, v) = send(
         &router,
         "POST",
@@ -1296,4 +1297,23 @@ async fn every_documented_route_exists() {
             "{method} {uri} is not routed — the server and the UI disagree about the API"
         );
     }
+}
+
+#[tokio::test]
+async fn a_fund_buy_is_capped_by_the_fund_earmark() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')")
+        .execute(&pool).await.unwrap();
+    // A small earmark: the fund must not be able to consume the whole pot.
+    send(&router, "PUT", "/api/settings", json!({"mf_budget": 1000.0})).await;
+
+    let (s, v) = send(&router, "POST", "/api/instruments/AXISELSS/trades",
+        json!({"side":"buy","qty":100.0,"price":55.0,"mode":"long"})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("fund"), "{v}");
+
+    // Within the earmark, it passes.
+    let (s, v) = send(&router, "POST", "/api/instruments/AXISELSS/trades",
+        json!({"side":"buy","qty":10.0,"price":55.0,"mode":"long"})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
 }

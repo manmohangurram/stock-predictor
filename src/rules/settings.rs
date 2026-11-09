@@ -19,6 +19,10 @@ pub struct Settings {
     /// The second pot. Kept separate on purpose: a swing trade must not starve a long-term buy.
     pub trading_budget: f64,
     pub trading_available: f64,
+    /// Long-term is split: this is the monthly allowance earmarked for mutual funds. The pot's
+    /// `budget` is the stocks-and-cash allowance; the MF money is tracked against this line.
+    pub mf_budget: f64,
+    pub mf_available: f64,
     /// Push channel. The topic is a name the user must be able to read back; the token never
     /// leaves the server.
     pub ntfy_url: String,
@@ -45,6 +49,7 @@ pub struct SettingsPatch {
     /// without wiping a working key.
     pub deepseek_key: Option<String>,
     pub trading_budget: Option<f64>,
+    pub mf_budget: Option<f64>,
     pub ntfy_url: Option<String>,
     pub ntfy_topic: Option<String>,
     pub ntfy_token: Option<String>,
@@ -95,6 +100,7 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
     let locked = ledger_has_entries(pool).await?;
     let deepseek_configured = deepseek_key(pool).await?.is_some();
     let trading_budget = allowance_setting(pool, crate::models::Mode::Trade).await?;
+    let mf_budget = mf_allowance(pool).await?;
     let trading_available = budget::available_in(pool, crate::models::Mode::Trade).await?;
     let ntfy_topic = setting(pool, "ntfy_topic").await?.unwrap_or_default();
     let ntfy_url = setting(pool, "ntfy_url")
@@ -126,6 +132,8 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
         deepseek_configured,
         trading_budget,
         trading_available,
+        mf_budget,
+        mf_available: (mf_budget - mf_committed(pool).await?).max(0.0),
         ntfy_url,
         ntfy_topic,
         ntfy_token_configured,
@@ -215,6 +223,15 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
             .await
             .map_err(|_| SettingsError::InvalidAmount)?;
     }
+    if let Some(budget) = patch.mf_budget {
+        if !budget.is_finite() || budget < 0.0 {
+            return Err(SettingsError::InvalidAmount);
+        }
+        put_setting(pool, "allowance_long_mf", &trim_number(budget))
+            .await
+            .map_err(|_| SettingsError::InvalidAmount)?;
+    }
+
     if let Some(budget) = patch.trading_budget {
         if !budget.is_finite() || budget < 0.0 {
             return Err(SettingsError::InvalidAmount);
@@ -363,6 +380,29 @@ async fn allowance_setting(pool: &SqlitePool, mode: crate::models::Mode) -> Resu
         .and_then(|v| v.trim().parse::<f64>().ok())
         .filter(|v| v.is_finite() && *v >= 0.0)
         .unwrap_or(0.0))
+}
+
+/// The monthly allowance earmarked for mutual funds, inside the long-term pot.
+pub async fn mf_allowance(pool: &SqlitePool) -> Result<f64> {
+    Ok(setting(pool, "allowance_long_mf")
+        .await?
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .unwrap_or(0.0))
+}
+
+/// What the long-term pot already has committed to open fund positions. An MF buy must leave this
+/// under the earmark: the pot's cash is one pool, but the MF line is tracked separately so a fund
+/// cannot silently consume the money meant for stocks.
+pub async fn mf_committed(pool: &SqlitePool) -> Result<f64> {
+    let row: (Option<f64>,) = sqlx::query_as(
+        "SELECT SUM(p.qty * p.avg_cost) FROM positions p
+         JOIN instruments i ON i.id = p.instrument_id
+         WHERE p.mode = 'long' AND p.state <> 'closed' AND i.class = 'mutual_fund'",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0.unwrap_or(0.0))
 }
 
 /// The knobs the app reads while running. Read per tick so edits apply without a restart.
