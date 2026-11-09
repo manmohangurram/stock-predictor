@@ -937,7 +937,7 @@ async fn a_mutual_fund_cannot_be_filled_into_the_trading_pot() {
 }
 
 #[tokio::test]
-async fn a_symbol_without_history_is_deleted_with_its_bars() {
+async fn archiving_clears_temporary_data_but_keeps_the_record() {
     let (_d, router, pool) = setup().await;
     let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'TCS'")
         .fetch_one(&pool).await.unwrap();
@@ -946,13 +946,15 @@ async fn a_symbol_without_history_is_deleted_with_its_bars() {
 
     let (s, v) = send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;
     assert_eq!(s, StatusCode::OK, "{v}");
-    assert_eq!(v["deleted"], true);
-    let left: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM instruments WHERE symbol = 'TCS'")
+    assert_eq!(v["archived"], true);
+    // The record survives…
+    let active: (i64,) = sqlx::query_as("SELECT active FROM instruments WHERE symbol = 'TCS'")
         .fetch_one(&pool).await.unwrap();
-    assert_eq!(left.0, 0);
+    assert_eq!(active.0, 0, "archived, not deleted");
+    // …but the temporary data does not.
     let bars: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM bars WHERE instrument_id = ?")
         .bind(id.0).fetch_one(&pool).await.unwrap();
-    assert_eq!(bars.0, 0, "orphaned bars");
+    assert_eq!(bars.0, 0, "bars must be cleared on archive");
 }
 
 #[tokio::test]
@@ -977,7 +979,6 @@ async fn a_symbol_with_fills_is_archived_not_deleted() {
     let (s, v) = send(&router, "DELETE", "/api/instruments/INFY", json!({})).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(v["archived"], true, "{v}");
-    assert_eq!(v["deleted"], false);
 
     let active: (i64,) = sqlx::query_as("SELECT active FROM instruments WHERE symbol = 'INFY'")
         .fetch_one(&pool).await.unwrap();

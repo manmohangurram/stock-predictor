@@ -1,5 +1,6 @@
 import { api, dashboardCached, type Hit, type Settings } from "./api";
 import { renderCalls, renderExchangeDetail } from "./pages/calls";
+import { renderArchived } from "./pages/archived";
 import { qtyLimit, renderInstrument } from "./pages/instrument";
 import { renderLedger } from "./pages/ledger";
 import {
@@ -33,6 +34,9 @@ async function route(): Promise<void> {
       const s = await api.settings();
       app.innerHTML = renderSettings(s, tab);
       wireSettings(tab, s);
+    } else if (path === "/archived") {
+      app.innerHTML = renderArchived(await api.archived());
+      wireArchivedRows();
     } else if (path === "/calls") {
       app.innerHTML = renderCalls(await api.calls());
       wireCallRows();
@@ -319,6 +323,24 @@ function wireDecisions(): void {
   });
 }
 
+/** An archived row opens the instrument: its record is there, its price history is not. */
+function wireArchivedRows(): void {
+  document.querySelectorAll<HTMLTableRowElement>('.blotter .row').forEach((row) => {
+    const symbol = row.dataset.symbol;
+    if (!symbol) return;
+    const go = () => {
+      location.href = `/i/${encodeURIComponent(symbol)}`;
+    };
+    row.addEventListener("click", go);
+    row.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        go();
+      }
+    });
+  });
+}
+
 /** Fetch this symbol now; then re-render so the chart and decisions match. */
 function wireRefreshInstrument(): void {
   const button = document.querySelector<HTMLButtonElement>("#refresh-instrument");
@@ -341,7 +363,7 @@ function wireRefreshInstrument(): void {
 
 /** Delete or archive, whichever the server decides — and say which it did. */
 function wireDeleteInstrument(): void {
-  const button = document.querySelector<HTMLButtonElement>("#delete-instrument");
+  const button = document.querySelector<HTMLButtonElement>("#archive-instrument");
   if (!button) return;
   const status = document.querySelector<HTMLElement>("#delete-status");
   const symbol = button.dataset.symbol ?? "";
@@ -350,15 +372,15 @@ function wireDeleteInstrument(): void {
     return;
   }
   button.addEventListener("click", async () => {
-    if (!window.confirm(`Remove ${symbol}? If it has fills it will be archived, not deleted.`)) return;
+    if (!window.confirm(`Archive ${symbol}? Prices and headlines are cleared; fills and decisions are kept.`)) return;
     button.disabled = true;
     if (status) status.textContent = "Removing…";
     try {
-      const r = await api.deleteInstrument(symbol);
+      const r = await api.archiveInstrument(symbol);
       if (status) {
-        status.textContent = r.deleted
-          ? "Deleted, with its bars and headlines."
-          : `Archived — ${r.reason ?? "it has history"}.`;
+        status.textContent = r.archived
+          ? "Archived. Its record is on the Archived page; its prices were cleared."
+          : "Could not archive.";
       }
       window.setTimeout(() => {
         location.href = "/";

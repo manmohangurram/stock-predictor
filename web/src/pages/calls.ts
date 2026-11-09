@@ -12,6 +12,18 @@ import {
 
 export type { CallDetail };
 
+/** The browser's own clock: what a person sees, not the UTC the server stores. */
+function localTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /** What you did with the decision this call produced. */
 function reviewBadge(r: CallRow): string {
   if (!r.decision_status) return `<span class="muted">no decision</span>`;
@@ -30,7 +42,7 @@ export function renderCalls(rows: CallRow[]): string {
   const body = rows
     .map(
       (r) => `<tr>
-  <td class="time num">${escapeHtml(r.ts.slice(11, 16))}</td>
+  <td class="time num" title="${escapeHtml(r.ts)}">${escapeHtml(localTime(r.ts))}</td>
   <td>${escapeHtml(r.endpoint)}</td>
   <td title="${escapeHtml(r.purpose ?? "")}">${escapeHtml(r.purpose ?? "")}</td>
   <td class="num right">${r.round ?? "—"}</td>

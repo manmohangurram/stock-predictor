@@ -135,6 +135,17 @@ export interface CallRow {
 }
 
 /** One call with its stored bodies. Fetched only when a row is opened. */
+/** An instrument that left the book, with its record rather than its price history. */
+export interface ArchivedInstrument {
+  id: number;
+  symbol: string;
+  name: string;
+  class: string;
+  fills: number;
+  decisions: number;
+  last_fill: string | null;
+}
+
 export interface CallDetail {
   id: number;
   ts: string;
@@ -248,6 +259,10 @@ export const api = {
       { method: "POST" },
     ),
   calls: () => req<CallRow[]>("/api/calls"),
+  archived: () =>
+    req<{ id: number; symbol: string; name: string; class: string; fills: number; decisions: number; last_fill: string | null }[]>(
+      "/api/archived",
+    ),
   approveSignal: (id: number, body: { qty?: number; price?: number; at?: string }) =>
     req<{ id: number; status: string; recorded: boolean }>(
       `/api/signals/${id}/approve`,
@@ -260,8 +275,8 @@ export const api = {
       `/api/instruments/${encodeURIComponent(symbol)}/refresh`,
       { method: "POST" },
     ),
-  deleteInstrument: (symbol: string) =>
-    req<{ symbol: string; deleted: boolean; archived: boolean; reason?: string }>(
+  archiveInstrument: (symbol: string) =>
+    req<{ symbol: string; archived: boolean }>(
       `/api/instruments/${encodeURIComponent(symbol)}`,
       { method: "DELETE" },
     ),

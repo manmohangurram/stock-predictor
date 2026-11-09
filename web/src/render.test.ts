@@ -852,9 +852,9 @@ describe("removing an instrument", () => {
   test("an unheld instrument offers a delete", async () => {
     const { renderInstrument } = await import("./pages/instrument");
     const html = renderInstrument(base as never, base as never, []);
-    expect(html).toContain('id="delete-instrument"');
-    expect(html).toContain("Delete this instrument");
-    expect(html).toContain("archived rather than deleted");
+    expect(html).toContain('id="archive-instrument"');
+    expect(html).toContain("Archive this instrument");
+    expect(html).toContain("fills and decisions stay");
   });
 
   test("a held instrument refuses instead of offering it", async () => {
@@ -867,8 +867,8 @@ describe("removing an instrument", () => {
       },
     };
     const html = renderInstrument(held as never, held as never, []);
-    expect(html).toContain("Sell it before deleting");
-    expect(html).toContain("cannot be removed");
+    expect(html).toContain("Sell it before archiving");
+    expect(html).toContain("cannot be archived");
   });
 });
 

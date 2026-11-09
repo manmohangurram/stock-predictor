@@ -67,6 +67,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/instruments", post(add_instrument))
         .route("/api/instruments/{symbol}", get(instrument_detail))
         .route("/api/trades", get(all_trades))
+        .route("/api/archived", get(archived_instruments))
         .route("/api/calls/{id}", get(call_detail))
         .route(
             "/api/instruments/{symbol}/trades",
@@ -83,7 +84,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/instruments/{symbol}",
-            axum::routing::delete(delete_instrument),
+            axum::routing::delete(archive_instrument),
         )
         .route("/api/notify/test", post(test_notify))
         .route("/api/instruments/{symbol}/analysis", get(analysis))
@@ -412,24 +413,28 @@ pub struct InstrumentDetail {
 }
 
 /// Remove an instrument, or hide it when it has history.
+/// Archive an instrument: it leaves the working book but keeps its record.
 ///
-/// A symbol you never traded is deleted outright — its bars, headlines, memos and signals go with
-/// it. A symbol with any fill is archived instead (`active = 0`): the history is the reason the
-/// ledger and the audit mean anything, so it is never thrown away. Anything still held is refused.
-async fn delete_instrument(
+/// There is no delete. Archiving clears the *temporary* data — bars, headlines, memos — because that
+/// is re-fetchable and re-dated, but keeps the *history* that makes the ledger true: fills, decisions
+/// and closed positions. Anything still held is refused until it is sold. Archived rows stay
+/// reachable from a dedicated list, not from the working ledger.
+async fn archive_instrument(
     State(st): State<AppState>,
     axum::extract::Path(symbol): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let row: Option<(i64,)> = sqlx::query_as("SELECT id FROM instruments WHERE symbol = ?")
+    let row: Option<(i64, i64)> = sqlx::query_as("SELECT id, active FROM instruments WHERE symbol = ?")
         .bind(&symbol)
         .fetch_optional(&st.pool)
         .await?;
-    let Some((id,)) = row else {
+    let Some((id, active)) = row else {
         return Err(ApiError::NotFound(format!("no instrument {symbol}")));
     };
+    if active == 0 {
+        return Err(ApiError::BadRequest(format!("{symbol} is already archived")));
+    }
 
     let held: (f64,) = sqlx::query_as(
-        // CAST: an empty SUM comes back as INTEGER 0, which sqlx refuses to decode as f64.
         "SELECT CAST(COALESCE(SUM(qty), 0) AS REAL) FROM positions
          WHERE instrument_id = ? AND state <> 'closed'",
     )
@@ -438,44 +443,30 @@ async fn delete_instrument(
     .await?;
     if held.0 > 0.0 {
         return Err(ApiError::BadRequest(format!(
-            "cannot delete {symbol} while {} units are held — sell it first",
+            "cannot archive {symbol} while {} units are held — sell it first",
             held.0
         )));
     }
 
-    let fills: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM trades WHERE instrument_id = ?")
-        .bind(id)
-        .fetch_one(&st.pool)
-        .await?;
-
-    if fills.0 > 0 {
-        sqlx::query("UPDATE instruments SET active = 0 WHERE id = ?")
-            .bind(id)
-            .execute(&st.pool)
-            .await?;
-        return Ok(Json(serde_json::json!({
-            "symbol": symbol,
-            "archived": true,
-            "deleted": false,
-            "reason": format!("it has {} recorded fills, so its history is kept", fills.0),
-        })));
-    }
-
     let mut tx = st.pool.begin().await?;
+    sqlx::query("UPDATE instruments SET active = 0 WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    // Temporary data goes: it is re-fetchable, and keeping it would re-date it the next time the
+    // symbol is opened. History stays.
     for sql in [
-        "DELETE FROM signals WHERE instrument_id = ?",
+        "DELETE FROM bars WHERE instrument_id = ?",
         "DELETE FROM news WHERE instrument_id = ?",
         "DELETE FROM llm_memos WHERE instrument_id = ?",
-        "DELETE FROM bars WHERE instrument_id = ?",
-        "DELETE FROM instruments WHERE id = ?",
     ] {
         sqlx::query(sql).bind(id).execute(&mut *tx).await?;
     }
     tx.commit().await?;
     Ok(Json(serde_json::json!({
         "symbol": symbol,
-        "deleted": true,
-        "archived": false,
+        "archived": true,
+        "deleted": false,
     })))
 }
 
@@ -1304,6 +1295,48 @@ async fn test_notify(State(st): State<AppState>) -> Result<Json<serde_json::Valu
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+/// Archived instruments with their record, not their history: what they were, and the decisions and
+/// fills that remain. Bars and headlines were cleared when they left the book.
+#[derive(Debug, Serialize)]
+pub struct ArchivedRow {
+    pub id: i64,
+    pub symbol: String,
+    pub name: String,
+    pub class: String,
+    pub fills: i64,
+    pub decisions: i64,
+    pub last_fill: Option<String>,
+}
+
+async fn archived_instruments(
+    State(st): State<AppState>,
+) -> Result<Json<Vec<ArchivedRow>>, ApiError> {
+    let rows: Vec<(i64, String, String, String, i64, i64, Option<String>)> = sqlx::query_as(
+        "SELECT i.id, i.symbol, i.name, i.class,
+                (SELECT COUNT(*) FROM trades t WHERE t.instrument_id = i.id) AS fills,
+                (SELECT COUNT(*) FROM signals s WHERE s.instrument_id = i.id) AS decisions,
+                (SELECT MAX(t.traded_at) FROM trades t WHERE t.instrument_id = i.id) AS last_fill
+         FROM instruments i
+         WHERE i.active = 0
+         ORDER BY last_fill DESC",
+    )
+    .fetch_all(&st.pool)
+    .await?;
+    Ok(Json(
+        rows.into_iter()
+            .map(|(id, symbol, name, class, fills, decisions, last_fill)| ArchivedRow {
+                id,
+                symbol,
+                name,
+                class,
+                fills,
+                decisions,
+                last_fill,
+            })
+            .collect(),
+    ))
+}
+
 async fn instrument_id_by_symbol(pool: &SqlitePool, symbol: &str) -> Result<i64, ApiError> {
     let row: Option<(i64,)> = sqlx::query_as("SELECT id FROM instruments WHERE symbol = ?")
         .bind(symbol)
@@ -1323,7 +1356,7 @@ async fn load_positions(
                 (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
                  ORDER BY b.ts DESC LIMIT 1) AS ltp
          FROM positions p JOIN instruments i ON i.id = p.instrument_id
-         WHERE p.mode = ? ORDER BY p.id DESC",
+         WHERE p.mode = ? AND i.active = 1 ORDER BY p.id DESC",
     )
     .bind(mode.as_str())
     .fetch_all(pool)

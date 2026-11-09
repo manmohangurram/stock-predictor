@@ -4,12 +4,13 @@
  * The rail exists so the money is always visible and the page never wastes its left margin on a
  * nav that floats there. Below 900px it collapses into a top strip.
  */
-export type Section = "ledger" | "audit" | "settings";
+export type Section = "ledger" | "audit" | "settings" | "archived";
 
 const LINKS: { id: Section; label: string; href: string }[] = [
   { id: "ledger", label: "Ledger", href: "/" },
   { id: "audit", label: "Audit", href: "/calls" },
   { id: "settings", label: "Settings", href: "/settings" },
+  { id: "archived", label: "Archived", href: "/archived" },
 ];
 
 export interface RailFoot {

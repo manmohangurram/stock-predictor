@@ -373,15 +373,15 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
           <button class="btn ghost" type="button" id="refresh-instrument"
                   data-symbol="${escapeHtml(a.instrument.symbol)}">Refresh prices and headlines</button>
           <p class="help" id="refresh-status" role="status">Fetches this symbol now, instead of waiting for the next poll.</p>
-          <button class="btn ghost" type="button" id="delete-instrument"
+          <button class="btn ghost" type="button" id="archive-instrument"
                   data-symbol="${escapeHtml(a.instrument.symbol)}" data-held="${p ? p.qty : 0}">
-            ${p ? "Sell it before deleting" : "Delete this instrument"}
+            ${p ? "Sell it before archiving" : "Archive this instrument"}
           </button>
           <p class="help" id="delete-status" role="status">
             ${
               p
-                ? "An instrument you hold cannot be removed — the history is what makes the ledger true."
-                : "If it has fills, it is archived rather than deleted: hidden from polling, history kept."
+                ? "An instrument you hold cannot be archived — sell it first."
+                : "Archiving clears the prices and headlines; the fills and decisions stay on the Archived page."
             }
           </p>
         </section>
