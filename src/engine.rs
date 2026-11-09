@@ -241,7 +241,10 @@ async fn plan_book(
             // whole rather than half-recorded.
             record_plan_refusal(
                 deps.pool,
-                &format!("{} is not in the book, so the plan cannot be stored", m.symbol),
+                &format!(
+                    "{} is not in the book, so the plan cannot be stored",
+                    m.symbol
+                ),
                 now,
                 Some(&conversation),
                 scope,
@@ -296,16 +299,44 @@ async fn record_plan_refusal(
 /// The fund plan, run once a day after the arithmetic scan has ranked today's funds. Separate
 /// entry point because it is a different question, not a second pass over the same one.
 pub async fn plan_funds(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<bool> {
-    Ok(plan_book(deps, now, crate::llm::plan::Scope::Fund)
+    // Once per IST day, on the first tick — which includes the first tick after a restart, so a
+    // server started at noon still asks the fund question that day.
+    let today = ist_day(now);
+    let last: Option<(String,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = 'mf_plan_last'")
+            .fetch_optional(deps.pool)
+            .await?;
+    if last.map(|r| r.0).as_deref() == Some(today.as_str()) {
+        return Ok(false);
+    }
+    let stored = plan_book(deps, now, crate::llm::plan::Scope::Fund)
         .await?
-        .is_some())
+        .is_some();
+    // The marker means "asked today", not "decided today": a pass or a refusal must not license a
+    // second call on the next tick.
+    sqlx::query(
+        "INSERT INTO settings (key, value, updated_at) VALUES ('mf_plan_last', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+    .bind(&today)
+    .bind(now.to_rfc3339())
+    .execute(deps.pool)
+    .await?;
+    Ok(stored)
+}
+
+/// `YYYY-MM-DD` of the current IST day — the unit the daily gates are written in.
+fn ist_day(now: DateTime<Utc>) -> String {
+    let ist = now + chrono::Duration::minutes(330);
+    format!("{:04}-{:02}-{:02}", ist.year(), ist.month(), ist.day())
 }
 
 /// The symbols that are mutual funds, so the plan's money can be counted per purse.
 async fn fund_symbols(pool: &SqlitePool) -> Result<Vec<String>> {
-    let rows: Vec<(String,)> = sqlx::query_as("SELECT symbol FROM instruments WHERE class = 'mutual_fund'")
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<(String,)> =
+        sqlx::query_as("SELECT symbol FROM instruments WHERE class = 'mutual_fund'")
+            .fetch_all(pool)
+            .await?;
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
@@ -948,14 +979,12 @@ async fn finish(
     as_candidate.target = resolved.target;
     as_candidate.qty = resolved.qty;
 
-    if let Some(mut n) =
-        Notification::from_candidate(
-            &instrument.symbol,
-            &instrument.name,
-            &instrument.currency,
-            &as_candidate,
-        )
-    {
+    if let Some(mut n) = Notification::from_candidate(
+        &instrument.symbol,
+        &instrument.name,
+        &instrument.currency,
+        &as_candidate,
+    ) {
         n.signal_id = Some(signal_id);
         if notify::dispatch(deps.pool, deps.notifier, &n).await? {
             report.notifications += 1;
@@ -1286,10 +1315,7 @@ async fn record_blocked(
 
 /// The book renderer is private to the engine; tests outside the crate still need to pin the
 /// exact wording the model reads.
-pub fn format_book_for_test(
-    rows: &[crate::llm::rotate::HoldingLine],
-    current: &str,
-) -> String {
+pub fn format_book_for_test(rows: &[crate::llm::rotate::HoldingLine], current: &str) -> String {
     format_book(rows, current)
 }
 
@@ -1570,7 +1596,8 @@ async fn rotate_for_cash(
     );
     let rendered = crate::llm::prompts::render_rotation(&table, &wanted)?;
     let model = crate::rules::settings::model_config(deps.pool).await?;
-    if crate::llm::orchestrate::daily_chat_calls(deps.pool).await? >= deps.runtime.daily_cap as i64 {
+    if crate::llm::orchestrate::daily_chat_calls(deps.pool).await? >= deps.runtime.daily_cap as i64
+    {
         tracing::info!("daily call cap reached — rotation not attempted");
         return Ok(None);
     }

@@ -40,12 +40,7 @@ impl Notification {
     /// BLOCKED never produces a Notification — there is nothing to do about it.
     /// `name` is what a person recognises ("Infosys"), `symbol` is for the link and the footnote —
     /// a push that says only INFY.NS makes you stop and translate before you know what happened.
-    pub fn from_candidate(
-        symbol: &str,
-        name: &str,
-        currency: &str,
-        c: &Candidate,
-    ) -> Option<Self> {
+    pub fn from_candidate(symbol: &str, name: &str, currency: &str, c: &Candidate) -> Option<Self> {
         if !matches!(c.action, Action::Buy | Action::Sell) {
             return None;
         }
@@ -55,11 +50,7 @@ impl Notification {
                 Priority::High,
             ),
             Action::Buy => (
-                format!(
-                    "BUY · {name} · {} units at {:.2}",
-                    fmt_qty(c.qty),
-                    c.entry
-                ),
+                format!("BUY · {name} · {} units at {:.2}", fmt_qty(c.qty), c.entry),
                 Priority::Default,
             ),
             _ => unreachable!(),

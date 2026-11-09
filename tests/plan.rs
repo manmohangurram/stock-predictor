@@ -58,8 +58,21 @@ fn the_fixture_parses_into_two_ordered_moves() {
 #[test]
 fn a_balanced_swap_passes() {
     // Sells 24 * 1146.30 = 27,511.20; buys 15 * 793.65 = 11,904.75; cash 500 is spare.
-    let cash = Cash { stock: 500.0, fund: 0.0 };
-    plan::validate(&parsed(), &book(), cash, &at(1_000_000.0), "INR", now(), &[], Scope::Stock).unwrap();
+    let cash = Cash {
+        stock: 500.0,
+        fund: 0.0,
+    };
+    plan::validate(
+        &parsed(),
+        &book(),
+        cash,
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &[],
+        Scope::Stock,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -89,8 +102,21 @@ fn a_plan_that_buys_more_than_it_frees_is_refused() {
         ],
         rationale: "unbalanced".into(),
     };
-    let cash = Cash { stock: 500.0, fund: 0.0 };
-    let e = plan::validate(&p, &book(), cash, &at(1_000_000.0), "INR", now(), &[], Scope::Stock).unwrap_err();
+    let cash = Cash {
+        stock: 500.0,
+        fund: 0.0,
+    };
+    let e = plan::validate(
+        &p,
+        &book(),
+        cash,
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &[],
+        Scope::Stock,
+    )
+    .unwrap_err();
     assert!(e.to_string().contains("does not balance"), "{e}");
 }
 
@@ -109,8 +135,21 @@ fn a_plan_selling_what_is_not_held_is_refused() {
         }],
         rationale: String::new(),
     };
-    let cash = Cash { stock: 10_000.0, fund: 0.0 };
-    let e = plan::validate(&p, &book(), cash, &at(1_000_000.0), "INR", now(), &[], Scope::Stock).unwrap_err();
+    let cash = Cash {
+        stock: 10_000.0,
+        fund: 0.0,
+    };
+    let e = plan::validate(
+        &p,
+        &book(),
+        cash,
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &[],
+        Scope::Stock,
+    )
+    .unwrap_err();
     assert!(e.to_string().contains("not held"), "{e}");
 }
 
@@ -129,8 +168,17 @@ fn selling_more_than_is_held_is_refused() {
         }],
         rationale: String::new(),
     };
-    let e = plan::validate(&p, &book(), Cash::default(), &at(1_000_000.0), "INR", now(), &[], Scope::Stock)
-        .unwrap_err();
+    let e = plan::validate(
+        &p,
+        &book(),
+        Cash::default(),
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &[],
+        Scope::Stock,
+    )
+    .unwrap_err();
     assert!(e.to_string().contains("only 24.000 is held"), "{e}");
 }
 
@@ -161,8 +209,17 @@ fn a_symbol_may_not_appear_twice() {
         ],
         rationale: String::new(),
     };
-    let e = plan::validate(&p, &book(), Cash::default(), &at(1_000_000.0), "INR", now(), &[], Scope::Stock)
-        .unwrap_err();
+    let e = plan::validate(
+        &p,
+        &book(),
+        Cash::default(),
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &[],
+        Scope::Stock,
+    )
+    .unwrap_err();
     assert!(e.to_string().contains("twice"), "{e}");
 }
 
@@ -197,7 +254,10 @@ fn a_pass_has_no_moves() {
 #[test]
 fn the_book_block_lists_every_holding_and_its_cost_basis() {
     let block = plan::book_block(&book(), "INR");
-    assert!(block.contains("INFY.NS | Infosys | 24.000 | 1042.30"), "{block}");
+    assert!(
+        block.contains("INFY.NS | Infosys | 24.000 | 1042.30"),
+        "{block}"
+    );
     assert!(block.contains("total invested:"), "{block}");
 }
 
@@ -240,10 +300,22 @@ fn selling_stocks_never_funds_a_mutual_fund() {
         ],
         rationale: "consolidate".into(),
     };
-    let cash = Cash { stock: 4_000.0, fund: 0.0 };
+    let cash = Cash {
+        stock: 4_000.0,
+        fund: 0.0,
+    };
     let funds = vec!["0P0000XUY3.BO".to_string()];
-    let e = plan::validate(&plan, &held, cash, &at(1_000_000.0), "INR", now(), &funds, Scope::Stock)
-        .unwrap_err();
+    let e = plan::validate(
+        &plan,
+        &held,
+        cash,
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &funds,
+        Scope::Stock,
+    )
+    .unwrap_err();
     assert!(e.to_string().contains("is a mutual fund"), "{e}");
     assert!(e.to_string().contains("fund plan"), "{e}");
 }
@@ -292,7 +364,10 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
     let e = plan::validate(
         &plan,
         &held,
-        Cash { stock: 0.0, fund: 5_000.0 },
+        Cash {
+            stock: 0.0,
+            fund: 5_000.0,
+        },
         &at(1_000_000.0),
         "INR",
         now(),
@@ -318,7 +393,10 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
     plan::validate(
         &buy_only,
         &held,
-        Cash { stock: 100_000.0, fund: 5_000.0 },
+        Cash {
+            stock: 100_000.0,
+            fund: 5_000.0,
+        },
         &at(1_000_000.0),
         "INR",
         now(),
@@ -331,7 +409,10 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
     let e = plan::validate(
         &buy_only,
         &held,
-        Cash { stock: 100_000.0, fund: 0.0 },
+        Cash {
+            stock: 100_000.0,
+            fund: 0.0,
+        },
         &at(1_000_000.0),
         "INR",
         now(),
@@ -358,7 +439,10 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
     let e = plan::validate(
         &stock_plan,
         &held,
-        Cash { stock: 0.0, fund: 9_999.0 },
+        Cash {
+            stock: 0.0,
+            fund: 9_999.0,
+        },
         &at(1_000_000.0),
         "INR",
         now(),

@@ -64,7 +64,9 @@ pub async fn run(
     let cap = runtime.daily_cap as i64;
     let mut used = crate::llm::orchestrate::daily_chat_calls(pool).await?;
     if used >= cap {
-        report.notes.push(format!("daily call cap reached ({used}/{cap})"));
+        report
+            .notes
+            .push(format!("daily call cap reached ({used}/{cap})"));
         return Ok(report);
     }
 
@@ -122,7 +124,9 @@ pub async fn run(
         )?;
 
         if used >= cap {
-            report.notes.push(format!("daily call cap reached ({used}/{cap})"));
+            report
+                .notes
+                .push(format!("daily call cap reached ({used}/{cap})"));
             break;
         }
         report.called += 1;
@@ -243,7 +247,11 @@ pub async fn run(
     if !report.ideas.is_empty() {
         // One notification for the pass, not one per name: the ledger is where you act on them.
         let n = crate::notify::Notification {
-            title: format!("Short-term · {} idea{}", report.ideas.len(), plural(report.ideas.len())),
+            title: format!(
+                "Short-term · {} idea{}",
+                report.ideas.len(),
+                plural(report.ideas.len())
+            ),
             body: report.ideas.join("\n"),
             priority: crate::notify::Priority::Default,
             dedupe_key: crate::llm::memo::fingerprint(

@@ -319,36 +319,37 @@ pub async fn edit(
 
     if position_id != 0 {
         let new_held = held + delta_units;
-        let basis = held * cost + match side {
-            Side::Buy => new_value - old_value,
-            Side::Sell => 0.0,
+        let basis = held * cost
+            + match side {
+                Side::Buy => new_value - old_value,
+                Side::Sell => 0.0,
+            };
+        let new_cost = if new_held > 1e-9 {
+            basis / new_held
+        } else {
+            cost
         };
-        let new_cost = if new_held > 1e-9 { basis / new_held } else { cost };
-        sqlx::query(
-            "UPDATE positions SET qty = ?, avg_cost = ?, state = ? WHERE id = ?",
-        )
-        .bind(new_held)
-        .bind(new_cost)
-        .bind(if new_held > 1e-9 { "open" } else { "closed" })
-        .bind(position_id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE positions SET qty = ?, avg_cost = ?, state = ? WHERE id = ?")
+            .bind(new_held)
+            .bind(new_cost)
+            .bind(if new_held > 1e-9 { "open" } else { "closed" })
+            .bind(position_id)
+            .execute(pool)
+            .await?;
     }
 
     let realised = match side {
         Side::Sell => Some(new_qty * (new_price - cost)),
         Side::Buy => None,
     };
-    sqlx::query(
-        "UPDATE trades SET qty = ?, price = ?, realised = ?, traded_at = ? WHERE id = ?",
-    )
-    .bind(new_qty)
-    .bind(new_price)
-    .bind(realised)
-    .bind(when.to_rfc3339())
-    .bind(id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE trades SET qty = ?, price = ?, realised = ?, traded_at = ? WHERE id = ?")
+        .bind(new_qty)
+        .bind(new_price)
+        .bind(realised)
+        .bind(when.to_rfc3339())
+        .bind(id)
+        .execute(pool)
+        .await?;
 
     if delta_cash.abs() > 1e-9 {
         // Money back when the fill was overstated, more when it was understated.

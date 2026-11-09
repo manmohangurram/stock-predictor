@@ -98,12 +98,12 @@ pub fn render_plan(
         crate::llm::plan::Scope::Stock => PLAN_STOCK_V1,
         crate::llm::plan::Scope::Fund => PLAN_MF_V1,
     }
-        .replace("{{book}}", book)
-        .replace("{{cap}}", cap)
-        .replace("{{cash}}", &format!("{cash:.2}"))
-        .replace("{{currency}}", currency)
-        .replace("{{limits}}", limits)
-        .replace("{{candidates}}", candidates);
+    .replace("{{book}}", book)
+    .replace("{{cap}}", cap)
+    .replace("{{cash}}", &format!("{cash:.2}"))
+    .replace("{{currency}}", currency)
+    .replace("{{limits}}", limits)
+    .replace("{{candidates}}", candidates);
     Ok(RenderedPrompt {
         text,
         hash: template_hash(template)?,

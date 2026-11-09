@@ -182,9 +182,9 @@ pub async fn record_at_mode(
     .bind(entry.reference)
     .bind(mode.as_str())
     .bind(entry.bucket.as_deref())
-        .execute(pool)
-        .await
-        .context("insert cash ledger")?;
+    .execute(pool)
+    .await
+    .context("insert cash ledger")?;
     Ok(())
 }
 

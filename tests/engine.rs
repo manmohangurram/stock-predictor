@@ -826,9 +826,18 @@ async fn a_plan_is_stored_as_one_group_of_moves() {
     .to_string();
 
     let transport = FixtureTransport::new(vec![
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass },
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: planned },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass.clone(),
+        },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass,
+        },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: planned,
+        },
     ]);
     let deps = EngineDeps {
         pool: &pool,
@@ -861,7 +870,10 @@ async fn a_plan_is_stored_as_one_group_of_moves() {
     assert_eq!(rows[1].action, "BUY");
     assert_eq!(rows[0].mode, "long");
     assert!(rows[0].plan_id.is_some(), "a plan id");
-    assert_eq!(rows[0].plan_id, rows[1].plan_id, "both legs share the plan id");
+    assert_eq!(
+        rows[0].plan_id, rows[1].plan_id,
+        "both legs share the plan id"
+    );
     assert!(
         rows[1].stop.is_some() && rows[1].target.is_some(),
         "the buy keeps its exits"
@@ -905,9 +917,18 @@ async fn an_unbalanced_plan_is_refused_and_recorded() {
     })
     .to_string();
     let transport = FixtureTransport::new(vec![
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass },
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: greedy },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass.clone(),
+        },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass,
+        },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: greedy,
+        },
     ]);
     let deps = EngineDeps {
         pool: &pool,
@@ -921,12 +942,11 @@ async fn an_unbalanced_plan_is_refused_and_recorded() {
     let report = engine::poll_once(&deps, now()).await.unwrap();
     assert_eq!(report.plans, 0, "{report:?}");
 
-    let blocked: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM signals WHERE action = 'BLOCKED' AND kind = 'plan'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let blocked: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM signals WHERE action = 'BLOCKED' AND kind = 'plan'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(blocked.0, 1, "one refusal, recorded");
     let reason: (String,) = sqlx::query_as(
         "SELECT reason_json FROM signals WHERE action = 'BLOCKED' AND kind = 'plan'",
@@ -970,9 +990,18 @@ async fn a_plan_is_linked_to_the_call_that_proposed_it() {
     })
     .to_string();
     let transport = FixtureTransport::new(vec![
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass },
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: planned },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass.clone(),
+        },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass,
+        },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: planned,
+        },
     ]);
     let deps = EngineDeps {
         pool: &pool,
@@ -1002,4 +1031,93 @@ async fn a_plan_is_linked_to_the_call_that_proposed_it() {
     .await
     .unwrap();
     assert_eq!(calls.0, 1, "the plan call is the one the legs point at");
+}
+
+/// The fund plan is asked once per IST day, on the first tick — including the first tick after a
+/// restart. A pass still marks the day, or the next tick would ask again.
+#[tokio::test]
+async fn the_fund_plan_asks_once_a_day_and_survives_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY.NS"]).await;
+    // A fund in the book, priced, so the plan has something to look at.
+    let fund: i64 = {
+        sqlx::query("INSERT INTO instruments (symbol, class, name, currency) VALUES ('120503','mutual_fund','Index fund','INR')")
+            .execute(&pool).await.unwrap();
+        sqlx::query_scalar("SELECT id FROM instruments WHERE symbol = '120503'")
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+    };
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode)
+         VALUES (?, 40, 110.0, '2026-09-01T00:00:00Z', 'open', 'long')",
+    )
+    .bind(fund)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let pass = serde_json::json!({
+        "choices": [{"message": {"content": "{\"moves\":[],\"pass_reason\":\"nothing worth doing\"}"}}],
+        "usage": {}
+    })
+    .to_string();
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+
+    // First tick of the day: the plan is asked, and passes.
+    let first = FixtureTransport::new(vec![stock_predictor::llm::deepseek::HttpReply {
+        status: 200,
+        body: pass.clone(),
+    }]);
+    let deps = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &first,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: false,
+    };
+    assert!(!engine::plan_funds(&deps, now()).await.unwrap());
+
+    // Second tick, same day: no call is spent.
+    let empty = FixtureTransport::new(vec![]);
+    let again = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &empty,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: false,
+    };
+    assert!(!engine::plan_funds(&again, now()).await.unwrap());
+
+    // The next day, a restart asks again.
+    let tomorrow = FixtureTransport::new(vec![stock_predictor::llm::deepseek::HttpReply {
+        status: 200,
+        body: pass,
+    }]);
+    let next_day = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &tomorrow,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: false,
+    };
+    let later = now() + chrono::Duration::days(1);
+    assert!(!engine::plan_funds(&next_day, later).await.unwrap());
+    let calls: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM api_calls WHERE purpose = 'plan funds'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(calls.0, 2, "one call on each of the two days");
 }

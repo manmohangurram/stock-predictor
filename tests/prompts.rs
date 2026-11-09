@@ -324,7 +324,11 @@ fn a_rendered_prompt_carries_the_cap_and_the_purse_number() {
     let h = headlines();
     let c = ctx(&i, &x, &h);
     let rendered = prompts::render("decide_v1", &c).unwrap();
-    assert!(rendered.text.contains("at most 96388.86 INR"), "{}", rendered.text);
+    assert!(
+        rendered.text.contains("at most 96388.86 INR"),
+        "{}",
+        rendered.text
+    );
     assert!(rendered.text.contains("Your book:"), "{}", rendered.text);
 }
 
@@ -371,15 +375,43 @@ fn the_plan_prompt_carries_the_book_the_cap_and_the_candidates() {
     )
     .unwrap();
     assert_eq!(rendered.template, "plan_stock_v1");
-    assert!(rendered.text.contains("at most 200000.00 INR"), "{}", rendered.text);
-    assert!(rendered.text.contains("INFY.NS | Infosys"), "{}", rendered.text);
-    assert!(rendered.text.contains("HDFCBANK.NS at 793.65"), "{}", rendered.text);
-    assert!(rendered.text.contains("Six months or more"), "{}", rendered.text);
+    assert!(
+        rendered.text.contains("at most 200000.00 INR"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains("INFY.NS | Infosys"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains("HDFCBANK.NS at 793.65"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains("Six months or more"),
+        "{}",
+        rendered.text
+    );
     // A plan is stocks-only: the fund book has its own prompt.
-    assert!(rendered.text.contains("Zero to three moves"), "{}", rendered.text);
+    assert!(
+        rendered.text.contains("Zero to three moves"),
+        "{}",
+        rendered.text
+    );
     // The stock prompt says it cannot touch the fund purse; it must not offer it.
-    assert!(!rendered.text.contains("## Fund purse"), "{}", rendered.text);
-    assert!(!rendered.text.contains("{{"), "an unfilled placeholder: {}", rendered.text);
+    assert!(
+        !rendered.text.contains("## Fund purse"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        !rendered.text.contains("{{"),
+        "an unfilled placeholder: {}",
+        rendered.text
+    );
 }
 
 /// The two plan prompts are different arguments, not the same one reworded.
@@ -396,12 +428,32 @@ fn the_fund_plan_prompt_is_about_funds_and_sized_in_rupees() {
     )
     .unwrap();
     assert_eq!(rendered.template, "plan_mf_v1");
-    assert!(rendered.text.contains("mutual-fund side"), "{}", rendered.text);
-    assert!(rendered.text.contains("Sizes are in rupees"), "{}", rendered.text);
-    assert!(rendered.text.contains("Zero to two moves"), "{}", rendered.text);
-    assert!(rendered.text.contains("no intraday exit"), "{}", rendered.text);
+    assert!(
+        rendered.text.contains("mutual-fund side"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains("Sizes are in rupees"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains("Zero to two moves"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains("no intraday exit"),
+        "{}",
+        rendered.text
+    );
     // Nothing about stops or the stock purse belongs here.
-    assert!(!rendered.text.contains("stock purse plus"), "{}", rendered.text);
+    assert!(
+        !rendered.text.contains("stock purse plus"),
+        "{}",
+        rendered.text
+    );
     assert!(!rendered.text.contains("{{"), "unfilled: {}", rendered.text);
 }
 
@@ -418,9 +470,25 @@ fn the_stock_plan_prompt_demands_exits_and_forbids_funds() {
     )
     .unwrap();
     assert_eq!(rendered.template, "plan_stock_v1");
-    assert!(rendered.text.contains("Six months or more"), "{}", rendered.text);
-    assert!(rendered.text.contains("A **stop is not optional**"), "{}", rendered.text);
-    assert!(rendered.text.contains("Zero to three moves"), "{}", rendered.text);
+    assert!(
+        rendered.text.contains("Six months or more"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains("A **stop is not optional**"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains("Zero to three moves"),
+        "{}",
+        rendered.text
+    );
     // The stock prompt says it cannot touch the fund purse; it must not offer it.
-    assert!(!rendered.text.contains("## Fund purse"), "{}", rendered.text);
+    assert!(
+        !rendered.text.contains("## Fund purse"),
+        "{}",
+        rendered.text
+    );
 }

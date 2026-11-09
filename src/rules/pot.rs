@@ -101,8 +101,8 @@ pub async fn ensure_month(
         .bind(format!("unspent allowance expired {}", month))
         .bind(mode.as_str())
         .bind(bucket)
-            .execute(&mut *tx)
-            .await?;
+        .execute(&mut *tx)
+        .await?;
     }
     if delta.abs() > 1e-9 {
         sqlx::query(

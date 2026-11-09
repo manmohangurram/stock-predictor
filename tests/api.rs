@@ -1501,7 +1501,13 @@ async fn a_fund_buy_is_capped_by_the_fund_earmark() {
     .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     // The fund purse is its own money: 1,000 cannot buy 5,500 of units.
-    assert!(v["error"].as_str().unwrap().contains("exceeds available cash"), "{v}");
+    assert!(
+        v["error"]
+            .as_str()
+            .unwrap()
+            .contains("exceeds available cash"),
+        "{v}"
+    );
 
     // Within the purse, it passes.
     let (s, v) = send(
@@ -1522,8 +1528,13 @@ async fn the_three_monthly_purses_do_not_share_money() {
     sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')")
         .execute(&pool).await.unwrap();
 
-    send(&router, "PUT", "/api/settings",
-        json!({"budget": 20_000.0, "mf_budget": 5_000.0, "trading_budget": 7_000.0})).await;
+    send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"budget": 20_000.0, "mf_budget": 5_000.0, "trading_budget": 7_000.0}),
+    )
+    .await;
 
     let (_, v) = get(&router, "/api/settings").await;
     assert_eq!(v["available"], 20_000.0, "stock purse");
@@ -1531,12 +1542,23 @@ async fn the_three_monthly_purses_do_not_share_money() {
     assert_eq!(v["trading_available"], 7_000.0, "short-term purse");
 
     // Spending the fund purse leaves the stock purse untouched.
-    let (s, _) = send(&router, "POST", "/api/instruments/AXISELSS/trades",
-        json!({"side":"buy","qty":50.0,"price":55.0,"mode":"long"})).await;
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments/AXISELSS/trades",
+        json!({"side":"buy","qty":50.0,"price":55.0,"mode":"long"}),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK);
     let (_, v) = get(&router, "/api/settings").await;
-    assert_eq!(v["available"], 20_000.0, "a fund buy must not touch the stock purse");
-    assert_eq!(v["mf_available"], 2_250.0, "50 × 55 came out of the fund purse");
+    assert_eq!(
+        v["available"], 20_000.0,
+        "a fund buy must not touch the stock purse"
+    );
+    assert_eq!(
+        v["mf_available"], 2_250.0,
+        "50 × 55 came out of the fund purse"
+    );
 }
 
 #[tokio::test]
@@ -1557,14 +1579,20 @@ async fn a_blocked_proposal_is_visible_in_the_record_with_its_shortfall() {
     assert_eq!(v["blocked"].as_array().unwrap().len(), 1);
     let reason = v["blocked"][0]["reasons"].to_string();
     assert!(reason.contains("insufficient_cash"), "{reason}");
-    assert!(reason.contains("99000"), "the shortfall must be visible: {reason}");
+    assert!(
+        reason.contains("99000"),
+        "the shortfall must be visible: {reason}"
+    );
 
     // …and the stock overview shows it as part of the record.
     let (s, v) = get(&router, "/api/instruments/INFY/analysis").await;
     assert_eq!(s, StatusCode::OK, "{v}");
     let actions: Vec<String> = v["signals"]
-        .as_array().unwrap().iter()
-        .map(|s| s["action"].as_str().unwrap().to_string()).collect();
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["action"].as_str().unwrap().to_string())
+        .collect();
     assert!(actions.contains(&"BLOCKED".to_string()), "{actions:?}");
 }
 
@@ -1653,7 +1681,13 @@ async fn approving_one_leg_of_a_plan_approves_the_whole_plan() {
     .await
     .unwrap();
 
-    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", buy_id.0), json!({})).await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", buy_id.0),
+        json!({}),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(v["status"], "approved");
 
@@ -1664,7 +1698,10 @@ async fn approving_one_leg_of_a_plan_approves_the_whole_plan() {
             .await
             .unwrap();
     assert_eq!(statuses.len(), 2);
-    assert!(statuses.iter().all(|(s, _)| s == "approved"), "{statuses:?}");
+    assert!(
+        statuses.iter().all(|(s, _)| s == "approved"),
+        "{statuses:?}"
+    );
 
     let trades: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM trades")
         .fetch_one(&pool)
@@ -1673,7 +1710,13 @@ async fn approving_one_leg_of_a_plan_approves_the_whole_plan() {
     assert_eq!(trades.0, 2, "both legs posted");
 
     // Approving again is refused rather than posting the legs twice.
-    let (s, _) = send(&router, "POST", &format!("/api/signals/{}/approve", buy_id.0), json!({})).await;
+    let (s, _) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", buy_id.0),
+        json!({}),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
 
@@ -1819,14 +1862,20 @@ async fn editing_a_fill_moves_the_position_and_posts_the_cash_difference() {
     .await
     .unwrap();
     assert_eq!(qty, 10.0);
-    assert!((cost - 90.0).abs() < 1e-6, "cost basis follows the correction: {cost}");
+    assert!(
+        (cost - 90.0).abs() < 1e-6,
+        "cost basis follows the correction: {cost}"
+    );
 
     let adjust: (f64,) =
         sqlx::query_as("SELECT COALESCE(SUM(amount), 0) FROM cash_ledger WHERE kind = 'adjust'")
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert!((adjust.0 - 100.0).abs() < 1e-6, "10 units × 10 too much: {adjust:?}");
+    assert!(
+        (adjust.0 - 100.0).abs() < 1e-6,
+        "10 units × 10 too much: {adjust:?}"
+    );
 }
 
 /// An edit that would sell more than is held is refused, and nothing moves.
@@ -2007,7 +2056,11 @@ async fn the_audit_list_pages_and_says_how_many_there_are() {
 
     let (s, last) = get(&router, "/api/calls?page=2&per_page=25").await;
     assert_eq!(s, StatusCode::OK);
-    assert_eq!(last.as_array().unwrap().len(), 5, "the second page holds the rest");
+    assert_eq!(
+        last.as_array().unwrap().len(),
+        5,
+        "the second page holds the rest"
+    );
 
     // The total is a header, so the body stays a plain array.
     use tower::ServiceExt;
@@ -2023,7 +2076,11 @@ async fn the_audit_list_pages_and_says_how_many_there_are() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(
-        resp.headers().get("x-total-count").unwrap().to_str().unwrap(),
+        resp.headers()
+            .get("x-total-count")
+            .unwrap()
+            .to_str()
+            .unwrap(),
         "30"
     );
     assert_eq!(
@@ -2049,7 +2106,11 @@ async fn the_audit_list_accepts_offset_and_limit() {
     }
     let (s, rows) = get(&router, "/api/calls?offset=28&limit=5").await;
     assert_eq!(s, StatusCode::OK, "{rows}");
-    assert_eq!(rows.as_array().unwrap().len(), 2, "the tail is short, not padded");
+    assert_eq!(
+        rows.as_array().unwrap().len(),
+        2,
+        "the tail is short, not padded"
+    );
 
     let (s, rows) = get(&router, "/api/calls?offset=0&limit=10").await;
     assert_eq!(s, StatusCode::OK);
@@ -2113,10 +2174,10 @@ async fn the_dashboard_tag_notices_in_place_changes() {
     // Archiving flips a flag; the ledger must stop showing the row. (INFY is held, so it cannot
     // be archived — TCS is the one that can.)
     let (status, _) = send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;
-    assert!(status.is_success(), "archive should succeed for an unheld instrument");
-    let after_archive = tag(router.clone()).await;
-    assert_ne!(
-        after_edit, after_archive,
-        "archiving changes the tag"
+    assert!(
+        status.is_success(),
+        "archive should succeed for an unheld instrument"
     );
+    let after_archive = tag(router.clone()).await;
+    assert_ne!(after_edit, after_archive, "archiving changes the tag");
 }

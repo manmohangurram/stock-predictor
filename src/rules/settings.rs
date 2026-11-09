@@ -226,8 +226,8 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
             budget,
             chrono::Utc::now(),
         )
-            .await
-            .map_err(|_| SettingsError::InvalidAmount)?;
+        .await
+        .map_err(|_| SettingsError::InvalidAmount)?;
     }
     if let Some(budget) = patch.mf_budget {
         if !budget.is_finite() || budget < 0.0 {
@@ -262,8 +262,8 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
             budget,
             chrono::Utc::now(),
         )
-            .await
-            .map_err(|_| SettingsError::InvalidAmount)?;
+        .await
+        .map_err(|_| SettingsError::InvalidAmount)?;
     }
 
     if let Some(currency) = patch.currency {

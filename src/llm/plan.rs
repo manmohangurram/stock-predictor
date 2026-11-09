@@ -208,9 +208,15 @@ pub fn validate(
 
         // Money is the unit of account: stock plans price it as qty × price, fund plans take rupees.
         let value = match scope {
-            Scope::Fund => m.amount.filter(|a| a.is_finite() && *a > 0.0).ok_or_else(|| {
-                anyhow!("{} has no amount — a fund move is sized in rupees", m.symbol)
-            })?,
+            Scope::Fund => m
+                .amount
+                .filter(|a| a.is_finite() && *a > 0.0)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "{} has no amount — a fund move is sized in rupees",
+                        m.symbol
+                    )
+                })?,
             Scope::Stock => {
                 let qty = m
                     .qty
@@ -267,10 +273,7 @@ pub fn validate(
                         return Err(anyhow!("{}: stop on the wrong side of entry", m.symbol));
                     }
                     if !target.is_finite() || target <= price {
-                        return Err(anyhow!(
-                            "{}: target on the wrong side of entry",
-                            m.symbol
-                        ));
+                        return Err(anyhow!("{}: target on the wrong side of entry", m.symbol));
                     }
                 }
                 spent += value

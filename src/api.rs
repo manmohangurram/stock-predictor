@@ -924,9 +924,9 @@ async fn calls(
         .or(q.per_page)
         .unwrap_or(CALLS_PER_PAGE)
         .clamp(1, 200);
-    let offset = q.offset.unwrap_or_else(|| {
-        (q.page.unwrap_or(1).max(1) - 1).saturating_mul(limit)
-    });
+    let offset = q
+        .offset
+        .unwrap_or_else(|| (q.page.unwrap_or(1).max(1) - 1).saturating_mul(limit));
     let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM api_calls")
         .fetch_one(&st.pool)
         .await?;
