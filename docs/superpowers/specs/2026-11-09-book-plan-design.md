@@ -45,7 +45,11 @@ Capped at the 12 largest holdings by value, then a `+N more` line, so the prompt
 bound. Mutual funds keep their `AMFI:` lines. The short-term prompt gets the short-term book; the two
 pots never see each other's money.
 
-### 3. One plan call per poll, and it may return up to three moves
+### 3. One plan call per poll, and it may return up to three **stock** moves
+
+A plan is stocks-only. Mutual funds are chosen once a day by the arithmetic scan from their own
+monthly purse and cost no model call; a plan that names a fund is refused, and the ledger shows the
+two channels as separate groups.
 
 A new prompt, `prompts/plan_v1.md`, asked once per poll after the per-stock calls, when the same
 `memo::should_call` gate that governs everything else has fired for at least one instrument (plus the

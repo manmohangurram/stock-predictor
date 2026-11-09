@@ -106,12 +106,10 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
         settings.limits_long.max_profit_pct,
         currency = settings.currency
     );
-    let fund_cash = budget::available_mf(deps.pool).await?;
     let rendered = crate::llm::prompts::render_plan(
         &crate::llm::plan::book_block(&holdings, &settings.currency),
         &crate::llm::prompts::cap_line(available, &settings.currency),
         available,
-        fund_cash,
         &settings.currency,
         &limits,
         &candidates,
@@ -151,9 +149,10 @@ async fn plan_book(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Option<(
     };
 
     let funds = fund_symbols(deps.pool).await?;
+    // A plan is stocks-only: the fund purse is not offered to it at all.
     let cash = crate::llm::plan::Cash {
         stock: available,
-        fund: budget::available_mf(deps.pool).await?,
+        fund: 0.0,
     };
     if let Err(e) = crate::llm::plan::validate(
         &plan,

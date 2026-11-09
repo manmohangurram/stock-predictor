@@ -236,55 +236,6 @@ fn selling_stocks_never_funds_a_mutual_fund() {
     let funds = vec!["0P0000XUY3.BO".to_string()];
     let e = plan::validate(&plan, &held, cash, &at(1_000_000.0), "INR", now(), &funds)
         .unwrap_err();
-    assert!(e.to_string().contains("fund purse does not balance"), "{e}");
-    assert!(e.to_string().contains("never lend"), "{e}");
-}
-
-/// A fund bought with fund cash is fine, and so is a stock bought with stock cash.
-#[test]
-fn each_purse_balances_on_its_own() {
-    let mut held = book();
-    held.push(HoldingLine {
-        symbol: "0P0000XUY3.BO".into(),
-        name: "Nifty 50 index fund".into(),
-        qty: 10.0,
-        avg_cost: 250.0,
-        ltp: Some(265.0),
-        stop: None,
-        target: None,
-    });
-    let plan = Plan {
-        moves: vec![
-            Move {
-                action: Action::Sell,
-                symbol: "0P0000XUY3.BO".into(),
-                qty: 10.0,
-                price: 265.0,
-                stop: None,
-                target: None,
-                why: "switch fund".into(),
-            },
-            Move {
-                action: Action::Buy,
-                symbol: "0P0000XUY3.BO".into(),
-                qty: 5.0,
-                price: 265.0,
-                stop: Some(240.0),
-                target: Some(320.0),
-                why: "reallocate".into(),
-            },
-        ],
-        rationale: String::new(),
-    };
-    // The same symbol twice is refused for a different reason, so use two funds.
-    assert!(plan::validate(
-        &plan,
-        &held,
-        Cash { stock: 0.0, fund: 0.0 },
-        &at(1_000_000.0),
-        "INR",
-        now(),
-        &["0P0000XUY3.BO".to_string()],
-    )
-    .is_err());
+    assert!(e.to_string().contains("is a mutual fund"), "{e}");
+    assert!(e.to_string().contains("daily scan"), "{e}");
 }

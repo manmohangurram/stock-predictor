@@ -106,8 +106,8 @@ fn extract_json(content: &str) -> Option<serde_json::Value> {
     serde_json::from_str(&content[start..=end]).ok()
 }
 
-/// Which purse a move draws on. Stocks have one; mutual funds have their own monthly allowance,
-/// and the two never lend to each other.
+/// Which purse a move draws on. A plan is stocks-only, so this exists to *refuse* funds rather
+/// than to balance them: a fund belongs to the daily arithmetic scan, which needs no model call.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Purse {
     Stock,
@@ -145,6 +145,8 @@ pub fn validate(
     // Symbols that are mutual funds: they draw on the fund purse, never on stock money.
     funds: &[String],
 ) -> Result<()> {
+    // Money is counted per purse. A plan is stocks-only, so only the stock purse is ever spent;
+    // the fund purse is kept in the check so a mixed plan is refused for a stated reason.
     let purse_of = |symbol: &str| {
         if funds.iter().any(|f| f == symbol) {
             Purse::Fund
@@ -152,7 +154,6 @@ pub fn validate(
             Purse::Stock
         }
     };
-    // Money is counted per purse: selling a stock frees stock money, and a fund cannot spend it.
     let mut freed = [0.0f64; 2];
     let mut spent = [0.0f64; 2];
     let slot = |p: Purse| match p {
@@ -166,6 +167,12 @@ pub fn validate(
             return Err(anyhow!("plan moves {} twice", m.symbol));
         }
         seen.push(&m.symbol);
+        if funds.iter().any(|f| f == &m.symbol) {
+            return Err(anyhow!(
+                "{} is a mutual fund: funds are chosen by the daily scan from their own purse, not in a stock plan",
+                m.symbol
+            ));
+        }
         if !m.qty.is_finite() || m.qty <= 0.0 {
             return Err(anyhow!("{} has no usable quantity", m.symbol));
         }

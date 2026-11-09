@@ -35,8 +35,9 @@ before you see it.
   something in profit to fund it. One decision with two legs, approved or refused as a unit, and a
   swap that does not balance is refused before any money moves.
 - **The model sees the book, not one stock.** Every prompt carries the holdings and a plain sentence
-  saying what the purse can spend, and once a poll a book call may propose up to three moves that
-  stand or fall together — sell one holding to fund another, approved as one plan.
+  saying what the purse can spend, and once a poll a book call may propose up to three **stock**
+  moves that stand or fall together — sell one holding to fund another, approved as one plan.
+  Mutual funds are not part of a plan: their own daily scan picks them, from their own purse.
 - **Two pots, one process.** Long-term and trading books with separate capital, separate limits and
   separate history. Neither can starve the other; the same stock can sit in both.
 - **Stocks and mutual funds, handled as what they are.** Funds are bought at NAV and held — no

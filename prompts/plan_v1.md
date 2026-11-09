@@ -26,13 +26,13 @@ propose a buy you cannot pay for with cash plus the proceeds of the sales in the
 
 {{cap}}
 
-## Cash, and the two purses
+## Cash, and the one purse this plan may use
 
-Stock purse: {{cash}} {{currency}} — stock buys are paid from this, plus what your stock sales free.
-Fund purse: {{fund_cash}} {{currency}} — mutual funds are paid from this and nothing else.
+Stock purse: {{cash}} {{currency}} — paid from this, plus what your own stock sales free.
 
-**The two purses never lend to each other.** Selling a stock does not free money for a fund, and
-selling a fund does not free money for a stock. A plan that moves money between them is refused.
+**This plan is stocks only.** Mutual funds are not decided here: they are chosen once a day by an
+arithmetic scan from their own monthly fund purse, without asking a model. Do not propose a fund,
+and never fund a buy from a purse other than the stock one.
 
 Trading ceiling for one plan: {{limits}}
 

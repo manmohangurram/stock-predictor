@@ -136,7 +136,7 @@ export function renderPlan(legs: Dashboard["signals"]): string {
   const actions = first.status === "pending" ? planActions(first, legs) : "";
   return `<div class="feed-row decision-feed plan-card">
     <div class="decision-main">
-      <div><span class="stamp" data-stamp="estimate">PLAN</span>
+      <div><span class="stamp" data-stamp="estimate">STOCK PLAN</span>
         <b>${legs.length} moves</b>
         ${status}
         <span class="sub">${histDate(first.created_at)}</span></div>
@@ -267,7 +267,9 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
   for (const s of shown) {
     if (s.plan_id) plans.set(s.plan_id, [...(plans.get(s.plan_id) ?? []), s]);
   }
-  const drawn: string[] = [];
+  // A plan is the stock book's business; the fund scan is its own arithmetic. Two channels,
+  // shown as two groups, so a fund decision never reads as part of a stock plan.
+  const drawn: { html: string; fund: boolean }[] = [];
   const seen = new Set<number>();
   for (const s of shown.slice(0, 10)) {
     const plan = s.plan_id;
@@ -279,13 +281,22 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
         .get(plan)!
         .slice()
         .sort((a, b) => (a.action === "SELL" ? -1 : 1) - (b.action === "SELL" ? -1 : 1));
-      drawn.push(renderPlan(legs));
+      drawn.push({ html: renderPlan(legs), fund: false });
       continue;
     }
-    drawn.push(decisionRow(s));
+    drawn.push({ html: decisionRow(s), fund: s.class === "mutual_fund" });
   }
+  const group = (fund: boolean) => drawn.filter((d) => d.fund === fund).map((d) => d.html).join("");
+  const both = drawn.some((d) => d.fund) && drawn.some((d) => !d.fund);
   const advice = shown.length
-    ? drawn.join("")
+    ? [
+        drawn.some((d) => !d.fund)
+          ? `${both ? `<div class="decision-group"><span class="lbl">Stocks</span></div>` : ""}${group(false)}`
+          : "",
+        drawn.some((d) => d.fund)
+          ? `<div class="decision-group"><span class="lbl">Fund scan · arithmetic, no model call</span></div>${group(true)}`
+          : "",
+      ].join("")
     : `<p class="empty">${
         filter === "pending" ? "Nothing under review." : "Nothing in this filter."
       }</p>`;
