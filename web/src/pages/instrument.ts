@@ -16,11 +16,12 @@ function chart(a: Analysis): string {
     return `<p class="empty">No price history stored yet — open this instrument once the next poll has run.</p>`;
   }
   const w = 900;
-  const h = 280;
+  // 30% shorter than the first cut: the chart is a reading aid, not the page.
+  const h = 196;
   const left = 68;
   const right = 18;
-  const top = 14;
-  const bottom = 34;
+  const top = 12;
+  const bottom = 26;
   const closes = a.bars.map((b) => b.close);
   const refs = a.indicators ? [a.indicators.sma50, a.indicators.sma200] : [];
   const rawLo = Math.min(...closes, ...refs);
