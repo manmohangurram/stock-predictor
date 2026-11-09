@@ -27,6 +27,10 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "0009_runtime_settings",
         include_str!("../migrations/0009_runtime_settings.sql"),
     ),
+    (
+        "0010_decision_status",
+        include_str!("../migrations/0010_decision_status.sql"),
+    ),
 ];
 
 pub fn path_of(path: &str) -> &str {

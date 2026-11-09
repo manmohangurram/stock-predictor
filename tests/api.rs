@@ -986,3 +986,117 @@ async fn a_symbol_with_fills_is_archived_not_deleted() {
     .fetch_one(&pool).await.unwrap();
     assert_eq!(fills.0, 2, "history must survive");
 }
+
+#[tokio::test]
+async fn approving_a_decision_records_the_fill_you_actually_got() {
+    let (_d, router, pool) = setup().await;
+    // A pending BUY decision, as the engine would have written it.
+    let id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, mode)
+         SELECT id, 'BUY', 10, 100.0, 95.0, 120.0, '2030-01-01T00:00:00Z', '{}', '2026-11-08T10:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'INFY' RETURNING id",
+    )
+    .fetch_one(&pool).await.unwrap();
+
+    // Edited numbers: you got 8 units at 99.50, not 10 at 100.
+    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", id.0),
+        json!({"qty": 8.0, "price": 99.5})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["status"], "approved");
+    assert_eq!(v["filled_qty"], 8.0);
+
+    let (status, fq, fp): (String, Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT status, filled_qty, filled_price FROM signals WHERE id = ?",
+    ).bind(id.0).fetch_one(&pool).await.unwrap();
+    assert_eq!(status, "approved");
+    assert_eq!(fq, Some(8.0));
+    assert_eq!(fp, Some(99.5));
+
+    let held: (f64,) = sqlx::query_as(
+        "SELECT qty FROM positions p JOIN instruments i ON i.id = p.instrument_id WHERE i.symbol = 'INFY'",
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(held.0, 8.0, "the position must be the edited quantity");
+
+    // Approving again must not double the position.
+    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", id.0), json!({})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    let held: (f64,) = sqlx::query_as(
+        "SELECT qty FROM positions p JOIN instruments i ON i.id = p.instrument_id WHERE i.symbol = 'INFY'",
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(held.0, 8.0);
+}
+
+#[tokio::test]
+async fn a_fill_that_cannot_be_recorded_leaves_the_decision_pending() {
+    let (_d, router, pool) = setup().await;
+    let id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at, mode)
+         SELECT id, 'BUY', 10_000, 1000.0, '2030-01-01T00:00:00Z', '{}', '2026-11-08T10:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'INFY' RETURNING id",
+    ).fetch_one(&pool).await.unwrap();
+
+    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", id.0), json!({})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap().contains("exceeds available cash"), "{v}");
+
+    let status: (String,) = sqlx::query_as("SELECT status FROM signals WHERE id = ?")
+        .bind(id.0).fetch_one(&pool).await.unwrap();
+    assert_eq!(status.0, "pending", "a failed fill must not consume the decision");
+}
+
+#[tokio::test]
+async fn rejecting_a_decision_writes_a_reason_and_no_money() {
+    let (_d, router, pool) = setup().await;
+    let id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at, mode)
+         SELECT id, 'SELL', 5, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-08T10:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'INFY' RETURNING id",
+    ).fetch_one(&pool).await.unwrap();
+    let before: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cash_ledger").fetch_one(&pool).await.unwrap();
+
+    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/reject", id.0),
+        json!({"reason": "not at this price"})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let (status, reason): (String, Option<String>) =
+        sqlx::query_as("SELECT status, status_reason FROM signals WHERE id = ?")
+            .bind(id.0).fetch_one(&pool).await.unwrap();
+    assert_eq!(status, "rejected");
+    assert_eq!(reason.as_deref(), Some("not at this price"));
+    let after: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cash_ledger").fetch_one(&pool).await.unwrap();
+    assert_eq!(after.0, before.0, "a rejection must not touch the ledger");
+}
+
+#[tokio::test]
+async fn the_ledger_shows_pending_decisions_only_unless_filtered() {
+    let (_d, router, pool) = setup().await;
+    for (action, status) in [("BUY", "pending"), ("SELL", "approved"), ("BUY", "rejected")] {
+        sqlx::query(
+            "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+                created_at, mode, status)
+             SELECT id, ?, 1, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-08T10:00:00Z', 'long', ?
+             FROM instruments WHERE symbol = 'INFY'",
+        )
+        .bind(action)
+        .bind(status)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let (_, v) = get(&router, "/api/dashboard").await;
+    let statuses: Vec<String> = v["signals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["status"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(statuses, vec!["pending"], "{statuses:?}");
+
+    let (_, v) = get(&router, "/api/dashboard?decisions=approved").await;
+    let statuses: Vec<String> = v["signals"]
+        .as_array().unwrap().iter()
+        .map(|s| s["status"].as_str().unwrap().to_string()).collect();
+    assert_eq!(statuses, vec!["approved"], "{statuses:?}");
+}

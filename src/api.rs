@@ -87,6 +87,8 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/notify/test", post(test_notify))
         .route("/api/instruments/{symbol}/analysis", get(analysis))
+        .route("/api/signals/{id}/approve", post(approve_signal))
+        .route("/api/signals/{id}/reject", post(reject_signal))
         .route("/api/calls", get(calls))
         .route("/api/positions", post(post_position))
         .route("/api/positions/{id}", patch(patch_position))
@@ -156,6 +158,10 @@ struct SignalDbRow {
     symbol: String,
     class: String,
     action: String,
+    status: String,
+    status_reason: Option<String>,
+    filled_qty: Option<f64>,
+    filled_price: Option<f64>,
     qty: Option<f64>,
     confidence: Option<String>,
     entry: Option<f64>,
@@ -196,6 +202,12 @@ pub struct SignalRow {
     pub reasons: Vec<String>,
     pub rationale: Option<String>,
     pub created_at: String,
+    /// pending | approved | rejected — the ledger shows pending only.
+    pub status: String,
+    pub status_reason: Option<String>,
+    /// What you actually got, when the numbers differ from the proposal.
+    pub filled_qty: Option<f64>,
+    pub filled_price: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -261,8 +273,9 @@ async fn dashboard(
     let budget = budget::budget_total_in(&st.pool, mode).await?;
     let committed = budget::committed_in(&st.pool, mode).await?;
     let positions = load_positions(&st.pool, mode).await?;
-    let signals = load_signals(&st.pool, false, mode).await?;
-    let blocked = load_signals(&st.pool, true, mode).await?;
+    let status = q.decisions.as_deref().unwrap_or("pending");
+    let signals = load_signals(&st.pool, false, mode, status).await?;
+    let blocked = load_signals(&st.pool, true, mode, "pending").await?;
     let etag = dashboard_etag(&st.pool, mode).await?;
     if headers
         .get(IF_NONE_MATCH)
@@ -523,7 +536,7 @@ async fn instrument_detail(
         })
         .collect();
 
-    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long)
+    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long, "all")
         .await?
         .into_iter()
         .filter(|s| s.symbol == symbol)
@@ -675,7 +688,7 @@ async fn analysis(
         })
         .collect();
 
-    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long)
+    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long, "all")
         .await?
         .into_iter()
         .filter(|s| s.symbol == symbol)
@@ -976,6 +989,8 @@ pub struct SearchQuery {
 #[derive(Debug, Deserialize)]
 pub struct ModeQuery {
     pub mode: Option<String>,
+    /// pending (default) | approved | rejected | all
+    pub decisions: Option<String>,
 }
 
 fn mode_of(q: &Option<String>) -> Result<crate::models::Mode, ApiError> {
@@ -1314,21 +1329,152 @@ async fn load_positions(
         .collect())
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ApproveBody {
+    /// Defaults to what the decision proposed; edit it to what you actually got.
+    pub qty: Option<f64>,
+    pub price: Option<f64>,
+    pub at: Option<String>,
+}
+
+/// Approve a decision by recording the fill you actually got.
+///
+/// The trade is written with a note naming the decision, so approving the same decision twice is
+/// detected rather than doubling your position: the second call only closes the status.
+async fn approve_signal(
+    State(st): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+    Json(body): Json<ApproveBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let row: Option<(i64, String, Option<f64>, Option<f64>, String, String)> = sqlx::query_as(
+        "SELECT instrument_id, action, qty, entry, mode, status FROM signals WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(&st.pool)
+    .await?;
+    let Some((instrument_id, action, qty, entry, mode_raw, status)) = row else {
+        return Err(ApiError::NotFound(format!("no decision {id}")));
+    };
+    if status != "pending" {
+        return Err(ApiError::BadRequest(format!(
+            "decision {id} is already {status}"
+        )));
+    }
+    let side = match action.as_str() {
+        "BUY" => crate::trades::Side::Buy,
+        "SELL" => crate::trades::Side::Sell,
+        other => {
+            return Err(ApiError::BadRequest(format!(
+                "a {other} decision has nothing to record"
+            )))
+        }
+    };
+    let qty = body.qty.or(qty).filter(|q| *q > 0.0).ok_or_else(|| {
+        ApiError::BadRequest("quantity is required — the decision did not propose one".into())
+    })?;
+    let price = body
+        .price
+        .or(entry)
+        .filter(|p| p.is_finite() && *p > 0.0)
+        .ok_or_else(|| ApiError::BadRequest("price is required".into()))?;
+    let mode = crate::models::Mode::parse(&mode_raw)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
+    let note = format!("decision {id}");
+    let already: Option<(i64,)> =
+        sqlx::query_as("SELECT id FROM trades WHERE note = ? AND instrument_id = ?")
+            .bind(&note)
+            .bind(instrument_id)
+            .fetch_optional(&st.pool)
+            .await?;
+
+    if already.is_none() {
+        crate::trades::record(
+            &st.pool,
+            instrument_id,
+            side,
+            qty,
+            price,
+            Some(&note),
+            Some(when),
+            mode,
+        )
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    }
+
+    sqlx::query(
+        "UPDATE signals SET status = 'approved', status_at = ?, filled_qty = ?, filled_price = ?
+         WHERE id = ?",
+    )
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(qty)
+    .bind(price)
+    .bind(id)
+    .execute(&st.pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "id": id,
+        "status": "approved",
+        "filled_qty": qty,
+        "filled_price": price,
+        "recorded": already.is_none(),
+    })))
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct RejectBody {
+    pub reason: Option<String>,
+}
+
+async fn reject_signal(
+    State(st): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+    Json(body): Json<RejectBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let changed = sqlx::query(
+        "UPDATE signals SET status = 'rejected', status_at = ?, status_reason = ?
+         WHERE id = ? AND status = 'pending'",
+    )
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(body.reason.as_deref().map(str::trim).filter(|r| !r.is_empty()))
+    .bind(id)
+    .execute(&st.pool)
+    .await?
+    .rows_affected();
+    if changed == 0 {
+        return Err(ApiError::NotFound(format!("no pending decision {id}")));
+    }
+    Ok(Json(serde_json::json!({ "id": id, "status": "rejected" })))
+}
+
 async fn load_signals(
     pool: &SqlitePool,
     blocked: bool,
     mode: crate::models::Mode,
+    status: &str,
 ) -> Result<Vec<SignalRow>, ApiError> {
     let predicate = if blocked {
         "s.action = 'BLOCKED'"
     } else {
-        "s.action <> 'BLOCKED'"
+        // The ledger is a to-do list: pending only, unless a filter asks for history.
+        match status {
+            "all" => "s.action <> 'BLOCKED'",
+            "approved" => "s.action <> 'BLOCKED' AND s.status = 'approved'",
+            "rejected" => "s.action <> 'BLOCKED' AND s.status = 'rejected'",
+            _ => "s.action <> 'BLOCKED' AND s.status = 'pending'",
+        }
     };
     let rows: Vec<SignalDbRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT s.id AS id, i.symbol AS symbol, i.class AS class, s.action AS action,
                 s.qty AS qty, s.confidence AS confidence, s.entry AS entry, s.stop AS stop,
                 s.target AS target, s.valid_until AS valid_until,
-                s.reason_json AS reason_json, s.created_at AS created_at
+                s.reason_json AS reason_json, s.created_at AS created_at,
+                s.status AS status, s.status_reason AS status_reason,
+                s.filled_qty AS filled_qty, s.filled_price AS filled_price
          FROM signals s JOIN instruments i ON i.id = s.instrument_id
          WHERE {predicate} AND s.mode = ? ORDER BY s.id DESC LIMIT 50"
     )))
@@ -1367,6 +1513,10 @@ async fn load_signals(
                 valid_until: r.valid_until,
                 timing_note: class.timing_note().to_string(),
                 reasons,
+                status: r.status,
+                status_reason: r.status_reason,
+                filled_qty: r.filled_qty,
+                filled_price: r.filled_price,
                 rationale: reason
                     .get("rationale")
                     .and_then(|v| v.as_str())
