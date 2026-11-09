@@ -90,11 +90,6 @@ pub fn parse(content: &str) -> Result<Answer> {
         .into_iter()
         .map(serde_json::from_value)
         .collect::<std::result::Result<_, _>>()?;
-    if let Some(first_buy) = moves.iter().position(|m| m.action == Action::Buy) {
-        if moves[first_buy..].iter().any(|m| m.action == Action::Sell) {
-            return Err(anyhow!("plan: sells first, then buys"));
-        }
-    }
     Ok(Answer::Plan(Plan {
         moves,
         rationale: body

@@ -76,13 +76,16 @@ Or a pass:
 
 The contract, exactly:
 
-- **Zero to three moves.** Sells first, then buys — the money has to be freed before it is spent.
+- **Zero to three moves.** Sells are executed before buys; you may list them in any order.
+- **A buy does not need a sale.** If the purse has the cash, buy. A sale is one way to fund a buy,
+  not a requirement — the only rule is that the plan as a whole must be affordable.
 - A **buy** carries `qty`, `price`, `stop` and `target`, all four. A missing one is a refused plan.
 - A **sell** carries `qty` and `price`, no more than you hold and no more than the position is worth.
 - A symbol appears **once**. Adding to a holding is a single, larger buy of that holding.
 - Prices are near the last close, never invented. A plan that needs a price you cannot see is a plan
   to decline.
 - `why` is one concrete sentence — the evidence, not the mood.
-- The plan must balance: buys may cost no more than the stock purse plus what this plan's own sells
-  free. If it does not, the whole plan is refused and nothing is executed.
+- The plan must be affordable: buys may cost no more than the stock purse **plus** anything this
+  plan's own sells free. A buy that fits the cash needs no sell beside it. If the total does not
+  fit, the whole plan is refused and nothing is executed.
 - No explanation outside the JSON object.

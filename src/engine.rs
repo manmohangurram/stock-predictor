@@ -91,6 +91,18 @@ async fn plan_book(
     scope: crate::llm::plan::Scope,
 ) -> Result<Option<()>> {
     let fund = scope.is_fund();
+    // A book decision, not an intraday one: asked once per IST day, on the first tick that can
+    // ask it. Per-stock calls already cover what moves inside the day.
+    let today = ist_day(now);
+    let marker = if fund { "mf_plan_last" } else { "stock_plan_last" };
+    let last: Option<(String,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+            .bind(marker)
+            .fetch_optional(deps.pool)
+            .await?;
+    if last.map(|r| r.0).as_deref() == Some(today.as_str()) {
+        return Ok(None);
+    }
     let funds = fund_symbols(deps.pool).await?;
     // Two books, two prompts: this call only ever sees its own half.
     let book: Vec<crate::llm::rotate::HoldingLine> =
@@ -165,6 +177,16 @@ async fn plan_book(
             },
         },
     )
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+    .bind(marker)
+    .bind(&today)
+    .bind(now.to_rfc3339())
+    .execute(deps.pool)
     .await?;
 
     let answer = match crate::llm::plan::parse(&reply.content) {
@@ -299,30 +321,9 @@ async fn record_plan_refusal(
 /// The fund plan, run once a day after the arithmetic scan has ranked today's funds. Separate
 /// entry point because it is a different question, not a second pass over the same one.
 pub async fn plan_funds(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<bool> {
-    // Once per IST day, on the first tick — which includes the first tick after a restart, so a
-    // server started at noon still asks the fund question that day.
-    let today = ist_day(now);
-    let last: Option<(String,)> =
-        sqlx::query_as("SELECT value FROM settings WHERE key = 'mf_plan_last'")
-            .fetch_optional(deps.pool)
-            .await?;
-    if last.map(|r| r.0).as_deref() == Some(today.as_str()) {
-        return Ok(false);
-    }
-    let stored = plan_book(deps, now, crate::llm::plan::Scope::Fund)
+    Ok(plan_book(deps, now, crate::llm::plan::Scope::Fund)
         .await?
-        .is_some();
-    // The marker means "asked today", not "decided today": a pass or a refusal must not license a
-    // second call on the next tick.
-    sqlx::query(
-        "INSERT INTO settings (key, value, updated_at) VALUES ('mf_plan_last', ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-    )
-    .bind(&today)
-    .bind(now.to_rfc3339())
-    .execute(deps.pool)
-    .await?;
-    Ok(stored)
+        .is_some())
 }
 
 /// `YYYY-MM-DD` of the current IST day — the unit the daily gates are written in.

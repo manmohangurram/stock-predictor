@@ -75,12 +75,14 @@ Or a pass:
 
 The contract, exactly:
 
-- **Zero to two moves.** Sells first, then buys.
+- **Zero to two moves.** Sells are executed before buys; list them in any order.
+- **A buy needs no sale.** The fund purse's cash is enough on its own; the plan is judged on whether
+  it is affordable, not on whether it contains a sale.
 - A **buy** carries `symbol`, `amount` in rupees and `why`. No `stop`, no `target` — a fund has no
   price to stop at.
 - A **sell** names a fund in the book, with an `amount` no greater than its current value.
 - A symbol appears **once**.
-- The plan must balance: buys may cost no more than the fund purse plus what this plan's own sells
-  free. A plan that does not balance is refused whole, and nothing is executed.
+- The plan must be affordable: buys may cost no more than the fund purse **plus** anything this
+  plan's own sells free. A plan that does not fit is refused whole, and nothing is executed.
 - `why` is one concrete sentence — the evidence, not the mood.
 - No explanation outside the JSON object.

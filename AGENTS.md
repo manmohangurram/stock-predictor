@@ -54,7 +54,9 @@ files directly when you need exact wording.
   carries a stop and target, stored as one `plan_id` group) and `plan_mf_v1` (fund book only, 0–2
   moves sized in rupees, no stops — a fund has no price to stop at). The fund plan is asked on the
   first tick of each IST day (`mf_plan_last`), whether or not the scan ran that tick — so a restart
-  at noon still asks. `plan_v1` still resolves to the stock prompt for old audit rows.
+  at noon still asks. **Both** plans are once-a-day book decisions (`stock_plan_last` /
+  `mf_plan_last`); per-stock calls cover the intraday. `plan_v1` still resolves to the stock prompt
+  for old audit rows.
 - The proxy is chosen only by the database: `src/http.rs` is the one client builder and calls
   `.no_proxy()` first, so `HTTP_PROXY` can never win.
 

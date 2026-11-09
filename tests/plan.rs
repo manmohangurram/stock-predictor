@@ -223,14 +223,35 @@ fn a_symbol_may_not_appear_twice() {
     assert!(e.to_string().contains("twice"), "{e}");
 }
 
+/// Order is a convention, not a legality: a plan that lists its buy first still executes sells
+/// first, and a buy that the purse can cover needs no sale beside it.
 #[test]
-fn sells_must_come_before_buys() {
+fn a_plan_may_list_its_moves_in_any_order() {
     let body = r#"{"moves":[
       {"action":"BUY","symbol":"HDFCBANK.NS","qty":1,"price":793.65,"stop":700,"target":980},
       {"action":"SELL","symbol":"INFY.NS","qty":1,"price":1146.30}
     ]}"#;
-    let e = plan::parse(body).unwrap_err();
-    assert!(e.to_string().contains("sells first"), "{e}");
+    let plan = match plan::parse(body).unwrap() {
+        Answer::Plan(p) => p,
+        Answer::Pass { .. } => panic!("expected a plan"),
+    };
+    assert_eq!(plan.moves[0].action, Action::Buy);
+
+    // Affordable on cash alone: 793.65 bought, no sale needed.
+    plan::validate(
+        &Plan {
+            moves: vec![plan.moves[0].clone()],
+            rationale: String::new(),
+        },
+        &book(),
+        Cash { stock: 5_000.0, fund: 0.0 },
+        &at(1_000_000.0),
+        "INR",
+        now(),
+        &[],
+        Scope::Stock,
+    )
+    .unwrap();
 }
 
 #[test]

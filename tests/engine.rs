@@ -1121,3 +1121,82 @@ async fn the_fund_plan_asks_once_a_day_and_survives_a_restart() {
     .unwrap();
     assert_eq!(calls.0, 2, "one call on each of the two days");
 }
+
+/// The stock book is asked once a day too. Four polls in one day must cost one plan call, not four.
+#[tokio::test]
+async fn the_stock_plan_is_asked_once_a_day() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY.NS", "HDFCBANK.NS"]).await;
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'INFY.NS'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode, stop, target)
+         VALUES (?, 24, 1042.30, '2026-09-01T00:00:00Z', 'open', 'long', 1080, 1420)",
+    )
+    .bind(id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let pass = serde_json::json!({
+        "choices": [{"message": {"content": "{\"action\":\"pass\",\"why\":\"nothing new\"}"}}],
+        "usage": {}
+    })
+    .to_string();
+    let plan = serde_json::json!({
+        "choices": [{"message": {"content": include_str!("fixtures/plan_reply.json")}}],
+        "usage": {}
+    })
+    .to_string();
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+
+    // Poll 1: two deciding calls, then the plan.
+    let first = FixtureTransport::new(vec![
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: plan },
+    ]);
+    let deps = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &first,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: true,
+    };
+    let report = engine::poll_once(&deps, now()).await.unwrap();
+    assert_eq!(report.plans, 1, "{report:?}");
+
+    // Poll 2, same day: the deciding calls still happen, the plan does not.
+    let second = FixtureTransport::new(vec![
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
+        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass },
+    ]);
+    let deps2 = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &second,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: true,
+    };
+    let report2 = engine::poll_once(&deps2, now() + chrono::Duration::minutes(15))
+        .await
+        .unwrap();
+    assert_eq!(report2.plans, 0, "the book is not asked twice in a day: {report2:?}");
+
+    let calls: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM api_calls WHERE purpose = 'plan stocks'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(calls.0, 1, "one plan call for the day");
+}
