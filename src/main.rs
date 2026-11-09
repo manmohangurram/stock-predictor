@@ -239,6 +239,13 @@ async fn main() -> Result<()> {
                 Err(e) => tracing::error!(error = %e, "poll failed"),
             }
 
+            // Best-fund discovery: once a day, rank the curated list by trailing return.
+            match stock_predictor::fundscan::run(&poll_pool, &runtime, Utc::now()).await {
+                Ok(r) if r.examined > 0 => tracing::info!(?r, "fund scan"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "fund scan failed"),
+            }
+
             // Short-term mode: what moved today, asked about only when it has actually changed.
             match stock_predictor::trend::run(
                 &poll_pool,

@@ -12,6 +12,7 @@ pub mod backtest;
 pub mod config;
 pub mod db;
 pub mod engine;
+pub mod fundscan;
 pub mod http;
 pub mod llm;
 pub mod market;

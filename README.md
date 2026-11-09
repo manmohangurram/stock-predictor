@@ -49,6 +49,10 @@ before you see it.
 - **Cheap to run.** The model is called only when the price moved or the headlines changed — never
   just because time passed — and Audit records the exact reason for every call next to what you did
   with the decision it produced. The static prompt block is a cacheable prefix.
+- **Best-fund discovery.** Once a day, a curated list of large equity funds is ranked by their
+  trailing return (3-year, falling back to 1-year) and the top names are proposed against the
+  mutual-fund earmark. A fund is a six-month-plus commitment, so the scan runs once a day, not on a
+  tick.
 - **Short-term discovery.** NSE's daily movers (top ten across all securities) are checked on every
   tick; each name is asked about only when *it* changed, and the answer is a short-term decision with
   a horizon and an expiry no longer than a week.
