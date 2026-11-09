@@ -977,3 +977,25 @@
   .call-facts .fact .sub { font-size: var(--text-xs); color: var(--ink-muted); }
   .why-line.refused { color: var(--neg); }
 }
+
+@layer components {
+  
+}
+
+@layer components {
+  .plan-leg { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
+    padding: 3px 0; font-size: var(--text-sm); }
+  .plan-leg b { font-family: var(--font-form); font-weight: 500; }
+  .plan-leg .sub { color: var(--ink-muted); }
+  .plan-why { margin: 0 0 var(--space-1) calc(46px + var(--space-2)); font-size: var(--text-xs);
+    color: var(--ink-muted); }
+  .plan-card { border-left: 2px solid var(--stamp-ink); padding-left: var(--space-3); }
+}
+
+@layer components {
+  @media (max-width: 900px) {
+    /* The rail becomes a bar; its money figure is already in the page header, and inline it
+       collides with the links. */
+    .rail .rail-foot { display: none; }
+  }
+}

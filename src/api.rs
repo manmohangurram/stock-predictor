@@ -209,6 +209,8 @@ pub struct SignalRow {
     pub filled_price: Option<f64>,
     /// Set when this row is one leg of a plan; every leg shares the first leg's id.
     pub plan_id: Option<i64>,
+    /// The sentence that explains the whole plan, carried on every leg.
+    pub plan_rationale: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1918,6 +1920,10 @@ async fn load_signals(
                     .map(str::to_string),
                 created_at: r.created_at,
                 plan_id: r.plan_id,
+                plan_rationale: reason
+                    .get("plan_rationale")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
             }
         })
         .collect())

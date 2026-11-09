@@ -32,6 +32,8 @@ const position = (over: Partial<PositionRow> = {}): PositionRow => ({
 const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
   id: 1,
   symbol: "INFY.NS",
+  name: "Infosys",
+  plan_id: null,
   class: "stock",
   action: "SELL",
   status: "pending",
@@ -1000,5 +1002,25 @@ describe("audit", () => {
     expect(detail).toContain("Prompt type");
     expect(detail).toContain("Infosys");
     expect(detail).toContain("insufficient_cash");
+  });
+});
+
+describe("a plan", () => {
+  const leg = (over: Partial<SignalRow>): SignalRow => ({ ...signal(), ...over });
+  test("reads as one decision with its legs and the arithmetic that makes it legal", async () => {
+    const { renderPlan } = await import("./pages/ledger");
+    const html = renderPlan([
+      leg({ id: 2, action: "SELL", name: "Infosys", qty: 24, entry: 1146.3, rationale: "target reached" }),
+      leg({ id: 3, action: "BUY", name: "HDFC Bank", symbol: "HDFCBANK.NS", qty: 15, entry: 793.65 }),
+    ]);
+    expect(html).toContain("PLAN");
+    expect(html).toContain("2 moves");
+    expect(html).toContain("Infosys");
+    expect(html).toContain("HDFC Bank");
+    // 24 × 1146.30 = 27,511.20; 15 × 793.65 = 11,904.75; 15,606.45 left.
+    expect(html).toContain("15,606.45 is left in the purse");
+    // One approve control for the whole plan, keyed to the first leg.
+    expect((html.match(/data-approve=/g) ?? []).length).toBe(1);
+    expect(html).toContain('data-approve="2"');
   });
 });

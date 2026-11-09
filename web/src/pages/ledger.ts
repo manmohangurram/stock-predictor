@@ -105,6 +105,48 @@ const subtotal = (label: string, invested: number, value: number): string => {
 };
 
 /** One decision: what it says, and the two things you can do about it. */
+/**
+ * A plan is one decision with several legs: read as a whole, approved as a whole. Rendering the
+ * legs as separate cards was the confusion this replaced — two unrelated-looking decisions that
+ * only make sense together.
+ */
+export function renderPlan(legs: Dashboard["signals"]): string {
+  const first = legs[0];
+  const sells = legs.filter((l) => l.action === "SELL");
+  const buys = legs.filter((l) => l.action === "BUY");
+  const proceeds = sells.reduce((n, l) => n + (l.qty ?? 0) * (l.entry ?? 0), 0);
+  const cost = buys.reduce((n, l) => n + (l.qty ?? 0) * (l.entry ?? 0), 0);
+  const left = proceeds - cost;
+  const leg = (l: Dashboard["signals"][number]) => `<div class="plan-leg">
+    <span class="stamp" data-stamp="${l.action === "SELL" ? "sell" : "buy"}">${l.action}</span>
+    <b>${escapeHtml(l.name || l.symbol)}</b>
+    <span class="sub">${escapeHtml(l.symbol)}</span>
+    <span class="num">${l.entry === null ? "" : money(l.entry)}</span>
+    <span class="lbl">${l.qty === null || l.qty === 0 ? "size on approval" : `${units(l.qty)} units`}</span>
+  </div>${
+    l.rationale ? `<p class="plan-why">${escapeHtml(l.rationale)}</p>` : ""
+  }`;
+  const arithmetic = sells.length && buys.length
+    ? `<p class="decision-note">${money(proceeds)} from the sale${sells.length > 1 ? "s" : ""} covers ${money(cost)}, and ${money(Math.abs(left))} is ${left >= 0 ? "left in" : "short of"} the purse.</p>`
+    : "";
+  const status =
+    first.status === "pending"
+      ? ""
+      : `<span class="pill ${first.status === "approved" ? "ok" : "todo"}">${first.status}</span>`;
+  return `<div class="feed-row decision-feed plan-card">
+    <div class="decision-main">
+      <div><span class="stamp" data-stamp="estimate">PLAN</span>
+        <b>${legs.length} moves</b>
+        ${status}
+        <span class="sub">${histDate(first.created_at)}</span></div>
+      ${legs.map(leg).join("")}
+      ${arithmetic}
+      ${first.plan_rationale ? `<p class="decision-prose">${escapeHtml(first.plan_rationale)}</p>` : ""}
+      ${renderDecisionActions(first)}
+    </div>
+  </div>`;
+}
+
 function decisionRow(s: Dashboard["signals"][number]): string {
   const tone = s.action === "SELL" ? "sell" : s.action === "BUY" ? "buy" : "blocked";
   const status =
@@ -166,11 +208,29 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
   const filter: DecisionFilter = isDecisionFilter(raw) ? raw : "pending";
   // Blocked proposals sit with the decisions: they are what the app wanted to do and could not.
   const shown = [...d.signals, ...d.blocked].sort((a, b) => b.id - a.id);
+  const plans = new Map<number, Dashboard["signals"]>();
+  for (const s of shown) {
+    if (s.plan_id) plans.set(s.plan_id, [...(plans.get(s.plan_id) ?? []), s]);
+  }
+  const drawn: string[] = [];
+  const seen = new Set<number>();
+  for (const s of shown.slice(0, 10)) {
+    const plan = s.plan_id;
+    if (plan && plans.has(plan)) {
+      if (seen.has(plan)) continue;
+      seen.add(plan);
+      // Sells first, as they must be executed.
+      const legs = plans
+        .get(plan)!
+        .slice()
+        .sort((a, b) => (a.action === "SELL" ? -1 : 1) - (b.action === "SELL" ? -1 : 1));
+      drawn.push(renderPlan(legs));
+      continue;
+    }
+    drawn.push(decisionRow(s));
+  }
   const advice = shown.length
-    ? shown
-        .slice(0, 10)
-        .map((s) => decisionRow(s))
-        .join("")
+    ? drawn.join("")
     : `<p class="empty">${
         filter === "pending" ? "Nothing under review." : "Nothing in this filter."
       }</p>`;

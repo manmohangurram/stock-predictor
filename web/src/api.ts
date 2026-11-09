@@ -1,6 +1,8 @@
 export interface SignalRow {
   id: number;
   symbol: string;
+  /** The readable name — a plan card says "Infosys", not "INFY.NS". */
+  name: string;
   class: "stock" | "mutual_fund" | "ipo";
   action: string;
   qty: number | null;
@@ -18,6 +20,10 @@ export interface SignalRow {
   status_reason: string | null;
   filled_qty: number | null;
   filled_price: number | null;
+  /** Set when this row is one leg of a plan; every leg shares the first leg's id. */
+  plan_id: number | null;
+  /** The sentence that explains the whole plan, carried on every leg. */
+  plan_rationale: string | null;
 }
 
 export interface PositionRow {
