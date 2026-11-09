@@ -357,3 +357,22 @@ fn an_empty_book_says_so() {
     let book = stock_predictor::engine::format_book_for_test(&[], "INFY.NS");
     assert_eq!(book, "empty — nothing is held");
 }
+
+#[test]
+fn the_plan_prompt_carries_the_book_the_cap_and_the_candidates() {
+    let rendered = prompts::render_plan(
+        "INFY.NS | Infosys | 24.000 | 1042.30 | 1146.30 | +10.0% | 1080.00 | 1420.00",
+        &prompts::cap_line(200_000.0, "INR"),
+        200_000.0,
+        "INR",
+        "trade size 500 to 50000 per fill",
+        "HDFCBANK.NS at 793.65, +2.1% today",
+    )
+    .unwrap();
+    assert_eq!(rendered.template, "plan_v1");
+    assert!(rendered.text.contains("at most 200000.00 INR"), "{}", rendered.text);
+    assert!(rendered.text.contains("INFY.NS | Infosys"), "{}", rendered.text);
+    assert!(rendered.text.contains("HDFCBANK.NS at 793.65"), "{}", rendered.text);
+    assert!(rendered.text.contains("six months or more"), "{}", rendered.text);
+    assert!(!rendered.text.contains("{{"), "an unfilled placeholder: {}", rendered.text);
+}

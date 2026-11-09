@@ -10,6 +10,7 @@ pub const ESCALATE_V1: &str = include_str!("../../prompts/escalate_v1.md");
 pub const ROTATE_V1: &str = include_str!("../../prompts/rotate_v1.md");
 pub const TREND_V1: &str = include_str!("../../prompts/trend_v1.md");
 pub const SHORT_V1: &str = include_str!("../../prompts/short_v1.md");
+pub const PLAN_V1: &str = include_str!("../../prompts/plan_v1.md");
 
 #[derive(Debug, Clone)]
 pub struct RenderedPrompt {
@@ -64,6 +65,7 @@ pub fn template(name: &str) -> Result<&'static str> {
         "rotate_v1" => Ok(ROTATE_V1),
         "trend_v1" => Ok(TREND_V1),
         "short_v1" => Ok(SHORT_V1),
+        "plan_v1" => Ok(PLAN_V1),
         other => Err(anyhow!("unknown prompt template {other:?}")),
     }
 }
@@ -74,6 +76,29 @@ pub fn template_hash(name: &str) -> Result<String> {
     let mut h = Sha256::new();
     h.update(template(name)?.as_bytes());
     Ok(crate::hex(&h.finalize()))
+}
+
+/// The book call: the whole book, the cash, today's candidates, and room for up to three moves.
+pub fn render_plan(
+    book: &str,
+    cap: &str,
+    cash: f64,
+    currency: &str,
+    limits: &str,
+    candidates: &str,
+) -> Result<RenderedPrompt> {
+    let text = PLAN_V1
+        .replace("{{book}}", book)
+        .replace("{{cap}}", cap)
+        .replace("{{cash}}", &format!("{cash:.2}"))
+        .replace("{{currency}}", currency)
+        .replace("{{limits}}", limits)
+        .replace("{{candidates}}", candidates);
+    Ok(RenderedPrompt {
+        text,
+        hash: template_hash("plan_v1")?,
+        template: "plan_v1".to_string(),
+    })
 }
 
 /// The rotation prompt: a holdings table and one candidate, no market context.

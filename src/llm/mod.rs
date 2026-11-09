@@ -5,5 +5,6 @@ pub mod orchestrate;
 pub mod parse;
 pub mod prompts;
 pub mod provider;
+pub mod plan;
 pub mod rotate;
 pub mod validate;

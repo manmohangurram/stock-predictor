@@ -1,0 +1,6 @@
+{"moves":[
+  {"action":"SELL","symbol":"INFY.NS","qty":24,"price":1146.30,
+   "why":"target reached; the money is better used in HDFCBANK"},
+  {"action":"BUY","symbol":"HDFCBANK.NS","qty":15,"price":793.65,"stop":715.00,"target":980.00,
+   "why":"above both averages with room to the 52-week high; the swap still leaves cash"}
+],"rationale":"Bank outperforms IT on a six-month view; this keeps the book in two names."}
