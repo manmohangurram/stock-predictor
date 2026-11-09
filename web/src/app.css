@@ -1213,3 +1213,35 @@
     padding: 4px var(--space-2); border: 1px solid var(--rule); border-radius: var(--radius);
     background: var(--paper-raised); color: var(--ink); }
 }
+
+@layer components {
+  /* The last few runs as cards, so "anything running?" is answered before you read the table. */
+  .strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3);
+    margin-bottom: var(--space-4); }
+  .rcard { background: var(--paper-raised); border: 1px solid var(--rule-subtle);
+    border-radius: var(--radius); padding: var(--space-3); display: grid; gap: var(--space-2);
+    align-content: start; min-width: 0; }
+  .rcard-top { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+  .run-when { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-tertiary); }
+  .rcard-title { font-family: var(--font-form); font-weight: 500; font-size: var(--text-base); }
+  .rcard-title .trigger { font-weight: 400; font-size: var(--text-xs); color: var(--ink-muted);
+    margin-left: var(--space-1); }
+  .rcard-result { font-size: var(--text-sm); color: var(--ink-secondary); min-height: 2.6em;
+    overflow-wrap: anywhere; }
+  .rcard .mini { justify-self: start; font: inherit; font-size: var(--text-xs);
+    border: 1px solid var(--rule); background: transparent; color: var(--ink-secondary);
+    border-radius: 2px; padding: 3px 8px; cursor: pointer; }
+  .rcard .mini:disabled { opacity: 0.5; cursor: default; }
+  .rcard-more { font-size: var(--text-xs); color: var(--ink-tertiary); }
+  .pill.running { background: var(--stamp-ink-bg); color: var(--stamp-ink); }
+  .pill.done { background: var(--green-bg); color: var(--green); }
+  .pill.failed { background: var(--stamp-oxide-bg); color: var(--stamp-oxide); }
+  .rcard-add .run-now { display: grid; gap: var(--space-2); }
+  .rcard-add select, .rcard-add input { width: 100%; font: inherit; font-size: var(--text-sm);
+    padding: 5px var(--space-2); border: 1px solid var(--rule); border-radius: var(--radius);
+    background: var(--paper-raised); color: var(--ink); }
+  .rcard-add .help { font-size: var(--text-xs); color: var(--ink-tertiary); }
+  @media (max-width: 900px) {
+    .strip { grid-template-columns: 1fr 1fr; }
+  }
+}

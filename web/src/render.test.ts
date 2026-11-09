@@ -960,7 +960,7 @@ describe("audit", () => {
       instrument_symbol: "INFY.NS",
       plan_legs: 0,
     };
-    const list = renderCalls([row]);
+    const list = renderCalls([], 0, [row]);
     expect(list).toContain("Infosys");
     expect(list).toContain("blocked");
     // The reason must not render in the row — as visible text it pushed the table off the page.

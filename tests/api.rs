@@ -2181,3 +2181,76 @@ async fn the_dashboard_tag_notices_in_place_changes() {
     let after_archive = tag(router.clone()).await;
     assert_ne!(after_edit, after_archive, "archiving changes the tag");
 }
+
+/// Runs are a record of work: opened before it starts, closed with what happened. The page needs
+/// "running" to exist, which is why this is not derived from api_calls.
+#[tokio::test]
+async fn a_run_is_listed_while_running_and_after_it_finishes() {
+    let (_d, router, pool) = setup().await;
+    let id = stock_predictor::runs::start(
+        &pool,
+        stock_predictor::runs::Prompt::PlanFund,
+        stock_predictor::runs::Trigger::Schedule,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let (s, v) = get(&router, "/api/runs").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["running"], 1);
+    assert_eq!(v["runs"][0]["status"], "running");
+    assert_eq!(v["runs"][0]["prompt"], "plan_fund");
+
+    stock_predictor::runs::finish(&pool, id, "2 moves stored", Some("conv-1"))
+        .await
+        .unwrap();
+
+    let (s, v) = get(&router, "/api/runs").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v["running"], 0);
+    assert_eq!(v["runs"][0]["status"], "done");
+    assert_eq!(v["runs"][0]["summary"], "2 moves stored");
+}
+
+/// A run left "running" by a killed process must not show a spinner forever.
+#[tokio::test]
+async fn orphaned_runs_are_closed_at_boot() {
+    let (_d, _router, pool) = setup().await;
+    stock_predictor::runs::start(
+        &pool,
+        stock_predictor::runs::Prompt::Poll,
+        stock_predictor::runs::Trigger::Schedule,
+        None,
+    )
+    .await
+    .unwrap();
+    let closed = stock_predictor::runs::close_orphans(&pool, chrono::Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(closed, 1);
+    let rows = stock_predictor::runs::recent(&pool, 10).await.unwrap();
+    assert_eq!(rows[0].status, "failed");
+    assert!(rows[0]
+        .error
+        .as_deref()
+        .unwrap()
+        .contains("process stopped"));
+}
+
+/// "Run now" writes the row first, so the page can see it started — and refuses nonsense.
+#[tokio::test]
+async fn starting_a_run_needs_a_loop_and_a_symbol() {
+    let (_d, router, pool) = setup().await;
+    // No poll loop attached in tests: the handler must say so rather than pretend.
+    let (s, v) = send(&router, "POST", "/api/runs", json!({"prompt": "poll"})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM runs")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count.0, 0, "nothing is written when the run cannot start");
+
+    let (s, _) = send(&router, "POST", "/api/runs", json!({"prompt": "nonsense"})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}

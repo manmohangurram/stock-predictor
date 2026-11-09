@@ -191,7 +191,10 @@ async fn main() -> Result<()> {
         }
     }
 
-    let state = api::AppState::new(pool.clone(), cfg.clone());
+    let (manual_tx, mut manual_rx) =
+        tokio::sync::mpsc::channel::<(i64, stock_predictor::runs::Manual)>(8);
+    let mut state = api::AppState::new(pool.clone(), cfg.clone());
+    state.manual = Some(manual_tx);
     // Client-side routes must not 404 on a direct load or a refresh.
     let app = api::router(state).fallback_service(
         ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html")),
@@ -199,6 +202,11 @@ async fn main() -> Result<()> {
 
     let poll_pool = pool.clone();
     tokio::spawn(async move {
+        // A run left "running" by a process that died is not running any more.
+        if let Err(e) = stock_predictor::runs::close_orphans(&poll_pool, Utc::now()).await {
+            tracing::warn!(error = %e, "could not close orphaned runs");
+        }
+        let mut pending: Option<(i64, stock_predictor::runs::Manual)> = None;
         loop {
             let now = Utc::now();
             // The key can be changed from the UI at runtime, so it is read per tick.
@@ -239,109 +247,240 @@ async fn main() -> Result<()> {
                     continue;
                 }
             };
-            // The month boundary, once per purse: stocks, mutual funds, short-term.
-            let purses = [
-                (stock_predictor::models::Mode::Long, None),
-                (stock_predictor::models::Mode::Long, Some("mf")),
-                (stock_predictor::models::Mode::Trade, None),
-            ];
-            for (mode, bucket) in purses {
-                let allowance = match bucket {
-                    Some("mf") => settings::mf_allowance(&poll_pool).await,
-                    _ => settings::allowance(&poll_pool, mode).await,
+            let mut handled_manual = false;
+            if let Some((run_id, command)) = pending.take() {
+                handled_manual = true;
+                use stock_predictor::runs::Manual;
+                let manual_deps = EngineDeps {
+                    pool: &poll_pool,
+                    runtime: runtime.clone(),
+                    market: &market,
+                    transport: &transport,
+                    notifier: &notifier,
+                    rules: RuleConfig::default(),
+                    force: true, // a human asked for this answer now
                 };
-                match allowance {
-                    Ok(allowance) => {
-                        match stock_predictor::rules::pot::ensure_month(
-                            &poll_pool,
-                            mode,
-                            bucket,
-                            allowance,
-                            Utc::now(),
-                        )
-                        .await
-                        {
-                            Ok(r) if r.granted > 0.0 || r.expired > 0.0 => tracing::info!(
-                                month = %r.month,
-                                mode = mode.as_str(),
-                                purse = bucket.unwrap_or("main"),
-                                expired = r.expired,
-                                granted = r.granted,
-                                "month rolled over"
-                            ),
-                            Ok(_) => {}
-                            Err(e) => tracing::error!(error = %e, "month reset failed"),
+                let outcome = match command {
+                    Manual::Poll => match engine::poll_once(&manual_deps, Utc::now()).await {
+                        Ok(r) => Ok(format!(
+                            "{} decisions, {} plans, {} blocked, {} calls",
+                            r.signals, r.plans, r.blocked, r.llm_calls
+                        )),
+                        Err(e) => Err(format!("{e:#}")),
+                    },
+                    Manual::PlanStock => {
+                        match engine::plan_stock(&manual_deps, Utc::now(), Some(run_id)).await {
+                            Ok(true) => Ok("a stock plan is in the ledger".to_string()),
+                            Ok(false) => Ok("nothing worth doing — no plan".to_string()),
+                            Err(e) => Err(format!("{e:#}")),
                         }
                     }
-                    Err(e) => tracing::error!(error = %e, "allowance unreadable"),
+                    Manual::PlanFund => {
+                        match engine::plan_funds(&manual_deps, Utc::now(), Some(run_id)).await {
+                            Ok(true) => Ok("a fund plan is in the ledger".to_string()),
+                            Ok(false) => Ok("nothing worth doing — no plan".to_string()),
+                            Err(e) => Err(format!("{e:#}")),
+                        }
+                    }
+                    Manual::Short => match stock_predictor::trend::run(
+                        &poll_pool,
+                        &market,
+                        &transport,
+                        &notifier,
+                        &runtime,
+                        Utc::now(),
+                    )
+                    .await
+                    {
+                        Ok(r) => Ok(format!("{} examined, {} proposed", r.examined, r.proposed)),
+                        Err(e) => Err(format!("{e:#}")),
+                    },
+                    Manual::Decide { symbol } => {
+                        match engine::decide_one(&manual_deps, &symbol, Utc::now()).await {
+                            Ok(Some(line)) => Ok(line),
+                            Ok(None) => Ok("no decision — nothing to act on".to_string()),
+                            Err(e) => Err(format!("{e:#}")),
+                        }
+                    }
+                };
+                match outcome {
+                    Ok(summary) => {
+                        let _ =
+                            stock_predictor::runs::finish(&poll_pool, run_id, &summary, None).await;
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "manual run failed");
+                        let _ = stock_predictor::runs::fail(&poll_pool, run_id, &error).await;
+                    }
                 }
             }
 
-            let deps = EngineDeps {
-                pool: &poll_pool,
-                runtime: runtime.clone(),
-                market: &market,
-                transport: &transport,
-                notifier: &notifier,
-                rules: RuleConfig::default(),
-                force: false,
-            };
-            match engine::poll_once(&deps, now).await {
-                Ok(r) => tracing::info!(?r, "poll complete"),
-                Err(e) => tracing::error!(error = %e, "poll failed"),
-            }
+            // A manual run is the tick's work: the scheduled pass is skipped for this iteration,
+            // and the cadence resumes after it.
+            if !handled_manual {
+                // The month boundary, once per purse: stocks, mutual funds, short-term.
+                let purses = [
+                    (stock_predictor::models::Mode::Long, None),
+                    (stock_predictor::models::Mode::Long, Some("mf")),
+                    (stock_predictor::models::Mode::Trade, None),
+                ];
+                for (mode, bucket) in purses {
+                    let allowance = match bucket {
+                        Some("mf") => settings::mf_allowance(&poll_pool).await,
+                        _ => settings::allowance(&poll_pool, mode).await,
+                    };
+                    match allowance {
+                        Ok(allowance) => {
+                            match stock_predictor::rules::pot::ensure_month(
+                                &poll_pool,
+                                mode,
+                                bucket,
+                                allowance,
+                                Utc::now(),
+                            )
+                            .await
+                            {
+                                Ok(r) if r.granted > 0.0 || r.expired > 0.0 => tracing::info!(
+                                    month = %r.month,
+                                    mode = mode.as_str(),
+                                    purse = bucket.unwrap_or("main"),
+                                    expired = r.expired,
+                                    granted = r.granted,
+                                    "month rolled over"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::error!(error = %e, "month reset failed"),
+                            }
+                        }
+                        Err(e) => tracing::error!(error = %e, "allowance unreadable"),
+                    }
+                }
 
-            // Best-fund discovery: once a day, rank the curated list by trailing return.
-            match stock_predictor::fundscan::run(&poll_pool, &runtime, Utc::now()).await {
-                Ok(r) if r.examined > 0 => tracing::info!(?r, "fund scan"),
-                Ok(_) => {}
-                Err(e) => tracing::warn!(error = %e, "fund scan failed"),
-            }
-
-            // The fund plan runs on the first tick of the day, whether or not the scan ran this
-            // tick — a restart at noon still asks, and arithmetic still came first that morning.
-            let fund_deps = stock_predictor::engine::EngineDeps {
-                pool: &poll_pool,
-                runtime: runtime.clone(),
-                market: &market,
-                transport: &transport,
-                notifier: &notifier,
-                rules: RuleConfig::default(),
-                force: false,
-            };
-            match stock_predictor::engine::plan_funds(&fund_deps, Utc::now()).await {
-                Ok(true) => tracing::info!("fund plan stored"),
-                Ok(false) => {}
-                Err(e) => tracing::warn!(error = %e, "fund plan failed"),
-            }
-
-            // Short-term mode: only while the market is open. After the close the exchange list is
-            // yesterday's, and nothing reprices until the next session — a call then would judge a
-            // stale tape.
-            if schedule::in_stock_window(Utc::now()) {
-                match stock_predictor::trend::run(
+                let deps = EngineDeps {
+                    pool: &poll_pool,
+                    runtime: runtime.clone(),
+                    market: &market,
+                    transport: &transport,
+                    notifier: &notifier,
+                    rules: RuleConfig::default(),
+                    force: false,
+                };
+                let poll_run = stock_predictor::runs::start(
                     &poll_pool,
-                    &market,
-                    &transport,
-                    &notifier,
-                    &runtime,
-                    Utc::now(),
+                    stock_predictor::runs::Prompt::Poll,
+                    stock_predictor::runs::Trigger::Schedule,
+                    None,
                 )
                 .await
-                {
-                    Ok(r) if r.examined > 0 => tracing::info!(?r, "short-term pass"),
+                .ok();
+                match engine::poll_once(&deps, now).await {
+                    Ok(r) => {
+                        tracing::info!(?r, "poll complete");
+                        if let Some(id) = poll_run {
+                            let _ = stock_predictor::runs::finish(
+                                &poll_pool,
+                                id,
+                                &format!(
+                                    "{} decisions, {} plans, {} blocked",
+                                    r.signals, r.plans, r.blocked
+                                ),
+                                None,
+                            )
+                            .await;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "poll failed");
+                        if let Some(id) = poll_run {
+                            let _ = stock_predictor::runs::fail(&poll_pool, id, &format!("{e:#}"))
+                                .await;
+                        }
+                    }
+                }
+
+                // Best-fund discovery: once a day, rank the curated list by trailing return.
+                match stock_predictor::fundscan::run(&poll_pool, &runtime, Utc::now()).await {
+                    Ok(r) if r.examined > 0 => tracing::info!(?r, "fund scan"),
                     Ok(_) => {}
-                    Err(e) => tracing::warn!(error = %e, "short-term pass failed"),
+                    Err(e) => tracing::warn!(error = %e, "fund scan failed"),
+                }
+
+                // The fund plan runs on the first tick of the day, whether or not the scan ran this
+                // tick — a restart at noon still asks, and arithmetic still came first that morning.
+                let fund_deps = stock_predictor::engine::EngineDeps {
+                    pool: &poll_pool,
+                    runtime: runtime.clone(),
+                    market: &market,
+                    transport: &transport,
+                    notifier: &notifier,
+                    rules: RuleConfig::default(),
+                    force: false,
+                };
+                match stock_predictor::engine::plan_funds(&fund_deps, Utc::now(), None).await {
+                    Ok(true) => tracing::info!("fund plan stored"),
+                    Ok(false) => {}
+                    Err(e) => tracing::warn!(error = %e, "fund plan failed"),
+                }
+
+                // Short-term mode: only while the market is open. After the close the exchange list is
+                // yesterday's, and nothing reprices until the next session — a call then would judge a
+                // stale tape.
+                if schedule::in_stock_window(Utc::now()) {
+                    let short_run = stock_predictor::runs::start(
+                        &poll_pool,
+                        stock_predictor::runs::Prompt::Short,
+                        stock_predictor::runs::Trigger::Change,
+                        None,
+                    )
+                    .await
+                    .ok();
+                    match stock_predictor::trend::run(
+                        &poll_pool,
+                        &market,
+                        &transport,
+                        &notifier,
+                        &runtime,
+                        Utc::now(),
+                    )
+                    .await
+                    {
+                        Ok(r) => {
+                            if r.examined > 0 {
+                                tracing::info!(?r, "short-term pass");
+                            }
+                            if let Some(id) = short_run {
+                                let _ = stock_predictor::runs::finish(
+                                    &poll_pool,
+                                    id,
+                                    &format!("{} examined, {} proposed", r.examined, r.proposed),
+                                    None,
+                                )
+                                .await;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "short-term pass failed");
+                            if let Some(id) = short_run {
+                                let _ =
+                                    stock_predictor::runs::fail(&poll_pool, id, &format!("{e:#}"))
+                                        .await;
+                            }
+                        }
+                    }
                 }
             }
 
-            // 15 minutes while the market is open, two hours otherwise.
+            // Wait for the cadence, but wake early if someone pressed Run now. The request is
+            // carried to the top of the next iteration, so a manual run never doubles as a tick.
             let secs = if schedule::in_stock_window(Utc::now()) {
                 runtime.poll_secs
             } else {
                 runtime.off_hours_secs
             };
-            tokio::time::sleep(Duration::from_secs(secs.max(60))).await;
+            tokio::select! {
+                Some(req) = manual_rx.recv() => pending = Some(req),
+                _ = tokio::time::sleep(Duration::from_secs(secs.max(60))) => {}
+            }
         }
     });
 

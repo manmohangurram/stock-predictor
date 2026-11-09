@@ -44,8 +44,9 @@ async function route(): Promise<void> {
         ? Number(params.get("limit"))
         : 25;
       const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
-      const list = await api.calls(offset, limit);
-      app.innerHTML = renderCalls(list.rows, list.offset, list.limit, list.total);
+      const [runs, list] = await Promise.all([api.runs(25), api.calls(offset, limit)]);
+      app.innerHTML = renderCalls(runs.runs, runs.running, list.rows, list.offset, list.limit, list.total);
+      wireRuns();
       // A different page size is the same view, re-cut from the top.
       document.querySelector<HTMLSelectElement>("[data-page-size]")?.addEventListener("change", (ev) => {
         const size = (ev.target as HTMLSelectElement).value;
@@ -236,6 +237,42 @@ function wireAddDialog(): void {
     } else if (ev.key === "Enter") {
       ev.preventDefault();
       void add();
+    }
+  });
+}
+
+/** Run now, and run-again: both post a prompt and reload into the running state. */
+function wireRuns(): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-run-again]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.textContent = "Starting…";
+      try {
+        await api.runNow(button.dataset.runAgain!);
+        await route();
+      } catch (e) {
+        button.textContent = String(e);
+      }
+    });
+  });
+  const form = document.querySelector<HTMLFormElement>("[data-run-now]");
+  if (!form) return;
+  const status = form.querySelector<HTMLElement>("[data-run-status]");
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const data = new FormData(form);
+    const prompt = String(data.get("prompt") ?? "poll");
+    const symbol = String(data.get("symbol") ?? "").trim();
+    if (prompt === "decide" && !symbol) {
+      if (status) status.textContent = "Name the instrument to ask about.";
+      return;
+    }
+    if (status) status.textContent = "Starting…";
+    try {
+      await api.runNow(prompt, symbol || undefined);
+      await route();
+    } catch (e) {
+      if (status) status.textContent = String(e);
     }
   });
 }
@@ -566,32 +603,47 @@ function wireTargetProfit(symbol: string): void {
 }
 
 /** Opening a call fetches one row's bodies and renders the exchange in place. */
+/// Rows the reader has open. A refresh must not close them — that is the whole reason this exists.
+const openCalls = new Set<number>();
+
+async function openCall(id: number): Promise<void> {
+  const cell = document.querySelector<HTMLTableCellElement>(`#call-${id} td`);
+  const row = document.querySelector<HTMLTableRowElement>(`#call-${id}`);
+  const button = document.querySelector<HTMLButtonElement>(`.view-call[data-id="${id}"]`);
+  if (!cell || !row) return;
+  row.hidden = false;
+  button?.setAttribute("aria-expanded", "true");
+  cell.innerHTML = `<p class="empty">Reading the stored exchange…</p>`;
+  try {
+    cell.innerHTML = renderExchangeDetail(await api.callDetail(id));
+  } catch (e) {
+    cell.innerHTML = `<p class="empty">Could not read call ${id}: ${String(e)}</p>`;
+  }
+}
+
 function wireCallRows(): void {
   // ?call=12 opens that row directly, so a specific exchange can be linked to.
   const wanted = new URLSearchParams(location.search).get("call");
   document.querySelectorAll<HTMLButtonElement>(".view-call").forEach((button) => {
     button.addEventListener("click", async () => {
       const id = Number(button.dataset.id);
-      const cell = document.querySelector<HTMLTableCellElement>(`#call-${id} td`);
       const row = document.querySelector<HTMLTableRowElement>(`#call-${id}`);
-      if (!cell || !row) return;
-      const open = !row.hidden;
-      if (open) {
+      if (!row) return;
+      if (!row.hidden) {
         row.hidden = true;
         button.setAttribute("aria-expanded", "false");
+        openCalls.delete(id);
         return;
       }
-      row.hidden = false;
-      button.setAttribute("aria-expanded", "true");
-      cell.innerHTML = `<p class="empty">Reading the stored exchange…</p>`;
-      try {
-        cell.innerHTML = renderExchangeDetail(await api.callDetail(id));
-      } catch (e) {
-        cell.innerHTML = `<p class="empty">Could not read call ${id}: ${String(e)}</p>`;
-      }
+      openCalls.add(id);
+      await openCall(id);
     });
     if (wanted && Number(wanted) === Number(button.dataset.id)) button.click();
   });
+  // Re-open what was open before this render.
+  for (const id of openCalls) {
+    if (document.querySelector(`#call-${id}`)) void openCall(id);
+  }
 }
 
 function wireSettings(tab: Tab, s: Settings): void {
@@ -763,4 +815,16 @@ window.setInterval(() => {
   const draftOpen = !!document.querySelector("form.approve-form:not([hidden]), form.reject-form:not([hidden])");
   if (typing || draftOpen) return;
   void route();
+  // A running job is the one thing worth watching closely: check again in a moment, so the page
+  // shows the result as it lands instead of up to a minute later.
+  if (path === "/calls" && document.querySelector(".strip .pill.running")) {
+    window.setTimeout(() => {
+      const el = document.activeElement;
+      const busy =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        el instanceof HTMLSelectElement;
+      if (!busy) void route();
+    }, 4_000);
+  }
 }, 60_000);

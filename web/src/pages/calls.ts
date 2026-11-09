@@ -1,4 +1,4 @@
-import type { CallRow } from "../api";
+import type { CallRow, RunRow } from "../api";
 import { escapeHtml, money, units } from "../format";
 import { renderApp, renderHead } from "../components/shell";
 import {
@@ -74,7 +74,85 @@ export function renderPager(offset: number, limit: number, total: number): strin
   </nav>`;
 }
 
+/**
+ * The last few runs, as cards: state, when, how long, and what came of it. The fourth card is the
+ * Run now form, so "what is running?" and "start something" are the same glance.
+ *
+ * The calls table below is untouched — this sits above it, not inside it.
+ */
+export function renderRuns(runs: RunRow[], running: number): string {
+  const label: Record<string, string> = {
+    poll: "Poll",
+    plan_stock: "Stock plan",
+    plan_fund: "Fund plan",
+    short: "Short-term pass",
+    decide: "One instrument",
+    rotate: "Rotation",
+  };
+  const took = (r: RunRow) => {
+    if (!r.finished_at) return "running";
+    const ms = Date.parse(r.finished_at) - Date.parse(r.started_at);
+    if (!Number.isFinite(ms) || ms < 0) return "—";
+    return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+  };
+  const shown = runs.slice(0, 3);
+  const earlier = Math.max(0, runs.length - shown.length);
+
+  const card = (r: RunRow, i: number) => {
+    const pill =
+      r.status === "running"
+        ? `<span class="pill running">running</span>`
+        : r.status === "failed"
+          ? `<span class="pill failed">failed</span>`
+          : `<span class="pill done">done</span>`;
+    // A one-instrument run needs its symbol, which only the summary carries; do not offer a
+    // button that cannot know what to ask about.
+    const again =
+      r.status === "running" || r.prompt === "decide"
+        ? r.status === "running"
+          ? `<button class="mini" type="button" disabled>Working…</button>`
+          : ""
+        : `<button class="mini" type="button" data-run-again="${escapeHtml(r.prompt)}">Run again</button>`;
+    return `<article class="rcard">
+      <div class="rcard-top">${pill}<span class="run-when">${escapeHtml(localTime(r.started_at))} · ${escapeHtml(took(r))}</span></div>
+      <div class="rcard-title">${escapeHtml(label[r.prompt] ?? r.prompt)}
+        <span class="trigger">${escapeHtml(r.trigger)}</span></div>
+      <div class="rcard-result">${escapeHtml(
+        r.error ?? r.summary ?? (r.status === "running" ? "working…" : "—"),
+      )}</div>
+      ${again}
+      ${i === shown.length - 1 && earlier > 0
+        ? `<div class="rcard-more">${earlier} earlier</div>`
+        : ""}
+    </article>`;
+  };
+
+  const choice = (value: string, text: string) => `<option value="${value}">${text}</option>`;
+  return `<div class="strip">
+    ${shown.map(card).join("")}
+    <article class="rcard rcard-add">
+      <div class="rcard-title">Run now</div>
+      <form class="run-now" data-run-now>
+        <select name="prompt" aria-label="What to run">
+          ${choice("poll", "Poll")}
+          ${choice("plan_stock", "Stock plan")}
+          ${choice("plan_fund", "Fund plan")}
+          ${choice("short", "Short-term pass")}
+          ${choice("decide", "One instrument")}
+        </select>
+        <input name="symbol" placeholder="INFY.NS" aria-label="Symbol" />
+        <button class="btn primary" type="submit">Run</button>
+        <span class="help" data-run-status role="status">${
+          running ? `${running} running now` : ""
+        }</span>
+      </form>
+    </article>
+  </div>`;
+}
+
 export function renderCalls(
+  runs: RunRow[],
+  running: number,
   rows: CallRow[],
   offset = 0,
   limit = 25,
@@ -122,6 +200,7 @@ export function renderCalls(
       { label: "Tokens", value: tokens.toLocaleString("en-IN") },
     ])}
   <p class="caption-line">The prompt and the reply are stored with every call — open one to read them</p>
+  ${renderRuns(runs, running)}
   <section class="main-body table-wrap">
     <table class="blotter">
       <thead><tr>

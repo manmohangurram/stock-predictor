@@ -244,7 +244,10 @@ fn a_plan_may_list_its_moves_in_any_order() {
             rationale: String::new(),
         },
         &book(),
-        Cash { stock: 5_000.0, fund: 0.0 },
+        Cash {
+            stock: 5_000.0,
+            fund: 0.0,
+        },
         &at(1_000_000.0),
         "INR",
         now(),

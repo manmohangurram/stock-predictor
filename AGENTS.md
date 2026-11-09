@@ -91,6 +91,12 @@ lever; the static prompt block is a prefix so DeepSeek's context cache can hit i
 Request count: one per page (`/api/dashboard` carries recent trades, `/analysis` carries signals
 and fills), and the dashboard answers 304 when its version tag is unchanged.
 
+A **run** (`src/runs.rs`, table `runs`) is one unit of scheduler work — poll, stock plan, fund
+plan, short-term pass — opened *before* the work and closed after it, because `api_calls` rows only
+exist once a reply lands and therefore cannot show "running". Orphans left running by a killed
+process are closed at boot. `AppState.manual` is the channel the API uses to ask the **loop** to run
+something: the loop owns the market clients, so a manual run is the same code as a scheduled one.
+
 The tag fingerprints the **data**, not row counts: an edited fill changes no id, an archive changes
 no id, and a count-based tag answered 304 through both — the screen then looked frozen until a
 hard refresh. Any new in-place write needs to be in that hash, or it will be invisible.

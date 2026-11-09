@@ -23,6 +23,9 @@ type AmfiCache = Arc<tokio::sync::Mutex<Option<(chrono::DateTime<chrono::Utc>, S
 pub struct AppState {
     pub pool: SqlitePool,
     pub cfg: Config,
+    /// The loop that owns the market clients listens here, so "Run now" runs exactly what the
+    /// scheduler runs instead of a second, differently-wired copy of it.
+    pub manual: Option<tokio::sync::mpsc::Sender<(i64, crate::runs::Manual)>>,
     /// AMFI's scheme file is ~3 MB; it is fetched at most every few hours, not per keystroke.
     amfi: AmfiCache,
 }
@@ -32,6 +35,7 @@ impl AppState {
         Self {
             pool,
             cfg,
+            manual: None,
             amfi: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
@@ -102,6 +106,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/signals/{id}/approve", post(approve_signal))
         .route("/api/signals/{id}/reject", post(reject_signal))
         .route("/api/calls", get(calls))
+        .route("/api/runs", get(list_runs).post(start_run))
         .route("/api/positions", post(post_position))
         .route("/api/positions/{id}", patch(patch_position))
         .route("/api/ipo", post(post_ipo))
@@ -914,6 +919,85 @@ pub struct CallsQuery {
 }
 
 pub const CALLS_PER_PAGE: u32 = 25;
+
+#[derive(Debug, Deserialize)]
+pub struct RunQuery {
+    pub limit: Option<i64>,
+}
+
+/// The runs the scheduler (or you) started, newest first. `running` tells the page whether it is
+/// worth refreshing quickly.
+async fn list_runs(
+    State(st): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<RunQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+    let rows = crate::runs::recent(&st.pool, limit).await?;
+    let running = crate::runs::running(&st.pool).await?;
+    Ok(Json(
+        serde_json::json!({ "runs": rows, "running": running }),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StartRunBody {
+    pub prompt: String,
+    /// For `decide`: the one instrument to ask about.
+    pub symbol: Option<String>,
+}
+
+/// Run something now. The row is opened here, before the work, so the page can show it running
+/// even if the loop is asleep; the loop closes it when the work ends.
+async fn start_run(
+    State(st): State<AppState>,
+    Json(body): Json<StartRunBody>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let prompt = match body.prompt.as_str() {
+        "poll" => crate::runs::Prompt::Poll,
+        "plan_stock" => crate::runs::Prompt::PlanStock,
+        "plan_fund" => crate::runs::Prompt::PlanFund,
+        "short" => crate::runs::Prompt::Short,
+        "decide" => crate::runs::Prompt::Decide,
+        other => {
+            return Err(ApiError::BadRequest(format!(
+                "\"{other}\" is not something that can be run"
+            )))
+        }
+    };
+    let symbol = body
+        .symbol
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if prompt == crate::runs::Prompt::Decide && symbol.is_none() {
+        return Err(ApiError::BadRequest(
+            "decide needs a symbol — it asks about one instrument".into(),
+        ));
+    }
+    if let Some(sym) = symbol {
+        // Fail before writing a run row for an instrument that does not exist.
+        instrument_id_by_symbol(&st.pool, sym).await?;
+    }
+    let Some(tx) = &st.manual else {
+        return Err(ApiError::BadRequest(
+            "this server is not running its poll loop, so nothing can be started".into(),
+        ));
+    };
+    let id = crate::runs::start(&st.pool, prompt, crate::runs::Trigger::Manual, symbol).await?;
+    let manual = match prompt {
+        crate::runs::Prompt::Poll => crate::runs::Manual::Poll,
+        crate::runs::Prompt::PlanStock => crate::runs::Manual::PlanStock,
+        crate::runs::Prompt::PlanFund => crate::runs::Manual::PlanFund,
+        crate::runs::Prompt::Short => crate::runs::Manual::Short,
+        _ => crate::runs::Manual::Decide {
+            symbol: symbol.unwrap_or_default().to_string(),
+        },
+    };
+    tx.send((id, manual))
+        .await
+        .map_err(|_| ApiError::BadRequest("the poll loop is not listening".into()))?;
+    Ok(Json(serde_json::json!({ "id": id, "status": "running" })))
+}
 
 async fn calls(
     State(st): State<AppState>,

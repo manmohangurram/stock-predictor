@@ -71,7 +71,7 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
     let calls_before = report.llm_calls;
     let calls_after = orchestrate::daily_chat_calls(deps.pool).await.unwrap_or(0);
     if calls_after > calls_before {
-        match plan_book(deps, now, crate::llm::plan::Scope::Stock).await {
+        match plan_book(deps, now, crate::llm::plan::Scope::Stock, None).await {
             Ok(Some(())) => report.plans += 1,
             Ok(None) => {}
             Err(e) => report.errors.push(format!("plan: {e:#}")),
@@ -89,17 +89,22 @@ async fn plan_book(
     deps: &EngineDeps<'_>,
     now: DateTime<Utc>,
     scope: crate::llm::plan::Scope,
+    // A manual run already has its row; a scheduled one opens its own.
+    run: Option<i64>,
 ) -> Result<Option<()>> {
     let fund = scope.is_fund();
     // A book decision, not an intraday one: asked once per IST day, on the first tick that can
     // ask it. Per-stock calls already cover what moves inside the day.
     let today = ist_day(now);
-    let marker = if fund { "mf_plan_last" } else { "stock_plan_last" };
-    let last: Option<(String,)> =
-        sqlx::query_as("SELECT value FROM settings WHERE key = ?")
-            .bind(marker)
-            .fetch_optional(deps.pool)
-            .await?;
+    let marker = if fund {
+        "mf_plan_last"
+    } else {
+        "stock_plan_last"
+    };
+    let last: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+        .bind(marker)
+        .fetch_optional(deps.pool)
+        .await?;
     if last.map(|r| r.0).as_deref() == Some(today.as_str()) {
         return Ok(None);
     }
@@ -152,8 +157,24 @@ async fn plan_book(
         &candidates,
     )?;
     let model = crate::rules::settings::model_config(deps.pool).await?;
+    let run = match run {
+        Some(id) => Some(id),
+        None => Some(
+            crate::runs::start(
+                deps.pool,
+                if fund {
+                    crate::runs::Prompt::PlanFund
+                } else {
+                    crate::runs::Prompt::PlanStock
+                },
+                crate::runs::Trigger::Schedule,
+                None,
+            )
+            .await?,
+        ),
+    };
     let conversation = format!("plan-{}", now.timestamp_millis());
-    let reply = crate::llm::deepseek::chat(
+    let reply = match crate::llm::deepseek::chat(
         deps.pool,
         &model,
         deps.transport,
@@ -177,7 +198,17 @@ async fn plan_book(
             },
         },
     )
-    .await?;
+    .await
+    {
+        Ok(reply) => reply,
+        Err(e) => {
+            // A failed call must close its run, or the page shows a spinner that will not stop.
+            if let Some(id) = run {
+                crate::runs::fail(deps.pool, id, &format!("{e:#}")).await?;
+            }
+            return Err(e);
+        }
+    };
 
     sqlx::query(
         "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
@@ -193,10 +224,22 @@ async fn plan_book(
         Ok(a) => a,
         Err(e) => {
             tracing::warn!(error = %e, "plan reply unreadable");
+            if let Some(id) = run {
+                crate::runs::fail(deps.pool, id, &format!("the reply did not parse: {e}")).await?;
+            }
             return Ok(None);
         }
     };
     let crate::llm::plan::Answer::Plan(plan) = answer else {
+        if let Some(id) = run {
+            crate::runs::finish(
+                deps.pool,
+                id,
+                "nothing worth doing — the model passed",
+                Some(&conversation),
+            )
+            .await?;
+        }
         return Ok(None);
     };
 
@@ -224,6 +267,10 @@ async fn plan_book(
     ) {
         tracing::warn!(error = %e, "plan refused by the validator");
         record_plan_refusal(deps.pool, &e.to_string(), now, Some(&conversation), scope).await?;
+        if let Some(id) = run {
+            crate::runs::finish(deps.pool, id, &format!("refused: {e}"), Some(&conversation))
+                .await?;
+        }
         return Ok(None);
     }
 
@@ -272,6 +319,17 @@ async fn plan_book(
                 scope,
             )
             .await?;
+            if let Some(id) = run {
+                crate::runs::fail(
+                    deps.pool,
+                    id,
+                    &format!(
+                        "{} is not in the book, so the plan cannot be stored",
+                        m.symbol
+                    ),
+                )
+                .await?;
+            }
             return Ok(None);
         };
         // The first leg is its own group: every later leg points at it, and so does it.
@@ -283,6 +341,19 @@ async fn plan_book(
                 .await?;
             plan_id = Some(id);
         }
+    }
+    if let Some(id) = run {
+        crate::runs::finish(
+            deps.pool,
+            id,
+            &format!(
+                "{} move{} stored",
+                plan.moves.len(),
+                if plan.moves.len() == 1 { "" } else { "s" }
+            ),
+            Some(&conversation),
+        )
+        .await?;
     }
     Ok(Some(()))
 }
@@ -318,10 +389,40 @@ async fn record_plan_refusal(
     Ok(())
 }
 
+/// The stock plan on its own, for a manual run: the same call the poll makes, asked now.
+pub async fn plan_stock(
+    deps: &EngineDeps<'_>,
+    now: DateTime<Utc>,
+    run: Option<i64>,
+) -> Result<bool> {
+    Ok(plan_book(deps, now, crate::llm::plan::Scope::Stock, run)
+        .await?
+        .is_some())
+}
+
+/// One instrument, asked on its own — the precise version of a poll. Returns the decision as one
+/// line, or None when the rules refuse to propose anything.
+pub async fn decide_one(
+    deps: &EngineDeps<'_>,
+    symbol: &str,
+    now: DateTime<Utc>,
+) -> Result<Option<String>> {
+    let instrument = load_instruments(deps.pool)
+        .await?
+        .into_iter()
+        .find(|i| i.symbol == symbol)
+        .ok_or_else(|| anyhow::anyhow!("{symbol} is not an active instrument"))?;
+    advise(deps, &instrument, now).await
+}
+
 /// The fund plan, run once a day after the arithmetic scan has ranked today's funds. Separate
 /// entry point because it is a different question, not a second pass over the same one.
-pub async fn plan_funds(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<bool> {
-    Ok(plan_book(deps, now, crate::llm::plan::Scope::Fund)
+pub async fn plan_funds(
+    deps: &EngineDeps<'_>,
+    now: DateTime<Utc>,
+    run: Option<i64>,
+) -> Result<bool> {
+    Ok(plan_book(deps, now, crate::llm::plan::Scope::Fund, run)
         .await?
         .is_some())
 }

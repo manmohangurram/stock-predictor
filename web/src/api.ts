@@ -131,6 +131,18 @@ export interface Limits {
   max_instrument_pct: number;
 }
 
+export interface RunRow {
+  id: number;
+  prompt: string;
+  trigger: "schedule" | "change" | "manual";
+  status: "running" | "done" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  summary: string | null;
+  conversation_id: string | null;
+  error: string | null;
+}
+
 export interface CallRow {
   id: number;
   ts: string;
@@ -286,6 +298,11 @@ export const api = {
       "/api/settings/proxy/test",
       { method: "POST" },
     ),
+  /** Runs: what the scheduler started, opened before the work and closed after it. */
+  runs: (limit = 25) =>
+    req<{ runs: RunRow[]; running: number }>(`/api/runs?limit=${limit}`),
+  runNow: (prompt: string, symbol?: string) =>
+    req<{ id: number; status: string }>("/api/runs", json({ prompt, symbol })),
   /** A window into the audit list; the total comes back in a header. */
   calls: async (offset = 0, limit = 25) => {
     const r = await fetch(`/api/calls?offset=${offset}&limit=${limit}`);

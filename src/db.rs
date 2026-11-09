@@ -47,6 +47,7 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../migrations/0013_buckets.sql"),
     ),
     ("0014_plan", include_str!("../migrations/0014_plan.sql")),
+    ("0015_runs", include_str!("../migrations/0015_runs.sql")),
 ];
 
 pub fn path_of(path: &str) -> &str {

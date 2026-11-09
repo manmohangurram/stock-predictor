@@ -1082,7 +1082,7 @@ async fn the_fund_plan_asks_once_a_day_and_survives_a_restart() {
         rules: RuleConfig::default(),
         force: false,
     };
-    assert!(!engine::plan_funds(&deps, now()).await.unwrap());
+    assert!(!engine::plan_funds(&deps, now(), None).await.unwrap());
 
     // Second tick, same day: no call is spent.
     let empty = FixtureTransport::new(vec![]);
@@ -1095,7 +1095,7 @@ async fn the_fund_plan_asks_once_a_day_and_survives_a_restart() {
         rules: RuleConfig::default(),
         force: false,
     };
-    assert!(!engine::plan_funds(&again, now()).await.unwrap());
+    assert!(!engine::plan_funds(&again, now(), None).await.unwrap());
 
     // The next day, a restart asks again.
     let tomorrow = FixtureTransport::new(vec![stock_predictor::llm::deepseek::HttpReply {
@@ -1112,13 +1112,12 @@ async fn the_fund_plan_asks_once_a_day_and_survives_a_restart() {
         force: false,
     };
     let later = now() + chrono::Duration::days(1);
-    assert!(!engine::plan_funds(&next_day, later).await.unwrap());
-    let calls: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM api_calls WHERE purpose = 'plan funds'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    assert!(!engine::plan_funds(&next_day, later, None).await.unwrap());
+    let calls: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM api_calls WHERE purpose = 'plan funds'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(calls.0, 2, "one call on each of the two days");
 }
 
@@ -1158,9 +1157,18 @@ async fn the_stock_plan_is_asked_once_a_day() {
 
     // Poll 1: two deciding calls, then the plan.
     let first = FixtureTransport::new(vec![
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: plan },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass.clone(),
+        },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass.clone(),
+        },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: plan,
+        },
     ]);
     let deps = EngineDeps {
         pool: &pool,
@@ -1176,8 +1184,14 @@ async fn the_stock_plan_is_asked_once_a_day() {
 
     // Poll 2, same day: the deciding calls still happen, the plan does not.
     let second = FixtureTransport::new(vec![
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass.clone() },
-        stock_predictor::llm::deepseek::HttpReply { status: 200, body: pass },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass.clone(),
+        },
+        stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: pass,
+        },
     ]);
     let deps2 = EngineDeps {
         pool: &pool,
@@ -1191,7 +1205,10 @@ async fn the_stock_plan_is_asked_once_a_day() {
     let report2 = engine::poll_once(&deps2, now() + chrono::Duration::minutes(15))
         .await
         .unwrap();
-    assert_eq!(report2.plans, 0, "the book is not asked twice in a day: {report2:?}");
+    assert_eq!(
+        report2.plans, 0,
+        "the book is not asked twice in a day: {report2:?}"
+    );
 
     let calls: (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM api_calls WHERE purpose = 'plan stocks'")
