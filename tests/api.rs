@@ -224,19 +224,21 @@ async fn calls_route_returns_audit_rows_newest_first() {
 }
 
 #[tokio::test]
-async fn put_settings_below_committed_returns_409_with_committed() {
+async fn the_monthly_allowance_is_granted_the_moment_it_is_set() {
     let (_d, router, _pool) = setup().await;
-    let _ = send(
-        &router,
-        "POST",
-        "/api/positions",
-        json!({"symbol": "INFY", "qty": 10.0, "avg_cost": 142.0}),
-    )
-    .await;
-    let (s, v) = send(&router, "PUT", "/api/settings", json!({"budget": 1000.0})).await;
-    assert_eq!(s, StatusCode::CONFLICT, "{v}");
-    assert_eq!(v["error"], "below_committed");
-    assert_eq!(v["committed"], 1420.0);
+    // No allowance is a ceiling any more: it is money that arrives. Setting it puts it in the pot,
+    // and raising it tops the pot up rather than waiting for the 1st.
+    let (s, v) = send(&router, "PUT", "/api/settings", json!({"budget": 40_000.0})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["budget"], 40_000.0);
+    assert_eq!(v["available"], 40_000.0);
+
+    let (_, v) = send(&router, "PUT", "/api/settings", json!({"budget": 55_000.0})).await;
+    assert_eq!(v["available"], 55_000.0, "raising it should top the pot up");
+
+    // Lowering it claws the unspent part back, so the pot matches the allowance.
+    let (_, v) = send(&router, "PUT", "/api/settings", json!({"budget": 20_000.0})).await;
+    assert_eq!(v["available"], 20_000.0);
 }
 
 #[tokio::test]

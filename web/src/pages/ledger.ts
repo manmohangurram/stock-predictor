@@ -1,5 +1,6 @@
 import type { Dashboard, Mode, Trade } from "../api";
 import { renderApp, renderHead } from "../components/shell";
+import { today } from "./instrument";
 import { escapeHtml, histDate, money, units } from "../format";
 import { renderConfidence } from "../components/confidence";
 import { stamp } from "../components/stamp";
@@ -101,6 +102,57 @@ const subtotal = (label: string, invested: number, value: number): string => {
     <td>—</td><td class="sub hide-sm">—</td></tr>`;
 };
 
+/** One decision: what it says, and the two things you can do about it. */
+function decisionRow(s: Dashboard["signals"][number]): string {
+  const tone = s.action === "SELL" ? "sell" : s.action === "BUY" ? "buy" : "blocked";
+  const status =
+    s.status === "pending"
+      ? ""
+      : `<span class="pill ${s.status === "approved" ? "ok" : "todo"}">${s.status}</span>`;
+  const actions =
+    s.status !== "pending" || !["BUY", "SELL"].includes(s.action)
+      ? ""
+      : `<div class="decision-actions">
+          <button class="btn" type="button" data-approve="${s.id}" aria-expanded="false">Approve</button>
+          <button class="btn ghost" type="button" data-reject="${s.id}">Reject</button>
+        </div>
+        <form class="approve-form" data-approve-form="${s.id}" hidden>
+          <div class="fill-grid">
+            <label class="field"><span class="lbl">Quantity</span>
+              <input name="qty" type="number" min="0" step="any" value="${s.qty ?? ""}" /></label>
+            <label class="field"><span class="lbl">Price</span>
+              <input name="price" type="number" min="0" step="any" value="${s.entry ?? ""}" /></label>
+            <label class="field"><span class="lbl">Date</span>
+              <input name="at" type="date" value="${today()}" max="${today()}" /></label>
+            <label class="field"><span class="lbl">Pot</span>
+              <span class="static">${s.action === "SELL" ? "as held" : "this pot"}</span></label>
+          </div>
+          <div class="row"><button class="btn primary" type="submit">Post the fill</button>
+            <button class="btn ghost" type="button" data-cancel="${s.id}">Cancel</button>
+            <span class="help" data-status="${s.id}" role="status"></span></div>
+        </form>
+        <form class="reject-form" data-reject-form="${s.id}" hidden>
+          <div class="row">
+            <input name="reason" placeholder="Why not? (optional)" aria-label="Reason" />
+            <button class="btn" type="submit">Reject</button>
+            <button class="btn ghost" type="button" data-cancel="${s.id}">Cancel</button>
+            <span class="help" data-status="${s.id}" role="status"></span>
+          </div>
+        </form>`;
+  return `<div class="feed-row decision-feed">
+    <div class="decision-main">
+      <div><span class="stamp" data-stamp="${tone}">${s.action}</span>
+        <b>${escapeHtml(s.symbol)}</b>
+        ${s.entry === null ? "" : `<span class="num">${money(s.entry)}</span>`}
+        ${s.qty === null ? "" : `<span class="lbl">${units(s.qty)} units</span>`}
+        ${status}
+        <span class="sub">${histDate(s.created_at)}</span></div>
+      ${s.rationale ? `<p class="decision-prose">${escapeHtml(s.rationale)}</p>` : ""}
+      ${actions}
+    </div>
+  </div>`;
+}
+
 const sum = (rows: Dashboard["positions"]): { invested: number; value: number } => ({
   invested: rows.reduce((a, p) => a + p.qty * p.avg_cost, 0),
   value: rows.reduce((a, p) => a + (p.value ?? p.qty * p.avg_cost), 0),
@@ -124,16 +176,27 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
         .join("")
     : `<p class="empty">No trades recorded yet.</p>`;
 
+  // Rendered on the server of truth (the browser) and in tests: no window, no filter.
+  const filter =
+    (typeof location !== "undefined"
+      ? new URLSearchParams(location.search).get("decisions")
+      : null) ?? "pending";
   const advice = d.signals.length
     ? d.signals
-        .slice(0, 6)
-        .map(
-          (s) => `<div class="feed-row"><span><span class="stamp" data-stamp="${s.action === "SELL" ? "sell" : "buy"}">${s.action}</span>
-        ${escapeHtml(s.symbol)}${s.entry === null ? "" : ` — ${money(s.entry)}`}</span>
-        <span class="sub">${escapeHtml(s.created_at.slice(11, 16))}</span></div>`,
-        )
+        .slice(0, 8)
+        .map((s) => decisionRow(s))
         .join("")
-    : `<p class="empty">No open advice.</p>`;
+    : `<p class="empty">${
+        filter === "pending" ? "Nothing under review." : "Nothing in this filter."
+      }</p>`;
+  const filters = (["pending", "approved", "rejected", "all"] as const)
+    .map(
+      (f) =>
+        `<a href="?mode=${d.mode}${f === "pending" ? "" : `&decisions=${f}`}" class="${
+          f === filter ? "on" : ""
+        }" ${f === filter ? 'aria-current="page"' : ""}>${f[0].toUpperCase() + f.slice(1)}</a>`,
+    )
+    .join("");
 
   const stocksSection = section(
     "Stocks",
@@ -183,9 +246,12 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
       <div class="lbl" style="margin-top:var(--space-4)">Recent fills</div>
       <div class="feed">${history}</div>
     </section>
-    <section class="card">
-      <div class="lbl">Open advice</div>
-      <div class="feed">${advice}</div>
+    <section class="card" id="decisions-card">
+      <div class="card-head">
+        <div class="lbl">Decisions</div>
+        <nav class="decisions-filter" aria-label="Decision status">${filters}</nav>
+      </div>
+      <div class="feed decisions-feed">${advice}</div>
     </section>
   </div>`;
 

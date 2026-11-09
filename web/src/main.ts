@@ -50,7 +50,13 @@ async function route(): Promise<void> {
         | "trade"
         | null) ?? "long";
       // One request: the dashboard payload carries the rail's recent fills.
-      const res = await dashboardCached(mode, dashboardEtag);
+      const decisions = (new URLSearchParams(location.search).get("decisions") as
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "all"
+        | null) ?? "pending";
+      const res = await dashboardCached(mode, dashboardEtag, decisions);
       if (res.notModified) return; // nothing changed: keep the DOM, and the user's open rows
       dashboardEtag = res.etag ?? null;
       const d = res.data!;
@@ -58,6 +64,7 @@ async function route(): Promise<void> {
       // The nav belongs inside the content column, not floating in the page margin.
       wireRows();
       wireSearch();
+      wireDecisionsCard();
     }
   } catch (e) {
     app.innerHTML = failure(e);
@@ -136,6 +143,75 @@ function wireSearch(): void {
         box.innerHTML = `<p class="empty">Search unavailable.</p>`;
       }
     }, 250);
+  });
+}
+
+/** Approve posts the fill you type; reject records a reason. Both stay on the page. */
+function wireDecisionsCard(): void {
+  const card = document.querySelector<HTMLElement>("#decisions-card");
+  if (!card) return;
+  const field = (id: string, name: string) =>
+    card.querySelector<HTMLInputElement>(`[data-approve-form="${id}"] [name="${name}"]`);
+  const status = (id: string) => card.querySelector<HTMLElement>(`[data-status="${id}"]`);
+
+  card.querySelectorAll<HTMLButtonElement>("[data-approve]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.approve!;
+      const form = card.querySelector<HTMLFormElement>(`[data-approve-form="${id}"]`);
+      if (!form) return;
+      form.hidden = !form.hidden;
+      button.setAttribute("aria-expanded", String(!form.hidden));
+    });
+  });
+  card.querySelectorAll<HTMLButtonElement>("[data-reject]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.reject!;
+      const form = card.querySelector<HTMLFormElement>(`[data-reject-form="${id}"]`);
+      if (!form) return;
+      form.hidden = !form.hidden;
+    });
+  });
+  card.querySelectorAll<HTMLButtonElement>("[data-cancel]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.cancel!;
+      const approve = card.querySelector<HTMLFormElement>(`[data-approve-form="${id}"]`);
+      const reject = card.querySelector<HTMLFormElement>(`[data-reject-form="${id}"]`);
+      if (approve) approve.hidden = true;
+      if (reject) reject.hidden = true;
+    });
+  });
+  card.querySelectorAll<HTMLFormElement>("[data-approve-form]").forEach((form) => {
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const id = Number(form.dataset.approveForm);
+      const el = status(String(id));
+      if (el) el.textContent = "Posting…";
+      try {
+        await api.approveSignal(id, {
+          qty: Number(field(String(id), "qty")?.value),
+          price: Number(field(String(id), "price")?.value),
+          at: field(String(id), "at")?.value || undefined,
+        });
+        await route();
+      } catch (e) {
+        if (el) el.textContent = String(e);
+      }
+    });
+  });
+  card.querySelectorAll<HTMLFormElement>("[data-reject-form]").forEach((form) => {
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const id = Number(form.dataset.rejectForm);
+      const reason = form.querySelector<HTMLInputElement>('[name="reason"]')?.value ?? "";
+      const el = status(String(id));
+      if (el) el.textContent = "Rejecting…";
+      try {
+        await api.rejectSignal(id, reason || undefined);
+        await route();
+      } catch (e) {
+        if (el) el.textContent = String(e);
+      }
+    });
   });
 }
 

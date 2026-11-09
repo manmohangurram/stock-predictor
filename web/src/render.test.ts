@@ -388,7 +388,7 @@ describe("settings, second pot", () => {
     });
     expect(html).toContain('name="trading_budget"');
     expect(html).toContain("80,000");
-    expect(html).toContain("never draws on the long-term budget");
+    expect(html).toContain("Neither pot draws on the other");
   });
 });
 

@@ -32,7 +32,9 @@ fn month_key(mode: Mode) -> String {
     format!("pot_month_{}", mode.as_str())
 }
 
-/// Idempotent: a second call in the same month does nothing.
+/// Idempotent for a given allowance: it grants on the first call of a month, and again only if the
+/// configured allowance changed — raising it mid-month tops the pot up, lowering it takes the
+/// difference back as an expiry. Never twice for the same numbers.
 pub async fn ensure_month(
     pool: &SqlitePool,
     mode: Mode,
@@ -40,12 +42,21 @@ pub async fn ensure_month(
     now: DateTime<Utc>,
 ) -> Result<MonthReport> {
     let month = ist_month(now);
+    let granted_key = format!("pot_granted_{}", mode.as_str());
 
     let seen: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
         .bind(month_key(mode))
         .fetch_optional(pool)
         .await?;
-    if seen.map(|r| r.0).as_deref() == Some(month.as_str()) {
+    let granted: f64 = sqlx::query_as::<_, (String,)>("SELECT value FROM settings WHERE key = ?")
+        .bind(&granted_key)
+        .fetch_optional(pool)
+        .await?
+        .and_then(|r| r.0.trim().parse::<f64>().ok())
+        .unwrap_or(0.0);
+
+    let same_month = seen.map(|r| r.0).as_deref() == Some(month.as_str());
+    if same_month && (granted - allowance).abs() < 1e-9 {
         return Ok(MonthReport {
             month,
             expired: 0.0,
@@ -54,7 +65,10 @@ pub async fn ensure_month(
     }
 
     let existing = budget::cash_in(pool, mode).await?;
-    let expired = if existing > 0.0 { existing } else { 0.0 };
+    // Only a month *boundary* expires what is left. Adjusting the allowance mid-month is a
+    // top-up (or a claw-back of the unspent part), never a reset.
+    let expired = if !same_month && existing > 0.0 { existing } else { 0.0 };
+    let delta = if same_month { allowance - granted } else { allowance };
 
     let mut tx = pool.begin().await.context("begin the month reset")?;
     if expired > 0.0 {
@@ -67,31 +81,40 @@ pub async fn ensure_month(
             .execute(&mut *tx)
             .await?;
     }
-    if allowance > 0.0 {
+    if delta.abs() > 1e-9 {
         sqlx::query("INSERT INTO cash_ledger (ts, kind, amount, ref, mode) VALUES (?, ?, ?, ?, ?)")
             .bind(now.to_rfc3339())
             .bind(CashKind::Budget.as_str())
-            .bind(allowance)
-            .bind(format!("allowance {}", month))
+            .bind(delta)
+            .bind(if same_month {
+                format!("allowance changed to {allowance}")
+            } else {
+                allowance_reference(&month)
+            })
             .bind(mode.as_str())
             .execute(&mut *tx)
             .await?;
     }
-    sqlx::query(
-        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-    )
-    .bind(month_key(mode))
-    .bind(&month)
-    .bind(now.to_rfc3339())
-    .execute(&mut *tx)
-    .await?;
+    for (key, value) in [
+        (month_key(mode).as_str(), month.clone()),
+        (granted_key.as_str(), allowance.to_string()),
+    ] {
+        sqlx::query(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        )
+        .bind(key)
+        .bind(value)
+        .bind(now.to_rfc3339())
+        .execute(&mut *tx)
+        .await?;
+    }
     tx.commit().await?;
 
     Ok(MonthReport {
         month,
         expired,
-        granted: allowance,
+        granted: delta,
     })
 }
 

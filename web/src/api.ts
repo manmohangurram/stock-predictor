@@ -13,6 +13,11 @@ export interface SignalRow {
   reasons: string[];
   rationale: string | null;
   created_at: string;
+  /** pending | approved | rejected — the ledger lists pending unless a filter says otherwise. */
+  status: "pending" | "approved" | "rejected";
+  status_reason: string | null;
+  filled_qty: number | null;
+  filled_price: number | null;
 }
 
 export interface PositionRow {
@@ -214,10 +219,13 @@ const json = (body: unknown): RequestInit => ({
 export async function dashboardCached(
   mode: Mode,
   etag: string | null,
+  decisions: "pending" | "approved" | "rejected" | "all" = "pending",
 ): Promise<{ notModified: boolean; data?: Dashboard; etag?: string }> {
   const headers: Record<string, string> = {};
-  if (etag) headers["if-none-match"] = etag;
-  const r = await fetch(`/api/dashboard?mode=${mode}`, { headers });
+  // Only the default view is cacheable: a filtered view is a different question.
+  if (etag && decisions === "pending") headers["if-none-match"] = etag;
+  const q = `mode=${mode}${decisions === "pending" ? "" : `&decisions=${decisions}`}`;
+  const r = await fetch(`/api/dashboard?${q}`, { headers });
   if (r.status === 304) return { notModified: true };
   if (!r.ok) throw new Error(`dashboard: ${r.status}`);
   return {
@@ -236,6 +244,21 @@ export const api = {
       { method: "POST" },
     ),
   calls: () => req<CallRow[]>("/api/calls"),
+  approveSignal: (id: number, body: { qty?: number; price?: number; at?: string }) =>
+    req<{ id: number; status: string; recorded: boolean }>(`/api/signals/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  rejectSignal: (id: number, reason?: string) =>
+    req<{ id: number; status: string }>(`/api/signals/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  deleteInstrument: (symbol: string) =>
+    req<{ symbol: string; deleted: boolean; archived: boolean; reason?: string }>(
+      `/api/instruments/${encodeURIComponent(symbol)}`,
+      { method: "DELETE" },
+    ),
   callDetail: (id: number) => req<CallDetail>(`/api/calls/${id}`),
   trades: () => req<Trade[]>("/api/trades"),
   instrument: (symbol: string) =>

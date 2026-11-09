@@ -91,17 +91,17 @@ function derived(name: string, value: number, template: string): string {
 const MONEY = (s: Settings, tab: Tab): string => {
   const below = shouldDisableSave(s.budget, s.committed);
   return `
-    ${field(tab, "budget", "Long-term pot", Math.round(s.budget), {
+    ${field(tab, "budget", "Monthly allowance, long-term", Math.round(s.budget), {
       type: "number",
       step: "1",
       unit: s.currency,
-      help: `Committed is ${money(s.committed, 0)} ${s.currency}. The budget cannot go below it.`,
+      help: `Granted on the 1st of each month. Unspent allowance expires at month end — it is not carried over, and it is not counted as a trading loss.`,
     })}
-    ${field(tab, "trading_budget", "Trading pot", Math.round(s.trading_budget), {
+    ${field(tab, "trading_budget", "Monthly allowance, trading", Math.round(s.trading_budget), {
       type: "number",
       step: "1",
       unit: s.currency,
-      help: `Separate capital for the trading mode. ${money(s.trading_available, 0)} free. It never draws on the long-term budget, and the long-term budget never draws on it.`,
+      help: `A separate monthly allowance for the trading pot, ${money(s.trading_available, 0)} left this month. Neither pot draws on the other.`,
     })}
     ${select(tab, "currency", "Currency", s.currency, ["INR", "USD", "EUR", "GBP"].map((c) => [c, c]),
       s.currency_locked

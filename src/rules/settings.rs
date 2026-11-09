@@ -91,12 +91,12 @@ fn trim_number(v: f64) -> String {
 }
 
 pub async fn get(pool: &SqlitePool) -> Result<Settings> {
-    let budget = budget::budget_total(pool).await?;
+    let budget = allowance_setting(pool, crate::models::Mode::Long).await?;
     let committed = budget::committed(pool).await?;
     let currency = currency(pool).await?;
     let locked = ledger_has_entries(pool).await?;
     let deepseek_configured = deepseek_key(pool).await?.is_some();
-    let trading_budget = budget::budget_total_in(pool, crate::models::Mode::Trade).await?;
+    let trading_budget = allowance_setting(pool, crate::models::Mode::Trade).await?;
     let trading_available = budget::available_in(pool, crate::models::Mode::Trade).await?;
     let ntfy_topic = setting(pool, "ntfy_topic").await?.unwrap_or_default();
     let ntfy_url = setting(pool, "ntfy_url")
@@ -121,7 +121,8 @@ pub async fn get(pool: &SqlitePool) -> Result<Settings> {
     Ok(Settings {
         budget,
         committed,
-        available: budget - committed,
+        // The money that is actually there, from the ledger — not the allowance minus holdings.
+        available: budget::available_in(pool, crate::models::Mode::Long).await?,
         currency,
         currency_locked: locked,
         deepseek_configured,
@@ -203,31 +204,30 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
             .map_err(|_| SettingsError::InvalidAmount)?;
     }
 
+    // The monthly allowance. Changing it does not touch the ledger: the money appears when the
+    // month rolls over, which is the only thing that should ever add to a pot.
     if let Some(budget) = patch.budget {
         if !budget.is_finite() || budget < 0.0 {
             return Err(SettingsError::InvalidAmount);
         }
-        let committed = budget::committed(pool)
+        put_setting(pool, "allowance_long", &trim_number(budget))
             .await
             .map_err(|_| SettingsError::InvalidAmount)?;
-        if budget < committed - 1e-9 {
-            return Err(SettingsError::BelowCommitted { committed });
+        super::pot::ensure_month(pool, crate::models::Mode::Long, budget, chrono::Utc::now())
+            .await
+            .map_err(|_| SettingsError::InvalidAmount)?;
+    }
+    if let Some(budget) = patch.trading_budget {
+        if !budget.is_finite() || budget < 0.0 {
+            return Err(SettingsError::InvalidAmount);
         }
-        let current = budget::budget_total(pool)
+        put_setting(pool, "allowance_trade", &trim_number(budget))
             .await
             .map_err(|_| SettingsError::InvalidAmount)?;
-        if (budget - current).abs() > 1e-9 {
-            budget::record(
-                pool,
-                NewCashEntry {
-                    kind: CashKind::Budget,
-                    amount: budget - current,
-                    reference: format!("budget set to {budget}"),
-                },
-            )
+        // Apply it now, not on the 1st: setting an allowance should make it spendable.
+        super::pot::ensure_month(pool, crate::models::Mode::Trade, budget, chrono::Utc::now())
             .await
             .map_err(|_| SettingsError::InvalidAmount)?;
-        }
     }
 
     if let Some(currency) = patch.currency {
@@ -379,12 +379,21 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
     Ok(())
 }
 
-/// The monthly allowance for a pot: what is granted on the first tick of each month.
+/// The configured monthly allowance: what the month reset grants on the 1st.
 pub async fn allowance(pool: &SqlitePool, mode: crate::models::Mode) -> Result<f64> {
-    Ok(match mode {
-        crate::models::Mode::Long => budget::budget_total_in(pool, mode).await?,
-        crate::models::Mode::Trade => budget::budget_total_in(pool, mode).await?,
-    })
+    allowance_setting(pool, mode).await
+}
+
+async fn allowance_setting(pool: &SqlitePool, mode: crate::models::Mode) -> Result<f64> {
+    let key = match mode {
+        crate::models::Mode::Long => "allowance_long",
+        crate::models::Mode::Trade => "allowance_trade",
+    };
+    Ok(setting(pool, key)
+        .await?
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .unwrap_or(0.0))
 }
 
 /// The knobs the app reads while running. Read per tick so edits apply without a restart.
