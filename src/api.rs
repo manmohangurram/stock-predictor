@@ -1346,13 +1346,30 @@ async fn approve_signal(
     axum::extract::Path(id): axum::extract::Path<i64>,
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let row: Option<(i64, String, Option<f64>, Option<f64>, String, String)> = sqlx::query_as(
+    #[derive(sqlx::FromRow)]
+    struct PendingDecision {
+        instrument_id: i64,
+        action: String,
+        qty: Option<f64>,
+        entry: Option<f64>,
+        mode: String,
+        status: String,
+    }
+    let row: Option<PendingDecision> = sqlx::query_as(
         "SELECT instrument_id, action, qty, entry, mode, status FROM signals WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(&st.pool)
     .await?;
-    let Some((instrument_id, action, qty, entry, mode_raw, status)) = row else {
+    let Some(PendingDecision {
+        instrument_id,
+        action,
+        qty,
+        entry,
+        mode: mode_raw,
+        status,
+    }) = row
+    else {
         return Err(ApiError::NotFound(format!("no decision {id}")));
     };
     if status != "pending" {
