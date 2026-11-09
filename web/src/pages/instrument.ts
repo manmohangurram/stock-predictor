@@ -3,6 +3,7 @@ import { clock, day, escapeHtml, money, units } from "../format";
 import { confidenceLabel, renderConfidence } from "../components/confidence";
 import { renderRisk } from "../components/risk";
 import { renderApp } from "../components/shell";
+import { renderDecisionActions } from "../components/decision-actions";
 
 const klassOf = (c: string): "stock" | "mutual_fund" | "ipo" =>
   c === "mutual_fund" ? "mutual_fund" : c === "ipo" ? "ipo" : "stock";
@@ -140,7 +141,7 @@ function decisions(d: InstrumentDetail, targetProfitPct: number | null): string 
         s.valid_until ? `<div><span class="lbl">Valid until</span><b class="num">${day(s.valid_until)}</b></div>` : "",
       ].join("");
       const tone = s.action === "SELL" ? "sell" : s.action === "BUY" ? "buy" : "blocked";
-      return `<tr class="decision-row" data-decision="${i}" tabindex="0" role="button"
+      return `<tr class="decision-row" data-decision="${i}" data-signal="${s.id}" tabindex="0" role="button"
             aria-expanded="false" aria-controls="decision-${i}">
         <td class="mono">${day(s.created_at)} ${clock(s.created_at)}</td>
         <td><span class="stamp" data-stamp="${tone}">${s.action}</span></td>
@@ -148,11 +149,20 @@ function decisions(d: InstrumentDetail, targetProfitPct: number | null): string 
         <td class="num hide-sm">${s.stop === null ? "—" : money(s.stop)}</td>
         <td class="num hide-sm">${s.target === null ? "—" : money(s.target)}</td>
         <td class="hide-sm">${
-          s.confidence === null
+          s.status !== "pending"
+            ? `<span class="pill ${s.status === "approved" ? "ok" : "todo"}">${s.status}</span>`
+            : s.confidence === null
             ? `<span class="muted">rules-derived, no model score</span>`
             : `<span class="conf-word">${renderConfidence(s.confidence)}<span class="lbl">${confidenceLabel(s.confidence)}</span></span>`
         }</td>
-        <td class="right"><span class="lbl">Open</span></td>
+        <td class="right decision-row-actions">
+          <button class="btn ghost" type="button" data-open="${i}" aria-expanded="false">Open</button>
+          ${
+            s.status === "pending" && ["BUY", "SELL"].includes(s.action)
+              ? `<button class="btn" type="button" data-approve-row="${i}">Approve</button>`
+              : ""
+          }
+        </td>
       </tr>
       <tr class="decision-detail" id="decision-${i}" hidden><td colspan="7">
         <div class="decision-body">
@@ -164,6 +174,7 @@ function decisions(d: InstrumentDetail, targetProfitPct: number | null): string 
               : `<p class="empty">No model rationale — this came from the rules alone.</p>`
           }
           ${s.reasons.length ? `<ul class="decision-reasons">${s.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul>` : ""}
+          ${renderDecisionActions(s)}
         </div>
       </td></tr>`;
     })

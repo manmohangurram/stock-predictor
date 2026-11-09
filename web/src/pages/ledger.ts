@@ -1,6 +1,6 @@
 import type { Dashboard, Mode, Trade } from "../api";
 import { renderApp, renderHead } from "../components/shell";
-import { today } from "./instrument";
+import { renderDecisionActions } from "../components/decision-actions";
 import { escapeHtml, histDate, money, units } from "../format";
 import { renderConfidence } from "../components/confidence";
 import { stamp } from "../components/stamp";
@@ -109,36 +109,7 @@ function decisionRow(s: Dashboard["signals"][number]): string {
     s.status === "pending"
       ? ""
       : `<span class="pill ${s.status === "approved" ? "ok" : "todo"}">${s.status}</span>`;
-  const actions =
-    s.status !== "pending" || !["BUY", "SELL"].includes(s.action)
-      ? ""
-      : `<div class="decision-actions">
-          <button class="btn" type="button" data-approve="${s.id}" aria-expanded="false">Approve</button>
-          <button class="btn ghost" type="button" data-reject="${s.id}">Reject</button>
-        </div>
-        <form class="approve-form" data-approve-form="${s.id}" hidden>
-          <div class="fill-grid">
-            <label class="field"><span class="lbl">Quantity</span>
-              <input name="qty" type="number" min="0" step="any" value="${s.qty ?? ""}" /></label>
-            <label class="field"><span class="lbl">Price</span>
-              <input name="price" type="number" min="0" step="any" value="${s.entry ?? ""}" /></label>
-            <label class="field"><span class="lbl">Date</span>
-              <input name="at" type="date" value="${today()}" max="${today()}" /></label>
-            <label class="field"><span class="lbl">Pot</span>
-              <span class="static">${s.action === "SELL" ? "as held" : "this pot"}</span></label>
-          </div>
-          <div class="row"><button class="btn primary" type="submit">Post the fill</button>
-            <button class="btn ghost" type="button" data-cancel="${s.id}">Cancel</button>
-            <span class="help" data-status="${s.id}" role="status"></span></div>
-        </form>
-        <form class="reject-form" data-reject-form="${s.id}" hidden>
-          <div class="row">
-            <input name="reason" placeholder="Why not? (optional)" aria-label="Reason" />
-            <button class="btn" type="submit">Reject</button>
-            <button class="btn ghost" type="button" data-cancel="${s.id}">Cancel</button>
-            <span class="help" data-status="${s.id}" role="status"></span>
-          </div>
-        </form>`;
+  const actions = renderDecisionActions(s);
   return `<div class="feed-row decision-feed">
     <div class="decision-main">
       <div><span class="stamp" data-stamp="${tone}">${s.action}</span>

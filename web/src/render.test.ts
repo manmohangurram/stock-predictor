@@ -433,6 +433,7 @@ describe("confidence", () => {
           entry: 100, stop: 110, target: null, valid_until: "2026-10-28T10:00:00Z",
           timing_note: "", reasons: ["stop breached"], rationale: null,
           created_at: "2026-10-27T10:00:00Z",
+          status: "pending", status_reason: null, filled_qty: null, filled_price: null,
         },
       ],
     };
@@ -795,5 +796,46 @@ describe("reading a reply as a decision", () => {
   test("a body that is not JSON is not dressed up as a verdict", async () => {
     const { parseReply } = await import("./components/call-viewer");
     expect(parseReply("upstream timeout").verdict).toBeNull();
+  });
+});
+
+describe("decisions on the instrument page", () => {
+  const base = {
+    instrument: {
+      id: 1, symbol: "INFY.NS", class: "stock", name: "Infosys", currency: "INR",
+      timing_note: "limit order", target_profit_pct: null,
+    },
+    bars: [], indicators: null, checks: [], position: null, headlines: [], trades: [],
+  };
+  const signal = (over: Record<string, unknown>) => ({
+    id: 7, symbol: "INFY.NS", class: "stock", action: "SELL", qty: 24, confidence: "medium",
+    entry: 1171.6, stop: 1080, target: 1420, valid_until: "2026-11-09T00:00:00Z",
+    timing_note: "", reasons: ["target reached"], rationale: "take it",
+    created_at: "2026-11-08T10:00:00Z", status: "pending", status_reason: null,
+    filled_qty: null, filled_price: null, ...over,
+  });
+
+  test("a pending decision carries its own approve and reject", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const html = renderInstrument(
+      base as never,
+      { ...base, signals: [signal({})] } as never,
+      [],
+    );
+    expect(html).toContain('data-approve="7"');
+    expect(html).toContain('data-approve-form="7"');
+    expect(html).toContain('value="1171.6"'); // pre-filled from the decision
+    expect(html).toContain('value="24"');
+  });
+
+  test("an approved decision shows its status and no actions", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const html = renderInstrument(
+      base as never,
+      { ...base, signals: [signal({ status: "approved", filled_qty: 8, filled_price: 1170 })] } as never,
+      [],
+    );
+    expect(html).toContain(">approved<");
+    expect(html).not.toContain('data-approve="7"');
   });
 });

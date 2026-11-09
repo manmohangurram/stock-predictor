@@ -43,6 +43,7 @@ async function route(): Promise<void> {
       app.innerHTML = renderInstrument(analysis, analysis, analysis.trades);
       wireTradeForm(symbol);
       wireDecisions();
+      wireDecisionActions();
       wireTargetProfit(symbol);
     } else {
       const mode = (new URLSearchParams(location.search).get("mode") as
@@ -64,7 +65,7 @@ async function route(): Promise<void> {
       // The nav belongs inside the content column, not floating in the page margin.
       wireRows();
       wireSearch();
-      wireDecisionsCard();
+      wireDecisionActions();
     }
   } catch (e) {
     app.innerHTML = failure(e);
@@ -147,9 +148,10 @@ function wireSearch(): void {
 }
 
 /** Approve posts the fill you type; reject records a reason. Both stay on the page. */
-function wireDecisionsCard(): void {
-  const card = document.querySelector<HTMLElement>("#decisions-card");
-  if (!card) return;
+function wireDecisionActions(): void {
+  // Both the ledger and the instrument page render the same actions, so this works on either.
+  const card = document.body;
+  if (!card.querySelector("[data-approve]")) return;
   const field = (id: string, name: string) =>
     card.querySelector<HTMLInputElement>(`[data-approve-form="${id}"] [name="${name}"]`);
   const status = (id: string) => card.querySelector<HTMLElement>(`[data-status="${id}"]`);
@@ -271,20 +273,41 @@ function readLimits(data: FormData, mode: "long" | "trade") {
   };
 }
 
-/** A decision row opens to reveal the whole message: rationale, reasons and the risk. */
+/** A decision row opens to reveal the whole message; Approve opens it straight onto the form. */
 function wireDecisions(): void {
   document.querySelectorAll<HTMLTableRowElement>(".decision-row").forEach((row) => {
+    const id = row.dataset.decision;
+    const detail = () => document.querySelector<HTMLTableRowElement>(`#decision-${id}`);
     const toggle = () => {
-      const id = row.dataset.decision;
-      const detail = document.querySelector<HTMLTableRowElement>(`#decision-${id}`);
-      if (!detail) return;
-      const open = !detail.hidden;
-      detail.hidden = open;
+      const el = detail();
+      if (!el) return;
+      const open = !el.hidden;
+      el.hidden = open;
       row.setAttribute("aria-expanded", String(!open));
-      const label = row.querySelector("td.right .lbl");
+      const label = row.querySelector("td.right button[data-open]");
       if (label) label.textContent = open ? "Open" : "Close";
     };
-    row.addEventListener("click", toggle);
+    row.querySelector<HTMLButtonElement>("[data-open]")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      toggle();
+    });
+    row.querySelector<HTMLButtonElement>("[data-approve-row]")?.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const el = detail();
+      if (el?.hidden) toggle();
+      const signal = row.dataset.signal;
+      if (!signal) return;
+      const form = document.querySelector<HTMLFormElement>(`[data-approve-form="${signal}"]`);
+      if (form) {
+        form.hidden = false;
+        form.querySelector<HTMLInputElement>('input[name="qty"]')?.focus();
+      }
+    });
+    // Clicking the row itself (but not a button) toggles it.
+    row.addEventListener("click", (ev) => {
+      if ((ev.target as HTMLElement).closest("button")) return;
+      toggle();
+    });
     row.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter" || ev.key === " ") {
         ev.preventDefault();

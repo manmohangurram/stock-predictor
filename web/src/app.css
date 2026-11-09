@@ -778,3 +778,8 @@
     margin-top: var(--space-2); flex-wrap: wrap; }
   .reject-form input { flex: 1 1 200px; }
 }
+
+@layer components {
+  .decision-row-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+  .decisions td.decision-row-actions { padding-inline: var(--space-2); }
+}
