@@ -637,7 +637,8 @@ async fn the_call_gate_skips_small_moves_but_never_silences_for_more_than_an_hou
     )
     .await
     .unwrap());
-    // Nothing moved, but an hour has passed: ask anyway.
+    // The default gate has no time floor: an unchanged price is an unchanged world, however long
+    // it has been. (The old forced hourly call is what made the model look chatty.)
     assert!(!memo::should_call(
         &pool,
         id.0,
@@ -648,16 +649,24 @@ async fn the_call_gate_skips_small_moves_but_never_silences_for_more_than_an_hou
     )
     .await
     .unwrap());
-    assert!(memo::should_call(
+    assert!(!memo::should_call(
         &pool,
         id.0,
         100.0,
-        t0 + chrono::Duration::minutes(60),
+        t0 + chrono::Duration::hours(6),
         gate,
         false
     )
     .await
     .unwrap());
+    // A configured floor still works, for anyone who wants the old behaviour back.
+    let patient = memo::CallGate {
+        min_move: 2.0,
+        max_interval_secs: 3600,
+    };
+    assert!(memo::should_call(&pool, id.0, 100.0, t0 + chrono::Duration::hours(1), patient, false)
+        .await
+        .unwrap());
 }
 
 #[tokio::test]

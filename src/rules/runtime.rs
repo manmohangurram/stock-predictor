@@ -17,6 +17,8 @@ pub struct View {
     pub off_hours_secs: u64,
     pub prompt_window_hours: u32,
     pub min_price_move: f64,
+    /// Reconsider a held position after this long **even with no price move**. 0 = never:
+    /// a call is for a change, not for the passage of time.
     pub max_silence_secs: i64,
     pub daily_cap: u32,
     pub proxy_configured: bool,
@@ -38,6 +40,8 @@ pub struct Runtime {
     /// Skip a model call unless the price moved at least this much...
     pub min_price_move: f64,
     /// ...or this long has passed since the last one.
+    /// Reconsider a held position after this long **even with no price move**. 0 = never:
+    /// a call is for a change, not for the passage of time.
     pub max_silence_secs: i64,
     /// Hard ceiling on model calls per day.
     pub daily_cap: u32,
@@ -57,7 +61,7 @@ impl Default for Runtime {
             off_hours_secs: 7_200,
             prompt_window_hours: 4,
             min_price_move: 2.0,
-            max_silence_secs: 3_600,
+            max_silence_secs: 0,
             daily_cap: 200,
             proxy: None,
             proxy_user: None,
@@ -73,7 +77,7 @@ pub const KNOBS: &[(&str, f64, f64, f64)] = &[
     ("off_hours_secs", 7_200.0, 60.0, 86_400.0),
     ("prompt_window_hours", 4.0, 1.0, 24.0),
     ("min_price_move", 2.0, 0.0, 1_000_000.0),
-    ("max_silence_secs", 3_600.0, 60.0, 86_400.0),
+    ("max_silence_secs", 0.0, 0.0, 86_400.0),
     ("daily_cap", 200.0, 0.0, 10_000.0),
 ];
 

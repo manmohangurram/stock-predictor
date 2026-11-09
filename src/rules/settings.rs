@@ -379,6 +379,14 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
     Ok(())
 }
 
+/// The monthly allowance for a pot: what is granted on the first tick of each month.
+pub async fn allowance(pool: &SqlitePool, mode: crate::models::Mode) -> Result<f64> {
+    Ok(match mode {
+        crate::models::Mode::Long => budget::budget_total_in(pool, mode).await?,
+        crate::models::Mode::Trade => budget::budget_total_in(pool, mode).await?,
+    })
+}
+
 /// The knobs the app reads while running. Read per tick so edits apply without a restart.
 pub use super::runtime::load as runtime;
 

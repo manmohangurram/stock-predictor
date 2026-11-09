@@ -6,7 +6,7 @@ INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES
     ('off_hours_secs',      '7200',  datetime('now')),
     ('prompt_window_hours', '4',     datetime('now')),
     ('min_price_move',      '2',     datetime('now')),
-    ('max_silence_secs',    '3600',  datetime('now')),
+    ('max_silence_secs',    '0',     datetime('now')),
     ('daily_cap',           '200',   datetime('now'));
 
 -- The deployment's own address is an environment variable now.

@@ -10,6 +10,8 @@ pub enum CashKind {
     Sell,
     Reserve,
     Release,
+    /// Unspent allowance removed at a month boundary. Not a trading loss.
+    Expiry,
 }
 
 impl CashKind {
@@ -20,6 +22,7 @@ impl CashKind {
             CashKind::Sell => "sell",
             CashKind::Reserve => "reserve",
             CashKind::Release => "release",
+            CashKind::Expiry => "expiry",
         }
     }
 }
@@ -97,8 +100,30 @@ pub async fn available(pool: &SqlitePool) -> Result<f64> {
     available_in(pool, Mode::Long).await
 }
 
+/// The money that is actually there: every ledger row, not just the allowances. That is what
+/// makes a sold profit spendable and an expired allowance gone.
+pub async fn cash_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
+    let row: (Option<f64>,) = sqlx::query_as("SELECT SUM(amount) FROM cash_ledger WHERE mode = ?")
+        .bind(mode.as_str())
+        .fetch_one(pool)
+        .await
+        .context("sum cash")?;
+    Ok(row.0.unwrap_or(0.0))
+}
+
 pub async fn available_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
-    Ok(budget_total_in(pool, mode).await? - committed_in(pool, mode).await?)
+    // Cash, less money locked in pending IPO applications — those are not ledger rows, so they
+    // have to be subtracted explicitly.
+    let ipo: (Option<f64>,) = match mode {
+        Mode::Long => {
+            sqlx::query_as("SELECT SUM(amount) FROM ipo_applications WHERE status = 'pending'")
+                .fetch_one(pool)
+                .await
+                .context("sum ipo reservations")?
+        }
+        Mode::Trade => (None,),
+    };
+    Ok(cash_in(pool, mode).await? - ipo.0.unwrap_or(0.0))
 }
 
 pub async fn fits(pool: &SqlitePool, cost: f64) -> Result<bool> {

@@ -203,6 +203,28 @@ async fn main() -> Result<()> {
                     continue;
                 }
             };
+            // The month boundary: expire what is left, then grant the allowance. Idempotent.
+            for mode in [stock_predictor::models::Mode::Long, stock_predictor::models::Mode::Trade] {
+                match settings::allowance(&poll_pool, mode).await {
+                    Ok(allowance) => {
+                        match stock_predictor::rules::pot::ensure_month(&poll_pool, mode, allowance, Utc::now())
+                            .await
+                        {
+                            Ok(r) if r.granted > 0.0 || r.expired > 0.0 => tracing::info!(
+                                month = %r.month,
+                                mode = mode.as_str(),
+                                expired = r.expired,
+                                granted = r.granted,
+                                "month rolled over"
+                            ),
+                            Ok(_) => {}
+                            Err(e) => tracing::error!(error = %e, "month reset failed"),
+                        }
+                    }
+                    Err(e) => tracing::error!(error = %e, "allowance unreadable"),
+                }
+            }
+
             let deps = EngineDeps {
                 pool: &poll_pool,
                 runtime: runtime.clone(),

@@ -30,14 +30,18 @@ async fn fresh(budget: f64) -> (tempfile::TempDir, sqlx::SqlitePool, i64) {
 }
 
 async fn buy(pool: &sqlx::SqlitePool, instrument_id: i64, qty: f64, avg_cost: f64) {
-    sqlx::query(
-        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state) VALUES (?, ?, ?, ?, 'open')",
+    // Through the real path: a purchase spends cash as well as creating the position. Inserting
+    // only the position would leave the ledger claiming the money is still there.
+    stock_predictor::trades::record(
+        pool,
+        instrument_id,
+        stock_predictor::trades::Side::Buy,
+        qty,
+        avg_cost,
+        None,
+        None,
+        stock_predictor::models::Mode::Long,
     )
-    .bind(instrument_id)
-    .bind(qty)
-    .bind(avg_cost)
-    .bind(chrono::Utc::now().to_rfc3339())
-    .execute(pool)
     .await
     .unwrap();
 }

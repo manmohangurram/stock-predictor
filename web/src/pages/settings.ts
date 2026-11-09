@@ -216,7 +216,7 @@ const CADENCE = (s: Settings, tab: Tab): string => `
   })}
   ${field(tab, "max_silence_secs", "…or after silence of", s.runtime.max_silence_secs, {
     type: "number", step: "60", unit: "seconds",
-    help: `Never stay quiet longer than this, whatever the price did — ${derived("max_silence_secs", s.runtime.max_silence_secs, "a call at least every {v}")}.`,
+    help: `0 means a call is only for a change: no price move and no new headline, no call. ${derived("max_silence_secs", s.runtime.max_silence_secs, "Set above zero to also call every {v}.")}`,
   })}
 `;
 

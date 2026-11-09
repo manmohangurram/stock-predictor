@@ -43,7 +43,7 @@ impl Default for CallGate {
     fn default() -> Self {
         Self {
             min_move: 2.0,
-            max_interval_secs: 3600,
+            max_interval_secs: 0,
         }
     }
 }
@@ -77,6 +77,10 @@ pub async fn should_call(
     };
     if moved {
         return Ok(true);
+    }
+    // 0 means "time alone is never a reason": without a price move there is nothing new to judge.
+    if gate.max_interval_secs <= 0 {
+        return Ok(false);
     }
     let stale = last_call_at
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())

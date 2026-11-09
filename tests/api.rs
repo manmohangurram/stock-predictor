@@ -770,7 +770,8 @@ async fn settings_expose_runtime_defaults_and_no_proxy_secret() {
     assert_eq!(r["off_hours_secs"], 7200);
     assert_eq!(r["prompt_window_hours"], 4);
     assert_eq!(r["min_price_move"], 2.0);
-    assert_eq!(r["max_silence_secs"], 3600);
+    // No time floor by default: a call is for a change, not for the clock.
+    assert_eq!(r["max_silence_secs"], 0);
     assert_eq!(r["daily_cap"], 200);
     assert_eq!(r["proxy_configured"], false);
     assert_eq!(r["proxy_host"], "");
