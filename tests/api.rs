@@ -1612,3 +1612,108 @@ async fn a_plan_id_travels_with_the_decision_rows() {
     assert_eq!(v["signals"][0]["plan_id"], 41);
     assert_eq!(v["signals"][0]["name"], "INFY Ltd");
 }
+
+/// A plan is one decision with several legs: approving any leg posts all of them, sells first.
+#[tokio::test]
+async fn approving_one_leg_of_a_plan_approves_the_whole_plan() {
+    let (_d, router, pool) = setup().await;
+    let plan = 77_i64;
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, mode, kind, status, plan_id)
+         SELECT id, 'SELL', 5, 100.0, NULL, NULL, '2030-01-01T00:00:00Z',
+                '{\"reasons\":[],\"rationale\":\"target reached\"}', '2026-11-09T10:00:00Z',
+                'long', 'plan', 'pending', ?
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .bind(plan)
+    .execute(&pool)
+    .await
+    .unwrap();
+    // A holding to sell.
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, stop, target, state, mode, opened_at)
+         SELECT id, 5, 90.0, 80.0, 120.0, 'open', 'long', '2026-09-01T00:00:00Z'
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let buy_id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, mode, kind, status, plan_id)
+         SELECT id, 'BUY', 1, 40.0, 36.0, 60.0, '2030-01-01T00:00:00Z',
+                '{\"reasons\":[],\"rationale\":\"cheap\"}', '2026-11-09T10:00:01Z',
+                'long', 'plan', 'pending', ?
+         FROM instruments WHERE symbol = 'TCS'
+         RETURNING id",
+    )
+    .bind(plan)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", buy_id.0), json!({})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["status"], "approved");
+
+    let statuses: Vec<(String, String)> =
+        sqlx::query_as("SELECT status, action FROM signals WHERE plan_id = ? ORDER BY action")
+            .bind(plan)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(statuses.len(), 2);
+    assert!(statuses.iter().all(|(s, _)| s == "approved"), "{statuses:?}");
+
+    let trades: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(trades.0, 2, "both legs posted");
+
+    // Approving again is refused rather than posting the legs twice.
+    let (s, _) = send(&router, "POST", &format!("/api/signals/{}/approve", buy_id.0), json!({})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn rejecting_one_leg_of_a_plan_rejects_every_move() {
+    let (_d, router, pool) = setup().await;
+    let plan = 88_i64;
+    for (action, qty) in [("SELL", 5.0), ("BUY", 1.0)] {
+        sqlx::query(
+            "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+                created_at, mode, kind, status, plan_id)
+             SELECT id, ?, ?, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:00Z',
+                    'long', 'plan', 'pending', ?
+             FROM instruments WHERE symbol = 'INFY'",
+        )
+        .bind(action)
+        .bind(qty)
+        .bind(plan)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let id: (i64,) = sqlx::query_as("SELECT MAX(id) FROM signals WHERE plan_id = ?")
+        .bind(plan)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/reject", id.0),
+        json!({"reason": "not now"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let pending: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM signals WHERE plan_id = ? AND status = 'pending'")
+            .bind(plan)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(pending.0, 0, "no leg is left pending");
+}

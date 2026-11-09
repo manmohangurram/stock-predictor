@@ -1493,6 +1493,10 @@ async fn approve_signal(
     axum::extract::Path(id): axum::extract::Path<i64>,
     Json(body): Json<ApproveBody>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // A plan is approved as a whole, or not at all — the same bargain a rotation already makes.
+    if let Some(plan) = plan_of(&st.pool, id).await? {
+        return approve_plan(&st, id, plan, &body).await;
+    }
     #[derive(sqlx::FromRow)]
     struct PendingDecision {
         instrument_id: i64,
@@ -1672,6 +1676,125 @@ async fn approve_signal(
     })))
 }
 
+/// The plan this decision belongs to, when it is one of several moves.
+async fn plan_of(pool: &SqlitePool, id: i64) -> Result<Option<i64>, ApiError> {
+    let row: Option<(Option<i64>,)> = sqlx::query_as("SELECT plan_id FROM signals WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.and_then(|r| r.0))
+}
+
+#[derive(sqlx::FromRow)]
+struct PlanLeg {
+    id: i64,
+    instrument_id: i64,
+    action: String,
+    qty: Option<f64>,
+    entry: Option<f64>,
+    mode: String,
+}
+
+/// Post every leg, sells first, or none at all. The check is done before any money moves: the
+/// plan is only affordable if its own sells pay for its buys.
+async fn approve_plan(
+    st: &AppState,
+    id: i64,
+    plan: i64,
+    body: &ApproveBody,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let legs: Vec<PlanLeg> = sqlx::query_as(
+        "SELECT id, instrument_id, action, qty, entry, mode FROM signals
+         WHERE plan_id = ? AND status = 'pending'
+         ORDER BY CASE action WHEN 'SELL' THEN 0 ELSE 1 END, id",
+    )
+    .bind(plan)
+    .fetch_all(&st.pool)
+    .await?;
+    if legs.is_empty() {
+        return Err(ApiError::BadRequest(format!(
+            "plan {plan} has no pending moves left"
+        )));
+    }
+    let mode = crate::models::Mode::parse(&legs[0].mode)
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let money = |action: &str| -> f64 {
+        legs.iter()
+            .filter(|l| l.action == action)
+            .map(|l| l.qty.unwrap_or(0.0) * l.entry.unwrap_or(0.0))
+            .sum()
+    };
+    let (proceeds, cost) = (money("SELL"), money("BUY"));
+    let cash = crate::rules::budget::available_in(&st.pool, mode).await?;
+    if cost > proceeds + cash + 1e-9 {
+        return Err(ApiError::BadRequest(format!(
+            "the plan does not balance: buys cost {cost:.2}, its sells free {proceeds:.2}, cash is {cash:.2}"
+        )));
+    }
+
+    let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let mut posted = Vec::new();
+    for leg in &legs {
+        let qty = leg
+            .qty
+            .filter(|q| *q > 0.0)
+            .ok_or_else(|| ApiError::BadRequest(format!("move {} has no quantity", leg.id)))?;
+        let price = leg
+            .entry
+            .filter(|p| p.is_finite() && *p > 0.0)
+            .ok_or_else(|| ApiError::BadRequest(format!("move {} has no price", leg.id)))?;
+        let side = match leg.action.as_str() {
+            "BUY" => crate::trades::Side::Buy,
+            "SELL" => crate::trades::Side::Sell,
+            other => {
+                return Err(ApiError::BadRequest(format!(
+                    "a {other} move has nothing to record"
+                )))
+            }
+        };
+        let note = format!("decision {}", leg.id);
+        let already: Option<(i64,)> =
+            sqlx::query_as("SELECT id FROM trades WHERE note = ? AND instrument_id = ?")
+                .bind(&note)
+                .bind(leg.instrument_id)
+                .fetch_optional(&st.pool)
+                .await?;
+        if already.is_none() {
+            crate::trades::record(
+                &st.pool,
+                leg.instrument_id,
+                side,
+                qty,
+                price,
+                Some(&note),
+                Some(when),
+                mode,
+            )
+            .await
+            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        }
+        sqlx::query(
+            "UPDATE signals SET status = 'approved', status_at = ?, filled_qty = ?, filled_price = ?
+             WHERE id = ?",
+        )
+        .bind(chrono::Utc::now().to_rfc3339())
+        .bind(qty)
+        .bind(price)
+        .bind(leg.id)
+        .execute(&st.pool)
+        .await?;
+        posted.push(leg.id);
+    }
+
+    Ok(Json(serde_json::json!({
+        "id": id,
+        "plan": plan,
+        "status": "approved",
+        "legs": posted,
+    })))
+}
+
 #[derive(Debug, Deserialize, Default)]
 pub struct RejectBody {
     pub reason: Option<String>,
@@ -1682,9 +1805,11 @@ async fn reject_signal(
     axum::extract::Path(id): axum::extract::Path<i64>,
     Json(body): Json<RejectBody>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // Rejecting one leg of a plan rejects the plan: a plan with half its moves gone is not a plan.
+    let plan = plan_of(&st.pool, id).await?;
     let changed = sqlx::query(
         "UPDATE signals SET status = 'rejected', status_at = ?, status_reason = ?
-         WHERE id = ? AND status = 'pending'",
+         WHERE status = 'pending' AND (id = ? OR (? IS NOT NULL AND plan_id = ?))",
     )
     .bind(chrono::Utc::now().to_rfc3339())
     .bind(
@@ -1694,6 +1819,8 @@ async fn reject_signal(
             .filter(|r| !r.is_empty()),
     )
     .bind(id)
+    .bind(plan)
+    .bind(plan)
     .execute(&st.pool)
     .await?
     .rows_affected();
