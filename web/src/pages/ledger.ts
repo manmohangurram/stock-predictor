@@ -121,6 +121,11 @@ function decisionRow(s: Dashboard["signals"][number]): string {
         ${status}
         <span class="sub">${histDate(s.created_at)}</span></div>
       ${s.rationale ? `<p class="decision-prose">${escapeHtml(s.rationale)}</p>` : ""}
+      ${
+        s.action === "BLOCKED" && s.reasons.length
+          ? `<p class="decision-note">${s.reasons.map((r) => escapeHtml(r)).join(" · ")}</p>`
+          : ""
+      }
       ${actions}
     </div>
   </div>`;
@@ -155,9 +160,11 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
       ? new URLSearchParams(location.search).get("decisions")
       : null;
   const filter: DecisionFilter = isDecisionFilter(raw) ? raw : "pending";
-  const advice = d.signals.length
-    ? d.signals
-        .slice(0, 8)
+  // Blocked proposals sit with the decisions: they are what the app wanted to do and could not.
+  const shown = [...d.signals, ...d.blocked].sort((a, b) => b.id - a.id);
+  const advice = shown.length
+    ? shown
+        .slice(0, 10)
         .map((s) => decisionRow(s))
         .join("")
     : `<p class="empty">${

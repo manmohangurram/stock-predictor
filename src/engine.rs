@@ -312,10 +312,19 @@ async fn poll_instrument(
         .await?
         .is_some();
     if !llm_available {
-        report.notes.push(format!(
-            "{}: no DeepSeek key — rules only",
-            instrument.symbol
-        ));
+        // A key that cannot be decrypted is a different problem from no key at all: the value is
+        // there, the SECRET_KEY is not the one it was written with.
+        let broken = crate::secrets::unreadable(deps.pool, "deepseek_key")
+            .await
+            .unwrap_or(false);
+        report.notes.push(if broken {
+            format!(
+                "{}: the stored key cannot be opened with the current SECRET_KEY — re-enter it in Settings",
+                instrument.symbol
+            )
+        } else {
+            format!("{}: no DeepSeek key — rules only", instrument.symbol)
+        });
         let resolved = Resolved {
             action: candidate.action,
             entry: candidate.entry,

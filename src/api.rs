@@ -542,11 +542,12 @@ async fn instrument_detail(
         })
         .collect();
 
-    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long, "all")
-        .await?
-        .into_iter()
-        .filter(|s| s.symbol == symbol)
-        .collect();
+    let signals: Vec<SignalRow> =
+        load_signals(&st.pool, false, crate::models::Mode::Long, "everything")
+            .await?
+            .into_iter()
+            .filter(|s| s.symbol == symbol)
+            .collect();
 
     Ok(Json(InstrumentDetail {
         instrument: InstrumentRow {
@@ -694,11 +695,12 @@ async fn analysis(
         })
         .collect();
 
-    let signals: Vec<SignalRow> = load_signals(&st.pool, false, crate::models::Mode::Long, "all")
-        .await?
-        .into_iter()
-        .filter(|s| s.symbol == symbol)
-        .collect();
+    let signals: Vec<SignalRow> =
+        load_signals(&st.pool, false, crate::models::Mode::Long, "everything")
+            .await?
+            .into_iter()
+            .filter(|s| s.symbol == symbol)
+            .collect();
     let trades = crate::trades::history(&st.pool, Some(id), 200).await?;
 
     Ok(Json(Analysis {
@@ -1652,6 +1654,9 @@ async fn load_signals(
 ) -> Result<Vec<SignalRow>, ApiError> {
     let predicate = if blocked {
         "s.action = 'BLOCKED'"
+    } else if status == "everything" {
+        // The instrument page's whole record, blocked proposals included: they are decisions too.
+        "1 = 1"
     } else {
         // The ledger is a to-do list: pending only, unless a filter asks for history.
         match status {
@@ -1684,7 +1689,7 @@ async fn load_signals(
                 .as_deref()
                 .and_then(|j| serde_json::from_str(j).ok())
                 .unwrap_or(serde_json::json!({}));
-            let reasons = reason
+            let mut reasons: Vec<String> = reason
                 .get("reasons")
                 .and_then(|x| x.as_array())
                 .map(|a| {
@@ -1693,6 +1698,16 @@ async fn load_signals(
                         .collect()
                 })
                 .unwrap_or_default();
+            if let (Some(blocked), Some(cost), Some(available)) = (
+                reason.get("blocked").and_then(|v| v.as_str()),
+                reason.get("cost").and_then(|v| v.as_f64()),
+                reason.get("available").and_then(|v| v.as_f64()),
+            ) {
+                reasons.push(format!(
+                    "{blocked}: cost {cost:.2}, available {available:.2} — short by {:.2}",
+                    (cost - available).max(0.0)
+                ));
+            }
             SignalRow {
                 id: r.id,
                 symbol: r.symbol,

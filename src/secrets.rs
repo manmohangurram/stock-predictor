@@ -143,6 +143,17 @@ pub async fn migrate(pool: &SqlitePool) -> Result<usize> {
 }
 
 /// Read a secret, decrypting when needed. Old plaintext rows still work.
+/// True when a value is stored for this key but cannot be opened — the SECRET_KEY changed.
+pub async fn unreadable(pool: &SqlitePool, name: &str) -> Result<bool> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+        .bind(name)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row
+        .map(|(v,)| is_encrypted(&v) && decrypt(&v).is_none())
+        .unwrap_or(false))
+}
+
 pub async fn get_secret(pool: &SqlitePool, name: &str) -> Result<Option<String>> {
     let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
         .bind(name)

@@ -1538,3 +1538,32 @@ async fn the_three_monthly_purses_do_not_share_money() {
     assert_eq!(v["available"], 20_000.0, "a fund buy must not touch the stock purse");
     assert_eq!(v["mf_available"], 2_250.0, "50 × 55 came out of the fund purse");
 }
+
+#[tokio::test]
+async fn a_blocked_proposal_is_visible_in_the_record_with_its_shortfall() {
+    // Regression: a proposal refused for cash was stored as BLOCKED but filtered out of both the
+    // ledger and the stock overview, so a call you paid for left no visible decision.
+    let (_d, router, pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at, mode)
+         SELECT id, 'BLOCKED', 1000, 100.0, '2030-01-01T00:00:00Z',
+                '{\"blocked\":\"insufficient_cash\",\"cost\":100000,\"available\":1000,\"shortfall\":99000}',
+                '2026-11-09T10:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'INFY'",
+    ).execute(&pool).await.unwrap();
+
+    // The ledger returns it in the blocked list…
+    let (_, v) = get(&router, "/api/dashboard").await;
+    assert_eq!(v["blocked"].as_array().unwrap().len(), 1);
+    let reason = v["blocked"][0]["reasons"].to_string();
+    assert!(reason.contains("insufficient_cash"), "{reason}");
+    assert!(reason.contains("99000"), "the shortfall must be visible: {reason}");
+
+    // …and the stock overview shows it as part of the record.
+    let (s, v) = get(&router, "/api/instruments/INFY/analysis").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let actions: Vec<String> = v["signals"]
+        .as_array().unwrap().iter()
+        .map(|s| s["action"].as_str().unwrap().to_string()).collect();
+    assert!(actions.contains(&"BLOCKED".to_string()), "{actions:?}");
+}
