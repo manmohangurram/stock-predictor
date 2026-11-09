@@ -69,7 +69,11 @@ pub struct ModelConfig {
 
 impl ModelConfig {
     pub fn url(&self, path: &str) -> String {
-        format!("{}/{}", self.base_url.trim_end_matches('/'), path.trim_start_matches('/'))
+        format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
     }
 
     /// A Gemini key travels in the query string, not in an Authorization header.

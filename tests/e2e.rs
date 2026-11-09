@@ -1,11 +1,11 @@
 use chrono::{DateTime, TimeZone, Utc};
 use serde_json::json;
-use stock_predictor::rules::runtime::Runtime;
 use stock_predictor::db;
 use stock_predictor::engine::{self, EngineDeps};
 use stock_predictor::llm::deepseek::{FixtureTransport, HttpReply};
 use stock_predictor::notify::FakeNotifier;
 use stock_predictor::rules::evaluate::RuleConfig;
+use stock_predictor::rules::runtime::Runtime;
 use stock_predictor::rules::settings;
 
 mod common;
@@ -43,7 +43,6 @@ fn decide(entry: f64, stop: f64) -> serde_json::Value {
         }
     })
 }
-
 
 async fn setup() -> (tempfile::TempDir, sqlx::SqlitePool) {
     let dir = tempfile::tempdir().unwrap();

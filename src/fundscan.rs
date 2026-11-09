@@ -50,9 +50,10 @@ pub async fn run(
     let mut report = FundScanReport::default();
 
     let today = ist_day(now);
-    let last: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = 'fundscan_last'")
-        .fetch_optional(pool)
-        .await?;
+    let last: Option<(String,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = 'fundscan_last'")
+            .fetch_optional(pool)
+            .await?;
     if last.map(|r| r.0).as_deref() == Some(today.as_str()) {
         return Ok(report); // already ran today
     }
@@ -71,7 +72,9 @@ pub async fn run(
                     histories.push((code.to_string(), h.name.clone(), r1, h));
                 }
             }
-            Ok(h) => report.notes.push(format!("{}: only {} NAV points", code, h.navs.len())),
+            Ok(h) => report
+                .notes
+                .push(format!("{}: only {} NAV points", code, h.navs.len())),
             Err(e) => report.notes.push(format!("{code}: {e}")),
         }
     }
@@ -82,7 +85,9 @@ pub async fn run(
 
     let earmark = crate::rules::settings::mf_allowance(pool).await?;
     if earmark <= 0.0 {
-        report.notes.push("no mutual-fund allowance configured — the scan is not proposing".into());
+        report
+            .notes
+            .push("no mutual-fund allowance configured — the scan is not proposing".into());
         return Ok(report);
     }
 
@@ -115,7 +120,11 @@ pub async fn run(
         if clashes(&held_categories) || clashes(&proposed_categories) {
             report.notes.push(format!(
                 "{name}: skipped — you already hold a {} fund",
-                if category.is_empty() { "similar" } else { &category }
+                if category.is_empty() {
+                    "similar"
+                } else {
+                    &category
+                }
             ));
             continue;
         }

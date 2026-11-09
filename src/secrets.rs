@@ -44,7 +44,9 @@ fn key() -> &'static [u8] {
 
 pub fn key_path(db_path: &str) -> PathBuf {
     let db = Path::new(db_path);
-    db.parent().unwrap_or_else(|| Path::new(".")).join("secret.key")
+    db.parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("secret.key")
 }
 
 /// Read the key, or create it. 32 random bytes, mode 0600 on unix.
@@ -102,7 +104,9 @@ pub fn encrypt_with(key: &[u8], plaintext: &str) -> Result<String> {
 /// `None` when the value cannot be opened — a wrong key must not stop the app from running.
 pub fn decrypt_with(key: &[u8], stored: &str) -> Option<String> {
     let body = stored.strip_prefix(PREFIX)?;
-    let blob = base64::engine::general_purpose::STANDARD.decode(body).ok()?;
+    let blob = base64::engine::general_purpose::STANDARD
+        .decode(body)
+        .ok()?;
     if blob.len() <= 24 {
         return None;
     }
@@ -123,7 +127,8 @@ pub async fn migrate(pool: &SqlitePool) -> Result<usize> {
         .await?;
     let mut changed = 0;
     for (name, value) in rows {
-        if !SECRET_KEYS.contains(&name.as_str()) || value.trim().is_empty() || is_encrypted(&value) {
+        if !SECRET_KEYS.contains(&name.as_str()) || value.trim().is_empty() || is_encrypted(&value)
+        {
             continue;
         }
         let sealed = encrypt(&value)?;
@@ -183,7 +188,10 @@ mod tests {
         let sealed = encrypt_with(&key, "sk-live-hunter2").unwrap();
         assert!(sealed.starts_with(PREFIX));
         assert!(!sealed.contains("hunter2"));
-        assert_eq!(decrypt_with(&key, &sealed).as_deref(), Some("sk-live-hunter2"));
+        assert_eq!(
+            decrypt_with(&key, &sealed).as_deref(),
+            Some("sk-live-hunter2")
+        );
     }
 
     #[test]

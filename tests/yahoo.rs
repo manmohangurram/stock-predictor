@@ -82,7 +82,10 @@ fn search_keeps_both_the_exchange_listing_and_the_fund() {
     assert_eq!(hits[0].venue, "NSE");
     assert_eq!(hits[1].code, "0P0000N0B6.BO");
     assert_eq!(hits[1].name, "HDFC Flexi Cap Dir Gr");
-    assert_eq!(hits[1].class, stock_predictor::models::AssetClass::MutualFund);
+    assert_eq!(
+        hits[1].class,
+        stock_predictor::models::AssetClass::MutualFund
+    );
 }
 
 #[test]
@@ -114,12 +117,17 @@ fn a_yahoo_mutual_fund_is_a_search_hit_of_class_fund() {
     assert_eq!(hits[0].code, "0P00012ALS.BO");
     // The readable name, not the ticker repeated back.
     assert_eq!(hits[0].name, "Motilal Oswal Midcap Dir Gr");
-    assert_eq!(hits[0].class, stock_predictor::models::AssetClass::MutualFund);
+    assert_eq!(
+        hits[0].class,
+        stock_predictor::models::AssetClass::MutualFund
+    );
     assert_eq!(hits[1].class, stock_predictor::models::AssetClass::Stock);
 }
 
 #[test]
 fn a_quote_type_that_is_not_an_instrument_is_still_ignored() {
     let body = r#"{"quotes":[{"symbol":"^NSEI","quoteType":"CRYPTOCURRENCY","shortname":"x"}]}"#;
-    assert!(stock_predictor::market::search::parse_yahoo(body).unwrap().is_empty());
+    assert!(stock_predictor::market::search::parse_yahoo(body)
+        .unwrap()
+        .is_empty());
 }

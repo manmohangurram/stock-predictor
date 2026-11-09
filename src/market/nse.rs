@@ -74,7 +74,10 @@ pub fn parse_gainers(body: &str, top: usize) -> Result<Vec<Gainer>> {
             Some(Gainer {
                 symbol: r.symbol.trim().to_string(),
                 ltp: r.ltp.filter(|v| v.is_finite() && *v > 0.0)?,
-                previous_close: r.prev_price.filter(|v| v.is_finite() && *v > 0.0).unwrap_or(0.0),
+                previous_close: r
+                    .prev_price
+                    .filter(|v| v.is_finite() && *v > 0.0)
+                    .unwrap_or(0.0),
                 per_change: r.per_change.filter(|v| v.is_finite())?,
                 turnover: r.turnover,
             })

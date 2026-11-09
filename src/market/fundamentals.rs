@@ -9,7 +9,8 @@
 
 use anyhow::{Context, Result};
 
-const TS: &str = "https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries";
+const TS: &str =
+    "https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Year {
@@ -78,10 +79,7 @@ impl Fundamentals {
             Some(n) => format!("{n:.0} {}", y.currency),
             None => "—".into(),
         };
-        let pct = |v: Option<f64>| {
-            v.map(|p| format!("{p:+.1}%"))
-                .unwrap_or_else(|| "—".into())
-        };
+        let pct = |v: Option<f64>| v.map(|p| format!("{p:+.1}%")).unwrap_or_else(|| "—".into());
         let mut out = format!(
             "FY{}: revenue {}, net income {}, net margin {}, operating income {}\n",
             y.as_of,
@@ -98,7 +96,11 @@ impl Fundamentals {
         if let Some((pe, cap)) = self.valuation {
             out.push_str(&format!(
                 "Valuation: trailing PE {pe:.1}, market cap {}{}\n",
-                if cap > 0.0 { format!("{:.0}B ", cap / 1e9) } else { String::new() },
+                if cap > 0.0 {
+                    format!("{:.0}B ", cap / 1e9)
+                } else {
+                    String::new()
+                },
                 y.currency
             ));
         }

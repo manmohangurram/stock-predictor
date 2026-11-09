@@ -160,10 +160,10 @@ fn template_hash_is_stable_and_unknown_names_are_rejected() {
 
 #[test]
 fn a_fund_prompt_carries_the_settlement_cost() {
+    use chrono::Utc;
     use stock_predictor::llm::prompts::{render, PromptContext};
     use stock_predictor::models::{AssetClass, Headline, Instrument};
     use stock_predictor::rules::indicators::Indicators;
-    use chrono::Utc;
 
     let ind = Indicators {
         sma50: 70.0,
@@ -220,17 +220,26 @@ fn a_fund_prompt_carries_the_settlement_cost() {
 
 #[test]
 fn the_prompt_carries_financials_or_says_unavailable() {
+    use chrono::Utc;
     use stock_predictor::llm::prompts::{render, PromptContext};
     use stock_predictor::models::{AssetClass, Instrument};
     use stock_predictor::rules::indicators::Indicators;
-    use chrono::Utc;
 
     let ind = Indicators {
-        sma50: 70.0, sma200: 65.0, rsi14: 55.0, atr14: 1.0, high52: 80.0, low52: 60.0,
+        sma50: 70.0,
+        sma200: 65.0,
+        rsi14: 55.0,
+        atr14: 1.0,
+        high52: 80.0,
+        low52: 60.0,
     };
     let inst = Instrument {
-        id: 1, symbol: "INFY.NS".into(), class: AssetClass::Stock,
-        name: "Infosys".into(), currency: "INR".into(), active: true,
+        id: 1,
+        symbol: "INFY.NS".into(),
+        class: AssetClass::Stock,
+        name: "Infosys".into(),
+        currency: "INR".into(),
+        active: true,
     };
     let ctx = PromptContext {
         instrument: &inst,
@@ -255,7 +264,10 @@ fn the_prompt_carries_financials_or_says_unavailable() {
     };
     let r = render("decide_v1", &ctx).unwrap();
     assert!(r.text.contains("## Financials"), "the section must exist");
-    assert!(r.text.contains("revenue 20.2B INR"), "the numbers must be in the prompt");
+    assert!(
+        r.text.contains("revenue 20.2B INR"),
+        "the numbers must be in the prompt"
+    );
     assert!(
         r.text.contains("never as zero"),
         "the prompt must say a missing number is unknown"
@@ -272,7 +284,13 @@ fn the_trade_book_uses_the_short_playbook_and_the_long_book_does_not() {
     let short = stock_predictor::llm::prompts::template("short_v1").unwrap();
     // The gate and the data it is judged on must both be in the playbook.
     assert!(short.contains("Relative volume ≥ 1.2"), "volume evidence");
-    assert!(short.contains("confidence\":\"high"), "the confidence contract");
-    assert!(short.contains("{{short_context}}"), "the short card is wired in");
+    assert!(
+        short.contains("confidence\":\"high"),
+        "the confidence contract"
+    );
+    assert!(
+        short.contains("{{short_context}}"),
+        "the short card is wired in"
+    );
     assert!(short.contains("at most 168"), "the horizon cap");
 }

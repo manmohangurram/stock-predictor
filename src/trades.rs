@@ -327,9 +327,9 @@ pub async fn history(
             sqlx::query_as(sqlx::AssertSqlSafe(format!(
                 "{SELECT} ORDER BY t.traded_at DESC LIMIT ?"
             )))
-                .bind(limit)
-                .fetch_all(pool)
-                .await?
+            .bind(limit)
+            .fetch_all(pool)
+            .await?
         }
     };
 

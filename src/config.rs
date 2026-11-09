@@ -69,7 +69,10 @@ impl Config {
                 .unwrap_or("data/stock-predictor.db")
                 .to_string(),
             bind,
-            public_url: get("PUBLIC_URL").unwrap_or_default().trim_end_matches('/').to_string(),
+            public_url: get("PUBLIC_URL")
+                .unwrap_or_default()
+                .trim_end_matches('/')
+                .to_string(),
             secret_key,
         })
     }

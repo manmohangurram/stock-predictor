@@ -217,7 +217,10 @@ mod tests {
         let bars = series(30, 0.0);
         let today = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 11, 9, 6, 0, 0).unwrap();
         let c = compute(&bars, &[], today);
-        assert_eq!(c.rvol, None, "no intraday volume means no RVOL, not a guess");
+        assert_eq!(
+            c.rvol, None,
+            "no intraday volume means no RVOL, not a guess"
+        );
     }
 
     #[test]

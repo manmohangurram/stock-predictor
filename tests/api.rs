@@ -759,7 +759,11 @@ async fn the_dashboard_answers_304_when_nothing_changed() {
         )
         .await
         .unwrap();
-    assert_eq!(third.status(), StatusCode::OK, "stale tag must get fresh data");
+    assert_eq!(
+        third.status(),
+        StatusCode::OK,
+        "stale tag must get fresh data"
+    );
 }
 
 #[tokio::test]
@@ -804,7 +808,13 @@ async fn out_of_range_runtime_values_are_rejected_with_the_range() {
     assert_eq!(s, StatusCode::BAD_REQUEST);
     assert!(v["error"].as_str().unwrap().contains("60"), "{v}");
 
-    let (s, _) = send(&router, "PUT", "/api/settings", json!({"prompt_window_hours": 99})).await;
+    let (s, _) = send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"prompt_window_hours": 99}),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
 
@@ -852,13 +862,24 @@ async fn every_secret_is_unreadable_in_the_database() {
         .await
         .unwrap();
     let dump = serde_json::to_string(&rows).unwrap();
-    for secret in ["sk-plaintext-hunter2", "tk_plaintext_token", "proxy-hunter2"] {
-        assert!(!dump.contains(secret), "{secret} is stored in the clear: {dump}");
+    for secret in [
+        "sk-plaintext-hunter2",
+        "tk_plaintext_token",
+        "proxy-hunter2",
+    ] {
+        assert!(
+            !dump.contains(secret),
+            "{secret} is stored in the clear: {dump}"
+        );
     }
     // …and they still work when read back through the secret reader.
-    let key = stock_predictor::secrets::get_secret(&pool, "deepseek_key").await.unwrap();
+    let key = stock_predictor::secrets::get_secret(&pool, "deepseek_key")
+        .await
+        .unwrap();
     assert_eq!(key.as_deref(), Some("sk-plaintext-hunter2"));
-    let pass = stock_predictor::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
+    let pass = stock_predictor::secrets::get_secret(&pool, "proxy_pass")
+        .await
+        .unwrap();
     assert_eq!(pass.as_deref(), Some("proxy-hunter2"));
 
     // The API says what is configured, never the values.
@@ -866,7 +887,10 @@ async fn every_secret_is_unreadable_in_the_database() {
     assert_eq!(v["runtime"]["proxy_user"], "mohan");
     assert_eq!(v["runtime"]["proxy_pass_configured"], true);
     let body = v.to_string();
-    assert!(!body.contains("proxy-hunter2") && !body.contains("sk-plaintext"), "{body}");
+    assert!(
+        !body.contains("proxy-hunter2") && !body.contains("sk-plaintext"),
+        "{body}"
+    );
 }
 
 #[tokio::test]
@@ -888,19 +912,33 @@ async fn a_proxy_password_survives_a_patch_that_leaves_it_blank() {
     )
     .await;
     assert_eq!(s, StatusCode::OK, "{v}");
-    let pass = stock_predictor::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
-    assert_eq!(pass.as_deref(), Some("s3cret"), "the password was wiped by a blank field");
+    let pass = stock_predictor::secrets::get_secret(&pool, "proxy_pass")
+        .await
+        .unwrap();
+    assert_eq!(
+        pass.as_deref(),
+        Some("s3cret"),
+        "the password was wiped by a blank field"
+    );
 
     // Clearing the URL clears the credentials with it.
     send(&router, "PUT", "/api/settings", json!({"proxy": ""})).await;
-    let pass = stock_predictor::secrets::get_secret(&pool, "proxy_pass").await.unwrap();
+    let pass = stock_predictor::secrets::get_secret(&pool, "proxy_pass")
+        .await
+        .unwrap();
     assert_eq!(pass, None);
 }
 
 #[tokio::test]
 async fn a_proxy_that_is_not_a_url_is_refused() {
     let (_d, router, _pool) = setup().await;
-    let (s, v) = send(&router, "PUT", "/api/settings", json!({"proxy": "10.0.0.2:3128"})).await;
+    let (s, v) = send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"proxy": "10.0.0.2:3128"}),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
     assert!(v["error"].as_str().unwrap().contains("http://"), "{v}");
 }
@@ -923,10 +961,19 @@ async fn a_mutual_fund_cannot_be_filled_into_the_trading_pot() {
     )
     .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
-    assert!(v["error"].as_str().unwrap().contains("long-term only"), "{v}");
+    assert!(
+        v["error"].as_str().unwrap().contains("long-term only"),
+        "{v}"
+    );
 
     // The long-term pot is the point of it — once money is earmarked for funds.
-    send(&router, "PUT", "/api/settings", json!({"mf_budget": 5000.0})).await;
+    send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"mf_budget": 5000.0}),
+    )
+    .await;
     let (s, v) = send(
         &router,
         "POST",
@@ -941,7 +988,9 @@ async fn a_mutual_fund_cannot_be_filled_into_the_trading_pot() {
 async fn archiving_clears_temporary_data_but_keeps_the_record() {
     let (_d, router, pool) = setup().await;
     let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'TCS'")
-        .fetch_one(&pool).await.unwrap();
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     sqlx::query("INSERT INTO bars (instrument_id, ts, open, high, low, close, volume) VALUES (?, '2026-11-06T00:00:00Z', 1,1,1,1,1)")
         .bind(id.0).execute(&pool).await.unwrap();
 
@@ -950,19 +999,29 @@ async fn archiving_clears_temporary_data_but_keeps_the_record() {
     assert_eq!(v["archived"], true);
     // The record survives…
     let active: (i64,) = sqlx::query_as("SELECT active FROM instruments WHERE symbol = 'TCS'")
-        .fetch_one(&pool).await.unwrap();
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(active.0, 0, "archived, not deleted");
     // …but the temporary data does not.
     let bars: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM bars WHERE instrument_id = ?")
-        .bind(id.0).fetch_one(&pool).await.unwrap();
+        .bind(id.0)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(bars.0, 0, "bars must be cleared on archive");
 }
 
 #[tokio::test]
 async fn a_held_symbol_cannot_be_deleted() {
     let (_d, router, _pool) = setup().await;
-    let (s, _) = send(&router, "POST", "/api/instruments/INFY/trades",
-        json!({"side":"buy","qty":5.0,"price":100.0,"mode":"long"})).await;
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side":"buy","qty":5.0,"price":100.0,"mode":"long"}),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK);
     let (s, v) = send(&router, "DELETE", "/api/instruments/INFY", json!({})).await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
@@ -972,17 +1031,29 @@ async fn a_held_symbol_cannot_be_deleted() {
 #[tokio::test]
 async fn a_symbol_with_fills_is_archived_not_deleted() {
     let (_d, router, pool) = setup().await;
-    send(&router, "POST", "/api/instruments/INFY/trades",
-        json!({"side":"buy","qty":5.0,"price":100.0,"mode":"long"})).await;
-    send(&router, "POST", "/api/instruments/INFY/trades",
-        json!({"side":"sell","qty":5.0,"price":110.0,"mode":"long"})).await;
+    send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side":"buy","qty":5.0,"price":100.0,"mode":"long"}),
+    )
+    .await;
+    send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side":"sell","qty":5.0,"price":110.0,"mode":"long"}),
+    )
+    .await;
 
     let (s, v) = send(&router, "DELETE", "/api/instruments/INFY", json!({})).await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(v["archived"], true, "{v}");
 
     let active: (i64,) = sqlx::query_as("SELECT active FROM instruments WHERE symbol = 'INFY'")
-        .fetch_one(&pool).await.unwrap();
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(active.0, 0, "it should be hidden from polling");
     let fills: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM trades t JOIN instruments i ON i.id = t.instrument_id WHERE i.symbol = 'INFY'",
@@ -1004,15 +1075,23 @@ async fn approving_a_decision_records_the_fill_you_actually_got() {
     .fetch_one(&pool).await.unwrap();
 
     // Edited numbers: you got 8 units at 99.50, not 10 at 100.
-    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", id.0),
-        json!({"qty": 8.0, "price": 99.5})).await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", id.0),
+        json!({"qty": 8.0, "price": 99.5}),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(v["status"], "approved");
     assert_eq!(v["filled_qty"], 8.0);
 
-    let (status, fq, fp): (String, Option<f64>, Option<f64>) = sqlx::query_as(
-        "SELECT status, filled_qty, filled_price FROM signals WHERE id = ?",
-    ).bind(id.0).fetch_one(&pool).await.unwrap();
+    let (status, fq, fp): (String, Option<f64>, Option<f64>) =
+        sqlx::query_as("SELECT status, filled_qty, filled_price FROM signals WHERE id = ?")
+            .bind(id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(status, "approved");
     assert_eq!(fq, Some(8.0));
     assert_eq!(fp, Some(99.5));
@@ -1023,7 +1102,13 @@ async fn approving_a_decision_records_the_fill_you_actually_got() {
     assert_eq!(held.0, 8.0, "the position must be the edited quantity");
 
     // Approving again must not double the position.
-    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", id.0), json!({})).await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", id.0),
+        json!({}),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     let held: (f64,) = sqlx::query_as(
         "SELECT qty FROM positions p JOIN instruments i ON i.id = p.instrument_id WHERE i.symbol = 'INFY'",
@@ -1040,13 +1125,31 @@ async fn a_fill_that_cannot_be_recorded_leaves_the_decision_pending() {
          FROM instruments WHERE symbol = 'INFY' RETURNING id",
     ).fetch_one(&pool).await.unwrap();
 
-    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", id.0), json!({})).await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", id.0),
+        json!({}),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
-    assert!(v["error"].as_str().unwrap().contains("exceeds available cash"), "{v}");
+    assert!(
+        v["error"]
+            .as_str()
+            .unwrap()
+            .contains("exceeds available cash"),
+        "{v}"
+    );
 
     let status: (String,) = sqlx::query_as("SELECT status FROM signals WHERE id = ?")
-        .bind(id.0).fetch_one(&pool).await.unwrap();
-    assert_eq!(status.0, "pending", "a failed fill must not consume the decision");
+        .bind(id.0)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        status.0, "pending",
+        "a failed fill must not consume the decision"
+    );
 }
 
 #[tokio::test]
@@ -1057,25 +1160,43 @@ async fn rejecting_a_decision_writes_a_reason_and_no_money() {
          SELECT id, 'SELL', 5, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-08T10:00:00Z', 'long'
          FROM instruments WHERE symbol = 'INFY' RETURNING id",
     ).fetch_one(&pool).await.unwrap();
-    let before: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cash_ledger").fetch_one(&pool).await.unwrap();
+    let before: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cash_ledger")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
-    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/reject", id.0),
-        json!({"reason": "not at this price"})).await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/reject", id.0),
+        json!({"reason": "not at this price"}),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK, "{v}");
 
     let (status, reason): (String, Option<String>) =
         sqlx::query_as("SELECT status, status_reason FROM signals WHERE id = ?")
-            .bind(id.0).fetch_one(&pool).await.unwrap();
+            .bind(id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(status, "rejected");
     assert_eq!(reason.as_deref(), Some("not at this price"));
-    let after: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cash_ledger").fetch_one(&pool).await.unwrap();
+    let after: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cash_ledger")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(after.0, before.0, "a rejection must not touch the ledger");
 }
 
 #[tokio::test]
 async fn the_ledger_shows_pending_decisions_only_unless_filtered() {
     let (_d, router, pool) = setup().await;
-    for (action, status) in [("BUY", "pending"), ("SELL", "approved"), ("BUY", "rejected")] {
+    for (action, status) in [
+        ("BUY", "pending"),
+        ("SELL", "approved"),
+        ("BUY", "rejected"),
+    ] {
         sqlx::query(
             "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
                 created_at, mode, status)
@@ -1100,8 +1221,11 @@ async fn the_ledger_shows_pending_decisions_only_unless_filtered() {
 
     let (_, v) = get(&router, "/api/dashboard?decisions=approved").await;
     let statuses: Vec<String> = v["signals"]
-        .as_array().unwrap().iter()
-        .map(|s| s["status"].as_str().unwrap().to_string()).collect();
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["status"].as_str().unwrap().to_string())
+        .collect();
     assert_eq!(statuses, vec!["approved"], "{statuses:?}");
 }
 
@@ -1111,8 +1235,13 @@ async fn approving_a_rotation_posts_both_legs_together() {
     sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES ('HDFCBANK','stock','HDFC Bank','INR')")
         .execute(&pool).await.unwrap();
     // Buy HDFC Bank first so there is something to sell, at a profit.
-    send(&router, "POST", "/api/instruments/HDFCBANK/trades",
-        json!({"side":"buy","qty":10.0,"price":100.0,"mode":"long"})).await;
+    send(
+        &router,
+        "POST",
+        "/api/instruments/HDFCBANK/trades",
+        json!({"side":"buy","qty":10.0,"price":100.0,"mode":"long"}),
+    )
+    .await;
     sqlx::query("INSERT INTO bars (instrument_id, ts, open, high, low, close, volume)
                  SELECT id, '2026-11-08T00:00:00Z', 150,151,149,150,1 FROM instruments WHERE symbol='HDFCBANK'")
         .execute(&pool).await.unwrap();
@@ -1130,14 +1259,32 @@ async fn approving_a_rotation_posts_both_legs_together() {
          SELECT id, 'BUY', 2, 500.0, 460.0, 600.0, '2030-01-01T00:00:00Z', '{}',
                 '2026-11-08T10:00:00Z', 'long', 'rotation', 'pending', ?
          FROM instruments WHERE symbol='INFY' RETURNING id",
-    ).bind(sell_id.0).fetch_one(&pool).await.unwrap();
+    )
+    .bind(sell_id.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
 
-    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", sell_id.0), json!({})).await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", sell_id.0),
+        json!({}),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK, "{v}");
 
     let statuses: Vec<(i64, String)> = sqlx::query_as("SELECT id, status FROM signals ORDER BY id")
-        .fetch_all(&pool).await.unwrap();
-    assert_eq!(statuses, vec![(sell_id.0, "approved".into()), (buy_id.0, "approved".into())]);
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        statuses,
+        vec![
+            (sell_id.0, "approved".into()),
+            (buy_id.0, "approved".into())
+        ]
+    );
 
     let sold: (f64,) = sqlx::query_as(
         "SELECT qty FROM positions p JOIN instruments i ON i.id=p.instrument_id WHERE i.symbol='HDFCBANK'",
@@ -1154,8 +1301,13 @@ async fn a_rotation_that_does_not_balance_is_refused_before_any_money_moves() {
     let (_d, router, pool) = setup().await;
     sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES ('HDFCBANK','stock','HDFC Bank','INR')")
         .execute(&pool).await.unwrap();
-    send(&router, "POST", "/api/instruments/HDFCBANK/trades",
-        json!({"side":"buy","qty":1.0,"price":100.0,"mode":"long"})).await;
+    send(
+        &router,
+        "POST",
+        "/api/instruments/HDFCBANK/trades",
+        json!({"side":"buy","qty":1.0,"price":100.0,"mode":"long"}),
+    )
+    .await;
     let sell_id: (i64,) = sqlx::query_as(
         "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at,
             mode, kind, status)
@@ -1169,9 +1321,18 @@ async fn a_rotation_that_does_not_balance_is_refused_before_any_money_moves() {
                 'long', 'rotation', 'pending', ? FROM instruments WHERE symbol='INFY'",
     ).bind(sell_id.0).execute(&pool).await.unwrap();
 
-    let (s, v) = send(&router, "POST", &format!("/api/signals/{}/approve", sell_id.0), json!({})).await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", sell_id.0),
+        json!({}),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
-    assert!(v["error"].as_str().unwrap().contains("does not balance"), "{v}");
+    assert!(
+        v["error"].as_str().unwrap().contains("does not balance"),
+        "{v}"
+    );
 
     let held: (f64,) = sqlx::query_as(
         "SELECT qty FROM positions p JOIN instruments i ON i.id=p.instrument_id WHERE i.symbol='HDFCBANK'",
@@ -1202,8 +1363,16 @@ async fn audit_shows_why_a_call_was_made_and_what_you_did_with_it() {
 
     // Approve it; the review state follows.
     let id: (i64,) = sqlx::query_as("SELECT id FROM signals LIMIT 1")
-        .fetch_one(&pool).await.unwrap();
-    send(&router, "POST", &format!("/api/signals/{}/approve", id.0), json!({})).await;
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", id.0),
+        json!({}),
+    )
+    .await;
     let (_, v) = get(&router, "/api/calls").await;
     assert_eq!(v.as_array().unwrap()[0]["decision_status"], "approved");
 }
@@ -1223,11 +1392,21 @@ async fn rejecting_a_decision_changes_the_dashboard_etag() {
     let (_, before) = get(&router, "/api/dashboard").await;
     assert_eq!(before["signals"].as_array().unwrap().len(), 1);
 
-    send(&router, "POST", &format!("/api/signals/{}/reject", id.0), json!({"reason": "no"})).await;
+    send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/reject", id.0),
+        json!({"reason": "no"}),
+    )
+    .await;
 
     // A fresh (unconditional) read reflects the change…
     let (_, after) = get(&router, "/api/dashboard").await;
-    assert_eq!(after["signals"].as_array().unwrap().len(), 0, "pending list must clear");
+    assert_eq!(
+        after["signals"].as_array().unwrap().len(),
+        0,
+        "pending list must clear"
+    );
 
     // …and the tag differs, so a conditional read cannot answer 304.
     let (_, empty) = get(&router, "/api/dashboard?decisions=pending").await;
@@ -1305,15 +1484,31 @@ async fn a_fund_buy_is_capped_by_the_fund_earmark() {
     sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')")
         .execute(&pool).await.unwrap();
     // A small earmark: the fund must not be able to consume the whole pot.
-    send(&router, "PUT", "/api/settings", json!({"mf_budget": 1000.0})).await;
+    send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"mf_budget": 1000.0}),
+    )
+    .await;
 
-    let (s, v) = send(&router, "POST", "/api/instruments/AXISELSS/trades",
-        json!({"side":"buy","qty":100.0,"price":55.0,"mode":"long"})).await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/AXISELSS/trades",
+        json!({"side":"buy","qty":100.0,"price":55.0,"mode":"long"}),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
     assert!(v["error"].as_str().unwrap().contains("fund"), "{v}");
 
     // Within the earmark, it passes.
-    let (s, v) = send(&router, "POST", "/api/instruments/AXISELSS/trades",
-        json!({"side":"buy","qty":10.0,"price":55.0,"mode":"long"})).await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/AXISELSS/trades",
+        json!({"side":"buy","qty":10.0,"price":55.0,"mode":"long"}),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK, "{v}");
 }

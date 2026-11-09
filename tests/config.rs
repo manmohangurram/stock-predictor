@@ -123,7 +123,9 @@ async fn a_database_under_the_old_name_is_moved_with_its_wal() {
     let new = dir.path().join("stock-predictor.db");
 
     // Write a row, leave the pool open briefly so a -wal exists, then migrate.
-    let pool = db::connect_and_migrate(old.to_str().unwrap()).await.unwrap();
+    let pool = db::connect_and_migrate(old.to_str().unwrap())
+        .await
+        .unwrap();
     sqlx::query("INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY','stock','Infosys','INR')")
         .execute(&pool)
         .await
@@ -151,25 +153,37 @@ async fn the_old_file_wins_and_the_new_one_is_kept_as_a_backup() {
     let old = dir.path().join("stock-predicter.db");
     let new = dir.path().join("stock-predictor.db");
 
-    let pool = db::connect_and_migrate(old.to_str().unwrap()).await.unwrap();
+    let pool = db::connect_and_migrate(old.to_str().unwrap())
+        .await
+        .unwrap();
     sqlx::query("INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY','stock','Infosys','INR')")
         .execute(&pool).await.unwrap();
     pool.close().await;
-    db::connect_and_migrate(new.to_str().unwrap()).await.unwrap().close().await;
+    db::connect_and_migrate(new.to_str().unwrap())
+        .await
+        .unwrap()
+        .close()
+        .await;
 
     let moved = db::migrate_legacy_path(old.to_str().unwrap(), new.to_str().unwrap())
-        .await.unwrap();
+        .await
+        .unwrap();
     assert_eq!(moved.as_deref(), Some(new.to_str().unwrap()));
     assert!(!old.exists());
 
     // The new path now holds the real ledger…
     let pool = db::connect(new.to_str().unwrap()).await.unwrap();
     let n: (i64,) = sqlx::query_as("SELECT count(*) FROM instruments")
-        .fetch_one(&pool).await.unwrap();
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(n.0, 1);
     // …and what was there is still on disk under .bak-.
-    let backups: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten()
-        .filter(|e| e.file_name().to_string_lossy().contains(".bak-")).collect();
+    let backups: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().contains(".bak-"))
+        .collect();
     assert_eq!(backups.len(), 1, "the previous file must be kept");
 }
 
@@ -181,14 +195,20 @@ async fn an_empty_new_database_never_hides_the_one_with_data() {
     let old = dir.path().join("stock-predicter.db");
     let new = dir.path().join("stock-predictor.db");
 
-    let pool = db::connect_and_migrate(old.to_str().unwrap()).await.unwrap();
+    let pool = db::connect_and_migrate(old.to_str().unwrap())
+        .await
+        .unwrap();
     sqlx::query("INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY','stock','Infosys','INR')")
         .execute(&pool)
         .await
         .unwrap();
     pool.close().await;
     // An empty database under the new name, as an earlier version would have created.
-    db::connect_and_migrate(new.to_str().unwrap()).await.unwrap().close().await;
+    db::connect_and_migrate(new.to_str().unwrap())
+        .await
+        .unwrap()
+        .close()
+        .await;
 
     let moved = db::migrate_legacy_path(old.to_str().unwrap(), new.to_str().unwrap())
         .await

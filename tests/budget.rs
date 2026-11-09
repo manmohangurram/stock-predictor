@@ -81,13 +81,22 @@ async fn the_allowance_can_sit_below_what_is_already_held() {
     // (because last month's purchases are still in the book) is normal, not an error.
     let (_d, pool, id) = fresh(2000.0).await;
     buy(&pool, id, 10.0, 142.0).await;
-    settings::set(&pool, SettingsPatch { budget: Some(500.0), ..Default::default() })
-        .await
-        .unwrap();
+    settings::set(
+        &pool,
+        SettingsPatch {
+            budget: Some(500.0),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
     let s = settings::get(&pool).await.unwrap();
     assert_eq!(s.budget, 500.0, "the allowance is stored");
     assert_eq!(s.committed, 1420.0, "the holdings are untouched");
-    assert!(!budget::fits(&pool, 100.0).await.unwrap(), "no cash left to buy");
+    assert!(
+        !budget::fits(&pool, 100.0).await.unwrap(),
+        "no cash left to buy"
+    );
 }
 
 #[tokio::test]

@@ -183,7 +183,9 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
                     continue;
                 }
                 let text =
-                    match deepseek::fetch_page(deps.pool, &model.base_url, deps.transport, &h.url).await {
+                    match deepseek::fetch_page(deps.pool, &model.base_url, deps.transport, &h.url)
+                        .await
+                    {
                         Ok(t) => t,
                         Err(e) => {
                             tracing::warn!(error = %e, headline = id, "fetch failed");
@@ -326,11 +328,7 @@ pub fn format_history(bars: &[crate::models::Bar]) -> String {
 }
 
 /// The limits as one readable paragraph, with the room that is actually left.
-fn limits_block(
-    limits: crate::rules::limits::Limits,
-    pot: f64,
-    already_spent: f64,
-) -> String {
+fn limits_block(limits: crate::rules::limits::Limits, pot: f64, already_spent: f64) -> String {
     let cap = pot * limits.max_instrument_pct / 100.0;
     let room = (cap - already_spent).max(0.0);
     format!(
@@ -350,11 +348,10 @@ fn limits_block(
 
 pub async fn daily_chat_calls(pool: &SqlitePool) -> Result<i64> {
     let start = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let row: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM api_calls WHERE endpoint = 'chat' AND ts >= ?",
-    )
-    .bind(start)
-    .fetch_one(pool)
-    .await?;
+    let row: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM api_calls WHERE endpoint = 'chat' AND ts >= ?")
+            .bind(start)
+            .fetch_one(pool)
+            .await?;
     Ok(row.0)
 }

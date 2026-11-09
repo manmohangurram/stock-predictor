@@ -1,9 +1,9 @@
 use anyhow::Result;
 use chrono::{DateTime, TimeZone, Utc};
-use stock_predictor::rules::runtime::Runtime;
 use stock_predictor::db;
 use stock_predictor::engine::{self, EngineDeps, MarketSource, PollReport};
 use stock_predictor::llm::deepseek::FixtureTransport;
+use stock_predictor::rules::runtime::Runtime;
 mod common;
 use common::{headline, rising_bars as bars_n, FakeMarket};
 use stock_predictor::notify::FakeNotifier;
@@ -132,7 +132,9 @@ async fn one_poll_with_a_candidate_emits_one_signal_and_one_notification() {
     let market = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
     let c = cfg();
-    let report = poll(&pool, &market, &notifier, c.clone(), now()).await.unwrap();
+    let report = poll(&pool, &market, &notifier, c.clone(), now())
+        .await
+        .unwrap();
 
     assert_eq!(report.candidates, 1, "{report:?}");
     assert_eq!(report.signals, 1, "{report:?}");
@@ -156,9 +158,13 @@ async fn second_identical_poll_emits_nothing() {
     let notifier = FakeNotifier::default();
     let c = cfg();
 
-    let first = poll(&pool, &market, &notifier, c.clone(), now()).await.unwrap();
+    let first = poll(&pool, &market, &notifier, c.clone(), now())
+        .await
+        .unwrap();
     assert_eq!(first.signals, 1);
-    let second = poll(&pool, &market, &notifier, c.clone(), now()).await.unwrap();
+    let second = poll(&pool, &market, &notifier, c.clone(), now())
+        .await
+        .unwrap();
 
     assert_eq!(second.signals, 0, "unchanged signal must be a no-op");
     assert_eq!(second.notifications, 0);
@@ -174,9 +180,7 @@ async fn insufficient_bars_emits_no_signal_and_no_llm_call() {
     seed(&pool, &["INFY"]).await;
     let market = FakeMarket::ok(bars_n(10));
     let notifier = FakeNotifier::default();
-    let report = poll(&pool, &market, &notifier, cfg(), now())
-        .await
-        .unwrap();
+    let report = poll(&pool, &market, &notifier, cfg(), now()).await.unwrap();
 
     assert_eq!(report.candidates, 0);
     assert_eq!(report.signals, 0);
@@ -196,9 +200,7 @@ async fn one_symbol_failing_does_not_stop_the_others() {
     seed(&pool, &["BOOM", "INFY"]).await;
     let market = FakeMarket::ok(bars_n(250)).failing_for("BOOM");
     let notifier = FakeNotifier::default();
-    let report = poll(&pool, &market, &notifier, cfg(), now())
-        .await
-        .unwrap();
+    let report = poll(&pool, &market, &notifier, cfg(), now()).await.unwrap();
 
     assert_eq!(report.errors.len(), 1, "{report:?}");
     assert!(report.errors[0].starts_with("BOOM"));
@@ -291,9 +293,7 @@ async fn with_no_affordable_quantity_the_model_is_still_asked_but_nothing_is_tra
 
     let market = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
-    let report = poll(&pool, &market, &notifier, cfg(), now())
-        .await
-        .unwrap();
+    let report = poll(&pool, &market, &notifier, cfg(), now()).await.unwrap();
     assert_eq!(
         report.candidates, 0,
         "no rules candidate: nothing is affordable"
@@ -344,7 +344,9 @@ async fn a_failing_push_does_not_lose_the_signal() {
     let notifier = FakeNotifier::failing();
     let c = cfg();
 
-    let report = poll(&pool, &market, &notifier, c.clone(), now()).await.unwrap();
+    let report = poll(&pool, &market, &notifier, c.clone(), now())
+        .await
+        .unwrap();
     assert_eq!(report.signals, 1, "{report:?}");
     assert_eq!(report.notifications, 0);
     assert!(
@@ -364,9 +366,7 @@ async fn without_a_deepseek_key_the_model_layer_is_skipped_entirely() {
 
     let market = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
-    let report = poll(&pool, &market, &notifier, cfg(), now())
-        .await
-        .unwrap();
+    let report = poll(&pool, &market, &notifier, cfg(), now()).await.unwrap();
 
     assert_eq!(report.signals, 1, "{report:?}");
     assert!(report.errors.is_empty(), "{report:?}");
@@ -480,7 +480,9 @@ async fn new_headlines_earn_a_new_model_call() {
     let source = FakeMarket::ok(bars_n(250));
     let notifier = FakeNotifier::default();
     let c = cfg();
-    let _ = poll(&pool, &source, &notifier, c.clone(), now()).await.unwrap();
+    let _ = poll(&pool, &source, &notifier, c.clone(), now())
+        .await
+        .unwrap();
     let first: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
         .fetch_one(&pool)
         .await
@@ -491,7 +493,9 @@ async fn new_headlines_earn_a_new_model_call() {
         "guidance raised 200bps",
         "https://example.com/new",
     )]);
-    let _ = poll(&pool, &moved, &notifier, c.clone(), now()).await.unwrap();
+    let _ = poll(&pool, &moved, &notifier, c.clone(), now())
+        .await
+        .unwrap();
     let second: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")
         .fetch_one(&pool)
         .await
@@ -664,9 +668,16 @@ async fn the_call_gate_skips_small_moves_but_never_silences_for_more_than_an_hou
         min_move: 2.0,
         max_interval_secs: 3600,
     };
-    assert!(memo::should_call(&pool, id.0, 100.0, t0 + chrono::Duration::hours(1), patient, false)
-        .await
-        .unwrap());
+    assert!(memo::should_call(
+        &pool,
+        id.0,
+        100.0,
+        t0 + chrono::Duration::hours(1),
+        patient,
+        false
+    )
+    .await
+    .unwrap());
 }
 
 #[tokio::test]
@@ -752,7 +763,10 @@ async fn a_stop_hit_sells_even_when_the_model_tries_to_hold() {
         .unwrap();
 
     assert_eq!(report.signals, 1, "{report:#?}");
-    assert_eq!(report.llm_calls, 1, "the model was never consulted: {report:#?}");
+    assert_eq!(
+        report.llm_calls, 1,
+        "the model was never consulted: {report:#?}"
+    );
     let action: (String,) = sqlx::query_as("SELECT action FROM signals ORDER BY id DESC LIMIT 1")
         .fetch_one(&pool)
         .await

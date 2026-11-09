@@ -1,9 +1,9 @@
 use chrono::{Duration, Utc};
 use stock_predictor::llm::parse::{Confidence, Proposal};
 use stock_predictor::llm::validate::{check, ValidateCtx, ValidationError};
-use stock_predictor::rules::limits::Limits;
 use stock_predictor::models::Action;
 use stock_predictor::rules::indicators::atr_bands;
+use stock_predictor::rules::limits::Limits;
 
 fn proposal(action: Action, entry: f64, stop: Option<f64>, target: Option<f64>) -> Proposal {
     Proposal {
@@ -325,7 +325,8 @@ fn a_stock_expectation_raises_the_floor_but_cannot_beat_the_ceiling() {
     high.target = Some(120.0);
     assert!(matches!(
         check(&high, &c),
-        Err(ValidationError::TargetBelowRequirement { .. }) | Err(ValidationError::TargetAboveLimit { .. })
+        Err(ValidationError::TargetBelowRequirement { .. })
+            | Err(ValidationError::TargetAboveLimit { .. })
     ));
 }
 

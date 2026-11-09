@@ -40,7 +40,8 @@ pub fn client_with(rt: &Runtime, timeout_secs: u64, user_agent: Option<&str>) ->
 
     if let Some(url) = rt.proxy.as_deref() {
         validate_proxy(url)?;
-        let mut proxy = Proxy::all(url).with_context(|| format!("proxy URL {url:?} is not usable"))?;
+        let mut proxy =
+            Proxy::all(url).with_context(|| format!("proxy URL {url:?} is not usable"))?;
         if let Some(user) = rt.proxy_user.as_deref() {
             // Basic auth from the two fields, so the password is a secret like any other.
             proxy = proxy.basic_auth(user, rt.proxy_pass.as_deref().unwrap_or_default());
@@ -78,7 +79,10 @@ mod tests {
 
     #[test]
     fn a_credentialled_proxy_url_shows_only_the_host() {
-        assert_eq!(proxy_host("http://user:secret@10.0.0.2:3128"), "10.0.0.2:3128");
+        assert_eq!(
+            proxy_host("http://user:secret@10.0.0.2:3128"),
+            "10.0.0.2:3128"
+        );
         assert_eq!(proxy_host("https://proxy.example.in"), "proxy.example.in");
         assert_eq!(proxy_host("not a url"), "");
     }

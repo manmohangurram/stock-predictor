@@ -64,9 +64,9 @@ pub async fn run(
     for g in gainers {
         let symbol = g.yahoo_symbol();
         let Some(id) = ensure_instrument(pool, &symbol, &g.symbol).await? else {
-            report
-                .notes
-                .push(format!("{symbol}: already held in the trading pot, skipped"));
+            report.notes.push(format!(
+                "{symbol}: already held in the trading pot, skipped"
+            ));
             continue;
         };
 
@@ -102,7 +102,10 @@ pub async fn run(
             ),
             &tape(&bars),
             &headlines,
-            &format!("cash {} {:.2}, allowance {:.2}", settings.currency, cash, pot),
+            &format!(
+                "cash {} {:.2}, allowance {:.2}",
+                settings.currency, cash, pot
+            ),
         )?;
 
         report.called += 1;
@@ -147,12 +150,17 @@ pub async fn run(
                 continue;
             }
             Err(e) => {
-                report.notes.push(format!("{symbol}: unreadable reply: {e}"));
+                report
+                    .notes
+                    .push(format!("{symbol}: unreadable reply: {e}"));
                 continue;
             }
         };
         if proposal.action != Action::Buy {
-            report.notes.push(format!("{symbol}: {:?} is not a short-term entry", proposal.action));
+            report.notes.push(format!(
+                "{symbol}: {:?} is not a short-term entry",
+                proposal.action
+            ));
             continue;
         }
 
@@ -208,9 +216,10 @@ pub async fn run(
         };
         store(pool, &row, now).await?;
         report.proposed += 1;
-        report
-            .notes
-            .push(format!("{symbol}: proposed {qty:.0} units at {:.2}", row.entry));
+        report.notes.push(format!(
+            "{symbol}: proposed {qty:.0} units at {:.2}",
+            row.entry
+        ));
     }
 
     Ok(report)
@@ -257,13 +266,12 @@ async fn news_newer_than_last_call(pool: &SqlitePool, instrument_id: i64) -> Res
     let Some((Some(at),)) = last else {
         return Ok(true);
     };
-    let fresh: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM news WHERE instrument_id = ? AND published_at > ?",
-    )
-    .bind(instrument_id)
-    .bind(at)
-    .fetch_one(pool)
-    .await?;
+    let fresh: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM news WHERE instrument_id = ? AND published_at > ?")
+            .bind(instrument_id)
+            .bind(at)
+            .fetch_one(pool)
+            .await?;
     Ok(fresh.0 > 0)
 }
 

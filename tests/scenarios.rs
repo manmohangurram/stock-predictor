@@ -2,13 +2,13 @@
 //! with it. Every case is dummy data — no network, no key, no cost.
 
 use serde_json::json;
-use stock_predictor::rules::runtime::Runtime;
 use stock_predictor::db;
 use stock_predictor::llm::deepseek::{FixtureTransport, HttpReply};
 use stock_predictor::llm::orchestrate::{self, LlmDeps, Outcome, RunInput};
 use stock_predictor::llm::validate::ValidationError;
 use stock_predictor::models::{Action, AssetClass, Candidate, Headline, Instrument};
 use stock_predictor::rules::indicators::Indicators;
+use stock_predictor::rules::runtime::Runtime;
 
 mod common;
 use common::FakeMarket;

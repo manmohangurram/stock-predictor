@@ -112,7 +112,8 @@ impl Runtime {
             max_silence_secs: num("max_silence_secs", d.max_silence_secs as f64) as i64,
             daily_cap: num("daily_cap", d.daily_cap as f64) as u32,
             proxy: text("proxy").map(split_legacy_proxy).map(|p| p.0),
-            proxy_user: text("proxy_user").or_else(|| text("proxy").and_then(|p| split_legacy_proxy(p).1)),
+            proxy_user: text("proxy_user")
+                .or_else(|| text("proxy").and_then(|p| split_legacy_proxy(p).1)),
             proxy_pass: None,
             proxy_bypass: text("proxy_bypass"),
         }
@@ -127,7 +128,11 @@ impl Runtime {
             max_silence_secs: self.max_silence_secs,
             daily_cap: self.daily_cap,
             proxy_configured: self.proxy.is_some(),
-            proxy_host: self.proxy.as_deref().map(crate::http::proxy_host).unwrap_or_default(),
+            proxy_host: self
+                .proxy
+                .as_deref()
+                .map(crate::http::proxy_host)
+                .unwrap_or_default(),
             proxy_user: self.proxy_user.clone(),
             proxy_pass_configured: self.proxy_pass.is_some(),
             proxy_bypass: self.proxy_bypass.clone(),

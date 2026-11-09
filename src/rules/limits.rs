@@ -96,7 +96,9 @@ impl Limits {
     pub fn check_profit(&self, pct: f64, floor: f64) -> Result<(), ValidationError> {
         let floor = floor.max(self.min_profit_pct);
         if pct + 1e-9 < floor {
-            return Err(ValidationError::TargetBelowRequirement { required_pct: floor });
+            return Err(ValidationError::TargetBelowRequirement {
+                required_pct: floor,
+            });
         }
         if pct > self.max_profit_pct + 1e-9 {
             return Err(ValidationError::TargetAboveLimit {

@@ -22,7 +22,10 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "0007_call_gate",
         include_str!("../migrations/0007_call_gate.sql"),
     ),
-    ("0008_indexes", include_str!("../migrations/0008_indexes.sql")),
+    (
+        "0008_indexes",
+        include_str!("../migrations/0008_indexes.sql"),
+    ),
     (
         "0009_runtime_settings",
         include_str!("../migrations/0009_runtime_settings.sql"),
@@ -54,7 +57,11 @@ pub fn legacy_sibling(path: &str) -> Option<String> {
     if p.file_name()?.to_str()? != "stock-predictor.db" {
         return None;
     }
-    Some(p.with_file_name("stock-predicter.db").to_string_lossy().to_string())
+    Some(
+        p.with_file_name("stock-predicter.db")
+            .to_string_lossy()
+            .to_string(),
+    )
 }
 
 /// Move a database written under an older name to the current one.
@@ -80,7 +87,9 @@ pub async fn migrate_legacy_path(old: &str, new: &str) -> Result<Option<String>>
 
     // Fold the WAL back into the file before moving it.
     let pool = connect(old).await?;
-    let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)").execute(&pool).await;
+    let _ = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(&pool)
+        .await;
     pool.close().await;
 
     if let Some(dir) = std::path::Path::new(new).parent() {

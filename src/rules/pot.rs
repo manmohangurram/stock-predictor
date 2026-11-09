@@ -67,8 +67,16 @@ pub async fn ensure_month(
     let existing = budget::cash_in(pool, mode).await?;
     // Only a month *boundary* expires what is left. Adjusting the allowance mid-month is a
     // top-up (or a claw-back of the unspent part), never a reset.
-    let expired = if !same_month && existing > 0.0 { existing } else { 0.0 };
-    let delta = if same_month { allowance - granted } else { allowance };
+    let expired = if !same_month && existing > 0.0 {
+        existing
+    } else {
+        0.0
+    };
+    let delta = if same_month {
+        allowance - granted
+    } else {
+        allowance
+    };
 
     let mut tx = pool.begin().await.context("begin the month reset")?;
     if expired > 0.0 {
@@ -138,7 +146,9 @@ mod tests {
     #[tokio::test]
     async fn a_new_month_grants_the_allowance() {
         let (_d, pool) = pool().await;
-        let r = ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 2)).await.unwrap();
+        let r = ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 2))
+            .await
+            .unwrap();
         assert_eq!(r.granted, 50_000.0);
         assert_eq!(r.expired, 0.0);
         assert_eq!(budget::cash_in(&pool, Mode::Long).await.unwrap(), 50_000.0);
@@ -147,8 +157,12 @@ mod tests {
     #[tokio::test]
     async fn the_same_month_is_never_granted_twice() {
         let (_d, pool) = pool().await;
-        ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 2)).await.unwrap();
-        let second = ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 20)).await.unwrap();
+        ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 2))
+            .await
+            .unwrap();
+        let second = ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 20))
+            .await
+            .unwrap();
         assert_eq!(second.granted, 0.0);
         assert_eq!(budget::cash_in(&pool, Mode::Long).await.unwrap(), 50_000.0);
     }
@@ -156,9 +170,16 @@ mod tests {
     #[tokio::test]
     async fn unspent_cash_expires_and_is_not_a_trading_loss() {
         let (_d, pool) = pool().await;
-        ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 2)).await.unwrap();
-        let december = ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 12, 2)).await.unwrap();
-        assert_eq!(december.expired, 50_000.0, "November's remainder should have expired");
+        ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 11, 2))
+            .await
+            .unwrap();
+        let december = ensure_month(&pool, Mode::Long, 50_000.0, at(2026, 12, 2))
+            .await
+            .unwrap();
+        assert_eq!(
+            december.expired, 50_000.0,
+            "November's remainder should have expired"
+        );
         assert_eq!(budget::cash_in(&pool, Mode::Long).await.unwrap(), 50_000.0);
 
         // Realised P&L is untouched by an expiry.
@@ -173,7 +194,9 @@ mod tests {
     #[tokio::test]
     async fn a_month_with_no_cash_writes_no_expiry() {
         let (_d, pool) = pool().await;
-        let r = ensure_month(&pool, Mode::Trade, 0.0, at(2026, 11, 2)).await.unwrap();
+        let r = ensure_month(&pool, Mode::Trade, 0.0, at(2026, 11, 2))
+            .await
+            .unwrap();
         assert_eq!(r.expired, 0.0);
         let kinds: Vec<(String,)> = sqlx::query_as("SELECT kind FROM cash_ledger")
             .fetch_all(&pool)

@@ -46,10 +46,7 @@ where
         serde_json::Value::Number(n) => n
             .as_f64()
             .ok_or_else(|| serde::de::Error::custom("not a number")),
-        serde_json::Value::String(s) => s
-            .trim()
-            .parse::<f64>()
-            .map_err(serde::de::Error::custom),
+        serde_json::Value::String(s) => s.trim().parse::<f64>().map_err(serde::de::Error::custom),
         _ => Err(serde::de::Error::custom("nav is not a number")),
     }
 }
@@ -178,7 +175,11 @@ mod tests {
 
     #[test]
     fn a_series_too_short_is_none_not_a_guess() {
-        let h = parse("120503", r#"{"meta":{},"data":[{"date":"01-01-2026","nav":"100.0"}]}"#).unwrap();
+        let h = parse(
+            "120503",
+            r#"{"meta":{},"data":[{"date":"01-01-2026","nav":"100.0"}]}"#,
+        )
+        .unwrap();
         assert_eq!(h.trailing_return(1.0), None);
     }
 

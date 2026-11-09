@@ -7,12 +7,12 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::Result;
-use stock_predictor::rules::runtime::Runtime;
 use stock_predictor::llm::deepseek::{self, ChatRequest, HttpReply, Transport};
 use stock_predictor::llm::parse::{self, LlmVerdict};
 use stock_predictor::llm::prompts::{self, PromptContext};
 use stock_predictor::models::{AssetClass, Headline, Instrument};
 use stock_predictor::rules::indicators::Indicators;
+use stock_predictor::rules::runtime::Runtime;
 
 struct Real {
     inner: deepseek::ReqwestTransport,
@@ -33,7 +33,6 @@ fn key() -> String {
 }
 
 // The provider key comes from the environment for these opt-in checks only.
-
 
 fn ctx<'a>(i: &'a Instrument, x: &'a Indicators, h: &'a [Headline]) -> PromptContext<'a> {
     PromptContext {

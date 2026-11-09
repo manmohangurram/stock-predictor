@@ -258,7 +258,18 @@ async fn dashboard_etag(pool: &SqlitePool, mode: crate::models::Mode) -> Result<
     .await?;
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
-    h.update(format!("{}-{}-{}-{}-{}-{}", row.0, row.1, row.2, row.3, row.4, mode.as_str()).as_bytes());
+    h.update(
+        format!(
+            "{}-{}-{}-{}-{}-{}",
+            row.0,
+            row.1,
+            row.2,
+            row.3,
+            row.4,
+            mode.as_str()
+        )
+        .as_bytes(),
+    );
     Ok(format!("\"{}\"", crate::hex(&h.finalize())))
 }
 
@@ -397,7 +408,9 @@ async fn test_proxy(State(st): State<AppState>) -> Result<Json<serde_json::Value
     };
     let millis = started.elapsed().as_millis() as u64;
     Ok(Json(match result {
-        Ok(status) => serde_json::json!({ "ok": true, "status": status, "millis": millis, "error": null }),
+        Ok(status) => {
+            serde_json::json!({ "ok": true, "status": status, "millis": millis, "error": null })
+        }
         Err(e) => serde_json::json!({
             "ok": false,
             "status": null,
@@ -425,15 +438,18 @@ async fn archive_instrument(
     State(st): State<AppState>,
     axum::extract::Path(symbol): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let row: Option<(i64, i64)> = sqlx::query_as("SELECT id, active FROM instruments WHERE symbol = ?")
-        .bind(&symbol)
-        .fetch_optional(&st.pool)
-        .await?;
+    let row: Option<(i64, i64)> =
+        sqlx::query_as("SELECT id, active FROM instruments WHERE symbol = ?")
+            .bind(&symbol)
+            .fetch_optional(&st.pool)
+            .await?;
     let Some((id, active)) = row else {
         return Err(ApiError::NotFound(format!("no instrument {symbol}")));
     };
     if active == 0 {
-        return Err(ApiError::BadRequest(format!("{symbol} is already archived")));
+        return Err(ApiError::BadRequest(format!(
+            "{symbol} is already archived"
+        )));
     }
 
     let held: (f64,) = sqlx::query_as(
@@ -778,9 +794,9 @@ async fn call_detail(
                 prompt_tokens, validator_verdict, error
          FROM api_calls WHERE id = ?",
     )
-        .bind(id)
-        .fetch_optional(&st.pool)
-        .await?;
+    .bind(id)
+    .fetch_optional(&st.pool)
+    .await?;
     let Some(r) = row else {
         return Err(ApiError::NotFound(format!("no call {id}")));
     };
@@ -1116,7 +1132,9 @@ async fn add_instrument(
     // A newly added symbol should have a chart and headlines on first open, not tomorrow
     // morning. AMFI scheme codes have no Yahoo series; a Yahoo-coded fund (0P…BO) does.
     if class == crate::models::AssetClass::Stock || code.contains('.') {
-        if let Ok(market) = crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?) {
+        if let Ok(market) =
+            crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?)
+        {
             let fetch = crate::store::refresh(&st.pool, id.0, code, &market);
             match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
                 Ok(Ok((bars, news))) => {
@@ -1251,7 +1269,8 @@ async fn refresh_instrument(
             .await?;
     let (id, class) = row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
 
-    let market = crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?)?;
+    let market =
+        crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?)?;
     let (bars, news) = crate::store::refresh(&st.pool, id, &symbol, &market)
         .await
         .map_err(|e| ApiError::BadRequest(format!("{symbol} ({class}): {e}")))?;
@@ -1466,8 +1485,8 @@ async fn approve_signal(
         .or(entry)
         .filter(|p| p.is_finite() && *p > 0.0)
         .ok_or_else(|| ApiError::BadRequest("price is required".into()))?;
-    let mode = crate::models::Mode::parse(&mode_raw)
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let mode =
+        crate::models::Mode::parse(&mode_raw).map_err(|e| ApiError::BadRequest(e.to_string()))?;
     let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
@@ -1546,13 +1565,14 @@ async fn approve_signal(
     .execute(&st.pool)
     .await?;
 
-    if let Some(((sell_id, _, _, _, sell_mode), (buy_id, buy_instrument, buy_qty, buy_price))) = pair {
+    if let Some(((sell_id, _, _, _, sell_mode), (buy_id, buy_instrument, buy_qty, buy_price))) =
+        pair
+    {
         let buy_note = format!("decision {buy_id}");
-        let already: Option<(i64,)> =
-            sqlx::query_as("SELECT id FROM trades WHERE note = ?")
-                .bind(&buy_note)
-                .fetch_optional(&st.pool)
-                .await?;
+        let already: Option<(i64,)> = sqlx::query_as("SELECT id FROM trades WHERE note = ?")
+            .bind(&buy_note)
+            .fetch_optional(&st.pool)
+            .await?;
         if already.is_none() {
             let pair_mode = crate::models::Mode::parse(&sell_mode)
                 .map_err(|e| ApiError::BadRequest(e.to_string()))?;
@@ -1606,7 +1626,12 @@ async fn reject_signal(
          WHERE id = ? AND status = 'pending'",
     )
     .bind(chrono::Utc::now().to_rfc3339())
-    .bind(body.reason.as_deref().map(str::trim).filter(|r| !r.is_empty()))
+    .bind(
+        body.reason
+            .as_deref()
+            .map(str::trim)
+            .filter(|r| !r.is_empty()),
+    )
     .bind(id)
     .execute(&st.pool)
     .await?

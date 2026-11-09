@@ -200,11 +200,7 @@ fn parse_chat(
     // Providers disagree on both the envelope and the error shape; both live in ModelConfig.
     if v.get("error").is_some() {
         row.error = Some(v["error"].to_string());
-        return Err(anyhow!(
-            "{} chat: {}",
-            model.provider.as_str(),
-            v["error"]
-        ));
+        return Err(anyhow!("{} chat: {}", model.provider.as_str(), v["error"]));
     }
     let content = model.extract_content(&v).ok_or_else(|| {
         row.error = Some("response carried no assistant text".into());
@@ -233,10 +229,7 @@ pub async fn search(
         "need_content": false,
     })
     .to_string();
-    let url = format!(
-        "{}/v1/tools/search",
-        base.trim_end_matches('/')
-    );
+    let url = format!("{}/v1/tools/search", base.trim_end_matches('/'));
     let started = Instant::now();
     let reply = transport.post(&url, &body).await;
     let latency = started.elapsed().as_millis() as i64;

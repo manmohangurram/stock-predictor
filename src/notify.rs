@@ -140,7 +140,11 @@ impl Ntfy {
     ) -> Result<Self> {
         Ok(Self {
             client: crate::http::client(rt, 15)?,
-            url: format!("{}/{}", base_url.trim_end_matches('/'), topic.trim_start_matches('/')),
+            url: format!(
+                "{}/{}",
+                base_url.trim_end_matches('/'),
+                topic.trim_start_matches('/')
+            ),
             token: token.to_string(),
             public_url: public_url.trim_end_matches('/').to_string(),
         })
@@ -190,10 +194,7 @@ pub fn payload(n: &Notification, public_url: &str) -> (Vec<(String, String)>, St
         ),
     ];
     if !public_url.is_empty() && !n.symbol.is_empty() {
-        headers.push((
-            "Click".to_string(),
-            format!("{public_url}/i/{}", n.symbol),
-        ));
+        headers.push(("Click".to_string(), format!("{public_url}/i/{}", n.symbol)));
     }
     (headers, n.body.clone())
 }

@@ -162,7 +162,8 @@ async fn poll_instrument(
 ) -> Result<()> {
     // An AMFI scheme code (135762) has no price series anywhere: it can be held, but it cannot be
     // charted, so polling it only produces a 404 every fifteen minutes. Say so once per poll.
-    if instrument.class == crate::models::AssetClass::MutualFund && !instrument.symbol.contains('.') {
+    if instrument.class == crate::models::AssetClass::MutualFund && !instrument.symbol.contains('.')
+    {
         report.notes.push(format!(
             "{}: AMFI scheme code, no price series — hold it, but add the Yahoo code to get advice",
             instrument.symbol
@@ -268,9 +269,9 @@ async fn poll_instrument(
         Some(format!("new headline on {}", instrument.symbol))
     } else {
         match previous_price.and_then(|r| r.0) {
-            Some(prev) if (prev - candidate.entry).abs() >= deps.runtime.min_price_move => Some(
-                format!("price moved {prev:.2} → {:.2}", candidate.entry),
-            ),
+            Some(prev) if (prev - candidate.entry).abs() >= deps.runtime.min_price_move => {
+                Some(format!("price moved {prev:.2} → {:.2}", candidate.entry))
+            }
             None => Some("never asked about this instrument".to_string()),
             _ if deps.runtime.max_silence_secs > 0 => {
                 Some("the silence interval elapsed".to_string())
@@ -1123,7 +1124,8 @@ async fn short_card(
 
 /// Revenue, profit and valuation, or "unavailable" — never a guess, and never a failed call.
 async fn fetch_fundamentals(deps: &EngineDeps<'_>, symbol: &str, now: DateTime<Utc>) -> String {
-    let Ok(client) = crate::http::client_with(&deps.runtime, 15, Some("Mozilla/5.0 stock-predictor"))
+    let Ok(client) =
+        crate::http::client_with(&deps.runtime, 15, Some("Mozilla/5.0 stock-predictor"))
     else {
         return "unavailable".into();
     };
@@ -1158,15 +1160,15 @@ async fn load_holdings(
         ltp: Option<f64>,
     }
     let rows: Vec<HeldRow> = sqlx::query_as(
-            "SELECT i.symbol, i.name, p.qty, p.avg_cost, p.stop, p.target,
+        "SELECT i.symbol, i.name, p.qty, p.avg_cost, p.stop, p.target,
                     (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
                      ORDER BY b.ts DESC LIMIT 1) AS ltp
              FROM positions p JOIN instruments i ON i.id = p.instrument_id
              WHERE p.state = 'open' AND p.mode = ?",
-        )
-        .bind(mode.as_str())
-        .fetch_all(pool)
-        .await?;
+    )
+    .bind(mode.as_str())
+    .fetch_all(pool)
+    .await?;
     Ok(rows
         .into_iter()
         .map(|r| crate::llm::rotate::HoldingLine {
@@ -1212,12 +1214,7 @@ async fn rotate_for_cash(
     let table = crate::llm::rotate::holdings_table(&holdings, available, &settings.currency);
     let wanted = format!(
         "{} ({}) at {:.2}, {} units = {:.2} {}",
-        instrument.symbol,
-        instrument.name,
-        candidate.entry,
-        candidate.qty,
-        cost,
-        settings.currency
+        instrument.symbol, instrument.name, candidate.entry, candidate.qty, cost, settings.currency
     );
     let rendered = crate::llm::prompts::render_rotation(&table, &wanted)?;
     let model = crate::rules::settings::model_config(deps.pool).await?;

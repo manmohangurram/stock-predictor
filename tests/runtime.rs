@@ -13,7 +13,10 @@ async fn fresh() -> (tempfile::TempDir, sqlx::SqlitePool) {
 #[tokio::test]
 async fn an_empty_table_yields_the_documented_defaults() {
     let (_d, pool) = fresh().await;
-    sqlx::query("DELETE FROM settings").execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM settings")
+        .execute(&pool)
+        .await
+        .unwrap();
     assert_eq!(runtime::load(&pool).await.unwrap(), Runtime::default());
 }
 

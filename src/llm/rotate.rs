@@ -76,10 +76,16 @@ pub fn holdings_table(holdings: &[HoldingLine], cash: f64, currency: &str) -> St
             h.name,
             h.qty,
             h.avg_cost,
-            h.ltp.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
+            h.ltp
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".into()),
             pct,
-            h.stop.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
-            h.target.map(|v| format!("{v:.2}")).unwrap_or_else(|| "—".into()),
+            h.stop
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".into()),
+            h.target
+                .map(|v| format!("{v:.2}"))
+                .unwrap_or_else(|| "—".into()),
         ));
     }
     out.push_str(&format!("\ncash available: {cash:.2} {currency}\n"));
@@ -98,7 +104,9 @@ pub fn parse(content: &str) -> Result<Rotation> {
             let sell = body
                 .get("sell")
                 .ok_or_else(|| anyhow!("rotation: no sell leg"))?;
-            let buy = body.get("buy").ok_or_else(|| anyhow!("rotation: no buy leg"))?;
+            let buy = body
+                .get("buy")
+                .ok_or_else(|| anyhow!("rotation: no buy leg"))?;
             Ok(Rotation::Swap(Box::new(Swap {
                 sell: serde_json::from_value(sell.clone())?,
                 buy: serde_json::from_value(buy.clone())?,
@@ -301,8 +309,14 @@ mod tests {
     fn selling_a_loss_maker_is_refused() {
         let mut rows = held();
         rows[0].ltp = Some(1000.0); // 4% down on cost
-        let err = validate(&swap(24.0, 8.0, 784.10, 980.0), &rows, 0.0, &settings(), Mode::Long)
-            .unwrap_err();
+        let err = validate(
+            &swap(24.0, 8.0, 784.10, 980.0),
+            &rows,
+            0.0,
+            &settings(),
+            Mode::Long,
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("below the"), "{err}");
     }
 

@@ -7,7 +7,10 @@ use stock_predictor::rules::runtime::Runtime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-async fn serve_once(listener: TcpListener, expect: &'static str) -> tokio::task::JoinHandle<String> {
+async fn serve_once(
+    listener: TcpListener,
+    expect: &'static str,
+) -> tokio::task::JoinHandle<String> {
     tokio::spawn(async move {
         let (mut sock, _) = listener.accept().await.unwrap();
         let mut buf = vec![0u8; 4096];
@@ -100,10 +103,7 @@ async fn proxy_credentials_become_a_proxy_authorization_header() {
         .find(|l| l.to_lowercase().starts_with("proxy-authorization:"))
         .expect("no Proxy-Authorization header");
     let encoded = line.split_whitespace().last().unwrap();
-    let decoded = String::from_utf8(
-        base64_decode(encoded).expect("not base64"),
-    )
-    .unwrap();
+    let decoded = String::from_utf8(base64_decode(encoded).expect("not base64")).unwrap();
     assert_eq!(decoded, "mohan:hunter2");
 }
 

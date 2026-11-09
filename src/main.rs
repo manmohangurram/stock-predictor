@@ -172,12 +172,17 @@ async fn main() -> Result<()> {
         }
         println!("poll: {report:#?}");
 
-        // A manual poll also runs the two discovery passes, so `--poll-once` means "do everything
+        // A manual poll also runs both discovery passes, so `--poll-once` means "do everything
         // once" rather than "everything except the new stuff".
         if let Ok(r) = stock_predictor::fundscan::run(&pool, &rt, Utc::now()).await {
             if r.examined > 0 {
                 println!("fund scan: {r:#?}");
             }
+        }
+        match stock_predictor::trend::run(&pool, &market, &transport, &rt, Utc::now()).await {
+            Ok(r) if r.examined > 0 => println!("short-term pass: {r:#?}"),
+            Ok(_) => {}
+            Err(e) => println!("short-term pass failed: {e}"),
         }
         if !flag("--serve") {
             return Ok(());
@@ -233,11 +238,19 @@ async fn main() -> Result<()> {
                 }
             };
             // The month boundary: expire what is left, then grant the allowance. Idempotent.
-            for mode in [stock_predictor::models::Mode::Long, stock_predictor::models::Mode::Trade] {
+            for mode in [
+                stock_predictor::models::Mode::Long,
+                stock_predictor::models::Mode::Trade,
+            ] {
                 match settings::allowance(&poll_pool, mode).await {
                     Ok(allowance) => {
-                        match stock_predictor::rules::pot::ensure_month(&poll_pool, mode, allowance, Utc::now())
-                            .await
+                        match stock_predictor::rules::pot::ensure_month(
+                            &poll_pool,
+                            mode,
+                            allowance,
+                            Utc::now(),
+                        )
+                        .await
                         {
                             Ok(r) if r.granted > 0.0 || r.expired > 0.0 => tracing::info!(
                                 month = %r.month,
@@ -275,19 +288,23 @@ async fn main() -> Result<()> {
                 Err(e) => tracing::warn!(error = %e, "fund scan failed"),
             }
 
-            // Short-term mode: what moved today, asked about only when it has actually changed.
-            match stock_predictor::trend::run(
-                &poll_pool,
-                &market,
-                &transport,
-                &runtime,
-                Utc::now(),
-            )
-            .await
-            {
-                Ok(r) if r.examined > 0 => tracing::info!(?r, "short-term pass"),
-                Ok(_) => {}
-                Err(e) => tracing::warn!(error = %e, "short-term pass failed"),
+            // Short-term mode: only while the market is open. After the close the exchange list is
+            // yesterday's, and nothing reprices until the next session — a call then would judge a
+            // stale tape.
+            if schedule::in_stock_window(Utc::now()) {
+                match stock_predictor::trend::run(
+                    &poll_pool,
+                    &market,
+                    &transport,
+                    &runtime,
+                    Utc::now(),
+                )
+                .await
+                {
+                    Ok(r) if r.examined > 0 => tracing::info!(?r, "short-term pass"),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "short-term pass failed"),
+                }
             }
 
             // 15 minutes while the market is open, two hours otherwise.
@@ -311,8 +328,9 @@ async fn main() -> Result<()> {
         let ctrl_c = tokio::signal::ctrl_c();
         #[cfg(unix)]
         {
-            let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("install SIGTERM handler");
+            let mut term =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                    .expect("install SIGTERM handler");
             tokio::select! {
                 _ = ctrl_c => {}
                 _ = term.recv() => {}
