@@ -1593,3 +1593,22 @@ async fn audit_says_when_a_decision_was_blocked_and_why() {
     assert!(reason.contains("cost 100000.00"), "{reason}");
     assert!(reason.contains("available 1000.00"), "{reason}");
 }
+
+#[tokio::test]
+async fn a_plan_id_travels_with_the_decision_rows() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status, plan_id)
+         SELECT id, 'BUY', 1, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:00Z',
+                'long', 'plan', 'pending', 41
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (s, v) = get(&router, "/api/dashboard").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["signals"][0]["plan_id"], 41);
+    assert_eq!(v["signals"][0]["name"], "INFY Ltd");
+}

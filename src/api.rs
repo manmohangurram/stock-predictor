@@ -151,6 +151,7 @@ async fn health() -> Json<serde_json::Value> {
 struct SignalDbRow {
     id: i64,
     symbol: String,
+    name: String,
     class: String,
     action: String,
     status: String,
@@ -165,6 +166,7 @@ struct SignalDbRow {
     valid_until: Option<String>,
     reason_json: Option<String>,
     created_at: String,
+    plan_id: Option<i64>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -185,6 +187,8 @@ struct PositionDbRow {
 pub struct SignalRow {
     pub id: i64,
     pub symbol: String,
+    /// The readable name — a plan card says "Infosys", not "INFY.NS".
+    pub name: String,
     pub class: String,
     pub action: String,
     pub qty: Option<f64>,
@@ -203,6 +207,8 @@ pub struct SignalRow {
     /// What you actually got, when the numbers differ from the proposal.
     pub filled_qty: Option<f64>,
     pub filled_price: Option<f64>,
+    /// Set when this row is one leg of a plan; every leg shares the first leg's id.
+    pub plan_id: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1718,12 +1724,14 @@ async fn load_signals(
         }
     };
     let rows: Vec<SignalDbRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT s.id AS id, i.symbol AS symbol, i.class AS class, s.action AS action,
+        "SELECT s.id AS id, i.symbol AS symbol, i.name AS name, i.class AS class,
+                s.action AS action,
                 s.qty AS qty, s.confidence AS confidence, s.entry AS entry, s.stop AS stop,
                 s.target AS target, s.valid_until AS valid_until,
                 s.reason_json AS reason_json, s.created_at AS created_at,
                 s.status AS status, s.status_reason AS status_reason,
-                s.filled_qty AS filled_qty, s.filled_price AS filled_price
+                s.filled_qty AS filled_qty, s.filled_price AS filled_price,
+                s.plan_id AS plan_id
          FROM signals s JOIN instruments i ON i.id = s.instrument_id
          WHERE {predicate} AND s.mode = ? ORDER BY s.id DESC LIMIT 50"
     )))
@@ -1762,6 +1770,7 @@ async fn load_signals(
             SignalRow {
                 id: r.id,
                 symbol: r.symbol,
+                name: r.name,
                 class: class.as_str().to_string(),
                 action: r.action,
                 qty: r.qty,
@@ -1781,6 +1790,7 @@ async fn load_signals(
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
                 created_at: r.created_at,
+                plan_id: r.plan_id,
             }
         })
         .collect())
