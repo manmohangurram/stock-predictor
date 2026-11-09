@@ -871,3 +871,32 @@ describe("removing an instrument", () => {
     expect(html).toContain("cannot be removed");
   });
 });
+
+describe("the api client speaks JSON", () => {
+  test("approve and reject send a JSON content-type", async () => {
+    const calls: RequestInit[] = [];
+    const original = globalThis.fetch;
+    // A stub, so this catches the 415 before it reaches a server: axum's Json extractor
+    // refuses a body without the header.
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      calls.push(init ?? {});
+      return new Response(JSON.stringify({ ok: true, id: 1, status: "approved" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      const { api } = await import("./api");
+      await api.approveSignal(1, { qty: 2, price: 100 });
+      await api.rejectSignal(1, "no");
+      expect(calls).toHaveLength(2);
+      for (const c of calls) {
+        const headers = (c.headers ?? {}) as Record<string, string>;
+        expect(headers["content-type"]).toBe("application/json");
+        expect(c.method).toBe("POST");
+      }
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});

@@ -249,15 +249,12 @@ export const api = {
     ),
   calls: () => req<CallRow[]>("/api/calls"),
   approveSignal: (id: number, body: { qty?: number; price?: number; at?: string }) =>
-    req<{ id: number; status: string; recorded: boolean }>(`/api/signals/${id}/approve`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    req<{ id: number; status: string; recorded: boolean }>(
+      `/api/signals/${id}/approve`,
+      json(body),
+    ),
   rejectSignal: (id: number, reason?: string) =>
-    req<{ id: number; status: string }>(`/api/signals/${id}/reject`, {
-      method: "POST",
-      body: JSON.stringify({ reason }),
-    }),
+    req<{ id: number; status: string }>(`/api/signals/${id}/reject`, json({ reason })),
   deleteInstrument: (symbol: string) =>
     req<{ symbol: string; deleted: boolean; archived: boolean; reason?: string }>(
       `/api/instruments/${encodeURIComponent(symbol)}`,
