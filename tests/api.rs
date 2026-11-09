@@ -1905,3 +1905,82 @@ async fn a_book_call_reads_as_a_plan_in_the_audit() {
     assert_eq!(row["plan_legs"], 1);
     assert!(row["instrument_name"].is_null(), "{row}");
 }
+
+/// Approving a decision must put its exit plan on the position, or the ledger shows a holding
+/// with no stop and no target the moment it was bought.
+#[tokio::test]
+async fn approving_a_buy_writes_its_exit_plan_onto_the_position() {
+    let (_d, router, pool) = setup().await;
+    let id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, mode)
+         SELECT id, 'BUY', 10, 100.0, 90.0, 130.0, '2030-01-01T00:00:00Z', '{}',
+                '2026-11-09T10:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'INFY' RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", id.0),
+        json!({"qty": 10.0, "price": 100.0}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let (stop, target): (Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT stop, target FROM positions
+         WHERE instrument_id = (SELECT id FROM instruments WHERE symbol = 'INFY')
+           AND state = 'open'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stop, Some(90.0));
+    assert_eq!(target, Some(130.0));
+}
+
+/// The same, for each leg of a plan.
+#[tokio::test]
+async fn approving_a_plan_writes_each_legs_exit_plan() {
+    let (_d, router, pool) = setup().await;
+    let buy: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, mode, kind, status)
+         SELECT id, 'BUY', 5, 200.0, 180.0, 260.0, '2030-01-01T00:00:00Z', '{}',
+                '2026-11-09T10:00:00Z', 'long', 'plan', 'pending'
+         FROM instruments WHERE symbol = 'TCS' RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE signals SET plan_id = ? WHERE id = ?")
+        .bind(buy.0)
+        .bind(buy.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", buy.0),
+        json!({"fills": [{"id": buy.0, "qty": 5.0, "price": 200.0}]}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let (stop, target): (Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT stop, target FROM positions
+         WHERE instrument_id = (SELECT id FROM instruments WHERE symbol = 'TCS')
+           AND state = 'open'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(stop, Some(180.0));
+    assert_eq!(target, Some(260.0));
+}

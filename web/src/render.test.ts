@@ -34,6 +34,7 @@ const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
   symbol: "INFY.NS",
   name: "Infosys",
   plan_id: null,
+  plan_rationale: null,
   class: "stock",
   action: "SELL",
   status: "pending",
@@ -95,10 +96,19 @@ describe("blotter row", () => {
     expect(html).toContain('role="link"');
   });
 
-  test("a fund row says units at NAV, not an intraday price", () => {
-    const mf = position({ symbol: "AXISELSS", class: "mutual_fund", stop: null, ltp: 105.36, value: 25_000 });
+  test("a fund row shows a NAV exit from its profit expectation, not an intraday price", () => {
+    const mf = position({
+      symbol: "AXISELSS",
+      class: "mutual_fund",
+      stop: null,
+      ltp: 105.36,
+      value: 25_000,
+      avg_cost: 100,
+      target_profit_pct: 25,
+    });
     const html = renderRow(dashboard({ positions: [mf] }), mf);
-    expect(html).toContain("units at NAV");
+    // 100 cost × 1.25 = a 125 NAV exit.
+    expect(html).toContain("125.00 → +25%");
     // No MF badge any more: funds have their own table, so the label is redundant.
     expect(html).not.toContain('data-stamp="estimate"');
   });
@@ -112,35 +122,17 @@ describe("blotter row", () => {
 
 describe("ledger", () => {
   test("empty portfolio explains what to do next", () => {
-    const html = renderLedger(dashboard(), []);
+    const html = renderLedger(dashboard());
     expect(html).toContain("No stocks yet");
-    expect(html).toContain("No trades recorded yet");
     expect(html).not.toContain("spinner");
   });
 
-  test("recent trades render with their side and date", () => {
-    const html = renderLedger(dashboard(), [
-      {
-        id: 1,
-        symbol: "INFY.NS",
-        side: "buy",
-        qty: 17,
-        price: 1163,
-        realised: null,
-        traded_at: "2026-10-20T04:00:00Z",
-        note: null,
-        market_close: null,
-        mode: "long",
-      },
-    ]);
-    expect(html).toContain("INFY.NS 17 @ 1,163.00");
-    expect(html).toContain('data-stamp="buy"');
-  });
-
-  test("search input is present and labelled", () => {
-    const html = renderLedger(dashboard(), []);
-    expect(html).toContain('id="search"');
-    expect(html).toContain("Search stocks and mutual funds");
+  test("free to deploy sits with the figures, not in the rail", () => {
+    const html = renderLedger(dashboard({ available: 96_389, budget: 100_000 }));
+    expect(html).toContain("Free to deploy");
+    expect(html).toContain("of 1,00,000");
+    // Nothing left of the removed recent-fills card.
+    expect(html).not.toContain("Recent fills");
   });
 });
 
@@ -363,19 +355,6 @@ describe("two pots in the UI", () => {
     expect(html).toContain('aria-current="page">Short-term');
   });
 
-  test("only trades from the current pot are listed", () => {
-    const trade = (id: number, mode: "long" | "trade") => ({
-      id, symbol: "INFY.NS", side: "buy" as const, qty: 1, price: 100,
-      realised: null, traded_at: "2026-10-27T10:00:00Z", note: null,
-      market_close: null, mode,
-    });
-    const html = renderLedger(
-      dashboard({ mode: "trade", positions: [position()] }),
-      [trade(1, "long"), trade(2, "trade")],
-    );
-    expect(html).toContain("Short-term book");
-    expect(html.match(/class="feed-row"/g)?.length).toBe(1);
-  });
 });
 
 describe("settings, second pot", () => {
@@ -511,22 +490,7 @@ describe("risk and profit expectation", () => {
 });
 
 describe("one request per page", () => {
-  test("the ledger gets its recent fills from the dashboard payload", async () => {
-    const { renderLedger } = await import("./pages/ledger");
-    const d = {
-      ...dashboard({ positions: [position()] }),
-      recent_trades: [
-        {
-          id: 1, symbol: "INFY.NS", side: "buy" as const, qty: 17, price: 1163,
-          realised: null, traded_at: "2026-10-20T04:00:00Z", note: null,
-          market_close: null, mode: "long" as const,
-        },
-      ],
-    };
-    const html = renderLedger(d, d.recent_trades);
-    expect(html).toContain("INFY.NS 17 @ 1,163.00");
-    expect(html).toContain("Recent fills");
-  });
+
 
   test("the instrument page renders from the analysis payload alone", async () => {
     const { renderInstrument } = await import("./pages/instrument");
@@ -970,6 +934,7 @@ describe("audit", () => {
       decision_reason: "insufficient_cash: cost 1148700.00, available 200000.00",
       instrument_name: "Infosys",
       instrument_symbol: "INFY.NS",
+      plan_legs: 0,
     };
     const list = renderCalls([row]);
     expect(list).toContain("Infosys");
@@ -996,6 +961,7 @@ describe("audit", () => {
       error: null,
       instrument_name: "Infosys",
       instrument_symbol: "INFY.NS",
+      plan_legs: 0,
     });
     expect(detail).toContain("Why it was asked");
     expect(detail).toContain("Refused");

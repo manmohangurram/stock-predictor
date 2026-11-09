@@ -69,7 +69,7 @@ async function route(): Promise<void> {
       if (res.notModified) return; // nothing changed: keep the DOM, and the user's open rows
       dashboardEtag = res.etag ?? null;
       const d = res.data!;
-      app.innerHTML = renderLedger(d, d.recent_trades);
+      app.innerHTML = renderLedger(d);
       // The nav belongs inside the content column, not floating in the page margin.
       wireRows();
       wireAddDialog();

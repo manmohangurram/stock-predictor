@@ -1,4 +1,4 @@
-import type { Dashboard, Mode, Trade } from "../api";
+import type { Dashboard, Mode } from "../api";
 import { renderApp, renderHead } from "../components/shell";
 import { renderDecisionActions } from "../components/decision-actions";
 import { decisionFilterTabs, isDecisionFilter, type DecisionFilter } from "../components/decision-filter";
@@ -53,10 +53,17 @@ export function renderRow(d: Dashboard, p: Dashboard["positions"][number]): stri
     ? `${pnl >= 0 ? "+" : "−"}${money(Math.abs(pnl))}<div class="sub">${pnlPct >= 0 ? "+" : "−"}${Math.abs(pnlPct).toFixed(1)}%</div>`
     : `<span class="muted">no price yet</span>`;
   const isFund = p.class !== "stock";
-  const plan =
-    isFund || p.stop === null
-      ? `<span class="muted">${isFund ? "units at NAV" : "—"}</span>`
-      : `<span class="num">${money(p.stop)} → ${p.target === null ? "—" : money(p.target)}</span>`;
+  // A fund has no price exit: it is sold at NAV once the return you asked for is reached, so its
+  // exit plan is a NAV, derived from the profit expectation. Without one, say so rather than
+  // leaving a blank that looks like a rendering bug.
+  const fundExit = p.target_profit_pct
+    ? `<span class="num">${money(p.avg_cost * (1 + p.target_profit_pct / 100))} → +${p.target_profit_pct}%</span>`
+    : `<span class="muted">no target set</span>`;
+  const plan = isFund
+    ? fundExit
+    : p.stop === null && p.target === null
+      ? `<span class="muted">no exit set</span>`
+      : `<span class="num">${p.stop === null ? "—" : money(p.stop)} → ${p.target === null ? "—" : money(p.target)}</span>`;
   const signal = s
     ? `<span class="signal-cell">${stamp(s.action === "SELL" ? "sell" : "buy", s.action)}${renderConfidence(s.confidence)}</span>`
     : `<span class="muted">—</span>`;
@@ -93,7 +100,7 @@ const STOCK_HEAD = `<tr><th scope="col">Holding</th><th scope="col" class="hide-
 const FUND_HEAD = `<tr><th scope="col">Scheme</th><th scope="col" class="hide-sm">Units</th>
   <th scope="col" class="hide-sm">Avg NAV</th><th scope="col" class="hide-sm">Invested</th>
   <th scope="col">NAV today</th><th scope="col" class="hide-sm">Value</th>
-  <th scope="col">P&amp;L</th><th scope="col">Signal</th><th scope="col" class="hide-sm">Execution</th></tr>`;
+  <th scope="col">P&amp;L</th><th scope="col">Signal</th><th scope="col" class="hide-sm">Exit plan</th></tr>`;
 
 const subtotal = (label: string, invested: number, value: number): string => {
   const pnl = value - invested;
@@ -254,23 +261,11 @@ function addDialog(): string {
   </div>`;
 }
 
-export function renderLedger(d: Dashboard, recent: Trade[]): string {
-  const inMode = recent.filter((t) => t.mode === d.mode);
+export function renderLedger(d: Dashboard): string {
   const stocks = d.positions.filter((p) => p.class === "stock");
   const funds = d.positions.filter((p) => p.class !== "stock");
   const all = sum(d.positions);
   const pnl = all.value - all.invested;
-
-  const history = inMode.length
-    ? inMode
-        .slice(0, 8)
-        .map(
-          (t) => `<div class="feed-row"><span><span class="stamp" data-stamp="${t.side === "buy" ? "buy" : "sell"}">${t.side}</span>
-        ${escapeHtml(t.symbol)} ${units(t.qty)} @ ${money(t.price)}</span>
-        <span class="sub">${histDate(t.traded_at)}</span></div>`,
-        )
-        .join("")
-    : `<p class="empty">No trades recorded yet.</p>`;
 
   // Rendered on the server of truth (the browser) and in tests: no window, no filter.
   const raw =
@@ -332,7 +327,7 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
 
   const fundsSection = section(
     "Mutual funds",
-    `${funds.length} · bought at NAV, no stop or target`,
+    `${funds.length} · bought at NAV · exit at the NAV target`,
     FUND_HEAD,
     funds.length
       ? funds.map((p) => renderRow(d, p)).join("")
@@ -351,7 +346,11 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
       { label: "Invested", value: money(all.invested, 0) },
       { label: "Now", value: money(all.value, 0) },
       { label: "Unrealised", value: `${pnl >= 0 ? "+" : "−"}${money(Math.abs(pnl), 0)}`, tone: pnl >= 0 ? "pos" : "neg" },
-      { label: "Cash", value: money(d.available, 0) },
+      {
+        label: "Free to deploy",
+        value: money(d.available, 0),
+        note: d.budget > 0 ? `of ${money(d.budget, 0)}` : undefined,
+      },
     ],
     `<button class="btn primary head-action" type="button" data-add-open
              aria-haspopup="dialog">+ Add instrument</button>`,
@@ -366,16 +365,11 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
   </section>
   ${d.mode === "trade" ? section("Short-term positions", `${d.positions.length} · all stocks`, STOCK_HEAD,
       d.positions.length ? d.positions.map((p) => renderRow(d, p)).join("") : `<tr><td colspan="8" class="empty">Nothing in the short-term pot.</td></tr>`) : stocksSection + fundsSection}
-  <div class="cards">
-    <section class="card">
-      <div class="lbl">Recent fills</div>
-      <div class="feed">${history}</div>
-    </section>
-  </div>`;
+`;
 
-  return renderApp("ledger", `${content}${addDialog()}<dialog id="add-dialog" class="add-dialog"></dialog>`, {
-    label: "Free to deploy",
-    value: money(d.available, 0),
-    note: d.budget > 0 ? `of ${money(d.budget, 0)}` : undefined,
-  }, { ledger: String(d.positions.length) });
+  return renderApp(
+    "ledger",
+    `${content}${addDialog()}<dialog id="add-dialog" class="add-dialog"></dialog>`,
+    { ledger: String(d.positions.length) },
+  );
 }

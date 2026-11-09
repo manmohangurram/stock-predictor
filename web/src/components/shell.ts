@@ -15,13 +15,10 @@ const LINKS: { id: Section; label: string; href: string; group: "work" | "setup"
   { id: "archived", label: "Archived", href: "/archived", group: "setup" },
 ];
 
-export interface RailFoot {
-  label: string;
-  value: string;
-  note?: string;
-}
-
-export function renderRail(active: Section, foot?: RailFoot, badges: Partial<Record<Section, string>> = {}): string {
+export function renderRail(
+  active: Section,
+  badges: Partial<Record<Section, string>> = {},
+): string {
   const link = (l: (typeof LINKS)[number]) =>
     `<a href="${l.href}" ${l.id === active ? 'aria-current="page" class="on"' : ""}>
       <span>${l.label}</span>${badges[l.id] ? `<span class="rail-badge">${badges[l.id]}</span>` : ""}
@@ -30,13 +27,6 @@ export function renderRail(active: Section, foot?: RailFoot, badges: Partial<Rec
     LINKS.filter((l) => l.group === g).map(link).join("");
   // A sibling rule, not a wrapper: the rail lays its children out as a column.
   const items = `${group("work")}<div class="rail-sep" role="presentation"></div>${group("setup")}`;
-  const footHtml = foot
-    ? `<div class="rail-foot">
-        <span class="lbl">${foot.label}</span>
-        <b>${foot.value}</b>
-        ${foot.note ? `<span class="rail-note">${foot.note}</span>` : ""}
-      </div>`
-    : "";
   return `<nav class="rail" aria-label="Sections">
     <div class="rail-brand">
       <img src="/favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
@@ -44,19 +34,28 @@ export function renderRail(active: Section, foot?: RailFoot, badges: Partial<Rec
       <span>${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
     </div>
     ${items}
-    ${footHtml}
   </nav>`;
 }
 
-export function renderApp(active: Section, main: string, foot?: RailFoot, badges?: Partial<Record<Section, string>>): string {
-  return `<div class="app">${renderRail(active, foot, badges)}<main class="main">${main}</main></div>`;
+export function renderApp(
+  active: Section,
+  main: string,
+  badges?: Partial<Record<Section, string>>,
+): string {
+  return `<div class="app">${renderRail(active, badges)}<main class="main">${main}</main></div>`;
 }
 
 /** Page title plus the whole-book figures that sit beside it. */
 export function renderHead(
   title: string,
   subtitle: string,
-  figures: { label: string; value: string; tone?: "pos" | "neg" }[] = [],
+  figures: {
+    label: string;
+    value: string;
+    tone?: "pos" | "neg";
+    /** A qualifier under the number — "of 13,00,000" — for a figure that is a share of something. */
+    note?: string;
+  }[] = [],
   /** A page-level action, right of the figures — the one place a "create" belongs. */
   action = "",
 ): string {
@@ -68,7 +67,9 @@ export function renderHead(
         ? `<div class="figures">${figures
             .map(
               (f) => `<div><span class="lbl">${f.label}</span>
-            <b class="num ${f.tone ?? ""}">${f.value}</b></div>`,
+            <span class="fig-line"><b class="num ${f.tone ?? ""}">${f.value}</b>${
+              f.note ? `<span class="fig-note">${f.note}</span>` : ""
+            }</span></div>`,
             )
             .join("")}</div>`
         : ""

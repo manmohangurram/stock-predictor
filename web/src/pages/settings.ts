@@ -297,6 +297,5 @@ export function renderSettings(s: Settings, tab: Tab = "money"): string {
     ])}
     <div class="tabs-row">${tabRail(tab, s)}</div>
     ${pane(s, tab)}`,
-    { label: "Free to deploy", value: money(s.available, 0) },
   );
 }

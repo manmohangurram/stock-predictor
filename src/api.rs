@@ -181,6 +181,7 @@ struct PositionDbRow {
     ltp: Option<f64>,
     stop: Option<f64>,
     target: Option<f64>,
+    target_profit_pct: Option<f64>,
     state: String,
 }
 
@@ -227,6 +228,9 @@ pub struct PositionRow {
     pub value: Option<f64>,
     pub stop: Option<f64>,
     pub target: Option<f64>,
+    /// The owner's profit expectation for this instrument. A fund has no price exit, so this is
+    /// the only exit it can have: sell at NAV once the return is reached.
+    pub target_profit_pct: Option<f64>,
     pub state: String,
     pub timing_note: String,
 }
@@ -1495,7 +1499,8 @@ async fn load_positions(
 ) -> Result<Vec<PositionRow>, ApiError> {
     let rows: Vec<PositionDbRow> = sqlx::query_as(
         "SELECT p.id AS id, i.symbol AS symbol, i.name AS name, i.class AS class, p.qty AS qty,
-                p.avg_cost AS avg_cost, p.stop AS stop, p.target AS target, p.state AS state,
+                p.avg_cost AS avg_cost, p.stop AS stop, p.target AS target,
+                i.target_profit_pct AS target_profit_pct, p.state AS state,
                 (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
                  ORDER BY b.ts DESC LIMIT 1) AS ltp
          FROM positions p JOIN instruments i ON i.id = p.instrument_id
@@ -1520,6 +1525,7 @@ async fn load_positions(
                 value: r.ltp.map(|price| price * r.qty),
                 stop: r.stop,
                 target: r.target,
+                target_profit_pct: r.target_profit_pct,
                 state: r.state,
                 timing_note: class.timing_note().to_string(),
             }
@@ -1564,13 +1570,15 @@ async fn approve_signal(
         action: String,
         qty: Option<f64>,
         entry: Option<f64>,
+        stop: Option<f64>,
+        target: Option<f64>,
         mode: String,
         status: String,
         kind: Option<String>,
         pair_id: Option<i64>,
     }
     let row: Option<PendingDecision> = sqlx::query_as(
-        "SELECT instrument_id, action, qty, entry, mode, status, kind, pair_id
+        "SELECT instrument_id, action, qty, entry, stop, target, mode, status, kind, pair_id
          FROM signals WHERE id = ?",
     )
     .bind(id)
@@ -1581,6 +1589,8 @@ async fn approve_signal(
         action,
         qty,
         entry,
+        stop: planned_stop,
+        target: planned_target,
         mode: mode_raw,
         status,
         kind,
@@ -1678,6 +1688,8 @@ async fn approve_signal(
         )
         .await
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        // The decision's exit plan becomes the position's, or the holding has none.
+        apply_exit_plan(&st.pool, instrument_id, mode, planned_stop, planned_target).await?;
     }
 
     sqlx::query(
@@ -1737,6 +1749,33 @@ async fn approve_signal(
     })))
 }
 
+/// A decision carries the exit plan; approving it must put that plan on the position, or the
+/// ledger would show a holding with no stop and no target the moment it was bought.
+async fn apply_exit_plan(
+    pool: &SqlitePool,
+    instrument_id: i64,
+    mode: crate::models::Mode,
+    stop: Option<f64>,
+    target: Option<f64>,
+) -> Result<(), ApiError> {
+    if stop.is_none() && target.is_none() {
+        return Ok(());
+    }
+    sqlx::query(
+        "UPDATE positions SET stop = COALESCE(?, stop), target = COALESCE(?, target)
+         WHERE id = (SELECT id FROM positions
+                     WHERE instrument_id = ? AND mode = ? AND state = 'open'
+                     ORDER BY id DESC LIMIT 1)",
+    )
+    .bind(stop)
+    .bind(target)
+    .bind(instrument_id)
+    .bind(mode.as_str())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// The plan this decision belongs to, when it is one of several moves.
 async fn plan_of(pool: &SqlitePool, id: i64) -> Result<Option<i64>, ApiError> {
     let row: Option<(Option<i64>,)> = sqlx::query_as("SELECT plan_id FROM signals WHERE id = ?")
@@ -1753,6 +1792,8 @@ struct PlanLeg {
     action: String,
     qty: Option<f64>,
     entry: Option<f64>,
+    stop: Option<f64>,
+    target: Option<f64>,
     mode: String,
 }
 
@@ -1765,7 +1806,7 @@ async fn approve_plan(
     body: &ApproveBody,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let legs: Vec<PlanLeg> = sqlx::query_as(
-        "SELECT id, instrument_id, action, qty, entry, mode FROM signals
+        "SELECT id, instrument_id, action, qty, entry, stop, target, mode FROM signals
          WHERE plan_id = ? AND status = 'pending'
          ORDER BY CASE action WHEN 'SELL' THEN 0 ELSE 1 END, id",
     )
@@ -1855,6 +1896,8 @@ async fn approve_plan(
         .bind(leg.id)
         .execute(&st.pool)
         .await?;
+        // Each leg carries its own exits; the position keeps them for the ledger.
+        apply_exit_plan(&st.pool, leg.instrument_id, mode, leg.stop, leg.target).await?;
         posted.push(leg.id);
     }
 

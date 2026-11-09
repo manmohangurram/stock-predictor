@@ -579,7 +579,6 @@
   .rail > a.on { background: var(--paper-raised); color: var(--ink); font-weight: 600;
     border-left-color: var(--stamp-ink); }
   .rail-badge { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
-  .rail-foot { margin-top: auto; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--rule);
     display: grid; gap: 1px; }
   .rail-foot b { font-family: var(--font-ledger); font-size: var(--text-md); font-weight: 500; }
   .rail-note { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
@@ -1083,4 +1082,18 @@
   .dlg-opt.sel, .dlg-opt:hover { background: var(--paper-inset); }
   .dlg-foot { border-top: 1px solid var(--rule); padding: var(--space-2) var(--space-4);
     display: flex; gap: var(--space-4); font-size: var(--text-xs); color: var(--ink-tertiary); }
+}
+
+@layer components {
+  /* The decision list can be long; it scrolls inside its card instead of pushing the book off
+     the page. The card keeps its height, so the tables below never move as decisions arrive. */
+  .decisions-feed { max-height: min(44vh, 520px); overflow-y: auto;
+    overscroll-behavior: contain; padding-right: var(--space-2); }
+  .decisions-feed:focus-within { outline: none; }
+  /* The figures can carry a qualifier under the number. */
+  /* The qualifier rides beside the number, not under it: every figure keeps two rows, so the
+     numbers share one line and the action beside them keeps its place. */
+  .figures .fig-line { display: flex; align-items: baseline; gap: var(--space-2); }
+  .figures .fig-note { font-family: var(--font-ledger); font-size: var(--text-xs);
+    color: var(--ink-tertiary); }
 }

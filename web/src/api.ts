@@ -38,6 +38,8 @@ export interface PositionRow {
   value: number | null;
   stop: number | null;
   target: number | null;
+  /** The owner's profit expectation. A fund's only exit: sold at NAV once the return is reached. */
+  target_profit_pct: number | null;
   state: string;
   timing_note: string;
 }
