@@ -315,14 +315,16 @@ async fn poll_instrument(
         return finish(
             deps,
             instrument,
-            resolved,
-            &candidate,
-            Sizing {
-                available,
-                atr: ind.atr14,
+            Finished {
+                resolved,
+                candidate: &candidate,
+                sizing: Sizing {
+                    available,
+                    atr: ind.atr14,
+                },
+                now,
+                conversation_id: None,
             },
-            now,
-            None,
             report,
         )
         .await;
@@ -392,14 +394,16 @@ async fn poll_instrument(
     finish(
         deps,
         instrument,
-        resolved,
-        &candidate,
-        Sizing {
-            available,
-            atr: ind.atr14,
+        Finished {
+            resolved,
+            candidate: &candidate,
+            sizing: Sizing {
+                available,
+                atr: ind.atr14,
+            },
+            now,
+            conversation_id: Some(&decision.conversation_id),
         },
-        now,
-        Some(&decision.conversation_id),
         report,
     )
     .await
@@ -506,18 +510,29 @@ struct Sizing {
     atr: f64,
 }
 
-#[allow(clippy::too_many_arguments)]
+/// What a finished decision needs to be recorded. Bundled so `finish` stays readable.
+struct Finished<'a> {
+    resolved: Resolved,
+    candidate: &'a Candidate,
+    sizing: Sizing,
+    now: DateTime<Utc>,
+    /// The model conversation this came from, so Audit can show what happened to it.
+    conversation_id: Option<&'a str>,
+}
+
 async fn finish(
     deps: &EngineDeps<'_>,
     instrument: &Instrument,
-    resolved: Resolved,
-    candidate: &Candidate,
-    sizing: Sizing,
-    now: DateTime<Utc>,
-    // The model conversation this came from, so Audit can show what happened to it.
-    conversation_id: Option<&str>,
+    done: Finished<'_>,
     report: &mut PollReport,
 ) -> Result<()> {
+    let Finished {
+        resolved,
+        candidate,
+        sizing,
+        now,
+        conversation_id,
+    } = done;
     // A HOLD is the absence of a decision, not a decision to record.
     if !matches!(resolved.action, Action::Buy | Action::Sell) {
         return Ok(());

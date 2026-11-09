@@ -144,18 +144,6 @@ impl Runtime {
         }
         Ok(())
     }
-
-    /// Every key this struct owns, with the value the UI should show for it.
-    pub fn rows(&self) -> Vec<(&'static str, String)> {
-        vec![
-            ("poll_secs", self.poll_secs.to_string()),
-            ("off_hours_secs", self.off_hours_secs.to_string()),
-            ("prompt_window_hours", self.prompt_window_hours.to_string()),
-            ("min_price_move", self.min_price_move.to_string()),
-            ("max_silence_secs", self.max_silence_secs.to_string()),
-            ("daily_cap", self.daily_cap.to_string()),
-        ]
-    }
 }
 
 /// An older database stored `http://user:pass@host` in one row. Split it so both shapes work.

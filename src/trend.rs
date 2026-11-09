@@ -70,17 +70,19 @@ pub async fn run(
             continue;
         };
 
-        // Fresh tape and headlines, so the gate has something real to compare.
-        if let Err(e) = crate::store::refresh(pool, id, &symbol, market).await {
-            report.notes.push(format!("{symbol}: {e}"));
-            continue;
-        }
+        // Gate first, network second: ten refresh pairs per tick is the expensive part, and most
+        // of these names have not moved since the last pass.
         let headlines_changed = news_newer_than_last_call(pool, id).await?;
         let gate = memo::CallGate {
             min_move: runtime.min_price_move,
             max_interval_secs: runtime.max_silence_secs,
         };
         if !memo::should_call(pool, id, g.ltp, now, gate, headlines_changed).await? {
+            continue;
+        }
+        // Only now is the tape worth fetching.
+        if let Err(e) = crate::store::refresh(pool, id, &symbol, market).await {
+            report.notes.push(format!("{symbol}: {e}"));
             continue;
         }
 

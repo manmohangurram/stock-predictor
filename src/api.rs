@@ -102,8 +102,6 @@ pub enum ApiError {
     NotFound(String),
     #[error("{0}")]
     BadRequest(String),
-    #[error("committed is {committed}")]
-    BelowCommitted { committed: f64 },
     #[error("currency is fixed once the ledger has entries")]
     CurrencyLocked,
     #[error("internal error")]
@@ -129,10 +127,6 @@ impl IntoResponse for ApiError {
         let (status, body) = match &self {
             ApiError::NotFound(m) => (StatusCode::NOT_FOUND, serde_json::json!({"error": m})),
             ApiError::BadRequest(m) => (StatusCode::BAD_REQUEST, serde_json::json!({"error": m})),
-            ApiError::BelowCommitted { committed } => (
-                StatusCode::CONFLICT,
-                serde_json::json!({"error": "below_committed", "committed": committed}),
-            ),
             ApiError::CurrencyLocked => (
                 StatusCode::CONFLICT,
                 serde_json::json!({"error": "currency_locked"}),
@@ -367,7 +361,6 @@ async fn put_settings(
     )
     .await
     .map_err(|e| match e {
-        SettingsError::BelowCommitted { committed } => ApiError::BelowCommitted { committed },
         SettingsError::CurrencyLocked => ApiError::CurrencyLocked,
         SettingsError::InvalidAmount => ApiError::BadRequest("invalid amount".into()),
         SettingsError::BadRequest(message) => ApiError::BadRequest(message),
@@ -815,12 +808,12 @@ async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiErro
                 a.round AS round, a.prompt_tokens AS prompt_tokens,
                 a.completion_tokens AS completion_tokens,
                 a.validator_verdict AS validator_verdict, a.error AS error,
-                a.trigger AS trigger,
-                (SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
-                 ORDER BY s.id DESC LIMIT 1) AS decision_id,
-                (SELECT s.status FROM signals s WHERE s.conversation_id = a.conversation_id
-                 ORDER BY s.id DESC LIMIT 1) AS decision_status
-         FROM api_calls a ORDER BY a.id DESC LIMIT 100",
+                a.trigger AS trigger, d.id AS decision_id, d.status AS decision_status
+         FROM api_calls a
+         LEFT JOIN signals d ON d.id = (
+             SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
+             ORDER BY s.id DESC LIMIT 1)
+         ORDER BY a.id DESC LIMIT 100",
     )
     .fetch_all(&st.pool)
     .await?;

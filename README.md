@@ -47,7 +47,11 @@ before you see it.
   close below SMA200)", "no key configured", "called 12 minutes ago".
 - **One notification per actionable change**, deduplicated, with a deep link back to the ledger.
 - **Cheap to run.** The model is called only when the price moved or the headlines changed — never
-  just because time passed. The static prompt block is a cacheable prefix.
+  just because time passed — and Audit records the exact reason for every call next to what you did
+  with the decision it produced. The static prompt block is a cacheable prefix.
+- **Short-term discovery.** NSE's daily movers (top ten across all securities) are checked on every
+  tick; each name is asked about only when *it* changed, and the answer is a short-term decision with
+  a horizon and an expiry no longer than a week.
 - **Everything is a settings row** — budget, limits, model and key, ntfy, polling cadence and an
   HTTP proxy — edited in the UI and applied on the next tick. Three environment variables remain.
 - **Auditable.** Every outbound call stores its prompt and its raw reply; the Audit page renders the

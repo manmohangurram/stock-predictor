@@ -8,8 +8,6 @@ pub enum CashKind {
     Budget,
     Buy,
     Sell,
-    Reserve,
-    Release,
     /// Unspent allowance removed at a month boundary. Not a trading loss.
     Expiry,
 }
@@ -20,8 +18,6 @@ impl CashKind {
             CashKind::Budget => "budget",
             CashKind::Buy => "buy",
             CashKind::Sell => "sell",
-            CashKind::Reserve => "reserve",
-            CashKind::Release => "release",
             CashKind::Expiry => "expiry",
         }
     }

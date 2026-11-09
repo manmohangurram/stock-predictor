@@ -3,7 +3,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use thiserror::Error;
 
-use super::budget::{self, CashKind, NewCashEntry};
+use super::budget;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Settings {
@@ -71,8 +71,6 @@ pub struct SettingsPatch {
 
 #[derive(Debug, Error, PartialEq)]
 pub enum SettingsError {
-    #[error("committed is {committed}, budget cannot be lower")]
-    BelowCommitted { committed: f64 },
     #[error("currency is fixed once the ledger has entries")]
     CurrencyLocked,
     #[error("invalid amount")]
@@ -247,35 +245,6 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
         .await
         .context("set currency")
         .map_err(|_| SettingsError::InvalidAmount)?;
-    }
-
-    if let Some(trading) = patch.trading_budget {
-        if !trading.is_finite() || trading < 0.0 {
-            return Err(SettingsError::InvalidAmount);
-        }
-        let committed = budget::committed_in(pool, crate::models::Mode::Trade)
-            .await
-            .map_err(|_| SettingsError::InvalidAmount)?;
-        if trading < committed - 1e-9 {
-            return Err(SettingsError::BelowCommitted { committed });
-        }
-        let current = budget::budget_total_in(pool, crate::models::Mode::Trade)
-            .await
-            .map_err(|_| SettingsError::InvalidAmount)?;
-        if (trading - current).abs() > 1e-9 {
-            budget::record_at_mode(
-                pool,
-                NewCashEntry {
-                    kind: CashKind::Budget,
-                    amount: trading - current,
-                    reference: format!("trading budget set to {trading}"),
-                },
-                &chrono::Utc::now().to_rfc3339(),
-                crate::models::Mode::Trade,
-            )
-            .await
-            .map_err(|_| SettingsError::InvalidAmount)?;
-        }
     }
 
     for (name, value) in [

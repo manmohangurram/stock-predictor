@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, Utc};
 use sqlx::SqlitePool;
 
-use super::budget::{self, CashKind, NewCashEntry};
+use super::budget::{self, CashKind};
 use crate::models::Mode;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -89,7 +89,7 @@ pub async fn ensure_month(
             .bind(if same_month {
                 format!("allowance changed to {allowance}")
             } else {
-                allowance_reference(&month)
+                format!("allowance {month}")
             })
             .bind(mode.as_str())
             .execute(&mut *tx)
@@ -116,21 +116,6 @@ pub async fn ensure_month(
         expired,
         granted: delta,
     })
-}
-
-/// What expires at the end of the month, for the UI, without writing anything.
-pub async fn month_state(pool: &SqlitePool, mode: Mode, now: DateTime<Utc>) -> Result<(String, f64)> {
-    Ok((ist_month(now), budget::cash_in(pool, mode).await?))
-}
-
-/// A reference string the ledger and the tests can both recognise.
-pub fn allowance_reference(month: &str) -> String {
-    format!("allowance {month}")
-}
-
-#[allow(dead_code)]
-fn _entry_shape(e: NewCashEntry) -> NewCashEntry {
-    e
 }
 
 #[cfg(test)]
