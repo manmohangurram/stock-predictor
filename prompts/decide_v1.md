@@ -10,6 +10,11 @@ events after the time given. Market breadth, order flow, or news not listed here
 judging whether the evidence in front of you justifies a trade, and where it would be wrong —
 not predicting an outcome.
 
+## The horizon of this book
+This is the **long-term book: six months or more, for stocks and funds alike**. A setup that needs a
+week to pay is not this book's trade — say `pass` and leave it to the short-term pot. Judge a buyer's
+question: would I still be content holding this in a year if the first two months are dull?
+
 ## The broker's playbook — work through it in order
 1. **Structure first, always.** Read the price windows as a chart, not as numbers. Is this a
    higher-high/higher-low uptrend, a lower-high/lower-low downtrend, or a sideways range?

@@ -294,3 +294,13 @@ fn the_trade_book_uses_the_short_playbook_and_the_long_book_does_not() {
     );
     assert!(short.contains("at most 168"), "the horizon cap");
 }
+
+#[test]
+fn the_long_book_says_its_horizon_is_months() {
+    let t = stock_predictor::llm::prompts::template("decide_v1").unwrap();
+    assert!(t.contains("six months or more"), "the long-term horizon");
+    assert!(
+        t.contains("not this book's trade"),
+        "a week-long setup must be handed to the short-term pot"
+    );
+}
