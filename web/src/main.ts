@@ -3,6 +3,7 @@ import { renderCalls, renderExchangeDetail } from "./pages/calls";
 import { renderArchived } from "./pages/archived";
 import { qtyLimit, renderInstrument } from "./pages/instrument";
 import { renderLedger } from "./pages/ledger";
+import { escapeHtml } from "./format";
 import {
   clearDraft,
   isTab,
@@ -71,7 +72,7 @@ async function route(): Promise<void> {
       app.innerHTML = renderLedger(d, d.recent_trades);
       // The nav belongs inside the content column, not floating in the page margin.
       wireRows();
-      wireSearch();
+      wireAddDialog();
       wireDecisionActions();
     }
   } catch (e) {
@@ -96,61 +97,135 @@ function wireRows(): void {
   });
 }
 
-function wireSearch(): void {
-  const input = document.querySelector<HTMLInputElement>("#search");
-  const box = document.querySelector<HTMLDivElement>("#results");
-  if (!input || !box) return;
+/**
+ * Adding an instrument: one dialog, opened from the header (or ⌘K / Ctrl-K), results grouped by
+ * class and chosen with ↑↓ ⏎. The dialog is the only place a search happens, so there is never a
+ * bare input sitting at the bottom of a page.
+ */
+function wireAddDialog(): void {
+  const dialog = document.querySelector<HTMLDialogElement>("#add-dialog");
+  const body = document.querySelector<HTMLElement>(".add-dialog-body");
+  if (!dialog || !body) return;
+  if (!dialog.contains(body)) dialog.append(body);
+  body.hidden = false;
 
+  const input = dialog.querySelector<HTMLInputElement>("#search")!;
+  const box = dialog.querySelector<HTMLDivElement>("#results")!;
   let timer: number | undefined;
-  let last: Hit[] = [];
+  let hits: Hit[] = [];
+  let active = 0;
 
-  const draw = (hits: Hit[]) => {
-    box.innerHTML = hits.length
-      ? hits
-          .map(
-            (h, i) => `<button class="hit" type="button" data-i="${i}" role="option"
-            aria-label="Add ${h.code}">
-            <b class="num">${h.code}</b>
-            <span>${h.name}</span>
-            <em>${h.venue || h.class}</em>
-          </button>`,
-          )
-          .join("")
+  // Six is a chooser, not a directory: it keeps the list on one screen, so no scrollbar can
+  // push the rows out of line with the field above them.
+  const SHOWN = 6;
+  const groups = (list: Hit[]) => {
+    const stock = list.filter((h) => h.class !== "mutual_fund");
+    const fund = list.filter((h) => h.class === "mutual_fund");
+    return [
+      { label: "Stocks", items: stock },
+      { label: "Mutual funds", items: fund },
+    ].filter((g) => g.items.length);
+  };
+
+  const draw = () => {
+    const parts: string[] = [];
+    let index = 0;
+    for (const g of groups(hits.slice(0, SHOWN))) {
+      parts.push(`<div class="dlg-group">${g.label}</div>`);
+      for (const h of g.items) {
+        const i = index++;
+        parts.push(`<div class="dlg-opt ${i === active ? "sel" : ""}" role="option"
+          aria-selected="${i === active}" data-i="${i}" tabindex="-1">
+          <b>${escapeHtml(h.name)}</b>
+          <span class="meta">${escapeHtml(h.code)} · ${h.class === "mutual_fund" ? "fund" : "stock"}</span>
+        </div>`);
+      }
+    }
+    box.innerHTML = parts.length
+      ? `${parts.join("")}${
+          hits.length > SHOWN
+            ? `<p class="dlg-more">${hits.length - SHOWN} more — keep typing to narrow it</p>`
+            : ""
+        }`
       : input.value.trim().length >= 2
-        ? `<p class="empty">Nothing found.</p>`
-        : "";
-    box.querySelectorAll<HTMLButtonElement>(".hit").forEach((b) => {
-      b.addEventListener("click", async () => {
-        const hit = last[Number(b.dataset.i)];
-        if (!hit) return;
-        b.disabled = true;
-        b.textContent = `Adding ${hit.code}…`;
-        try {
-          await api.addInstrument(hit.code, hit.name, hit.class);
-          window.location.href = `/i/${encodeURIComponent(hit.code)}`;
-        } catch (e) {
-          b.textContent = `Failed: ${String(e)}`;
-        }
+        ? `<p class="empty">Nothing matches that.</p>`
+        : `<p class="empty">Type a name, a ticker, or an AMFI code.</p>`;
+    box.querySelectorAll<HTMLElement>(".dlg-opt").forEach((el) => {
+      el.addEventListener("click", () => {
+        active = Number(el.dataset.i);
+        draw();
+        void add();
       });
     });
   };
+
+  const add = async () => {
+    const hit = hits[active];
+    if (!hit) return;
+    const row = box.querySelector<HTMLElement>(`.dlg-opt[data-i="${active}"]`);
+    if (row) row.textContent = `Adding ${hit.code}…`;
+    try {
+      await api.addInstrument(hit.code, hit.name, hit.class);
+      window.location.href = `/i/${encodeURIComponent(hit.code)}`;
+    } catch (e) {
+      if (row) row.textContent = `Failed: ${String(e)}`;
+    }
+  };
+
+  const open = () => {
+    if (!dialog.open) dialog.showModal();
+    input.value = "";
+    hits = [];
+    active = 0;
+    draw();
+    input.focus();
+  };
+
+  document.querySelectorAll<HTMLElement>("[data-add-open]").forEach((b) => {
+    b.addEventListener("click", open);
+  });
+  document.addEventListener("keydown", (ev) => {
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "k") {
+      ev.preventDefault();
+      open();
+    }
+  });
+  dialog.addEventListener("click", (ev) => {
+    if (ev.target === dialog) dialog.close(); // the backdrop
+  });
+  dialog.addEventListener("close", () => input.blur());
 
   input.addEventListener("input", () => {
     window.clearTimeout(timer);
     const q = input.value.trim();
     if (q.length < 2) {
-      last = [];
-      draw([]);
+      hits = [];
+      active = 0;
+      draw();
       return;
     }
     timer = window.setTimeout(async () => {
       try {
-        last = await api.search(q);
-        draw(last);
+        hits = await api.search(q);
+        active = 0;
+        draw();
       } catch {
         box.innerHTML = `<p class="empty">Search unavailable.</p>`;
       }
     }, 250);
+  });
+
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      const count = Math.min(hits.length, 6);
+      if (!count) return;
+      active = (active + (ev.key === "ArrowDown" ? 1 : -1) + count) % count;
+      draw();
+    } else if (ev.key === "Enter") {
+      ev.preventDefault();
+      void add();
+    }
   });
 }
 

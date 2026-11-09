@@ -65,7 +65,8 @@ column whose content can force the table wider than the page (long text wraps in
 and no new rail item appended to a growing list — a page joins a group.
 
 A UI change is done when a headless screenshot shows it, at 1440 and 390, not when the file is
-written.
+written — and when the alignment is measured, not eyeballed: `getBoundingClientRect()` on the
+left edge of every line that is supposed to share one, and on the right edge of every number.
 
 ## Quality gates
 

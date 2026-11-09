@@ -237,6 +237,23 @@ const sum = (rows: Dashboard["positions"]): { invested: number; value: number } 
   value: rows.reduce((a, p) => a + (p.value ?? p.qty * p.avg_cost), 0),
 });
 
+/**
+ * Adding an instrument is a search you pick from, not a box you hope works: one dialog, grouped
+ * results, and the keyboard does the rest.
+ */
+function addDialog(): string {
+  return `<div class="add-dialog-body" hidden>
+    <div class="dlg-search">
+      <input id="search" type="search" autocomplete="off" aria-label="Search stocks and mutual funds"
+             placeholder="Infosys, INFY, 120503, Motilal Oswal Midcap…" role="combobox"
+             aria-expanded="true" aria-controls="results" />
+      <span class="kbd">esc</span>
+    </div>
+    <div id="results" class="results dlg-results" role="listbox" aria-label="Search results"></div>
+    <div class="dlg-foot"><span>↑↓ to move</span><span>⏎ to add</span><span>Esc to close</span></div>
+  </div>`;
+}
+
 export function renderLedger(d: Dashboard, recent: Trade[]): string {
   const inMode = recent.filter((t) => t.mode === d.mode);
   const stocks = d.positions.filter((p) => p.class === "stock");
@@ -336,6 +353,8 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
       { label: "Unrealised", value: `${pnl >= 0 ? "+" : "−"}${money(Math.abs(pnl), 0)}`, tone: pnl >= 0 ? "pos" : "neg" },
       { label: "Cash", value: money(d.available, 0) },
     ],
+    `<button class="btn primary head-action" type="button" data-add-open
+             aria-haspopup="dialog">+ Add instrument</button>`,
   )}
   <div class="mode-row">${renderModeTabs(d.mode)}<span class="sub">${d.currency} · as of the last poll</span></div>
   <section class="card" id="decisions-card">
@@ -349,16 +368,12 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
       d.positions.length ? d.positions.map((p) => renderRow(d, p)).join("") : `<tr><td colspan="8" class="empty">Nothing in the short-term pot.</td></tr>`) : stocksSection + fundsSection}
   <div class="cards">
     <section class="card">
-      <div class="lbl">Add an instrument</div>
-      <div class="search"><input id="search" type="search" placeholder="Infosys, INFY, 120503, Motilal Oswal Midcap…"
-        autocomplete="off" aria-label="Search stocks and mutual funds" />
-      <div id="results" class="results" role="listbox" aria-label="Search results"></div></div>
-      <div class="lbl" style="margin-top:var(--space-4)">Recent fills</div>
+      <div class="lbl">Recent fills</div>
       <div class="feed">${history}</div>
     </section>
   </div>`;
 
-  return renderApp("ledger", content, {
+  return renderApp("ledger", `${content}${addDialog()}<dialog id="add-dialog" class="add-dialog"></dialog>`, {
     label: "Free to deploy",
     value: money(d.available, 0),
     note: d.budget > 0 ? `of ${money(d.budget, 0)}` : undefined,

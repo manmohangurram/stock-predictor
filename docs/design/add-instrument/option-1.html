@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Option 1 — header action and a search dialog</title>
+<style>
+  :root {
+    --paper: oklch(0.985 0.006 85);
+    --paper-raised: oklch(1 0 0);
+    --paper-inset: oklch(0.965 0.008 85);
+    --ink: oklch(0.22 0.012 60);
+    --ink-secondary: oklch(0.44 0.012 60);
+    --ink-tertiary: oklch(0.58 0.01 60);
+    --ink-muted: oklch(0.7 0.008 60);
+    --rule-subtle: oklch(0.22 0.012 60 / 0.08);
+    --rule: oklch(0.22 0.012 60 / 0.14);
+    --rule-strong: oklch(0.22 0.012 60 / 0.24);
+    --stamp-ink: oklch(0.42 0.12 262);
+    --stamp-ink-bg: oklch(0.93 0.03 262);
+    --stamp-oxide: oklch(0.42 0.15 35);
+    --stamp-oxide-bg: oklch(0.93 0.035 35);
+    --font-form: "IBM Plex Sans", system-ui, sans-serif;
+    --font-ledger: "IBM Plex Mono", ui-monospace, monospace;
+    --text-xs: 0.6875rem; --text-sm: 0.8125rem; --text-base: 0.875rem;
+    --text-md: 1rem; --text-lg: 1.25rem; --text-xl: 1.625rem;
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-6: 24px; --space-8: 32px;
+    --radius: 3px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font-form); font-size: var(--text-base);
+  }
+  .app { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+  .rail { border-right: 1px solid var(--rule); padding: var(--space-4); display: flex;
+    flex-direction: column; gap: 2px; background: var(--paper); }
+  .brand { display: flex; align-items: center; gap: var(--space-2); font-weight: 600;
+    margin-bottom: var(--space-6); }
+  .brand .sq { width: 26px; height: 26px; border-radius: 6px; background: var(--ink);
+    color: var(--paper); display: grid; place-items: center; font-family: var(--font-ledger);
+    font-size: 12px; }
+  .rail a { padding: 7px 10px; border-radius: var(--radius); color: var(--ink-secondary);
+    text-decoration: none; font-size: var(--text-base); }
+  .rail a.on { background: var(--paper-inset); color: var(--ink); font-weight: 500; }
+  .rail .foot { margin-top: auto; border-top: 1px solid var(--rule-subtle); padding-top: var(--space-3); }
+  .rail .foot .lbl { font-size: var(--text-xs); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-tertiary); }
+  .rail .foot b { display: block; font-family: var(--font-ledger); font-size: var(--text-lg);
+    font-weight: 500; }
+
+  main { padding: var(--space-6) var(--space-8) var(--space-8); }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--space-6); }
+  h1 { font-size: var(--text-xl); margin: 0 0 2px; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-tertiary); font-size: var(--text-sm); }
+  .figures { display: flex; gap: var(--space-8); align-items: flex-end; }
+  .figures div { display: grid; gap: 1px; }
+  .figures .lbl { font-size: var(--text-xs); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-tertiary); }
+  .figures b { font-family: var(--font-ledger); font-size: var(--text-lg); font-weight: 500; }
+  .add { margin-left: var(--space-6); align-self: flex-end; }
+
+  .btn { font: inherit; font-size: var(--text-sm); padding: 7px 12px; border-radius: var(--radius);
+    border: 1px solid var(--rule-strong); background: var(--paper-raised); color: var(--ink);
+    cursor: pointer; }
+  .btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  table { width: 100%; border-collapse: collapse; margin-top: var(--space-6); }
+  th { text-align: left; font-size: var(--text-xs); letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-tertiary); font-weight: 600; padding: 0 8px 8px; border-bottom: 1px solid var(--rule); }
+  th.right, td.num { text-align: right; }
+  td { padding: 9px 8px; border-bottom: 1px solid var(--rule-subtle); }
+  td.num { font-family: var(--font-ledger); }
+  td.name b { display: block; font-weight: 500; }
+  td.name .sym { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-tertiary); }
+  tr.subtotal td { background: var(--paper-inset); font-weight: 600; border-top: 1px solid var(--rule); }
+  .up { color: oklch(0.45 0.12 155); }
+
+  /* the dialog */
+  dialog {
+    border: 0; padding: 0; border-radius: 6px; width: 640px; max-width: calc(100vw - 32px);
+    background: var(--paper-raised); color: var(--ink);
+    box-shadow: 0 24px 60px oklch(0.2 0.02 60 / 0.28);
+  }
+  dialog::backdrop { background: oklch(0.2 0.02 60 / 0.35); }
+  .dlg-search { display: flex; align-items: center; gap: var(--space-3);
+    padding: var(--space-4); border-bottom: 1px solid var(--rule); }
+  .dlg-search input { flex: 1; border: 0; outline: 0; font: inherit; font-size: var(--text-md);
+    background: transparent; color: var(--ink); }
+  .kbd { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-tertiary);
+    border: 1px solid var(--rule); border-radius: 4px; padding: 2px 5px; }
+  .group { padding: var(--space-3) var(--space-4) var(--space-1); font-size: var(--text-xs);
+    letter-spacing: .08em; text-transform: uppercase; color: var(--ink-tertiary); }
+  .opt { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4);
+    padding: 9px var(--space-4); cursor: pointer; }
+  .opt b { font-weight: 500; }
+  .opt .meta { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-tertiary); }
+  .opt.sel { background: var(--paper-inset); }
+  .dlg-foot { border-top: 1px solid var(--rule); padding: var(--space-2) var(--space-4);
+    display: flex; gap: var(--space-4); font-size: var(--text-xs); color: var(--ink-tertiary); }
+  .caption { margin-top: var(--space-6); color: var(--ink-tertiary); font-size: var(--text-xs);
+    border-top: 1px dashed var(--rule); padding-top: var(--space-3); }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail">
+    <div class="brand"><span class="sq">SP</span> Stock Predictor</div>
+    <a class="on" href="#">Ledger <span style="float:right;color:var(--ink-tertiary)">3</span></a>
+    <a href="#">Audit</a>
+    <div style="border-top:1px solid var(--rule); margin:12px 0 8px"></div>
+    <a href="#">Settings</a>
+    <a href="#">Archived</a>
+    <div class="foot"><span class="lbl">Free to deploy</span><b>12,31,635</b>
+      <span class="sub">of 13,00,000</span></div>
+  </nav>
+
+  <main>
+    <div class="head">
+      <div>
+        <h1>Holdings</h1>
+        <div class="sub">Long-term book · 2 stocks and 1 fund</div>
+      </div>
+      <div class="figures">
+        <div><span class="lbl">Invested</span><b>68,365</b></div>
+        <div><span class="lbl">Now</span><b>90,815</b></div>
+        <div><span class="lbl">Unrealised</span><b class="up">+22,450</b></div>
+        <div><span class="lbl">Cash</span><b>12,31,635</b></div>
+        <div class="add"><button class="btn primary" onclick="openDlg()">+ Add instrument</button></div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>Holding</th><th class="right">Qty</th><th class="right">Bought</th>
+        <th class="right">Invested</th><th class="right">Now</th><th class="right">P&amp;L</th></tr></thead>
+      <tbody>
+        <tr><td class="name"><b>HDFC Bank</b><span class="sym">HDFCBANK.NS</span></td>
+          <td class="num">30</td><td class="num">740.05</td><td class="num">22,201.50</td>
+          <td class="num">795.95</td><td class="num up">+1,677.00</td></tr>
+        <tr><td class="name"><b>Infosys</b><span class="sym">INFY.NS</span></td>
+          <td class="num">26</td><td class="num">1,042.30</td><td class="num">27,099.80</td>
+          <td class="num">1,152.50</td><td class="num up">+2,865.20</td></tr>
+        <tr class="subtotal"><td>Stocks</td><td class="num">—</td><td class="num">—</td>
+          <td class="num">49,301.30</td><td class="num">—</td><td class="num up">+4,542.20</td></tr>
+      </tbody>
+    </table>
+    <p class="caption">Option 1 — the action lives in the page header, where every "create" lives.
+      Nothing moves in the body; the dialog does the searching.</p>
+  </main>
+</div>
+
+<dialog id="dlg">
+  <div class="dlg-search">
+    <span style="color:var(--ink-tertiary)">⌕</span>
+    <input value="osw" aria-label="Search" autofocus />
+    <span class="kbd">esc</span>
+  </div>
+  <div class="group">Stocks</div>
+  <div class="opt"><span><b>Oswal Pumps</b></span><span class="meta">OSWALPUMPS.NS · stock</span></div>
+  <div class="group">Mutual funds</div>
+  <div class="opt sel"><span><b>Motilal Oswal Midcap Direct Growth</b></span>
+    <span class="meta">0P00012ALS.BO · fund</span></div>
+  <div class="opt"><span><b>Motilal Oswal Nasdaq 100 FOF</b></span>
+    <span class="meta">148690 · fund</span></div>
+  <div class="dlg-foot"><span>↑↓ to move</span><span>⏎ to add</span><span>Esc to close</span></div>
+</dialog>
+
+<script>
+  function openDlg() { document.getElementById('dlg').showModal(); }
+  document.getElementById('dlg').showModal();
+</script>
+</body>
+</html>

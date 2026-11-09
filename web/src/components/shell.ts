@@ -57,9 +57,12 @@ export function renderHead(
   title: string,
   subtitle: string,
   figures: { label: string; value: string; tone?: "pos" | "neg" }[] = [],
+  /** A page-level action, right of the figures — the one place a "create" belongs. */
+  action = "",
 ): string {
   return `<div class="page-head">
     <div><h1>${title}</h1><div class="page-sub">${subtitle}</div></div>
+    <div class="head-right">
     ${
       figures.length
         ? `<div class="figures">${figures
@@ -70,5 +73,7 @@ export function renderHead(
             .join("")}</div>`
         : ""
     }
+    ${action}
+    </div>
   </div>`;
 }

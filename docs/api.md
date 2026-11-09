@@ -18,7 +18,7 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | GET | `/api/instruments/{symbol}/trades` | yes | Fills for one symbol |
 | POST | `/api/instruments/{symbol}/trades` | yes | Record a fill (backdatable, pot-aware) |
 | GET | `/api/trades` | yes | The last 200 fills, all instruments |
-| GET | `/api/search?q=` | yes | Yahoo + AMFI search |
+| GET | `/api/search?q=` | yes | Yahoo + AMFI search — feeds the add-instrument dialog (⌘K on the ledger) |
 | GET | `/api/calls` | yes | Audit list: prompt type, call, holding name, review state, verdict, tokens |
 | GET | `/api/calls/{id}` | yes | One call with its prompt and raw reply |
 | POST | `/api/signals/{id}/approve` | yes | Record the fill you got; approves the whole group (both legs of a rotation, every move of a plan) |
