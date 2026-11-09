@@ -44,6 +44,7 @@ async function route(): Promise<void> {
       wireTradeForm(symbol);
       wireDecisions();
       wireDecisionActions();
+      wireDeleteInstrument();
       wireTargetProfit(symbol);
     } else {
       const mode = (new URLSearchParams(location.search).get("mode") as
@@ -314,6 +315,37 @@ function wireDecisions(): void {
         toggle();
       }
     });
+  });
+}
+
+/** Delete or archive, whichever the server decides — and say which it did. */
+function wireDeleteInstrument(): void {
+  const button = document.querySelector<HTMLButtonElement>("#delete-instrument");
+  if (!button) return;
+  const status = document.querySelector<HTMLElement>("#delete-status");
+  const symbol = button.dataset.symbol ?? "";
+  if (button.dataset.held && Number(button.dataset.held) > 0) {
+    button.disabled = true;
+    return;
+  }
+  button.addEventListener("click", async () => {
+    if (!window.confirm(`Remove ${symbol}? If it has fills it will be archived, not deleted.`)) return;
+    button.disabled = true;
+    if (status) status.textContent = "Removing…";
+    try {
+      const r = await api.deleteInstrument(symbol);
+      if (status) {
+        status.textContent = r.deleted
+          ? "Deleted, with its bars and headlines."
+          : `Archived — ${r.reason ?? "it has history"}.`;
+      }
+      window.setTimeout(() => {
+        location.href = "/";
+      }, 900);
+    } catch (e) {
+      if (status) status.textContent = String(e);
+      button.disabled = false;
+    }
   });
 }
 

@@ -24,6 +24,15 @@ before you see it.
 
 ## Current Features
 
+- **A monthly allowance per pot, not a ceiling.** Money is granted on the 1st and unspent allowance
+  expires at month end — recorded as its own ledger kind, never as a trading loss. Raising the
+  allowance mid-month tops the pot up; lowering it claws the unspent part back.
+- **Decisions need your say-so.** Every suggestion is `pending` until you approve it — with the fill
+  you actually got, quantity and price editable — or reject it with a reason. The ledger shows what
+  is still under review; approved and rejected live behind a filter.
+- **Rotation.** When a buy is right but the cash is gone, the model may propose a swap: sell
+  something in profit to fund it. One decision with two legs, approved or refused as a unit, and a
+  swap that does not balance is refused before any money moves.
 - **Two pots, one process.** Long-term and trading books with separate capital, separate limits and
   separate history. Neither can starve the other; the same stock can sit in both.
 - **Stocks and mutual funds, handled as what they are.** Funds are bought at NAV and held — no
@@ -37,12 +46,14 @@ before you see it.
 - **Honest about silence.** A quiet instrument says why it is quiet — "rules see no entry (trend —
   close below SMA200)", "no key configured", "called 12 minutes ago".
 - **One notification per actionable change**, deduplicated, with a deep link back to the ledger.
-- **Cheap to run.** The model is called only when the price moved ₹2, when a new headline arrived, or
-  once an hour; the static prompt block is a cacheable prefix.
+- **Cheap to run.** The model is called only when the price moved or the headlines changed — never
+  just because time passed. The static prompt block is a cacheable prefix.
 - **Everything is a settings row** — budget, limits, model and key, ntfy, polling cadence and an
   HTTP proxy — edited in the UI and applied on the next tick. Three environment variables remain.
 - **Auditable.** Every outbound call stores its prompt and its raw reply; the Audit page renders the
   exchange as it happened.
+- **Removable.** An instrument you never traded is deleted with its bars; one with fills is archived
+  so its history survives; one you still hold is refused until it is sold.
 
 ## How it decides
 

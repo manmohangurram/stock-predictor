@@ -839,3 +839,35 @@ describe("decisions on the instrument page", () => {
     expect(html).not.toContain('data-approve="7"');
   });
 });
+
+describe("removing an instrument", () => {
+  const base = {
+    instrument: {
+      id: 1, symbol: "TCS.NS", class: "stock", name: "TCS", currency: "INR",
+      timing_note: "limit order", target_profit_pct: null,
+    },
+    bars: [], indicators: null, checks: [], position: null, headlines: [], signals: [], trades: [],
+  };
+
+  test("an unheld instrument offers a delete", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const html = renderInstrument(base as never, base as never, []);
+    expect(html).toContain('id="delete-instrument"');
+    expect(html).toContain("Delete this instrument");
+    expect(html).toContain("archived rather than deleted");
+  });
+
+  test("a held instrument refuses instead of offering it", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const held = {
+      ...base,
+      position: {
+        id: 1, symbol: "TCS.NS", name: "TCS", class: "stock", qty: 4, avg_cost: 100,
+        ltp: 110, value: 440, stop: 90, target: 130, state: "open", timing_note: "",
+      },
+    };
+    const html = renderInstrument(held as never, held as never, []);
+    expect(html).toContain("Sell it before deleting");
+    expect(html).toContain("cannot be removed");
+  });
+});

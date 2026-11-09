@@ -338,6 +338,20 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
           ${rules}
         </section>
         <section class="card">
+          <div class="card-head"><h2>Manage</h2></div>
+          <button class="btn ghost" type="button" id="delete-instrument"
+                  data-symbol="${escapeHtml(a.instrument.symbol)}" data-held="${p ? p.qty : 0}">
+            ${p ? "Sell it before deleting" : "Delete this instrument"}
+          </button>
+          <p class="help" id="delete-status" role="status">
+            ${
+              p
+                ? "An instrument you hold cannot be removed — the history is what makes the ledger true."
+                : "If it has fills, it is archived rather than deleted: hidden from polling, history kept."
+            }
+          </p>
+        </section>
+        <section class="card">
           <div class="card-head"><h2>Indicators</h2></div>
           <div class="facts">${facts.map(([k, v]) => `<div class="pair"><span>${k}</span><span class="num">${v}</span></div>`).join("")}</div>
         </section>
