@@ -915,6 +915,24 @@ describe("decisions filter on the overview", () => {
   });
 });
 
+describe("decision rows", () => {
+  test("a fund decision leads with the scheme name, not its code", async () => {
+    const { renderLedger } = await import("./pages/ledger");
+    const fund = signal({
+      symbol: "0P0000XV5C.BO",
+      name: "HDFC Balanced Advantage Direct Growth",
+      class: "mutual_fund",
+      action: "BUY",
+      qty: 80,
+      entry: 124.96,
+    });
+    const html = renderLedger(dashboard({ signals: [fund], blocked: [] }));
+    expect(html).toContain("HDFC Balanced Advantage Direct Growth");
+    // The code is still there, small, because that is what you paste into search.
+    expect(html).toContain("0P0000XV5C.BO");
+  });
+});
+
 describe("audit pager", () => {
   test("says where you are, links only where you can go, and offers a page size", async () => {
     const { renderPager } = await import("./pages/calls");

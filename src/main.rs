@@ -9,7 +9,23 @@ use stock_predictor::rules::evaluate::RuleConfig;
 use stock_predictor::rules::settings;
 use stock_predictor::{api, config::Config, db, schedule};
 use tokio::net::TcpListener;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeDir;
+
+/// The app shell: never cached without revalidation. A rebuild renames the hashed bundle, so a
+/// stale copy of this file points at a script that no longer exists — the "hard refresh needed"
+/// report. The bundle itself is content-addressed and can be cached forever.
+async fn spa_index() -> impl axum::response::IntoResponse {
+    let html = tokio::fs::read_to_string("web/dist/index.html")
+        .await
+        .unwrap_or_else(|_| "<h1>Build the front end: cd web && npm run build</h1>".to_string());
+    (
+        [(
+            axum::http::header::CACHE_CONTROL,
+            "no-cache, must-revalidate",
+        )],
+        axum::response::Html(html),
+    )
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -196,9 +212,17 @@ async fn main() -> Result<()> {
     let mut state = api::AppState::new(pool.clone(), cfg.clone());
     state.manual = Some(manual_tx);
     // Client-side routes must not 404 on a direct load or a refresh.
-    let app = api::router(state).fallback_service(
-        ServeDir::new("web/dist").fallback(ServeFile::new("web/dist/index.html")),
-    );
+    // Static files must revalidate. A rebuilt front end changes the hashed bundle *name*, so a
+    // cached index.html points at a script that no longer exists — the "hard refresh needed"
+    // report. The files themselves are small and locally served.
+    let app = api::router(state)
+        .fallback_service(
+            // No implicit index.html: the shell is served by `spa_index`, which sets the cache
+            // header. Everything else is a content-addressed file.
+            ServeDir::new("web/dist")
+                .append_index_html_on_directories(false)
+                .fallback(axum::routing::get(spa_index)),
+        );
 
     let poll_pool = pool.clone();
     tokio::spawn(async move {

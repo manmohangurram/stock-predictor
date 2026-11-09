@@ -218,10 +218,14 @@ function decisionRow(s: Dashboard["signals"][number]): string {
       ? ""
       : `<span class="pill ${s.status === "approved" ? "ok" : "todo"}">${s.status}</span>`;
   const actions = renderDecisionActions(s);
+  // A fund's scheme code (0P0000XV5C.BO) says nothing; its name does. The code stays underneath,
+  // small, because that is what you paste into the search box.
+  const named = s.name && s.name !== s.symbol;
   return `<div class="feed-row decision-feed">
     <div class="decision-main">
       <div><span class="stamp" data-stamp="${tone}">${s.action}</span>
-        <b title="${escapeHtml(s.symbol)}">${escapeHtml(s.symbol)}</b>
+        <b title="${escapeHtml(s.symbol)}">${escapeHtml(named ? s.name : s.symbol)}</b>
+        ${named ? `<span class="sub">${escapeHtml(s.symbol)}</span>` : ""}
         ${s.entry === null ? "" : `<span class="num">${money(s.entry)}</span>`}
         ${
           s.qty === null || s.qty === 0

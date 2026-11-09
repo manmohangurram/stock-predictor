@@ -1245,3 +1245,8 @@
     .strip { grid-template-columns: 1fr 1fr; }
   }
 }
+
+@layer components {
+  /* The scheme code sits beside the name, not under it: one line, name first. */
+  .decision-main .sub { margin-left: var(--space-1); color: var(--ink-muted); }
+}
