@@ -32,12 +32,12 @@ export function renderCalls(rows: CallRow[]): string {
       (r) => `<tr>
   <td class="time num">${escapeHtml(r.ts.slice(11, 16))}</td>
   <td>${escapeHtml(r.endpoint)}</td>
-  <td>${escapeHtml(r.purpose ?? "")}</td>
+  <td title="${escapeHtml(r.purpose ?? "")}">${escapeHtml(r.purpose ?? "")}</td>
   <td class="num right">${r.round ?? "—"}</td>
   <td class="num right">${r.prompt_tokens ?? 0}/${r.completion_tokens ?? 0}</td>
   <td>
     <div class="why">
-      ${r.trigger ? `<span class="why-text">${escapeHtml(r.trigger)}</span>` : `<span class="muted">—</span>`}
+      ${r.trigger ? `<span class="why-text" title="${escapeHtml(r.trigger)}">${escapeHtml(r.trigger)}</span>` : `<span class="muted">—</span>`}
     </div>
   </td>
   <td>${reviewBadge(r)}</td>

@@ -4,6 +4,7 @@ import { confidenceLabel, renderConfidence } from "../components/confidence";
 import { renderRisk } from "../components/risk";
 import { renderApp } from "../components/shell";
 import { renderDecisionActions } from "../components/decision-actions";
+import { decisionFilterTabs, isDecisionFilter, type DecisionFilter } from "../components/decision-filter";
 
 const klassOf = (c: string): "stock" | "mutual_fund" | "ipo" =>
   c === "mutual_fund" ? "mutual_fund" : c === "ipo" ? "ipo" : "stock";
@@ -130,27 +131,11 @@ export function renderTradeForm(
 }
 
 /** Decisions as a table whose rows open in place, carrying the whole message. */
-type DecisionFilter = "pending" | "approved" | "rejected" | "all";
-
 /** The filter is a URL parameter, like the ledger's, so it survives a refresh. */
-function decisionFilter(fallback: DecisionFilter = "all"): DecisionFilter {
+function currentFilter(fallback: DecisionFilter = "all"): DecisionFilter {
   if (typeof location === "undefined") return fallback;
   const raw = new URLSearchParams(location.search).get("decisions");
-  return raw === "pending" || raw === "approved" || raw === "rejected" || raw === "all"
-    ? raw
-    : fallback;
-}
-
-function decisionTabs(filter: DecisionFilter, symbol: string): string {
-  const one = ["pending", "approved", "rejected", "all"] as const;
-  return `<nav class="decisions-filter" aria-label="Decision status">${one
-    .map(
-      (f) =>
-        `<a href="?decisions=${f}"${f === filter ? ' class="on" aria-current="page"' : ""}>${
-          f[0].toUpperCase() + f.slice(1)
-        }</a>`,
-    )
-    .join("")}</nav>${symbol ? "" : ""}`;
+  return isDecisionFilter(raw) ? raw : fallback;
 }
 
 function decisions(
@@ -178,22 +163,34 @@ function decisions(
         <td class="mono">${day(s.created_at)} ${clock(s.created_at)}</td>
         <td><span class="stamp" data-stamp="${tone}">${s.action}</span></td>
         <td class="num">${s.entry === null ? "—" : money(s.entry)}</td>
-        <td class="num hide-sm">${s.stop === null ? "—" : money(s.stop)}</td>
-        <td class="num hide-sm">${s.target === null ? "—" : money(s.target)}</td>
-        <td class="hide-sm">${
+        <td class="num hide-md">${s.stop === null ? "—" : money(s.stop)}</td>
+        <td class="num hide-md">${s.target === null ? "—" : money(s.target)}</td>
+        <td class="hide-md">${
           s.status !== "pending"
             ? `<span class="pill ${s.status === "approved" ? "ok" : "todo"}">${s.status}</span>`
             : s.confidence === null
             ? `<span class="muted">rules-derived, no model score</span>`
             : `<span class="conf-word">${renderConfidence(s.confidence)}<span class="lbl">${confidenceLabel(s.confidence)}</span></span>`
         }</td>
-        <td class="right decision-row-actions">
-          <button class="btn ghost" type="button" data-open="${i}" aria-expanded="false">Open</button>
+        <td class="right">
+          <div class="row-actions">
+          <button class="btn ghost icon-btn" type="button" data-open="${i}"
+                  aria-expanded="false" title="Open the whole message" aria-label="Open">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" /></svg>
+          </button>
           ${
             s.status === "pending" && ["BUY", "SELL"].includes(s.action)
-              ? `<button class="btn" type="button" data-approve-row="${i}">Approve</button>`
+              ? `<button class="btn icon-btn" type="button" data-approve-row="${i}"
+                    title="Approve with the fill you got" aria-label="Approve">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+                       stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3.4 8.4l3 3 7-7" /></svg>
+                </button>`
               : ""
           }
+          </div>
         </td>
       </tr>
       <tr class="decision-detail" id="decision-${i}" hidden><td colspan="7">
@@ -213,8 +210,8 @@ function decisions(
     .join("");
   return `<div class="table-wrap"><table class="blotter decisions">
     <thead><tr><th scope="col">When</th><th scope="col">Action</th><th scope="col">Entry</th>
-      <th scope="col" class="hide-sm">Stop</th><th scope="col" class="hide-sm">Target</th>
-      <th scope="col" class="hide-sm">Confidence</th><th scope="col"></th></tr></thead>
+      <th scope="col" class="hide-md">Stop</th><th scope="col" class="hide-md">Target</th>
+      <th scope="col" class="hide-md">Confidence</th><th scope="col"></th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
 
@@ -264,7 +261,7 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
   const p = a.position;
   const ltp = a.bars.length ? a.bars[a.bars.length - 1].close : (p?.avg_cost ?? null);
   const klass = klassOf(a.instrument.class);
-  const filter = decisionFilter();
+  const filter = currentFilter();
   const facts = a.indicators
     ? [
         ["SMA50", money(a.indicators.sma50)],
@@ -302,7 +299,7 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
     `<header class="page-head">
       <div class="who">
         <a class="back" href="/">← Ledger</a>
-        <h1>${escapeHtml(a.instrument.name)}</h1>
+        <h1 title="${escapeHtml(a.instrument.name)}">${escapeHtml(a.instrument.name)}</h1>
         <div class="page-sub">${escapeHtml(a.instrument.symbol)} · ${escapeHtml(a.instrument.class.replace("_", " "))}</div>
       </div>
       <div class="figures">
@@ -322,7 +319,7 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
         </section>
         <section class="card">
           <div class="card-head"><h2>Decisions</h2>
-            ${decisionTabs(filter, a.instrument.symbol)}</div>
+            ${decisionFilterTabs(filter, typeof location === "undefined" ? "" : location.pathname)}</div>
           ${decisions(d, a.instrument.target_profit_pct, filter)}
         </section>
         ${

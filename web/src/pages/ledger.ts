@@ -1,6 +1,7 @@
 import type { Dashboard, Mode, Trade } from "../api";
 import { renderApp, renderHead } from "../components/shell";
 import { renderDecisionActions } from "../components/decision-actions";
+import { decisionFilterTabs, isDecisionFilter, type DecisionFilter } from "../components/decision-filter";
 import { escapeHtml, histDate, money, units } from "../format";
 import { renderConfidence } from "../components/confidence";
 import { stamp } from "../components/stamp";
@@ -61,7 +62,8 @@ export function renderRow(d: Dashboard, p: Dashboard["positions"][number]): stri
     : `<span class="muted">—</span>`;
   return `<tr class="row" data-symbol="${escapeHtml(p.symbol)}" tabindex="0" role="link"
       aria-label="${escapeHtml(p.name)}, open details">
-  <td class="holding"><div class="name">${escapeHtml(p.name)}</div>
+  <td class="holding" title="${escapeHtml(p.name)} · ${escapeHtml(p.symbol)}">
+    <div class="name">${escapeHtml(p.name)}</div>
     <div class="sub">${escapeHtml(p.symbol)}</div></td>
   <td class="num hide-sm">${units(p.qty)}</td>
   <td class="num hide-sm">${money(p.avg_cost)}</td>
@@ -113,7 +115,7 @@ function decisionRow(s: Dashboard["signals"][number]): string {
   return `<div class="feed-row decision-feed">
     <div class="decision-main">
       <div><span class="stamp" data-stamp="${tone}">${s.action}</span>
-        <b>${escapeHtml(s.symbol)}</b>
+        <b title="${escapeHtml(s.symbol)}">${escapeHtml(s.symbol)}</b>
         ${s.entry === null ? "" : `<span class="num">${money(s.entry)}</span>`}
         ${s.qty === null ? "" : `<span class="lbl">${units(s.qty)} units</span>`}
         ${status}
@@ -148,10 +150,11 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
     : `<p class="empty">No trades recorded yet.</p>`;
 
   // Rendered on the server of truth (the browser) and in tests: no window, no filter.
-  const filter =
-    (typeof location !== "undefined"
+  const raw =
+    typeof location !== "undefined"
       ? new URLSearchParams(location.search).get("decisions")
-      : null) ?? "pending";
+      : null;
+  const filter: DecisionFilter = isDecisionFilter(raw) ? raw : "pending";
   const advice = d.signals.length
     ? d.signals
         .slice(0, 8)
@@ -160,14 +163,6 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
     : `<p class="empty">${
         filter === "pending" ? "Nothing under review." : "Nothing in this filter."
       }</p>`;
-  const filters = (["pending", "approved", "rejected", "all"] as const)
-    .map(
-      (f) =>
-        `<a href="?mode=${d.mode}${f === "pending" ? "" : `&decisions=${f}`}" class="${
-          f === filter ? "on" : ""
-        }" ${f === filter ? 'aria-current="page"' : ""}>${f[0].toUpperCase() + f.slice(1)}</a>`,
-    )
-    .join("");
 
   const stocksSection = section(
     "Stocks",
@@ -220,7 +215,7 @@ export function renderLedger(d: Dashboard, recent: Trade[]): string {
     <section class="card" id="decisions-card">
       <div class="card-head">
         <div class="lbl">Decisions</div>
-        <nav class="decisions-filter" aria-label="Decision status">${filters}</nav>
+        ${decisionFilterTabs(filter, `/?mode=${d.mode}`)}
       </div>
       <div class="feed decisions-feed">${advice}</div>
     </section>
