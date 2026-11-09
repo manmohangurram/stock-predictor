@@ -34,6 +34,9 @@ before you see it.
 - **Rotation.** When a buy is right but the cash is gone, the model may propose a swap: sell
   something in profit to fund it. One decision with two legs, approved or refused as a unit, and a
   swap that does not balance is refused before any money moves.
+- **The model sees the book, not one stock.** Every prompt carries the holdings and a plain sentence
+  saying what the purse can spend, and once a poll a book call may propose up to three moves that
+  stand or fall together — sell one holding to fund another, approved as one plan.
 - **Two pots, one process.** Long-term and trading books with separate capital, separate limits and
   separate history. Neither can starve the other; the same stock can sit in both.
 - **Stocks and mutual funds, handled as what they are.** Funds are bought at NAV and held — no

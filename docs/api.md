@@ -21,8 +21,8 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | GET | `/api/search?q=` | yes | Yahoo + AMFI search |
 | GET | `/api/calls` | yes | Audit list: prompt type, call, holding name, review state, verdict, tokens |
 | GET | `/api/calls/{id}` | yes | One call with its prompt and raw reply |
-| POST | `/api/signals/{id}/approve` | yes | Record the fill you got; approves the decision (both legs of a rotation) |
-| POST | `/api/signals/{id}/reject` | yes | Reject with an optional reason; no money moves |
+| POST | `/api/signals/{id}/approve` | yes | Record the fill you got; approves the whole group (both legs of a rotation, every move of a plan) |
+| POST | `/api/signals/{id}/reject` | yes | Reject with an optional reason; a plan is rejected whole; no money moves |
 | POST | `/api/notify/test` | yes | Send one push |
 | POST | `/api/positions` | — | Add a position without a ledger entry (import path) |
 | PATCH | `/api/positions/{id}` | — | Adjust a position (import path) |

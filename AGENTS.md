@@ -49,6 +49,8 @@ files directly when you need exact wording.
   budget, limits, provider and keys, ntfy, polling cadence, the proxy — is a `settings` row,
   edited on the Settings page and applied without a restart.
 - The settings page is six routed tabs (`/settings/:tab`), each stamped on its own.
+- Prompt files: `prompts/{decide_v1,escalate_v1,rotate_v1,trend_v1,short_v1,plan_v1}.md`.
+  `plan_v1` is the book call: whole book, cash cap, up to three moves, stored as one `plan_id` group.
 - The proxy is chosen only by the database: `src/http.rs` is the one client builder and calls
   `.no_proxy()` first, so `HTTP_PROXY` can never win.
 
@@ -68,13 +70,13 @@ written.
 ## Quality gates
 
 ```sh
-cargo test                                   # 241 tests, no network
+cargo test                                   # 261 tests, no network
 cargo clippy --all-targets                   # must be warning-free
 cargo bench --bench hot_paths                # indicators, prompt render, bar upsert
 cd web && npx vitest run && npm run build
 ```
 
-Budgets to keep: `indicators::compute` ~2.8 µs per 250 bars, prompt render ~17 µs,
+Budgets to keep: `indicators::compute` ~2.8 µs per 250 bars, prompt render ~58 µs (the book block and cap line cost ~2 µs),
 a poll's bar write ~0.2 ms (only the tail is written; a cold 250-row load is ~18 ms).
 
 Token knobs: `PROMPT_WINDOW_HOURS` (default 4) is the intraday tape length, the biggest single
