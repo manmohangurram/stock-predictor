@@ -59,6 +59,7 @@ fn ctx<'a>(i: &'a Instrument, x: &'a Indicators, h: &'a [Headline]) -> PromptCon
         daily_days: 10,
         daily_summary: "2026-10-24 1150.20, 2026-10-27 1163.00",
         fundamentals: "unavailable",
+        short_context: "",
         positions: "INFY.NS qty 17.000 at cost 1163.00, stop 1104.85, target 1279.30",
         recent_trades: "2026-10-20 BUY 17.000 @ 1163.00 (open)",
         last_decision: "2026-10-27 SELL @ 1163.00 — rules only",
@@ -198,6 +199,7 @@ fn a_fund_prompt_carries_the_settlement_cost() {
         daily_days: 7,
         daily_summary: "",
         fundamentals: "unavailable",
+        short_context: "",
         positions: "none",
         recent_trades: "",
         last_decision: "",
@@ -243,6 +245,7 @@ fn the_prompt_carries_financials_or_says_unavailable() {
         daily_days: 10,
         daily_summary: "",
         fundamentals: "FY2026-03-31: revenue 20.2B INR, net income 3.3B INR",
+        short_context: "",
         positions: "none",
         recent_trades: "",
         last_decision: "",
@@ -257,4 +260,19 @@ fn the_prompt_carries_financials_or_says_unavailable() {
         r.text.contains("never as zero"),
         "the prompt must say a missing number is unknown"
     );
+}
+
+#[test]
+fn the_trade_book_uses_the_short_playbook_and_the_long_book_does_not() {
+    use stock_predictor::llm::prompts::decide_template;
+    use stock_predictor::models::Mode;
+    assert_eq!(decide_template(Mode::Trade), "short_v1");
+    assert_eq!(decide_template(Mode::Long), "decide_v1");
+
+    let short = stock_predictor::llm::prompts::template("short_v1").unwrap();
+    // The gate and the data it is judged on must both be in the playbook.
+    assert!(short.contains("Relative volume ≥ 1.2"), "volume evidence");
+    assert!(short.contains("confidence\":\"high"), "the confidence contract");
+    assert!(short.contains("{{short_context}}"), "the short card is wired in");
+    assert!(short.contains("at most 168"), "the horizon cap");
 }

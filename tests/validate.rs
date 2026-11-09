@@ -21,6 +21,7 @@ fn proposal(action: Action, entry: f64, stop: Option<f64>, target: Option<f64>) 
 
 fn ctx<'a>(sent: &'a [i64]) -> ValidateCtx<'a> {
     ValidateCtx {
+        requires_high_confidence: false,
         bands: atr_bands(105.0, 2.0),
         atr: 2.0,
         available_cash: 10_000.0,
@@ -347,4 +348,29 @@ fn a_mutual_fund_belongs_to_the_long_term_pot_only() {
     assert!(AssetClass::Stock.pot_allowed(Mode::Trade));
     assert!(AssetClass::MutualFund.pot_allowed(Mode::Long));
     assert!(!AssetClass::MutualFund.pot_allowed(Mode::Trade));
+}
+
+#[test]
+fn a_short_term_buy_must_be_high_confidence() {
+    // The trade book's horizon forces an exit, so half a case is refused outright.
+    let p = proposal(Action::Buy, 105.0, Some(101.0), Some(115.5));
+    let mut c = ctx(&[1]);
+    c.limits.min_profit_pct = 5.0;
+    c.limits.max_profit_pct = 50.0;
+    c.limits.max_trade_amount = f64::MAX;
+    c.requires_high_confidence = true;
+
+    let mut medium = p.clone();
+    medium.confidence = Confidence::Medium;
+    assert_eq!(check(&medium, &c), Err(ValidationError::ConfidenceTooLow));
+
+    let mut high = p;
+    high.confidence = Confidence::High;
+    assert_eq!(check(&high, &c), Ok(()));
+
+    // The long-term book is untouched by the rule.
+    c.requires_high_confidence = false;
+    let mut low = high.clone();
+    low.confidence = Confidence::Low;
+    assert_eq!(check(&low, &c), Ok(()));
 }

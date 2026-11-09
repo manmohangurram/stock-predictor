@@ -81,6 +81,8 @@ struct Gathered {
     pot: f64,
     instrument_exposure: f64,
     price_window: String,
+    /// The raw intraday tape, kept for the short-horizon card (the text is for the prompt).
+    tape: Vec<Bar>,
     daily_summary: String,
     positions_text: String,
     recent_trades: String,
@@ -122,15 +124,19 @@ async fn gather(
         .await?
         .unwrap_or(limits.min_profit_pct)
         .clamp(limits.min_profit_pct, limits.max_profit_pct);
-    let price_window = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
-        Ok(tape) => format_window(&tape, deps.runtime.prompt_window_hours, now),
+    let (price_window, tape) = match deps.market.intraday(&instrument.symbol, "15m", "5d").await {
+        Ok(tape) => (
+            format_window(&tape, deps.runtime.prompt_window_hours, now),
+            tape,
+        ),
         Err(e) => {
             tracing::debug!(symbol = %instrument.symbol, error = %e, "no intraday tape");
-            "(intraday tape unavailable)".to_string()
+            ("(intraday tape unavailable)".to_string(), Vec::new())
         }
     };
 
     Ok(Some(Gathered {
+        tape,
         daily_summary: format_daily(&bars, 10),
         positions_text: format_positions(position.as_ref(), &instrument.symbol),
         recent_trades: load_recent_trades(deps.pool, instrument.id, now).await?,
@@ -245,6 +251,10 @@ async fn poll_instrument(
     // Reported financials, fetched only when a call is actually going to happen — this is one
     // extra request per call, not per tick.
     let fundamentals = fetch_fundamentals(deps, &instrument.symbol, now).await;
+
+    // The short-horizon card exists for one reason: a trade that must finish inside a week needs the
+    // session clock, relative volume and the level it is trading against — numbered, not inferred.
+    let short_context = short_card(deps, instrument, &g.tape, now).await;
 
     // Why this call is being made, in words a person can read later in the audit trail.
     let previous_price: Option<(Option<f64>,)> =
@@ -365,6 +375,8 @@ async fn poll_instrument(
             candidate: &candidate,
             call_reason: gate_reason.clone(),
             fundamentals: &fundamentals,
+            short_context: &short_context,
+            mode: crate::models::Mode::Long,
             available_cash: available,
             held_qty: position.as_ref().map(|p| p.qty).unwrap_or(0.0),
             limits: g.limits,
@@ -450,6 +462,8 @@ pub async fn advise(
         RunInput {
             call_reason: None,
             fundamentals: "",
+            short_context: "",
+            mode: crate::models::Mode::Long,
             instrument,
             ind: &g.ind,
             candidate: &neutral,
@@ -1087,6 +1101,26 @@ async fn load_last_decision(pool: &SqlitePool, instrument_id: i64) -> Result<Str
 }
 
 /// Everything held in this pot, with the latest close as its price — the table a rotation reads.
+/// The short-horizon card: computed from the daily bars and today's tape we already hold.
+async fn short_card(
+    deps: &EngineDeps<'_>,
+    instrument: &Instrument,
+    intraday: &[crate::models::Bar],
+    now: DateTime<Utc>,
+) -> String {
+    if instrument.class != crate::models::AssetClass::Stock {
+        return String::new(); // a fund has no intraday horizon
+    }
+    let daily = match deps.market.bars(&instrument.symbol).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::debug!(error = %e, symbol = %instrument.symbol, "no daily bars for the card");
+            return String::new();
+        }
+    };
+    crate::rules::context::compute(&daily, intraday, now).render()
+}
+
 /// Revenue, profit and valuation, or "unavailable" — never a guess, and never a failed call.
 async fn fetch_fundamentals(deps: &EngineDeps<'_>, symbol: &str, now: DateTime<Utc>) -> String {
     let Ok(client) = crate::http::client_with(&deps.runtime, 15, Some("Mozilla/5.0 stock-predictor"))

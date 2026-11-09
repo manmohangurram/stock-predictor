@@ -62,6 +62,8 @@ fn run_input<'a>(
     hs: &'a [Headline],
 ) -> RunInput<'a> {
     RunInput {
+        short_context: "",
+        mode: stock_predictor::models::Mode::Long,
         call_reason: None,
         instrument: i,
         ind: x,

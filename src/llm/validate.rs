@@ -28,6 +28,8 @@ pub enum ValidationError {
     UnknownHeadlineId,
     #[error("a decision must cite at least one headline")]
     MissingCitation,
+    #[error("a short-term buy must be high confidence — medium or low is refused")]
+    ConfidenceTooLow,
     #[error("a buy must carry both an exit stop and a take-profit target")]
     MissingExit,
     #[error("quantity must be a positive, finite number")]
@@ -47,6 +49,9 @@ pub enum ValidationError {
 }
 
 pub struct ValidateCtx<'a> {
+    /// True for the short-term book: a buy there must be high confidence, because the horizon
+    /// forces an exit whether the trade is working or not.
+    pub requires_high_confidence: bool,
     /// `entry` must sit inside this band; stop and target are deliberately outside it.
     pub bands: Bands,
     pub atr: f64,
@@ -75,6 +80,10 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
 
     match p.action {
         Action::Buy => {
+            // Half a case is no case when the trade must close inside a week.
+            if ctx.requires_high_confidence && p.confidence != crate::llm::parse::Confidence::High {
+                return Err(ValidationError::ConfidenceTooLow);
+            }
             if ctx.requires_exit && (p.stop.is_none() || p.target.is_none()) {
                 return Err(ValidationError::MissingExit);
             }

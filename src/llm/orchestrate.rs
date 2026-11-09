@@ -49,6 +49,10 @@ pub struct RunInput<'a> {
     pub daily_summary: &'a str,
     /// Revenue, profit and valuation as a few lines; "unavailable" when unfetched.
     pub fundamentals: &'a str,
+    /// The short-horizon card; empty for the long-term book.
+    pub short_context: &'a str,
+    /// Which book this is: it decides the playbook.
+    pub mode: crate::models::Mode,
     pub positions: &'a str,
     pub recent_trades: &'a str,
     pub last_decision: &'a str,
@@ -109,6 +113,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         daily_days: 10,
         daily_summary: input.daily_summary,
         fundamentals: input.fundamentals,
+        short_context: input.short_context,
         positions: input.positions,
         recent_trades: input.recent_trades,
         last_decision: input.last_decision,
@@ -117,7 +122,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         price_history: "",
     };
 
-    let rendered = prompts::render("decide_v1", &base)?;
+    let rendered = prompts::render(prompts::decide_template(input.mode), &base)?;
     let model = crate::rules::settings::model_config(deps.pool).await?;
     let reply = deepseek::chat(
         deps.pool,
@@ -256,6 +261,8 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
     match final_verdict {
         LlmVerdict::Decide(p) => {
             let ctx = ValidateCtx {
+                // The trade book's horizon forces an exit, so it demands high confidence.
+                requires_high_confidence: input.mode == crate::models::Mode::Trade,
                 bands: atr_bands(input.candidate.entry, input.ind.atr14),
                 atr: input.ind.atr14,
                 available_cash: input.available_cash,

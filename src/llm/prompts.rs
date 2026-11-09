@@ -9,6 +9,7 @@ pub const DECIDE_V1: &str = include_str!("../../prompts/decide_v1.md");
 pub const ESCALATE_V1: &str = include_str!("../../prompts/escalate_v1.md");
 pub const ROTATE_V1: &str = include_str!("../../prompts/rotate_v1.md");
 pub const TREND_V1: &str = include_str!("../../prompts/trend_v1.md");
+pub const SHORT_V1: &str = include_str!("../../prompts/short_v1.md");
 
 #[derive(Debug, Clone)]
 pub struct RenderedPrompt {
@@ -35,6 +36,8 @@ pub struct PromptContext<'a> {
     pub daily_summary: &'a str,
     /// Revenue, profit and valuation as a few lines; "unavailable" when the source did not answer.
     pub fundamentals: &'a str,
+    /// The short-horizon card: session clock, RVOL, yesterday's range, momentum.
+    pub short_context: &'a str,
     pub positions: &'a str,
     pub recent_trades: &'a str,
     pub last_decision: &'a str,
@@ -51,6 +54,7 @@ pub fn template(name: &str) -> Result<&'static str> {
         "escalate_v1" => Ok(ESCALATE_V1),
         "rotate_v1" => Ok(ROTATE_V1),
         "trend_v1" => Ok(TREND_V1),
+        "short_v1" => Ok(SHORT_V1),
         other => Err(anyhow!("unknown prompt template {other:?}")),
     }
 }
@@ -92,6 +96,15 @@ pub fn render_trend(
             .replace("{{headlines}}", headlines)
             .replace("{{book}}", book),
     })
+}
+
+/// Which playbook a decision uses. The trade pot's horizon is measured in hours, so it is asked a
+/// different question than the long-term book.
+pub fn decide_template(mode: crate::models::Mode) -> &'static str {
+    match mode {
+        crate::models::Mode::Trade => "short_v1",
+        crate::models::Mode::Long => "decide_v1",
+    }
 }
 
 pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
@@ -159,6 +172,7 @@ pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
         .replace("{{daily_days}}", &ctx.daily_days.to_string())
         .replace("{{daily_summary}}", ctx.daily_summary)
         .replace("{{fundamentals}}", ctx.fundamentals)
+        .replace("{{short_context}}", ctx.short_context)
         .replace("{{positions}}", ctx.positions)
         .replace("{{recent_trades}}", ctx.recent_trades)
         .replace("{{last_decision}}", ctx.last_decision)

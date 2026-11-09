@@ -174,6 +174,7 @@ pub async fn run(
         let check = validate::check(
             &proposal,
             &validate::ValidateCtx {
+                requires_high_confidence: true, // short-term: high confidence or nothing
                 bands: crate::engine::band_for(bars[bars.len() - 1].close, ind.atr14),
                 atr: ind.atr14,
                 available_cash: cash,

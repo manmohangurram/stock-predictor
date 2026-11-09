@@ -129,6 +129,8 @@ async fn run_case(reply: HttpReply, held: f64, class: AssetClass) -> (Outcome, F
     let d = orchestrate::run(
         &deps,
         RunInput {
+            short_context: "",
+            mode: stock_predictor::models::Mode::Long,
             fundamentals: "",
             call_reason: None,
             instrument: &i,
@@ -403,6 +405,8 @@ async fn escalate(replies: Vec<HttpReply>) -> (Outcome, FixtureTransport) {
     let d = orchestrate::run(
         &deps,
         RunInput {
+            short_context: "",
+            mode: stock_predictor::models::Mode::Long,
             fundamentals: "",
             call_reason: None,
             instrument: &i,
