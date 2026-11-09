@@ -900,3 +900,44 @@ describe("the api client speaks JSON", () => {
     }
   });
 });
+
+describe("decisions filter on the overview", () => {
+  const base = {
+    instrument: {
+      id: 1, symbol: "INFY.NS", class: "stock", name: "Infosys", currency: "INR",
+      timing_note: "limit order", target_profit_pct: null,
+    },
+    bars: [], indicators: null, checks: [], position: null, headlines: [], trades: [],
+  };
+  const sig = (id: number, status: string) => ({
+    id, symbol: "INFY.NS", class: "stock", action: "SELL", qty: 1, confidence: null,
+    entry: 100, stop: 90, target: 120, valid_until: null, timing_note: "", reasons: [],
+    rationale: null, created_at: "2026-11-08T10:00:00Z", status,
+    status_reason: null, filled_qty: null, filled_price: null,
+  });
+
+  test("the tabs offer every status", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const html = renderInstrument(
+      base as never,
+      { ...base, signals: [sig(1, "pending")] } as never,
+      [],
+    );
+    for (const f of ["pending", "approved", "rejected", "all"]) {
+      expect(html).toContain(`?decisions=${f}`);
+    }
+  });
+
+  test("the default shows the whole record, and the reason a decision was rejected", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const rejected = { ...sig(2, "rejected"), status_reason: "not at this price" };
+    const html = renderInstrument(
+      base as never,
+      { ...base, signals: [sig(1, "pending"), rejected] } as never,
+      [],
+    );
+    // Both rows present: the overview is the record of this stock, not just a to-do list.
+    expect(html).toContain('data-approve="1"');
+    expect(html).toContain(">rejected<");
+  });
+});

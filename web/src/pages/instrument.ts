@@ -130,9 +130,41 @@ export function renderTradeForm(
 }
 
 /** Decisions as a table whose rows open in place, carrying the whole message. */
-function decisions(d: InstrumentDetail, targetProfitPct: number | null): string {
+type DecisionFilter = "pending" | "approved" | "rejected" | "all";
+
+/** The filter is a URL parameter, like the ledger's, so it survives a refresh. */
+function decisionFilter(fallback: DecisionFilter = "all"): DecisionFilter {
+  if (typeof location === "undefined") return fallback;
+  const raw = new URLSearchParams(location.search).get("decisions");
+  return raw === "pending" || raw === "approved" || raw === "rejected" || raw === "all"
+    ? raw
+    : fallback;
+}
+
+function decisionTabs(filter: DecisionFilter, symbol: string): string {
+  const one = ["pending", "approved", "rejected", "all"] as const;
+  return `<nav class="decisions-filter" aria-label="Decision status">${one
+    .map(
+      (f) =>
+        `<a href="?decisions=${f}"${f === filter ? ' class="on" aria-current="page"' : ""}>${
+          f[0].toUpperCase() + f.slice(1)
+        }</a>`,
+    )
+    .join("")}</nav>${symbol ? "" : ""}`;
+}
+
+function decisions(
+  d: InstrumentDetail,
+  targetProfitPct: number | null,
+  filter: DecisionFilter = "all",
+): string {
+  const shown =
+    filter === "all" ? d.signals : d.signals.filter((s) => s.status === filter);
   if (!d.signals.length) return `<p class="empty">No decisions recorded yet.</p>`;
-  const rows = d.signals
+  if (!shown.length) {
+    return `<p class="empty">Nothing ${filter} here.</p>`;
+  }
+  const rows = shown
     .map((s, i) => {
       const detail = [
         s.qty === null ? "" : `<div><span class="lbl">Quantity</span><b class="num">${units(s.qty)}</b></div>`,
@@ -232,6 +264,7 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
   const p = a.position;
   const ltp = a.bars.length ? a.bars[a.bars.length - 1].close : (p?.avg_cost ?? null);
   const klass = klassOf(a.instrument.class);
+  const filter = decisionFilter();
   const facts = a.indicators
     ? [
         ["SMA50", money(a.indicators.sma50)],
@@ -288,8 +321,9 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
           ${chart(a)}
         </section>
         <section class="card">
-          <div class="card-head"><h2>Decisions</h2><span class="sub">open a row for the whole message</span></div>
-          ${decisions(d, a.instrument.target_profit_pct)}
+          <div class="card-head"><h2>Decisions</h2>
+            ${decisionTabs(filter, a.instrument.symbol)}</div>
+          ${decisions(d, a.instrument.target_profit_pct, filter)}
         </section>
         ${
           list.length
