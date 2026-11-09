@@ -39,7 +39,18 @@ async function route(): Promise<void> {
       app.innerHTML = renderArchived(await api.archived());
       wireArchivedRows();
     } else if (path === "/calls") {
-      app.innerHTML = renderCalls(await api.calls());
+      const params = new URLSearchParams(location.search);
+      const limit = [25, 50, 100].includes(Number(params.get("limit")))
+        ? Number(params.get("limit"))
+        : 25;
+      const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
+      const list = await api.calls(offset, limit);
+      app.innerHTML = renderCalls(list.rows, list.offset, list.limit, list.total);
+      // A different page size is the same view, re-cut from the top.
+      document.querySelector<HTMLSelectElement>("[data-page-size]")?.addEventListener("change", (ev) => {
+        const size = (ev.target as HTMLSelectElement).value;
+        window.location.href = `/calls?offset=0&limit=${size}`;
+      });
       wireCallRows();
     } else if (path.startsWith("/i/")) {
       const symbol = decodeURIComponent(path.slice(3));

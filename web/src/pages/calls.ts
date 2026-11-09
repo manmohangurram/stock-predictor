@@ -45,7 +45,41 @@ function reviewBadge(r: CallRow): string {
   return `<span class="pill ${tone}" ${r.decision_id ? `title="decision #${r.decision_id}"` : ""}>${label}</span>`;
 }
 
-export function renderCalls(rows: CallRow[]): string {
+/**
+ * Where you are in the record, and how much of it you want: offset/limit in the URL, so a page
+ * survives a refresh and a link can point at it.
+ */
+export function renderPager(offset: number, limit: number, total: number): string {
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.floor(offset / limit) + 1;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + limit, total);
+  const link = (next: number, label: string, on: boolean) =>
+    on
+      ? `<a class="btn ghost" href="/calls?offset=${next}&limit=${limit}" data-offset="${next}">${label}</a>`
+      : `<span class="btn ghost" aria-disabled="true">${label}</span>`;
+  const sizes = [25, 50, 100]
+    .map(
+      (n) => `<option value="${n}" ${n === limit ? "selected" : ""}>${n} per page</option>`,
+    )
+    .join("");
+  return `<nav class="pager" aria-label="Calls">
+    <div class="pager-side">
+      ${link(Math.max(0, offset - limit), "‹ Newer", offset > 0)}
+      ${link(offset + limit, "Older ›", offset + limit < total)}
+    </div>
+    <span class="pager-note">${from}–${to} of ${total} · page ${page} of ${pages}</span>
+    <label class="pager-size"><span class="lbl">Show</span>
+      <select data-page-size aria-label="Calls per page">${sizes}</select></label>
+  </nav>`;
+}
+
+export function renderCalls(
+  rows: CallRow[],
+  offset = 0,
+  limit = 25,
+  total = rows.length,
+): string {
   const failures = rows.filter((r) => r.error).length;
   const tokens = rows.reduce(
     (n, r) => n + (r.prompt_tokens ?? 0) + (r.completion_tokens ?? 0),
@@ -99,6 +133,7 @@ export function renderCalls(rows: CallRow[]): string {
       </tr></thead>
       <tbody>${body || `<tr><td colspan="7" class="empty">No calls yet.</td></tr>`}</tbody>
     </table>
+    ${renderPager(offset, limit, total)}
   </section>`);
 }
 

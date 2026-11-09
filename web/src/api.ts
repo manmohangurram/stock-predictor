@@ -284,7 +284,14 @@ export const api = {
       "/api/settings/proxy/test",
       { method: "POST" },
     ),
-  calls: () => req<CallRow[]>("/api/calls"),
+  /** A window into the audit list; the total comes back in a header. */
+  calls: async (offset = 0, limit = 25) => {
+    const r = await fetch(`/api/calls?offset=${offset}&limit=${limit}`);
+    if (!r.ok) throw new Error(`/api/calls: ${r.status} ${(await r.text()).slice(0, 200)}`);
+    const rows = (await r.json()) as CallRow[];
+    const total = Number(r.headers.get("x-total-count") ?? rows.length);
+    return { rows, total, offset, limit };
+  },
   archived: () =>
     req<{ id: number; symbol: string; name: string; class: string; fills: number; decisions: number; last_fill: string | null }[]>(
       "/api/archived",

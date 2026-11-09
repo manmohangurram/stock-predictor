@@ -914,6 +914,29 @@ describe("decisions filter on the overview", () => {
   });
 });
 
+describe("audit pager", () => {
+  test("says where you are, links only where you can go, and offers a page size", async () => {
+    const { renderPager } = await import("./pages/calls");
+    const first = renderPager(0, 25, 240);
+    expect(first).toContain("1–25 of 240");
+    expect(first).toContain("page 1 of 10");
+    // No "newer" link on the first window.
+    expect(first).not.toContain('offset=-25');
+    expect(first).toContain('href="/calls?offset=25&limit=25"');
+    // The page size is a choice, not a constant.
+    expect(first).toContain('data-page-size');
+    expect(first).toContain('value="50"');
+
+    const last = renderPager(225, 25, 240);
+    expect(last).toContain("226–240 of 240");
+    expect(last).not.toContain('href="/calls?offset=250');
+
+    // A different size re-cuts the same record.
+    expect(renderPager(0, 100, 240)).toContain("1–100 of 240");
+    expect(renderPager(0, 25, 7)).toContain("1–7 of 7");
+  });
+});
+
 describe("audit", () => {
   test("a blocked call keeps the row short and explains itself inside View", async () => {
     const { renderCalls, renderExchangeDetail } = await import("./pages/calls");

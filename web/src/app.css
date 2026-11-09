@@ -1194,3 +1194,22 @@
   /* The prompt block's label sits over its own text, not at the card's edge. */
   .call-block .lbl { padding-left: var(--space-3); }
 }
+
+@layer components {
+  /* Paging the record: two links and a count, on the same rhythm as the table above. */
+  .pager { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4);
+    padding-top: var(--space-3); border-top: 1px solid var(--rule-subtle); }
+  .pager .btn { text-decoration: none; }
+  .pager .btn[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
+  .pager-note { margin: var(--space-3) 0 0; font-family: var(--font-ledger);
+    font-size: var(--text-xs); color: var(--ink-tertiary); }
+  .pager .pager-note { margin: 0; }
+}
+
+@layer components {
+  .pager-side { display: flex; gap: var(--space-2); }
+  .pager-size { display: inline-flex; align-items: baseline; gap: var(--space-2); }
+  .pager-size select { font-family: var(--font-ledger); font-size: var(--text-xs);
+    padding: 4px var(--space-2); border: 1px solid var(--rule); border-radius: var(--radius);
+    background: var(--paper-raised); color: var(--ink); }
+}

@@ -1984,3 +1984,74 @@ async fn approving_a_plan_writes_each_legs_exit_plan() {
     assert_eq!(stop, Some(180.0));
     assert_eq!(target, Some(260.0));
 }
+
+/// The audit list is paged: one page of rows, and the total in a header.
+#[tokio::test]
+async fn the_audit_list_pages_and_says_how_many_there_are() {
+    let (_d, router, pool) = setup().await;
+    for i in 0..30 {
+        sqlx::query(
+            "INSERT INTO api_calls (ts, conversation_id, endpoint, purpose, http_status)
+             VALUES (?, ?, 'chat', 'decide INFY', 200)",
+        )
+        .bind(format!("2026-11-09T10:{:02}:00Z", i))
+        .bind(format!("conv-{i}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let (s, first) = get(&router, "/api/calls?page=1&per_page=25").await;
+    assert_eq!(s, StatusCode::OK, "{first}");
+    assert_eq!(first.as_array().unwrap().len(), 25);
+
+    let (s, last) = get(&router, "/api/calls?page=2&per_page=25").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(last.as_array().unwrap().len(), 5, "the second page holds the rest");
+
+    // The total is a header, so the body stays a plain array.
+    use tower::ServiceExt;
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/calls")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("x-total-count").unwrap().to_str().unwrap(),
+        "30"
+    );
+    assert_eq!(
+        resp.headers().get("x-limit").unwrap().to_str().unwrap(),
+        "25"
+    );
+}
+
+/// Offset/limit is the primitive, so a client can jump anywhere without arithmetic.
+#[tokio::test]
+async fn the_audit_list_accepts_offset_and_limit() {
+    let (_d, router, pool) = setup().await;
+    for i in 0..30 {
+        sqlx::query(
+            "INSERT INTO api_calls (ts, conversation_id, endpoint, purpose, http_status)
+             VALUES (?, ?, 'chat', 'decide INFY', 200)",
+        )
+        .bind(format!("2026-11-09T10:{:02}:00Z", i))
+        .bind(format!("conv-{i}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let (s, rows) = get(&router, "/api/calls?offset=28&limit=5").await;
+    assert_eq!(s, StatusCode::OK, "{rows}");
+    assert_eq!(rows.as_array().unwrap().len(), 2, "the tail is short, not padded");
+
+    let (s, rows) = get(&router, "/api/calls?offset=0&limit=10").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(rows.as_array().unwrap().len(), 10);
+}

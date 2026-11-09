@@ -867,7 +867,34 @@ async fn call_detail(
     })))
 }
 
-async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiError> {
+/// One page of the audit list. The total travels in a header, so the body stays a plain array
+/// and the page size is the only thing a client has to know.
+#[derive(Debug, Deserialize)]
+pub struct CallsQuery {
+    /// Offset/limit is the primitive; page/per_page is the same thing in friendlier clothes.
+    pub offset: Option<u32>,
+    pub limit: Option<u32>,
+    pub page: Option<u32>,
+    pub per_page: Option<u32>,
+}
+
+pub const CALLS_PER_PAGE: u32 = 25;
+
+async fn calls(
+    State(st): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<CallsQuery>,
+) -> Result<axum::response::Response, ApiError> {
+    let limit = q
+        .limit
+        .or(q.per_page)
+        .unwrap_or(CALLS_PER_PAGE)
+        .clamp(1, 200);
+    let offset = q.offset.unwrap_or_else(|| {
+        (q.page.unwrap_or(1).max(1) - 1).saturating_mul(limit)
+    });
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM api_calls")
+        .fetch_one(&st.pool)
+        .await?;
     let rows: Vec<CallDbRow> = sqlx::query_as(
         "SELECT a.id AS id, a.ts AS ts, a.endpoint AS endpoint, a.purpose AS purpose,
                 a.round AS round, a.prompt_tokens AS prompt_tokens,
@@ -883,11 +910,13 @@ async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiErro
              SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
              ORDER BY s.id DESC LIMIT 1)
          LEFT JOIN instruments i ON i.id = d.instrument_id
-         ORDER BY a.id DESC LIMIT 100",
+         ORDER BY a.id DESC LIMIT ? OFFSET ?",
     )
+    .bind(limit as i64)
+    .bind(offset as i64)
     .fetch_all(&st.pool)
     .await?;
-    Ok(Json(
+    let body: Json<Vec<CallRow>> = Json(
         rows.into_iter()
             .map(|r| CallRow {
                 id: r.id,
@@ -922,7 +951,17 @@ async fn calls(State(st): State<AppState>) -> Result<Json<Vec<CallRow>>, ApiErro
                 error: r.error,
             })
             .collect(),
-    ))
+    );
+    // The count travels beside the body: the client needs it for the pager, not for the rows.
+    Ok((
+        [
+            ("x-total-count", total.to_string()),
+            ("x-offset", offset.to_string()),
+            ("x-limit", limit.to_string()),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 /// The sentence a blocked row already carries, pulled out of its JSON for the audit table.
