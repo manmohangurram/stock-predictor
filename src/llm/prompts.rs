@@ -172,6 +172,7 @@ pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
             },
         )
         .replace("{{class_rules}}", ctx.instrument.class.timing_note())
+        .replace("{{liquidity_rules}}", crate::models::AssetClass::liquidity_note(ctx.instrument.class))
         .replace("{{headlines}}", &headline_block)
         .replace("{{extracts}}", &extract_block)
         .replace("{{price_history}}", &history_block);

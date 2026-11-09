@@ -58,12 +58,24 @@ impl AssetClass {
         mode == Mode::Long || self == AssetClass::Stock
     }
 
+    /// The money's journey: how long before cash is out and how long before it is back. Carried
+    /// into the prompt so the model never treats a fund like an intraday stock.
+    pub fn liquidity_note(self) -> &'static str {
+        match self {
+            AssetClass::Stock => "cash is out the day you fill, and back the day you sell",
+            AssetClass::MutualFund => {
+                "a buy settles in ~1 day; selling returns the cash after ~4 days — patience is the trade"
+            }
+            AssetClass::Ipo => "cash is locked from application until listing",
+        }
+    }
+
     /// The execution semantics that actually exist for this class. Carried into the UI and
     /// the prompt so an estimate is never presented as a firm price.
     pub fn timing_note(self) -> &'static str {
         match self {
             AssetClass::Stock => "limit order, intraday or next open",
-            AssetClass::MutualFund => "units at NAV of the 15:00 cutoff; cash arrives T+1/T+2",
+            AssetClass::MutualFund => "units at NAV of the 15:00 cutoff; buy settles in ~1 day, selling returns cash after ~4 days",
             AssetClass::Ipo => "cash locked until allotment; not sellable until listing",
         }
     }

@@ -48,7 +48,9 @@ not predicting an outcome.
   A buy without both is discarded.
 - The take-profit must reach the profit expectation given below.
 - SELL only what is actually held.
-- Mutual funds transact at NAV; IPOs are locked until allotment.
+- Mutual funds transact at NAV and are a **six-month-or-longer commitment**: a buy settles in
+  about one day, but selling returns the cash only after about four days, and the pot is small —
+  an MF decision is judged on months of patience, not a swing. The target must pay for that wait.
 - Cite the ids of the headlines that drove the decision. If none were supplied, there is
   nothing to cite: decide on price and position, and say so.
 
@@ -79,6 +81,7 @@ Profit expected on this position: {{target_profit}}
 Limits you must respect: {{limits}}
 Cash available: {{cash}}
 Execution for this class: {{class_rules}}
+Settlement and liquidity for this class: {{liquidity_rules}}
 Open position: {{positions}}
 Trades recorded in the last 7 days: {{recent_trades}}
 Your previous view: {{last_decision}}

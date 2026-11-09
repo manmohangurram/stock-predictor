@@ -1311,7 +1311,17 @@ pub struct ArchivedRow {
 async fn archived_instruments(
     State(st): State<AppState>,
 ) -> Result<Json<Vec<ArchivedRow>>, ApiError> {
-    let rows: Vec<(i64, String, String, String, i64, i64, Option<String>)> = sqlx::query_as(
+    #[derive(sqlx::FromRow)]
+    struct ArchivedDbRow {
+        id: i64,
+        symbol: String,
+        name: String,
+        class: String,
+        fills: i64,
+        decisions: i64,
+        last_fill: Option<String>,
+    }
+    let rows: Vec<ArchivedDbRow> = sqlx::query_as(
         "SELECT i.id, i.symbol, i.name, i.class,
                 (SELECT COUNT(*) FROM trades t WHERE t.instrument_id = i.id) AS fills,
                 (SELECT COUNT(*) FROM signals s WHERE s.instrument_id = i.id) AS decisions,
@@ -1324,14 +1334,14 @@ async fn archived_instruments(
     .await?;
     Ok(Json(
         rows.into_iter()
-            .map(|(id, symbol, name, class, fills, decisions, last_fill)| ArchivedRow {
-                id,
-                symbol,
-                name,
-                class,
-                fills,
-                decisions,
-                last_fill,
+            .map(|r| ArchivedRow {
+                id: r.id,
+                symbol: r.symbol,
+                name: r.name,
+                class: r.class,
+                fills: r.fills,
+                decisions: r.decisions,
+                last_fill: r.last_fill,
             })
             .collect(),
     ))

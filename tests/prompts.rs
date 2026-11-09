@@ -155,3 +155,61 @@ fn template_hash_is_stable_and_unknown_names_are_rejected() {
     assert_eq!(a.hash, prompts::template_hash("decide_v1").unwrap());
     assert!(prompts::template("nope_v9").is_err());
 }
+
+#[test]
+fn a_fund_prompt_carries_the_settlement_cost() {
+    use stock_predictor::llm::prompts::{render, PromptContext};
+    use stock_predictor::models::{AssetClass, Headline, Instrument};
+    use stock_predictor::rules::indicators::Indicators;
+    use chrono::Utc;
+
+    let ind = Indicators {
+        sma50: 70.0,
+        sma200: 65.0,
+        rsi14: 55.0,
+        atr14: 1.0,
+        high52: 80.0,
+        low52: 60.0,
+    };
+    let ctx = PromptContext {
+        instrument: &Instrument {
+            id: 1,
+            symbol: "0P00012ALS.BO".into(),
+            class: AssetClass::MutualFund,
+            name: "Motilal Oswal Midcap".into(),
+            currency: "INR".into(),
+            active: true,
+        },
+        ind: &ind,
+        last_close: 74.15,
+        cash_available: 50_000.0,
+        target_profit_pct: None,
+        limits: "…",
+        headlines: &[Headline {
+            id: 1,
+            title: "x".into(),
+            publisher: "Mint".into(),
+            published_at: "2026-11-01".into(),
+            url: "u".into(),
+        }],
+        window_hours: 4,
+        price_window: "",
+        daily_days: 7,
+        daily_summary: "",
+        positions: "none",
+        recent_trades: "",
+        last_decision: "",
+        now: Utc::now(),
+        extracts: &[],
+        price_history: "",
+    };
+    let r = render("decide_v1", &ctx).unwrap();
+    assert!(
+        r.text.contains("six-month-or-longer commitment"),
+        "the fund's patience requirement must be in the prompt"
+    );
+    assert!(
+        r.text.contains("~4 days"),
+        "the fund's settlement delay must be in the prompt"
+    );
+}
