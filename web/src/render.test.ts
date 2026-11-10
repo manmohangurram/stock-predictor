@@ -14,6 +14,7 @@ const limits = (over: Partial<Limits> = {}): Limits => ({
 });
 
 const position = (over: Partial<PositionRow> = {}): PositionRow => ({
+  target_profit_pct: null,
   id: 1,
   symbol: "INFY.NS",
   name: "Infosys",
@@ -27,7 +28,7 @@ const position = (over: Partial<PositionRow> = {}): PositionRow => ({
   state: "open",
   timing_note: "limit order, intraday or next open",
   ...over,
-});
+} as PositionRow);
 
 const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
   id: 1,
@@ -124,6 +125,9 @@ describe("ledger", () => {
 
 describe("settings", () => {
   const settings = (over: Partial<Settings> = {}): Settings => ({
+    mf_budget: 0,
+    mf_available: 0,
+    public_url: "http://localhost:8099",
     budget: 100_000,
     committed: 0,
     available: 100_000,
@@ -154,7 +158,7 @@ describe("settings", () => {
       proxy_bypass: null,
     },
     ...over,
-  });
+  } as Settings);
 
   test("six tabs render, and only the active one shows its fields", () => {
     const html = renderSettings(settings(), "cadence");
@@ -308,6 +312,7 @@ describe("fills against the market", () => {
       {
         id: 1, symbol: "INFY.NS", side: "buy" as const, qty: 17, price: 1200,
         realised: null, traded_at: "2026-10-27T10:00:00Z", note: null, market_close: 1163,
+        mode: "long" as const,
       },
     ];
     const html = renderInstrument(analysis as never, detail as never, list);
@@ -324,7 +329,7 @@ describe("fills against the market", () => {
     };
     const list = [
       { id: 1, symbol: "X.NS", side: "buy" as const, qty: 1, price: 100, realised: null,
-        traded_at: "2019-01-01T10:00:00Z", note: null, market_close: null },
+        traded_at: "2019-01-01T10:00:00Z", note: null, market_close: null, mode: "long" as const },
     ];
     const html = renderInstrument(analysis as never, { instrument: analysis.instrument, headlines: [], signals: [] } as never, list);
     expect(html).toContain("—");
@@ -352,10 +357,11 @@ describe("settings, second pot", () => {
       ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
       llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
       llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
+    mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
       daily_cap: 200, proxy_configured: false, proxy_host: "",
-      proxy_bypass: null,
+      proxy_bypass: null, proxy_user: null, proxy_pass_configured: false,
     },
     });
     expect(html).toContain('name="trading_budget"');
@@ -513,10 +519,11 @@ describe("ntfy settings", () => {
     ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
     llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
     llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
+    mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
       daily_cap: 200, proxy_configured: false, proxy_host: "",
-      proxy_bypass: null,
+      proxy_bypass: null, proxy_user: null, proxy_pass_configured: false,
     },
   };
 
@@ -549,10 +556,11 @@ describe("model provider settings", () => {
     ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
     llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
     llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
+    mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
       daily_cap: 200, proxy_configured: false, proxy_host: "",
-      proxy_bypass: null,
+      proxy_bypass: null, proxy_user: null, proxy_pass_configured: false,
     },
   };
 
@@ -586,10 +594,11 @@ describe("per-pot limits", () => {
       llm_key_configured: false,
       limits_long: limits({ max_trade_amount: 25_000 }),
       limits_trade: limits({ max_trade_amount: 5_000, max_instrument_pct: 10 }),
+      mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
       daily_cap: 200, proxy_configured: false, proxy_host: "",
-      proxy_bypass: null,
+      proxy_bypass: null, proxy_user: null, proxy_pass_configured: false,
     },
     };
     const html = renderSettings(s, "risk");
@@ -614,6 +623,7 @@ describe("per-pot limits", () => {
       ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
       llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "", llm_key_configured: false,
       limits_long: limits(), limits_trade: limits(),
+      mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
       runtime: {
         poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
         daily_cap: 200, proxy_configured: false, proxy_host: "",
@@ -663,6 +673,7 @@ describe("cadence help text", () => {
         ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
         llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "", llm_key_configured: false,
         limits_long: limits(), limits_trade: limits(),
+        mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
         runtime: {
           poll_secs: 7200, off_hours_secs: 900, prompt_window_hours: 4, min_price_move: 2,
           daily_cap: 200, proxy_configured: false, proxy_host: "",
@@ -996,7 +1007,6 @@ describe("audit", () => {
       error: null,
       instrument_name: "Infosys",
       instrument_symbol: "INFY.NS",
-      plan_legs: 0,
     });
     expect(detail).toContain("Asked because");
     expect(detail).toContain("Refused");

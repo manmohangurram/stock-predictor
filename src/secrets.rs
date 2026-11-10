@@ -13,8 +13,26 @@ use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use base64::Engine;
-use chacha20poly1305::aead::{Aead, KeyInit, OsRng};
-use chacha20poly1305::{AeadCore, Key, XChaCha20Poly1305, XNonce};
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
+
+/// The system CSPRNG. `getrandom` is what the AEAD crate asks for anyway; naming it here keeps the
+/// key and nonce generation in one place.
+fn fill_random(bytes: &mut [u8]) -> Result<()> {
+    getrandom::fill(bytes).map_err(|e| anyhow::anyhow!("no system randomness: {e}"))
+}
+
+fn random_key() -> Result<Key> {
+    let mut bytes = [0u8; 32];
+    fill_random(&mut bytes)?;
+    Ok(Key::from(bytes))
+}
+
+fn random_nonce() -> Result<XNonce> {
+    let mut bytes = [0u8; 24];
+    fill_random(&mut bytes)?;
+    Ok(XNonce::from(bytes))
+}
 use sqlx::SqlitePool;
 
 const PREFIX: &str = "enc:v1:";
@@ -39,7 +57,7 @@ pub fn init(key: Vec<u8>) {
 /// Never absent: an uninitialised process (a unit test) gets a random key for its lifetime, so a
 /// secret is never written in the clear by accident.
 fn key() -> &'static [u8] {
-    KEY.get_or_init(|| XChaCha20Poly1305::generate_key(&mut OsRng).to_vec())
+    KEY.get_or_init(|| random_key().map(|k| k.to_vec()).unwrap_or_else(|_| vec![0u8; 32]))
 }
 
 pub fn key_path(db_path: &str) -> PathBuf {
@@ -57,7 +75,7 @@ pub fn load_or_create_key(db_path: &str) -> Result<Vec<u8>> {
             return Ok(bytes[..32].to_vec());
         }
     }
-    let key = XChaCha20Poly1305::generate_key(&mut OsRng).to_vec();
+    let key = random_key()?.to_vec();
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -74,7 +92,11 @@ fn cipher(key: &[u8]) -> Result<XChaCha20Poly1305> {
     if key.len() < 32 {
         anyhow::bail!("secret key is too short");
     }
-    Ok(XChaCha20Poly1305::new(Key::from_slice(&key[..32])))
+    let bytes: [u8; 32] = key
+        .get(..32)
+        .and_then(|k| k.try_into().ok())
+        .ok_or_else(|| anyhow::anyhow!("key must be 32 bytes"))?;
+    Ok(XChaCha20Poly1305::new(&Key::from(bytes)))
 }
 
 /// Encrypt with the process key.
@@ -89,7 +111,7 @@ pub fn decrypt(stored: &str) -> Option<String> {
 
 pub fn encrypt_with(key: &[u8], plaintext: &str) -> Result<String> {
     let cipher = cipher(key)?;
-    let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let nonce = random_nonce()?;
     let ct = cipher
         .encrypt(&nonce, plaintext.as_bytes())
         .map_err(|_| anyhow::anyhow!("encrypt failed"))?;
@@ -112,7 +134,8 @@ pub fn decrypt_with(key: &[u8], stored: &str) -> Option<String> {
     }
     let (nonce, ct) = blob.split_at(24);
     let cipher = cipher(key).ok()?;
-    let plain = cipher.decrypt(XNonce::from_slice(nonce), ct).ok()?;
+    let nonce: [u8; 24] = nonce.try_into().ok()?;
+    let plain = cipher.decrypt(&XNonce::from(nonce), ct).ok()?;
     String::from_utf8(plain).ok()
 }
 

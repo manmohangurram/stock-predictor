@@ -6,9 +6,10 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 axum = "0.8"
-base64 = "0.22"
-chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc", "getrandom"] }
+base64 = "0.23"
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "getrandom"] }
 chrono = "0.4"
+getrandom = "0.3"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "webpki-roots", "query"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

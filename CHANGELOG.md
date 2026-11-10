@@ -59,8 +59,8 @@ here and records what changed for a reader of the software, not for a reader of 
 
 ### Known
 
-- `cargo audit` reports RUSTSEC-2026-0459 against the SQLite bundled by `libsqlite3-sys` 0.30.1,
-  which sqlx 0.9 pins. It is acknowledged in `.cargo/audit.toml` with the reason — the exploit
+- `cargo audit` reports RUSTSEC-2026-0459 against the SQLite bundled by `libsqlite3-sys` 0.37.0,
+  which sqlx 0.9 caps below the patched 0.39. It is acknowledged in `.cargo/audit.toml` with the reason — the exploit
   needs a database or SQL the app did not write, and this app opens its own file and binds every
   parameter — and the ignore is to be deleted the day sqlx allows `libsqlite3-sys` 0.39.
 

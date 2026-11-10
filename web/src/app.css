@@ -569,9 +569,6 @@
   .rail > a.on { background: var(--paper-raised); color: var(--ink); font-weight: 600;
     border-left-color: var(--stamp-ink); }
   .rail-badge { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
-    display: grid; gap: 1px; }
-  .rail-foot b { font-family: var(--font-ledger); font-size: var(--text-md); font-weight: 500; }
-  .rail-note { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
 
   /* Block, not grid: a grid item refuses to shrink below a wide table's min-content width. */
   .main { display: block; padding: var(--space-4) var(--space-8) var(--space-12);
