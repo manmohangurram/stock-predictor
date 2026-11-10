@@ -412,6 +412,122 @@ pub async fn edit_on(
     Ok(())
 }
 
+/// Remove a fill entirely.
+///
+/// The trade row goes, the position moves back by exactly what the fill moved it, and the money
+/// difference is posted as its own `adjust` entry — the ledger stays append-only. A fill that came
+/// from an approved decision puts that decision back to `pending`, so the record never shows an
+/// approval with no fill behind it.
+pub async fn delete(pool: &SqlitePool, id: i64) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    delete_on(&mut tx, id).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn delete_on(conn: &mut sqlx::SqliteConnection, id: i64) -> Result<()> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        instrument_id: i64,
+        side: String,
+        qty: f64,
+        price: f64,
+        note: Option<String>,
+        mode: String,
+    }
+    let row: Row = sqlx::query_as(
+        "SELECT instrument_id, side, qty, price, note, mode FROM trades WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(&mut *conn)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!("no fill {id}"))?;
+    let mode = Mode::parse(&row.mode)?;
+    let side = Side::parse(&row.side)?;
+    let value = row.qty * row.price;
+
+    let open: Option<(i64, f64, f64)> = sqlx::query_as(
+        "SELECT id, qty, avg_cost FROM positions
+         WHERE instrument_id = ? AND mode = ? ORDER BY state = 'open' DESC, id DESC LIMIT 1",
+    )
+    .bind(row.instrument_id)
+    .bind(mode.as_str())
+    .fetch_optional(&mut *conn)
+    .await?;
+    let (position_id, held, cost) = open.unwrap_or((0, 0.0, 0.0));
+
+    // Undo: a buy gives its units back, a sell returns the units it took.
+    let delta_units = match side {
+        Side::Buy => -row.qty,
+        Side::Sell => row.qty,
+    };
+    ensure!(
+        held + delta_units >= -1e-9,
+        "deleting this fill would leave {:.3} units held — sell or correct the later fills first",
+        held + delta_units
+    );
+
+    if position_id != 0 {
+        let new_held = held + delta_units;
+        let basis = held * cost - if side == Side::Buy { value } else { 0.0 };
+        let new_cost = if new_held > 1e-9 {
+            (basis / new_held).max(0.0)
+        } else {
+            cost
+        };
+        sqlx::query("UPDATE positions SET qty = ?, avg_cost = ?, state = ? WHERE id = ?")
+            .bind(new_held)
+            .bind(new_cost)
+            .bind(if new_held > 1e-9 { "open" } else { "closed" })
+            .bind(position_id)
+            .execute(&mut *conn)
+            .await?;
+    }
+
+    // The money comes back the way it went out: a deleted buy refunds, a deleted sell charges.
+    let cash = match side {
+        Side::Buy => value,
+        Side::Sell => -value,
+    };
+    if cash.abs() > 1e-9 {
+        budget::record_on(
+            conn,
+            NewCashEntry {
+                kind: CashKind::Adjust,
+                amount: cash,
+                reference: format!("delete fill {id}"),
+                bucket: None,
+            },
+            &chrono::Utc::now().to_rfc3339(),
+            mode,
+        )
+        .await?;
+    }
+
+    sqlx::query("DELETE FROM trades WHERE id = ?")
+        .bind(id)
+        .execute(&mut *conn)
+        .await?;
+
+    // A fill that satisfied a decision no longer exists, so the decision is pending again.
+    if let Some(decision) = row
+        .note
+        .as_deref()
+        .and_then(|n| n.strip_prefix("decision "))
+        .and_then(|n| n.trim().parse::<i64>().ok())
+    {
+        sqlx::query(
+            "UPDATE signals SET status = 'pending', status_at = NULL, filled_qty = NULL,
+                filled_price = NULL
+             WHERE id = ?",
+        )
+        .bind(decision)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn insert_trade(
     conn: &mut sqlx::SqliteConnection,

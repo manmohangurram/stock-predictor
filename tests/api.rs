@@ -2366,3 +2366,112 @@ async fn a_fill_that_cannot_post_its_money_writes_nothing() {
         .unwrap();
     assert_eq!(trades.0, 1, "only the first fill is recorded");
 }
+
+/// Deleting a fill undoes it: the trade row goes, the position moves back, the money comes back as
+/// a visible `adjust` entry, and a decision it satisfied returns to pending.
+#[tokio::test]
+async fn deleting_a_fill_reverses_it_and_reopens_its_decision() {
+    let (_d, router, pool) = setup().await;
+    let id: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, mode)
+         SELECT id, 'BUY', 10, 100.0, 90.0, 130.0, '2030-01-01T00:00:00Z', '{}',
+                '2026-11-09T10:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'INFY' RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", id.0),
+        json!({"qty": 10.0, "price": 100.0}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let trade: (i64,) = sqlx::query_as("SELECT MAX(id) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let before: (f64,) = sqlx::query_as("SELECT SUM(amount) FROM cash_ledger")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let (s, v) = send(&router, "DELETE", &format!("/api/trades/{}", trade.0), json!({})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let trades: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(trades.0, 0, "the fill is gone");
+
+    let after: (f64,) = sqlx::query_as("SELECT SUM(amount) FROM cash_ledger")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!((after.0 - before.0 - 1000.0).abs() < 1e-6, "the money came back: {after:?}");
+
+    let adjust: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM cash_ledger WHERE kind = 'adjust'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(adjust.0, 1, "as its own entry, not by rewriting history");
+
+    let held: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM positions
+         WHERE instrument_id = (SELECT id FROM instruments WHERE symbol = 'INFY') AND state = 'open'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(held.0, 0, "the position is closed");
+
+    let status: (String,) = sqlx::query_as("SELECT status FROM signals WHERE id = ?")
+        .bind(id.0)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status.0, "pending", "the decision is open again");
+}
+
+/// You cannot delete a fill that later fills depend on: the book would go short.
+#[tokio::test]
+async fn deleting_a_fill_that_would_go_negative_is_refused() {
+    let (_d, router, pool) = setup().await;
+    send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 100.0, "mode": "long"}),
+    )
+    .await;
+    send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "sell", "qty": 8.0, "price": 110.0, "mode": "long"}),
+    )
+    .await;
+    let first: (i64,) = sqlx::query_as("SELECT MIN(id) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let (s, v) = send(&router, "DELETE", &format!("/api/trades/{}", first.0), json!({})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(v["error"].as_str().unwrap_or_default().contains("less than nothing") || v["error"].as_str().unwrap_or_default().contains("sell or correct"), "{v}");
+
+    let held: (f64,) = sqlx::query_as(
+        "SELECT qty FROM positions WHERE instrument_id =
+         (SELECT id FROM instruments WHERE symbol = 'INFY') AND state = 'open'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(held.0, 2.0, "nothing moved");
+}

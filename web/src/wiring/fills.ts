@@ -30,6 +30,37 @@ export function wireFillEdits(reload: () => Promise<void>): void {
     });
   });
 
+  // Delete asks once, in place: the button becomes the question, and clicking it again acts.
+  document.querySelectorAll<HTMLButtonElement>("[data-delete-fill]").forEach((button) => {
+    const original = button.textContent ?? "Delete this fill";
+    button.addEventListener("click", async () => {
+      const id = Number(button.dataset.deleteFill);
+      if (button.dataset.armed !== "1") {
+        button.dataset.armed = "1";
+        button.textContent = "Delete? Click again";
+        window.setTimeout(() => {
+          if (button.dataset.armed === "1") {
+            button.dataset.armed = "0";
+            button.textContent = original;
+          }
+        }, 4000);
+        return;
+      }
+      button.disabled = true;
+      button.textContent = "Deleting…";
+      try {
+        await api.deleteTrade(id);
+        await reload();
+      } catch (e) {
+        button.disabled = false;
+        button.dataset.armed = "0";
+        button.textContent = original;
+        const status = document.querySelector<HTMLElement>(`[data-fill-status="${id}"]`);
+        if (status) status.textContent = String(e);
+      }
+    });
+  });
+
   document
     .querySelectorAll<HTMLFormElement>("[data-edit-form]")
     .forEach((form) => {

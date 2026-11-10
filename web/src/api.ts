@@ -327,6 +327,8 @@ export const api = {
       `/api/signals/${id}/approve`,
       json(body),
     ),
+  deleteTrade: (id: number) =>
+    req<{ id: number; deleted: boolean }>(`/api/trades/${id}`, { method: "DELETE" }),
   editTrade: (id: number, body: { qty?: number; price?: number; at?: string }) =>
     req<{ id: number; edited: boolean }>(`/api/trades/${id}`, {
       ...json(body),

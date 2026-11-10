@@ -253,6 +253,8 @@ function trades(list: Trade[]): string {
           <div class="row">
             <button class="btn primary" type="submit">Save the correction</button>
             <button class="btn ghost" type="button" data-cancel-fill="${t.id}">Cancel</button>
+            <button class="btn ghost danger push-right" type="button" data-delete-fill="${t.id}"
+                    data-confirm="Delete this fill? The units and the money come back, and any decision it satisfied reopens.">Delete this fill</button>
             <span class="help" data-fill-status="${t.id}" role="status">The position and the cash move by the difference.</span>
           </div>
         </form>

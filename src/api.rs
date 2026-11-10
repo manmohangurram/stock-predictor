@@ -81,7 +81,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/instruments", post(add_instrument))
         .route("/api/instruments/{symbol}", get(instrument_detail))
         .route("/api/trades", get(all_trades))
-        .route("/api/trades/{id}", patch(edit_trade))
+        .route("/api/trades/{id}", patch(edit_trade).delete(delete_trade))
         .route("/api/archived", get(archived_instruments))
         .route("/api/calls/{id}", get(call_detail))
         .route(
@@ -1531,6 +1531,17 @@ async fn instrument_trades(
 ) -> Result<Json<Vec<crate::trades::Trade>>, ApiError> {
     let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
     Ok(Json(crate::trades::history(&st.pool, Some(id), 200).await?))
+}
+
+/// Remove a fill: the position and the ledger move back, and the decision it satisfied reopens.
+async fn delete_trade(
+    State(st): State<AppState>,
+    axum::extract::Path(id): axum::extract::Path<i64>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    crate::trades::delete(&st.pool, id)
+        .await
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    Ok(Json(serde_json::json!({ "id": id, "deleted": true })))
 }
 
 #[derive(Debug, Deserialize, Default)]
