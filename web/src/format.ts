@@ -36,5 +36,19 @@ export const histDate = (iso: string | null, now = new Date()): string => {
   });
 };
 
+/** "09 Nov 05:34" — day and time on one line, 24-hour, for a cell that must stay one row. */
+export const dayTime = (iso: string | null): string => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.valueOf())) return "—";
+  const dPart = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  const tPart = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${dPart} ${tPart}`;
+};
+
+/** "decide" → "Decide": a label, not an identifier. Keeps the rest of the word as it was. */
+export const titleCase = (s: string): string =>
+  s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
+
 export const escapeHtml = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

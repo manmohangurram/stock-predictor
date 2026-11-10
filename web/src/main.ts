@@ -40,9 +40,39 @@ async function route(): Promise<void> {
         ? Number(params.get("limit"))
         : 25;
       const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
-      const [runs, list] = await Promise.all([api.runs(25), api.calls(offset, limit)]);
-      app.innerHTML = renderCalls(runs.runs, runs.running, list.rows, list.offset, list.limit, list.total);
+      const filters = {
+        prompt: params.get("prompt") ?? undefined,
+        call: params.get("call") ?? undefined,
+        model: params.get("model") ?? undefined,
+        review: params.get("review") ?? undefined,
+      };
+      const [runs, facets, list] = await Promise.all([
+        api.runs(25),
+        api.callFacets(),
+        api.calls(offset, limit, filters),
+      ]);
+      app.innerHTML = renderCalls(
+        runs.runs,
+        runs.running,
+        list.rows,
+        facets,
+        filters,
+        list.offset,
+        list.limit,
+        list.total,
+      );
       wireRuns(route);
+      // A filter starts the record over: page 2 of the old filter is not page 2 of the new one.
+      document.querySelectorAll<HTMLSelectElement>("[data-filter]").forEach((select) => {
+        select.addEventListener("change", () => {
+          const next = new URLSearchParams(location.search);
+          const name = select.dataset.filter!;
+          if (select.value) next.set(name, select.value);
+          else next.delete(name);
+          next.delete("offset");
+          window.location.href = `/calls?${next}`;
+        });
+      });
       // A different page size is the same view, re-cut from the top.
       document.querySelector<HTMLSelectElement>("[data-page-size]")?.addEventListener("change", (ev) => {
         const size = (ev.target as HTMLSelectElement).value;

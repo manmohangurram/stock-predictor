@@ -2570,3 +2570,75 @@ async fn a_call_can_be_opened_with_and_without_a_decision() {
     assert_eq!(s, StatusCode::OK, "{v}");
     assert_eq!(v["instrument_name"], "TCS Ltd");
 }
+
+/// The audit list narrows server-side, and the total follows the filter — a pager that counts the
+/// unfiltered record is worse than no filter.
+#[tokio::test]
+async fn the_audit_list_can_be_narrowed() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO api_calls (id, ts, conversation_id, endpoint, purpose, prompt_template, http_status)
+         VALUES (31, '2026-11-09T10:00:00Z', 'a', 'chat', 'decide INFY', 'decide_v1', 200),
+                (32, '2026-11-09T10:01:00Z', 'b', 'chat', 'plan book', 'plan_stock_v1', 200),
+                (33, '2026-11-09T10:02:00Z', 'c', 'chat+search', 'decide TCS', 'decide_v1', 200)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    // One of them produced an approved decision.
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, conversation_id, status)
+         SELECT id, 'BUY', 1, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:01Z',
+                'long', 'a', 'approved'
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (s, v) = get(&router, "/api/calls?prompt=plan").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let rows = v.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["purpose"], "plan book");
+
+    let (s, v) = get(&router, "/api/calls?model=decide_v1").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v.as_array().unwrap().len(), 2);
+
+    let (s, v) = get(&router, "/api/calls?call=chat%2Bsearch").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v.as_array().unwrap().len(), 1);
+
+    let (s, v) = get(&router, "/api/calls?review=approved").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v.as_array().unwrap().len(), 1);
+
+    let (s, v) = get(&router, "/api/calls?review=none").await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(v.as_array().unwrap().len(), 2, "two calls produced no decision");
+
+    // The total is the filtered total, not the table's.
+    use tower::ServiceExt;
+    let resp = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/calls?prompt=plan")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.headers().get("x-total-count").unwrap().to_str().unwrap(),
+        "1"
+    );
+
+    // And the page is told which values exist, instead of guessing them.
+    let (s, v) = get(&router, "/api/calls/facets").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["prompts"], json!(["decide", "plan"]));
+    assert_eq!(v["models"], json!(["decide_v1", "plan_stock_v1"]));
+}

@@ -110,6 +110,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/signals/{id}/approve", post(approve_signal))
         .route("/api/signals/{id}/reject", post(reject_signal))
         .route("/api/calls", get(calls))
+        .route("/api/calls/facets", get(call_facets))
         .route("/api/runs", get(list_runs).post(start_run))
         .route("/api/positions", post(post_position))
         .route("/api/positions/{id}", patch(patch_position))
@@ -839,6 +840,8 @@ pub struct CallRow {
     pub instrument_symbol: Option<String>,
     /// How many moves a book call produced. Zero for every other kind of call.
     pub plan_legs: i64,
+    /// The prompt template that was sent — decide_v1, plan_stock_v1, short_v1.
+    pub model: Option<String>,
     /// Why the model was asked: "price moved …", "new headline …", "rotation …".
     pub trigger: Option<String>,
     /// The decision this call produced, and what you did with it.
@@ -862,6 +865,7 @@ struct CallDbRow {
     instrument_name: Option<String>,
     instrument_symbol: Option<String>,
     plan_legs: i64,
+    prompt_template: Option<String>,
     trigger: Option<String>,
     decision_id: Option<i64>,
     decision_status: Option<String>,
@@ -954,6 +958,41 @@ pub struct CallsQuery {
     pub limit: Option<u32>,
     pub page: Option<u32>,
     pub per_page: Option<u32>,
+    /// Filters. Server-side, because the list is paged: filtering a page of 25 in the browser
+    /// would filter the page, not the record.
+    /// The prompt verb: decide, plan, rotate, escalate.
+    pub prompt: Option<String>,
+    /// The exchange channel: chat, chat+search.
+    pub call: Option<String>,
+    /// The prompt template that was sent: decide_v1, plan_stock_v1…
+    pub model: Option<String>,
+    /// pending | approved | rejected | blocked | none.
+    pub review: Option<String>,
+}
+
+/// The distinct values the filters offer, so the page never hard-codes a list that drifts.
+async fn call_facets(State(st): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let distinct = |sql: &'static str| {
+        let pool = st.pool.clone();
+        async move {
+            let rows: Vec<(Option<String>,)> = sqlx::query_as(sql).fetch_all(&pool).await?;
+            let out: Vec<String> = rows.into_iter().filter_map(|r| r.0).collect();
+            Ok::<_, sqlx::Error>(out)
+        }
+    };
+    Ok(Json(serde_json::json!({
+        "prompts": distinct(
+            "SELECT DISTINCT trim(substr(purpose, 1, instr(purpose, ' ') - 1)) AS v
+             FROM api_calls WHERE purpose IS NOT NULL AND instr(purpose, ' ') > 0 ORDER BY v",
+        )
+        .await?,
+        "calls": distinct("SELECT DISTINCT endpoint FROM api_calls ORDER BY endpoint").await?,
+        "models": distinct(
+            "SELECT DISTINCT prompt_template FROM api_calls
+             WHERE prompt_template IS NOT NULL ORDER BY prompt_template",
+        )
+        .await?,
+    })))
 }
 
 pub const CALLS_PER_PAGE: u32 = 25;
@@ -1049,33 +1088,87 @@ async fn calls(
     let offset = q
         .offset
         .unwrap_or_else(|| (q.page.unwrap_or(1).max(1) - 1).saturating_mul(limit));
-    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM api_calls")
-        .fetch_one(&st.pool)
-        .await?;
-    let rows: Vec<CallDbRow> = sqlx::query_as(
+
+    // Filters are bound parameters and the clause text is fixed, so a request can narrow the
+    // record but never rewrite the statement.
+    let given = |v: &Option<String>| -> Option<String> {
+        v.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    // Each filter is a clause plus, sometimes, one bound value. QueryBuilder writes the
+    // placeholder itself, so the SQL text never contains a `?`.
+    let mut filters: Vec<(&'static str, Option<String>)> = Vec::new();
+    if let Some(v) = given(&q.prompt) {
+        filters.push((
+            " AND (CASE WHEN instr(a.purpose, ' ') > 0
+                   THEN substr(a.purpose, 1, instr(a.purpose, ' ') - 1)
+                   ELSE a.purpose END) = ",
+            Some(v),
+        ));
+    }
+    if let Some(v) = given(&q.call) {
+        filters.push((" AND a.endpoint = ", Some(v)));
+    }
+    if let Some(v) = given(&q.model) {
+        filters.push((" AND a.prompt_template = ", Some(v)));
+    }
+    match given(&q.review).as_deref() {
+        Some("none") => filters.push((" AND d.id IS NULL", None)),
+        Some("blocked") => filters.push((" AND d.action = 'BLOCKED'", None)),
+        Some(status) => filters.push((" AND d.status = ", Some(status.to_string()))),
+        None => {}
+    }
+
+    // The decision join is shared by the count and the page, so "total" always matches the filter.
+    const JOINS: &str = " FROM api_calls a
+         LEFT JOIN signals d ON d.id = (
+             SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
+             ORDER BY s.id DESC LIMIT 1)";
+
+    // The `WHERE 1 = 1` anchor matters: without it the first filter is appended to the JOIN's ON
+    // clause, where it silently stops filtering anything.
+    let mut count_q =
+        sqlx::QueryBuilder::<sqlx::Sqlite>::new(format!("SELECT COUNT(*){JOINS} WHERE 1 = 1"));
+    for (sql, bind) in &filters {
+        count_q.push(sql);
+        if let Some(value) = bind {
+            count_q.push_bind(value.clone());
+        }
+    }
+    let total: i64 = count_q.build_query_scalar().fetch_one(&st.pool).await?;
+
+    let mut page_q = sqlx::QueryBuilder::<sqlx::Sqlite>::new(format!(
         "SELECT a.id AS id, a.ts AS ts, a.endpoint AS endpoint, a.purpose AS purpose,
                 a.round AS round, a.prompt_tokens AS prompt_tokens,
                 a.completion_tokens AS completion_tokens,
                 a.validator_verdict AS validator_verdict, a.error AS error,
-                a.trigger AS trigger, d.id AS decision_id, d.status AS decision_status,
+                a.trigger AS trigger, a.prompt_template AS prompt_template,
+                d.id AS decision_id, d.status AS decision_status,
                 d.action AS decision_action, d.reason_json AS decision_reason,
                 COALESCE(i.name, pi.name) AS instrument_name,
                 COALESCE(i.symbol, pi.symbol) AS instrument_symbol,
                 (SELECT COUNT(*) FROM signals p
                   WHERE p.conversation_id = a.conversation_id AND p.kind = 'plan') AS plan_legs
-         FROM api_calls a
-         LEFT JOIN signals d ON d.id = (
-             SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
-             ORDER BY s.id DESC LIMIT 1)
+         {JOINS}
          LEFT JOIN instruments i ON i.id = d.instrument_id
          -- A call with no decision still names a holding in its purpose, after the verb.
          LEFT JOIN instruments pi ON pi.symbol = trim(substr(a.purpose, instr(a.purpose, ' ') + 1))
-         ORDER BY a.id DESC LIMIT ? OFFSET ?",
-    )
-    .bind(limit as i64)
-    .bind(offset as i64)
-    .fetch_all(&st.pool)
-    .await?;
+         WHERE 1 = 1"
+    ));
+    for (sql, bind) in &filters {
+        page_q.push(sql);
+        if let Some(value) = bind {
+            page_q.push_bind(value.clone());
+        }
+    }
+    page_q.push(" ORDER BY a.id DESC LIMIT ");
+    page_q.push_bind(limit as i64);
+    page_q.push(" OFFSET ");
+    page_q.push_bind(offset as i64);
+    let rows: Vec<CallDbRow> = page_q.build_query_as().fetch_all(&st.pool).await?;
+
     let body: Json<Vec<CallRow>> = Json(
         rows.into_iter()
             .map(|r| CallRow {
@@ -1100,6 +1193,7 @@ async fn calls(
                     r.instrument_symbol.clone()
                 },
                 plan_legs: r.plan_legs,
+                model: r.prompt_template,
                 trigger: r.trigger,
                 decision_id: r.decision_id,
                 decision_status: r.decision_status,

@@ -1,5 +1,5 @@
 import type { CallRow, RunRow } from "../api";
-import { escapeHtml, money, units } from "../format";
+import { dayTime, escapeHtml, money, titleCase, units } from "../format";
 import { renderApp, renderHead } from "../components/shell";
 import { actionStamp, pill, stamp, toneOf } from "../components/stamp";
 import {
@@ -13,19 +13,6 @@ import {
 
 export type { CallDetail };
 
-/** The browser's own clock: what a person sees, not the UTC the server stores. */
-function localTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  // 24-hour and short, so the column stays one line: "09 Nov 05:34".
-  const day = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
-  const time = d.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return `${day} ${time}`;
-}
 
 /** What you did with the decision this call produced — or why it never reached you. */
 function reviewBadge(r: CallRow): string {
@@ -43,7 +30,7 @@ function reviewBadge(r: CallRow): string {
     const label = state === "pending" ? "plan · awaiting you" : `plan · ${state}`;
     return pill(state === "approved" ? "ok" : state === "rejected" ? "todo" : "", label);
   }
-  if (!r.decision_status) return pill("", "no decision");
+  if (!r.decision_status) return "";
   const tone = r.decision_status === "approved" ? "ok" : r.decision_status === "rejected" ? "todo" : "";
   const label =
     r.decision_status === "pending" ? "awaiting you" : r.decision_status;
@@ -123,7 +110,7 @@ export function renderRuns(runs: RunRow[], running: number): string {
           : ""
         : `<button class="mini" type="button" data-run-again="${escapeHtml(r.prompt)}">Run again</button>`;
     return `<article class="rcard" data-state="${r.status}">
-      <div class="rcard-top">${state}<span class="run-when">${escapeHtml(localTime(r.started_at))} · ${escapeHtml(took(r))}</span></div>
+      <div class="rcard-top">${state}<span class="run-when">${escapeHtml(dayTime(r.started_at))} · ${escapeHtml(took(r))}</span></div>
       <div class="rcard-title">${escapeHtml(label[r.prompt] ?? r.prompt)}
         <span class="trigger">${escapeHtml(r.trigger)}</span></div>
       <div class="rcard-result">${escapeHtml(
@@ -160,10 +147,46 @@ export function renderRuns(runs: RunRow[], running: number): string {
   }`;
 }
 
+export interface CallFilters {
+  prompt?: string;
+  call?: string;
+  model?: string;
+  review?: string;
+}
+
+/** The filter row: four dimensions, all server-side, all in the URL. */
+function filterBar(
+  facets: { prompts: string[]; calls: string[]; models: string[] },
+  active: CallFilters,
+): string {
+  const pick = (name: keyof CallFilters, label: string, values: string[]) => {
+    const options = values
+      .map(
+        (v) =>
+          `<option value="${escapeHtml(v)}" ${active[name] === v ? "selected" : ""}>${escapeHtml(titleCase(v))}</option>`,
+      )
+      .join("");
+    return `<label class="filter"><span class="lbl">${label}</span>
+      <select data-filter="${name}" aria-label="${label}">
+        <option value="">Any</option>${options}
+      </select></label>`;
+  };
+  const on = Object.values(active).some(Boolean);
+  return `<div class="filter-bar">
+    ${pick("prompt", "Prompt", facets.prompts)}
+    ${pick("call", "Call", facets.calls)}
+    ${pick("model", "Model", facets.models)}
+    ${pick("review", "Review", ["pending", "approved", "rejected", "blocked", "none"])}
+    ${on ? `<a class="btn ghost" href="/calls">Clear</a>` : ""}
+  </div>`;
+}
+
 export function renderCalls(
   runs: RunRow[],
   running: number,
   rows: CallRow[],
+  facets: { prompts: string[]; calls: string[]; models: string[] },
+  active: CallFilters,
   offset = 0,
   limit = 25,
   total = rows.length,
@@ -189,9 +212,9 @@ export function renderCalls(
               }`
             : `<span class="muted">${escapeHtml(rest.join(" ") || "—")}</span>`;
       return `<tr>
-  <td class="time" title="${escapeHtml(r.ts)}">${escapeHtml(localTime(r.ts))}</td>
-  <td class="hide-sm">${escapeHtml(kind || "—")}</td>
-  <td class="hide-sm">${escapeHtml(r.endpoint)}</td>
+  <td class="time" title="${escapeHtml(r.ts)}">${escapeHtml(dayTime(r.ts))}</td>
+  <td class="hide-sm">${escapeHtml(titleCase(kind || "—"))}</td>
+  <td class="hide-sm">${escapeHtml(titleCase(r.endpoint))}</td>
   <td>${holding}</td>
   <td class="review-td"><div class="review-cell">${reviewBadge(r)}</div></td>
   <td class="right">
@@ -209,6 +232,7 @@ export function renderCalls(
       { label: "Tokens", value: tokens.toLocaleString("en-IN") },
     ])}
   ${renderRuns(runs, running)}
+  ${filterBar(facets, active)}
   <section class="main-body table-wrap">
     <table class="blotter">
       <thead><tr>
@@ -341,7 +365,7 @@ export function renderExchangeDetail(d: CallDetail): string {
   return `<div class="call">
   <div class="call-bar">
     ${fact("Model", escapeHtml(d.prompt_template ?? firstWord(d.purpose)))}
-    ${fact("Time", escapeHtml(localTime(d.ts)))}
+    ${fact("Time", escapeHtml(dayTime(d.ts)))}
     ${d.round ? fact("Round", String(d.round)) : ""}
     ${fact("Tokens", `${d.prompt_tokens ?? 0} in · ${d.completion_tokens ?? 0} out`)}
     ${tools.length ? fact("Tools", escapeHtml(tools.join(", "))) : ""}
@@ -355,7 +379,7 @@ export function renderExchangeDetail(d: CallDetail): string {
       ? ""
       : `<section class="call-sec">
     <h3 class="call-h">The answer</h3>
-    ${decisionCard(reply, localTime(d.ts))}
+    ${decisionCard(reply, dayTime(d.ts))}
   </section>`
   }
 

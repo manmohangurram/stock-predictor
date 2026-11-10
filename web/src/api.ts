@@ -172,6 +172,8 @@ export interface CallRow {
   instrument_symbol: string | null;
   /** How many moves a book call produced. Zero for every other kind of call. */
   plan_legs: number;
+  /** The prompt template that was sent — decide_v1, plan_stock_v1, short_v1. */
+  model: string | null;
   purpose: string | null;
   round: number | null;
   prompt_tokens: number | null;
@@ -308,9 +310,18 @@ export const api = {
     req<{ runs: RunRow[]; running: number }>(`/api/runs?limit=${limit}`),
   runNow: (prompt: string, symbol?: string) =>
     req<{ id: number; status: string }>("/api/runs", json({ prompt, symbol })),
+  /** The values the audit filters offer, straight from the record. */
+  callFacets: () =>
+    req<{ prompts: string[]; calls: string[]; models: string[] }>("/api/calls/facets"),
   /** A window into the audit list; the total comes back in a header. */
-  calls: async (offset = 0, limit = 25) => {
-    const r = await fetch(`/api/calls?offset=${offset}&limit=${limit}`);
+  calls: async (
+    offset = 0,
+    limit = 25,
+    filters: { prompt?: string; call?: string; model?: string; review?: string } = {},
+  ) => {
+    const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+    for (const [k, v] of Object.entries(filters)) if (v) q.set(k, v);
+    const r = await fetch(`/api/calls?${q}`);
     if (!r.ok) throw new Error(`/api/calls: ${r.status} ${(await r.text()).slice(0, 200)}`);
     const rows = (await r.json()) as CallRow[];
     const total = Number(r.headers.get("x-total-count") ?? rows.length);

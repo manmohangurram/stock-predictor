@@ -1255,4 +1255,7 @@ async fn a_poll_reports_what_the_gate_left_alone() {
             .any(|n| n.contains("model not asked")),
         "{report:?}"
     );
+    // The run summary says "0 of 1 instruments asked", which needs both halves counted.
+    assert_eq!(report.polled, 1, "{report:?}");
+    assert_eq!(report.asked, 0, "{report:?}");
 }

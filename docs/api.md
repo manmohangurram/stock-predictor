@@ -21,7 +21,8 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | GET | `/api/search?q=` | yes | Yahoo + AMFI search — feeds the add-instrument dialog (⌘K on the ledger) |
 | GET | `/api/runs?limit=` | yes | Runs: state (`running`/`done`/`failed`), trigger, duration, result |
 | POST | `/api/runs` | yes | Start a run now: `{"prompt": "poll"\|"plan_stock"\|"plan_fund"\|"short"\|"decide", "symbol": "INFY.NS"}` |
-| GET | `/api/calls?offset=&limit=` | yes | One window of the audit list; total in `x-total-count` (also accepts `page`/`per_page`) |
+| GET | `/api/calls/facets` | yes | The distinct prompt verbs, endpoints and templates the filters offer |
+| GET | `/api/calls?offset=&limit=&prompt=&call=&model=&review=` | yes | One window of the audit list; total in `x-total-count` (also accepts `page`/`per_page`) |
 | GET | `/api/calls/{id}` | yes | One call with its prompt and raw reply |
 | POST | `/api/signals/{id}/approve` | yes | Record the fill you got; approves the whole group (both legs of a rotation, every move of a plan). A plan takes `fills: [{id, qty, price}]`, one per leg |
 | POST | `/api/signals/{id}/reject` | yes | Reject with an optional reason; a plan is rejected whole; no money moves |

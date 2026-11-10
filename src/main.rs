@@ -27,6 +27,25 @@ async fn spa_index() -> impl axum::response::IntoResponse {
     )
 }
 
+/// One line that tells two polls apart: how many instruments were asked, and what came of it.
+fn poll_summary(r: &stock_predictor::engine::PollReport) -> String {
+    let total = r.polled;
+    let mut line = format!(
+        "{} of {} instruments asked · {} decisions · {} plans",
+        r.asked, total, r.signals, r.plans
+    );
+    if r.blocked > 0 {
+        line.push_str(&format!(" · {} blocked", r.blocked));
+    }
+    if !r.not_asked.is_empty() {
+        line.push_str(&format!(
+            " · left alone: {}",
+            r.not_asked.iter().take(3).cloned().collect::<Vec<_>>().join(", ")
+        ));
+    }
+    line
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -286,10 +305,7 @@ async fn main() -> Result<()> {
                 };
                 let outcome = match command {
                     Manual::Poll => match engine::poll_once(&manual_deps, Utc::now()).await {
-                        Ok(r) => Ok(format!(
-                            "{} decisions, {} plans, {} blocked, {} calls",
-                            r.signals, r.plans, r.blocked, r.llm_calls
-                        )),
+                        Ok(r) => Ok(poll_summary(&r)),
                         Err(e) => Err(format!("{e:#}")),
                     },
                     Manual::PlanStock => {

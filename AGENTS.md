@@ -93,6 +93,11 @@ left edge of every line that is supposed to share one, and on the right edge of 
   is what keeps `main.ts` a router and a timer (about 280 lines).
 - `main.ts` — routing, the 60-second refresh, nothing else.
 
+A list that is paged is filtered on the server: `/api/calls` takes `prompt`, `call`, `model` and
+`review`, and `x-total-count` is the *filtered* total, because a pager that counts the whole record
+is worse than no filter. The `WHERE 1 = 1` anchor in that handler is load-bearing — without it the
+first clause lands in the JOIN's `ON`, where it silently filters nothing.
+
 ## Quality gates
 
 ```sh

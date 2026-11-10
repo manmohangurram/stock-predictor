@@ -36,6 +36,10 @@ pub struct PollReport {
     pub signals: usize,
     pub notifications: usize,
     pub blocked: usize,
+    /// Instruments this tick looked at: the denominator for "2 of 6 instruments asked".
+    pub polled: usize,
+    /// Instruments the model was actually asked about this tick (ruling and re-priced alike).
+    pub asked: usize,
     /// Instruments the gate left alone this tick: no price move, no new headline.
     pub not_asked: Vec<String>,
     /// Plan calls that produced a plan. Zero is the normal answer.
@@ -595,6 +599,7 @@ async fn poll_instrument(
     let Some(g) = gather(deps, instrument, now).await? else {
         return Ok(());
     };
+    report.polled += 1;
     let (bars, news, ind) = (&g.bars, &g.news, &g.ind);
     let (position, available) = (&g.position, g.available);
 
@@ -833,6 +838,7 @@ async fn poll_instrument(
     crate::llm::memo::record_call(deps.pool, instrument.id, candidate.entry, now, &headline_fp)
         .await?;
 
+    report.asked += 1;
     let Some(resolved) = resolve(&candidate, decision.outcome, now) else {
         return Ok(());
     };
