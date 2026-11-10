@@ -46,6 +46,13 @@ export const dayTime = (iso: string | null): string => {
   return `${dPart} ${tPart}`;
 };
 
+/**
+ * An identifier shown as a label: `plan_stock_v1` → "Plan stock v1". Underscores become spaces and
+ * the first letter is capitalised; the rest of the word is left alone, so `chat+search` survives.
+ */
+export const humanLabel = (raw: string): string =>
+  titleCase(raw.replace(/_/g, " "));
+
 /** "decide" → "Decide": a label, not an identifier. Keeps the rest of the word as it was. */
 export const titleCase = (s: string): string =>
   s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);

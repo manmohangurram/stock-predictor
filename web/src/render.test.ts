@@ -1154,3 +1154,15 @@ describe("the schedule strip", () => {
     expect(html).toContain("due now");
   });
 });
+
+describe("labels from identifiers", () => {
+  test("a model name is capitalised and loses its underscores", async () => {
+    const { humanLabel } = await import("./format");
+    expect(humanLabel("decide_v1")).toBe("Decide v1");
+    expect(humanLabel("plan_stock_v1")).toBe("Plan stock v1");
+    expect(humanLabel("plan_mf_v1")).toBe("Plan mf v1");
+    // Values without underscores keep their shape, including symbols.
+    expect(humanLabel("chat+search")).toBe("Chat+search");
+    expect(humanLabel("")).toBe("");
+  });
+});

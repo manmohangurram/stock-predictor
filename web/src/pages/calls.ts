@@ -1,5 +1,5 @@
 import type { CallRow, ScheduledPrompt } from "../api";
-import { dayTime, escapeHtml, money, titleCase, units } from "../format";
+import { dayTime, escapeHtml, humanLabel, money, titleCase, units } from "../format";
 import { renderApp, renderHead } from "../components/shell";
 import { actionStamp, pill, stamp, toneOf } from "../components/stamp";
 import {
@@ -157,7 +157,7 @@ function filterBar(
     const options = values
       .map(
         (v) =>
-          `<option value="${escapeHtml(v)}" ${active[name] === v ? "selected" : ""}>${escapeHtml(titleCase(v))}</option>`,
+          `<option value="${escapeHtml(v)}" ${active[name] === v ? "selected" : ""}>${escapeHtml(humanLabel(v))}</option>`,
       )
       .join("");
     return `<label class="filter"><span class="lbl">${label}</span>
