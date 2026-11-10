@@ -57,6 +57,13 @@ here and records what changed for a reader of the software, not for a reader of 
 - Append-only `cash_ledger` and `api_calls` are unchanged. A corrected fill still posts an
   `adjust` entry rather than rewriting history.
 
+### Known
+
+- `cargo audit` reports RUSTSEC-2026-0459 against the SQLite bundled by `libsqlite3-sys` 0.30.1,
+  which sqlx 0.9 pins. It is acknowledged in `.cargo/audit.toml` with the reason — the exploit
+  needs a database or SQL the app did not write, and this app opens its own file and binds every
+  parameter — and the ignore is to be deleted the day sqlx allows `libsqlite3-sys` 0.39.
+
 ### Front end
 
 - Three layers: `pages/` renders, `components/` holds the atoms (one stamp, one pill, one date
