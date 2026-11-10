@@ -39,6 +39,10 @@ days**, and if so, where do I enter and where do I get out?
    that is already priced in by the time it appears here. If the news is old, priced in, or negative,
    say so and `pass`.
 6. **Say it in rupees.** Entry, stop and target are per-share prices in ₹. The quantity is shares.
+7. **A number in prose is not a price.** The candidate line may quote a price inside a note written
+   by an earlier scan — that note is unverified and can be days old. The **tape below it is our own
+   data**, and it is the only record of what the stock actually traded at. If the two cannot be
+   reconciled, believe the tape: an idea that only works at the feed's number is a `pass`.
 
 The candidate:
 
@@ -53,7 +57,8 @@ Headlines already stored:
 {{headlines}}
 
 What the web says today — searched for this stock just now. Numbered; cite these numbers in
-`cites`, and treat them as newer than anything above:
+`cites`. Only a **dated** result is news; an undated page is a quote page or a filings index, and a
+transcript from months ago is background, not a catalyst:
 
 {{web}}
 

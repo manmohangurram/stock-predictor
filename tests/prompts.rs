@@ -562,3 +562,32 @@ fn the_daily_scan_prompt_asks_for_bare_tickers_and_allows_an_empty_day() {
     );
     assert!(!rendered.text.contains("{{"), "unfilled: {}", rendered.text);
 }
+
+/// A result with no title is a quote page or a filings index, and reads as "current" when its date
+/// is blank. The prompt keeps only the named, dated ones.
+#[test]
+fn undated_and_untitled_results_do_not_reach_the_model() {
+    use stock_predictor::llm::deepseek::SearchHit;
+    let hits = vec![
+        SearchHit {
+            title: String::new(),
+            site: String::new(),
+            url: "https://www.nseindia.com/api/xbrl/106553837".into(),
+            snippet: "CHOLAFIN ...".into(),
+            summary: "Shareholders meeting".into(),
+            date: None,
+        },
+        SearchHit {
+            title: "Cholamandalam seeks approval for ₹5,000-crore QIP".into(),
+            site: "TipRanks".into(),
+            url: "https://example.com/qip".into(),
+            snippet: "The latest announcement is out from Cholamandalam.".into(),
+            summary: "long".into(),
+            date: Some("2026-11-08T16:00:00+00:00".into()),
+        },
+    ];
+    let web = prompts::render_web_hits(&hits);
+    assert!(web.starts_with("[1] Cholamandalam"), "{web}");
+    assert!(!web.contains("xbrl"), "the untitled page is dropped: {web}");
+    assert!(web.contains("2026-11-08 · TipRanks"), "{web}");
+}

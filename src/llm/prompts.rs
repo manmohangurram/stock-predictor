@@ -158,26 +158,32 @@ pub fn render_trending(date: &str, web: &str) -> Result<RenderedPrompt> {
     })
 }
 
-/// Numbered web hits, the same shape the headline list has: a number, a title, and the gist.
+/// Numbered web hits for the prompt.
+///
+/// Only a dated, titled result is evidence: an undated page is a quote page or a filings index, and
+/// the model may not treat it as today's news. Undated hits are dropped rather than shown with a
+/// blank date, because a blank date reads as "current".
 pub fn render_web_hits(hits: &[crate::llm::deepseek::SearchHit]) -> String {
-    if hits.is_empty() {
+    const MAX: usize = 5;
+    let kept: Vec<&crate::llm::deepseek::SearchHit> = hits
+        .iter()
+        .filter(|h| !h.title.trim().is_empty())
+        .take(MAX)
+        .collect();
+    if kept.is_empty() {
         return "no web results — judge on the tape and the stored headlines alone".into();
     }
-    hits.iter()
+    kept.iter()
         .enumerate()
         .map(|(i, h)| {
             // Title, date, source and the short summary. No URL: the model cannot open it, and a
             // page of them is prompt spent on a string nothing reads.
-            let day = h
-                .date
-                .as_deref()
-                .map(|d| d.get(..10).unwrap_or(d).to_string())
-                .unwrap_or_default();
-            let when = [day, h.site.clone()]
+            let day = h.date.as_deref().map(|d| d.get(..10).unwrap_or(d));
+            let when: String = [day.unwrap_or("undated").to_string(), h.site.clone()]
                 .iter()
                 .filter(|p| !p.is_empty())
                 .map(|p| format!(" · {p}"))
-                .collect::<String>();
+                .collect();
             let gist = if h.snippet.trim().is_empty() {
                 h.summary.trim()
             } else {

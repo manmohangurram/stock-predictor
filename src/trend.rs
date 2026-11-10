@@ -73,11 +73,30 @@ impl Candidate {
     fn describe(&self) -> String {
         match (self.ltp, self.change_pct, self.previous_close) {
             (Some(ltp), Some(pct), Some(prev)) => format!(
-                "{ltp:.2} now, {pct:+.2}% today, previous close {prev:.2}, turnover {:.0}",
+                "{ltp:.2} on the exchange feed, {pct:+.2}% today, previous close {prev:.2}, \
+                 turnover {:.0}",
                 self.turnover.unwrap_or(0.0)
             ),
-            _ => "on today's scan; price read from the tape".into(),
+            _ => "on today's scan; no exchange price for it, so the tape below is the price".into(),
         }
+    }
+
+    /// True when the feed's price is not in the same world as our own last close. A stale snapshot
+    /// and a genuine move look identical to a model reading two numbers, so the prompt says which
+    /// of the two is suspect instead of letting it conclude the stock "is" that price.
+    fn disagrees_with(&self, last_close: Option<f64>) -> Option<String> {
+        let (feed, close) = (self.ltp?, last_close?);
+        if close <= 0.0 {
+            return None;
+        }
+        let gap = (feed - close).abs() / close;
+        (gap > 0.05).then(|| {
+            format!(
+                "the feed says {feed:.2} while our last close was {close:.2} ({:+.1}%) — one of the \
+                 two is stale; trust the tape, and pass if the setup depends on the feed's number",
+                (feed / close - 1.0) * 100.0
+            )
+        })
     }
 }
 
@@ -192,8 +211,15 @@ pub async fn run(
                 crate::llm::prompts::render_web_hits(&[])
             }
         };
+        // The feed and our own tape are compared here, not by the model: two prices from two
+        // worlds look like a contradiction to it, and a contradiction is a `pass`.
+        let last_close = bars.last().map(|b| b.close);
+        let warn = g
+            .disagrees_with(last_close)
+            .map(|w| format!(" · {w}"))
+            .unwrap_or_default();
         let prompt = crate::llm::prompts::render_trend(
-            &format!("{} · {} · {}", symbol, g.describe(), g.why),
+            &format!("{} · {} · {}{warn}", symbol, g.describe(), scan_note(&g.why)),
             &tape(&bars),
             &headlines,
             &web,
@@ -507,6 +533,16 @@ pub fn parse_trending(content: &str) -> Vec<(String, String)> {
     }
     out.truncate(TOP_N);
     out
+}
+
+/// The scan's line, marked as what it is: a reading of the web by another model, which may quote a
+/// price that is days old. The tape below it is ours and is the only price that counts.
+fn scan_note(why: &str) -> String {
+    if why.trim().is_empty() {
+        "no note from the scan".into()
+    } else {
+        format!("scan's note, unverified — do not take a price from it: {why}")
+    }
 }
 
 /// One stored row: symbol, source, why, ltp, change, previous close, turnover.
@@ -859,8 +895,61 @@ mod list_tests {
             },
             "gainers",
         );
-        assert!(priced.describe().contains("780.50 now"));
+        assert!(priced.describe().contains("780.50 on the exchange feed"));
         assert_eq!(priced.short_name(), "TATAMOTORS");
         assert!(cand("IDEA.NS", "search", None).describe().contains("tape"));
+    }
+}
+
+#[cfg(test)]
+mod feed_tests {
+    use super::*;
+
+    fn priced(ltp: f64, pct: f64) -> Candidate {
+        Candidate {
+            symbol: "CHOLAFIN.NS".into(),
+            source: "search".into(),
+            why: "Up 3.82% to ₹1604.2".into(),
+            ltp: Some(ltp),
+            change_pct: Some(pct),
+            previous_close: Some(ltp / 1.0382),
+            turnover: None,
+        }
+    }
+
+    /// The failure that produced a `pass`: a feed price a month behind our own tape.
+    #[test]
+    fn a_feed_price_far_from_our_close_is_called_out_before_the_model_sees_it() {
+        let warn = priced(1604.2, 3.82).disagrees_with(Some(1790.80)).unwrap();
+        assert!(warn.contains("1790.80"), "{warn}");
+        assert!(warn.contains("stale"), "{warn}");
+    }
+
+    #[test]
+    fn a_feed_price_near_our_close_says_nothing() {
+        assert!(priced(1795.0, 1.2).disagrees_with(Some(1790.80)).is_none());
+        // No price of our own to compare with is not a disagreement.
+        assert!(priced(1795.0, 1.2).disagrees_with(None).is_none());
+    }
+
+    /// The scan's line is another model's reading of the web, and it may quote a stale price.
+    #[test]
+    fn the_scans_note_says_that_it_is_unverified() {
+        let note = scan_note("Up 3.82% to ₹1604.2");
+        assert!(note.contains("unverified"), "{note}");
+        assert!(note.contains("do not take a price"), "{note}");
+        assert_eq!(scan_note("  "), "no note from the scan");
+    }
+
+    #[test]
+    fn an_unpriced_candidate_points_the_model_at_the_tape() {
+        let line = Candidate {
+            ltp: None,
+            change_pct: None,
+            previous_close: None,
+            ..priced(0.0, 0.0)
+        }
+        .describe();
+        assert!(line.contains("tape below is the price"), "{line}");
     }
 }
