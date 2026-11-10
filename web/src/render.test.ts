@@ -4,6 +4,8 @@ import { renderLedger, renderModeTabs, renderRow } from "./pages/ledger";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
 import type { Limits } from "./api";
 import { renderMarkdown } from "./markdown";
+import { searchQuery, searchResults } from "./components/call-viewer";
+import { renderExchangeDetail } from "./pages/calls";
 
 const limits = (over: Partial<Limits> = {}): Limits => ({
   min_profit_pct: 5,
@@ -1207,5 +1209,46 @@ describe("markdown reflow", () => {
   test("a hard-wrapped paragraph reflows instead of keeping the source's line breaks", () => {
     const html = renderMarkdown("a setup that needs a\nweek to pay is not this book's trade");
     expect(html).toBe("<p>a setup that needs a week to pay is not this book&#39;s trade</p>".replace("&#39;", "'"));
+  });
+});
+
+describe("a search call is shown as a question and its results", () => {
+  const request = JSON.stringify({ query: "DLF news today", count: 5, need_content: false });
+  const response = JSON.stringify({
+    results: [
+      {
+        title: "DLF, GIC JV clocks 9% growth in rental income",
+        site_name: "Hindustan Times",
+        date: "2026-11-09T16:00:00+00:00",
+        url: "https://example.com/a",
+        snippet: "Rental income rose 9% to ₹1,481 crore.",
+        summary: "A long summary nobody reads.",
+      },
+    ],
+  });
+
+  test("the query and the count are read from the request", () => {
+    expect(searchQuery(request)).toEqual({ query: "DLF news today", count: 5 });
+  });
+
+  test("each result keeps its title, source, date and snippet", () => {
+    const [r] = searchResults(response);
+    expect(r.title).toContain("rental income");
+    expect(r.site).toBe("Hindustan Times");
+    expect(r.snippet).toContain("1,481");
+  });
+
+  test("the drawer shows what was searched and what came back, not a chat exchange", () => {
+    const html = renderExchangeDetail({
+      id: 1, ts: "2026-11-10T14:05:00Z", endpoint: "search", purpose: "search DLF.NS",
+      round: 1, trigger: null, decision_reason: null, instrument_name: "DLF Ltd",
+      instrument_symbol: "DLF.NS", prompt_template: null, completion_tokens: null,
+      request_json: request, response_json: response, prompt_tokens: null,
+      validator_verdict: null, error: null,
+    });
+    expect(html).toContain("DLF news today");
+    expect(html).toContain("Hindustan Times");
+    expect(html).toContain("search-gist");
+    expect(html).not.toContain("Sent to the model");
   });
 });

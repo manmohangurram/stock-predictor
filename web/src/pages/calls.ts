@@ -9,6 +9,8 @@ import {
   pretty,
   promptBlocks,
   replyText,
+  searchQuery,
+  searchResults,
   type CallDetail,
 } from "../components/call-viewer";
 
@@ -341,7 +343,72 @@ function firstWord(text: string | null): string {
   return (text ?? "").split(/\s+/)[0] || "—";
 }
 
+/** A copy button, and the full text it copies kept beside it — the view may truncate, a copy must not. */
+function copyBlock(title: string, raw: string | null): string {
+  const full = raw ?? "";
+  return `<section class="call-block">
+    <div class="call-block-head">
+      <h3 class="call-h">${title}</h3>
+      <button type="button" class="copy" data-copy title="Copy all of it" aria-label="Copy ${title}">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none"
+          stroke="currentColor" stroke-width="1.3" stroke-linejoin="round">
+          <rect x="5.5" y="5.5" width="8" height="8" rx="1.2"></rect>
+          <path d="M10.5 5.5V3.2A1.2 1.2 0 0 0 9.3 2H3.2A1.2 1.2 0 0 0 2 3.2v6.1a1.2 1.2 0 0 0 1.2 1.2h2.3"></path>
+        </svg>
+      </button>
+    </div>
+    <pre>${escapeHtml(pretty(full))}</pre>
+    <div class="copy-src" hidden>${escapeHtml(full)}</div>
+  </section>`;
+}
+
+/** A search call: the query that was asked, and the results that came back, ranked. */
+function searchView(d: CallDetail): string {
+  const { query, count } = searchQuery(d.request_json);
+  const results = searchResults(d.response_json);
+  const rows = results
+    .map((r, i) => {
+      const when = r.date ? dayTime(r.date) : "";
+      return `<li class="search-hit">
+        <div class="search-head">
+          <span class="search-n">${i + 1}</span>
+          <span class="search-title">${escapeHtml(r.title || "(no title)")}</span>
+        </div>
+        <div class="search-src">${escapeHtml([r.site, when].filter(Boolean).join(" · "))}</div>
+        <p class="search-gist">${escapeHtml(r.snippet || r.summary)}</p>
+      </li>`;
+    })
+    .join("");
+  return `<div class="call">
+  <div class="call-bar">
+    ${d.purpose ? `<span class="call-fact"><span class="lbl">Searched</span><b>${escapeHtml(query || d.purpose)}</b></span>` : ""}
+    ${count ? `<span class="call-fact"><span class="lbl">Asked for</span><b>${count} results</b></span>` : ""}
+    <span class="call-fact"><span class="lbl">Got</span><b>${results.length} results</b></span>
+    <span class="call-fact"><span class="lbl">Time</span><b>${escapeHtml(dayTime(d.ts))}</b></span>
+    ${d.error ? `<span class="call-fact refused"><span class="lbl">Failed</span><b>${escapeHtml(d.error)}</b></span>` : ""}
+  </div>
+  <section class="call-sec">
+    <h3 class="call-h">What the search returned</h3>
+    ${
+      rows
+        ? `<ol class="search-list">${rows}</ol>`
+        : `<p class="call-empty">${
+            d.error ? "The search failed, so there are no results." : "No results for this query."
+          }</p>`
+    }
+  </section>
+  <details class="raw">
+    <summary>Raw request and response</summary>
+    <div class="call-exchange">
+      ${copyBlock("request_json", d.request_json)}
+      ${copyBlock("response_json", d.response_json)}
+    </div>
+  </details>
+</div>`;
+}
+
 export function renderExchangeDetail(d: CallDetail): string {
+  if (d.endpoint === "search" || d.endpoint === "fetch") return searchView(d);
   const blocks = promptBlocks(d.request_json);
   const reply = replyText(d.response_json);
   const tools = declaredTools(d.request_json);
@@ -392,8 +459,8 @@ export function renderExchangeDetail(d: CallDetail): string {
   <details class="raw">
     <summary>Raw request and response</summary>
     <div class="call-exchange">
-      <section class="call-block"><h3 class="call-h">request_json</h3><pre>${escapeHtml(pretty(d.request_json))}</pre></section>
-      <section class="call-block"><h3 class="call-h">response_json</h3><pre>${escapeHtml(pretty(d.response_json))}</pre></section>
+      ${copyBlock("request_json", d.request_json)}
+      ${copyBlock("response_json", d.response_json)}
     </div>
   </details>
 </div>`;

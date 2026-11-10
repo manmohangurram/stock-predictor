@@ -199,3 +199,42 @@ export function parseReply(content: string): Reply {
     rest: outer,
   };
 }
+
+export interface SearchResult {
+  title: string;
+  site: string;
+  date: string | null;
+  url: string;
+  snippet: string;
+  summary: string;
+}
+
+/** What a search was asked, from the request body the app sent. */
+export function searchQuery(requestJson: string | null): { query: string; count: number | null } {
+  const body = asRecord(parse(requestJson));
+  return {
+    query: typeof body?.query === "string" ? body.query : "",
+    count: typeof body?.count === "number" ? body.count : null,
+  };
+}
+
+/** What came back, in the order the service ranked it. */
+export function searchResults(responseJson: string | null): SearchResult[] {
+  const body = asRecord(parse(responseJson));
+  const results = body?.results;
+  if (!Array.isArray(results)) return [];
+  return results.flatMap((r) => {
+    const rec = asRecord(r);
+    if (!rec) return [];
+    return [
+      {
+        title: String(rec.title ?? "").trim(),
+        site: String(rec.site_name ?? "").trim(),
+        date: typeof rec.date === "string" ? rec.date : null,
+        url: String(rec.url ?? "").trim(),
+        snippet: String(rec.snippet ?? "").trim(),
+        summary: String(rec.summary ?? "").trim(),
+      },
+    ];
+  });
+}

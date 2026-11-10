@@ -176,11 +176,13 @@ pub async fn run(
         );
         // The web is asked about this one name, so the model reads today's reason and not only
         // what our own poller happened to store. A failed search costs a note, not the call.
-        let web = match crate::llm::deepseek::search(
+        let web = match crate::llm::deepseek::search_for(
             pool,
             &model.base_url,
             transport,
             &format!("{} news today", g.short_name()),
+            // The audit row names the holding: "search TATAMOTORS.NS".
+            &format!("search {symbol}"),
         )
         .await
         {
@@ -432,7 +434,14 @@ async fn searched_candidates(
     now: DateTime<Utc>,
 ) -> Result<Vec<Candidate>> {
     let model = crate::rules::settings::model_config(pool).await?;
-    let hits = crate::llm::deepseek::search(pool, &model.base_url, transport, TRENDING_QUERY).await?;
+    let hits = crate::llm::deepseek::search_for(
+        pool,
+        &model.base_url,
+        transport,
+        TRENDING_QUERY,
+        "search the market",
+    )
+    .await?;
     let prompt =
         crate::llm::prompts::render_trending(&ist_day(now), &crate::llm::prompts::render_web_hits(&hits))?;
     let reply = crate::llm::deepseek::chat(

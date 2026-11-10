@@ -498,13 +498,22 @@ fn the_stock_plan_prompt_demands_exits_and_forbids_funds() {
 fn the_short_term_prompt_carries_todays_web_and_asks_for_citations() {
     let hits = vec![stock_predictor::llm::deepseek::SearchHit {
         title: "Tata Motors Q2 profit beats estimates".into(),
+        site: "Hindustan Times".into(),
         url: "https://example.com/a".into(),
-        summary: "Profit rose 12% on strong JLR sales.".into(),
-        date: Some("2026-11-10".into()),
+        snippet: "Profit rose 12% on strong JLR sales.".into(),
+        summary: "A much longer summary that the model does not need.".into(),
+        date: Some("2026-11-09T16:00:00+00:00".into()),
     }];
     let web = prompts::render_web_hits(&hits);
     assert!(web.starts_with("[1] Tata Motors"), "{web}");
-    assert!(web.contains("https://example.com/a"), "{web}");
+    // Title, date and the short gist; a URL is a string the model cannot open.
+    assert!(web.contains("Profit rose 12%"), "{web}");
+    // The date is a day, not an ISO timestamp, and the source is named.
+    assert!(web.contains("2026-11-09"), "{web}");
+    assert!(web.contains("Hindustan Times"), "{web}");
+    assert!(!web.contains("T16:00:00"), "{web}");
+    assert!(!web.contains("https://"), "no url in the prompt: {web}");
+    assert!(!web.contains("much longer summary"), "{web}");
     let rendered = prompts::render_trend(
         "TATAMOTORS.NS · 780.50 now, +5.17% today",
         "2026-11-10 close 780.50",

@@ -523,6 +523,9 @@
   /* Audit: the stored exchange, opened under its row. */
   .call-detail td { padding: 0 !important; background: var(--paper-inset); }
   .call { padding: var(--space-4); display: grid; gap: var(--space-3); }
+  /* The blotter's cells are nowrap for their numbers; everything inside the drawer is prose and
+     must wrap, or a long answer runs off the row and looks truncated. */
+  .call { white-space: normal; }
   .call-meta { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline; }
   .call-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); align-items: start; }
   .call-col { display: grid; gap: var(--space-2); }
@@ -1166,7 +1169,8 @@
     gap: var(--space-3) var(--space-4); }
   .answer-figure { display: grid; gap: 1px; }
   .answer-figure b { font-family: var(--font-ledger); font-size: var(--text-md); font-weight: 500; }
-  .answer-prose { margin: 0; max-width: 72ch; color: var(--ink-secondary); }
+  .answer-prose { margin: 0; color: var(--ink-secondary); white-space: normal;
+    overflow-wrap: anywhere; }
   .answer-note { margin: 0; font-size: var(--text-sm); color: var(--ink-tertiary); }
   .answer-cites { display: flex; gap: var(--space-2); flex-wrap: wrap; }
   .answer-raw { margin: 0; font-family: var(--font-ledger); font-size: var(--text-xs);
@@ -1430,4 +1434,39 @@
     overflow-x: auto; }
   .call-md pre.md-code code { background: none; padding: 0; display: block; white-space: pre; }
   .call-md a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); }
+}
+
+@layer components {
+  /* A search call is not a conversation: it is a question and a ranked list of what came back. */
+  /* One height, always: the drawer must not jump between a search with one hit and one with five.
+     Fixed and scrollable, so the sheet is the same size whether the day was busy or quiet. */
+  .search-list { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none;
+    height: min(48vh, 440px); overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-gutter: stable; padding-right: var(--space-2); align-content: start; }
+  .search-hit { display: grid; gap: 2px; padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--rule-subtle); }
+  .search-hit:last-child { border-bottom: 0; padding-bottom: 0; }
+  .search-head { display: flex; gap: var(--space-2); align-items: baseline; }
+  .search-n { font-family: var(--font-ledger); font-size: var(--text-xs);
+    color: var(--ink-tertiary); min-width: 1.5em; }
+  .search-title { font-weight: 500; color: var(--ink); white-space: normal; }
+  .search-src { margin-left: calc(1.5em + var(--space-2)); font-size: var(--text-xs);
+    color: var(--ink-tertiary); }
+  .search-gist { margin: 0 0 0 calc(1.5em + var(--space-2)); font-size: var(--text-sm);
+    line-height: 1.55; color: var(--ink-secondary); white-space: normal;
+    overflow-wrap: anywhere; }
+}
+
+@layer components {
+  /* The copy control sits where the eye looks for it: the top-right corner of what it copies. */
+  .call-block-head { display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-2); }
+  .copy { display: inline-flex; align-items: center; justify-content: center; width: 24px;
+    height: 24px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-sm);
+    background: transparent; color: var(--ink-tertiary); cursor: pointer; }
+  .copy:hover { border-color: var(--rule); background: var(--paper-raised); color: var(--ink); }
+  .copy:focus-visible { outline: 2px solid var(--stamp-ink); outline-offset: 1px; }
+  .copy[data-copied="true"] { color: var(--green); border-color: var(--green-bg);
+    background: var(--green-bg); }
+  @media (max-width: 900px) { .copy { width: 40px; height: 40px; } }
 }

@@ -18,7 +18,32 @@ async function openCall(id: number): Promise<void> {
   }
 }
 
+/** Copy, for the one reader who wants the JSON in an editor rather than on a screen. */
+function wireCopy(): void {
+  document.addEventListener("click", async (event) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button.copy");
+    if (!button) return;
+    // The visible <pre> is truncated on purpose; the full text sits beside it, hidden.
+    const source = button
+      .closest(".call-block")
+      ?.querySelector<HTMLElement>(".copy-src")?.textContent;
+    if (!source) return;
+    try {
+      await navigator.clipboard.writeText(source);
+      button.dataset.copied = "true";
+      button.title = `Copied ${source.length.toLocaleString("en-IN")} characters`;
+      setTimeout(() => {
+        delete button.dataset.copied;
+        button.title = "Copy all of it";
+      }, 1400);
+    } catch (e) {
+      button.title = `Could not copy: ${String(e)}`;
+    }
+  });
+}
+
 export function wireCallRows(): void {
+  wireCopy();
   // ?call=12 opens that row directly, so a specific exchange can be linked to.
   const wanted = new URLSearchParams(location.search).get("call");
   document.querySelectorAll<HTMLButtonElement>(".view-call").forEach((button) => {

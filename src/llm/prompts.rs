@@ -166,15 +166,24 @@ pub fn render_web_hits(hits: &[crate::llm::deepseek::SearchHit]) -> String {
     hits.iter()
         .enumerate()
         .map(|(i, h)| {
-            let when = h.date.as_deref().map(|d| format!(" · {d}")).unwrap_or_default();
-            format!(
-                "[{}] {}{}\n    {}\n    {}",
-                i + 1,
-                h.title.trim(),
-                when,
-                h.url.trim(),
+            // Title, date, source and the short summary. No URL: the model cannot open it, and a
+            // page of them is prompt spent on a string nothing reads.
+            let day = h
+                .date
+                .as_deref()
+                .map(|d| d.get(..10).unwrap_or(d).to_string())
+                .unwrap_or_default();
+            let when = [day, h.site.clone()]
+                .iter()
+                .filter(|p| !p.is_empty())
+                .map(|p| format!(" · {p}"))
+                .collect::<String>();
+            let gist = if h.snippet.trim().is_empty() {
                 h.summary.trim()
-            )
+            } else {
+                h.snippet.trim()
+            };
+            format!("[{}] {}{}\n    {}", i + 1, h.title.trim(), when, gist)
         })
         .collect::<Vec<_>>()
         .join("\n")

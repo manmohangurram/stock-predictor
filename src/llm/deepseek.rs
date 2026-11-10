@@ -131,7 +131,12 @@ pub struct ChatReply {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchHit {
     pub title: String,
+    /// Where it came from: "Hindustan Times". The model weighs a wire report differently to a forum.
+    pub site: String,
     pub url: String,
+    /// The short one (100-200 chars): what the model reads, because the summary is 600-800 and
+    /// three of those per candidate per tick is a lot of prompt for a little signal.
+    pub snippet: String,
     pub summary: String,
     pub date: Option<String>,
 }
@@ -222,9 +227,22 @@ pub async fn search(
     transport: &dyn Transport,
     query: &str,
 ) -> Result<Vec<SearchHit>> {
+    search_for(pool, base, transport, query, query).await
+}
+
+/// The same call, with a name for the audit row. `purpose` is what the audit page reads to say
+/// which holding a call was about, so a search for a stock is labelled with that stock.
+pub async fn search_for(
+    pool: &SqlitePool,
+    base: &str,
+    transport: &dyn Transport,
+    query: &str,
+    purpose: &str,
+) -> Result<Vec<SearchHit>> {
     let body = serde_json::json!({
         "query": query,
-        "count": 8,
+        // Five is enough: the model picks a reason, and each hit costs prompt on every name.
+        "count": 5,
         "need_content": false,
     })
     .to_string();
@@ -235,7 +253,7 @@ pub async fn search(
 
     let mut row = ApiCallRow {
         endpoint: "search".into(),
-        purpose: Some(query.to_string()),
+        purpose: Some(purpose.to_string()),
         request_json: Some(body),
         latency_ms: Some(latency),
         ..Default::default()
@@ -265,7 +283,17 @@ pub async fn search(
             .iter()
             .map(|r| SearchHit {
                 title: r.get("title").and_then(|x| x.as_str()).unwrap_or("").into(),
+                site: r
+                    .get("site_name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .into(),
                 url: r.get("url").and_then(|x| x.as_str()).unwrap_or("").into(),
+                snippet: r
+                    .get("snippet")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .into(),
                 summary: r
                     .get("summary")
                     .and_then(|x| x.as_str())
