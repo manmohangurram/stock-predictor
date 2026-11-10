@@ -1014,7 +1014,6 @@ async fn market_state(State(st): State<AppState>) -> Result<Json<serde_json::Val
     let weekday = !matches!(ist.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun);
     let minutes = ist.hour() * 60 + ist.minute();
     // The exchange trades 09:15–15:30 IST; the poll window is the wider 09:00–16:00.
-    let in_session = (9 * 60 + 15..=15 * 60 + 30).contains(&minutes);
 
     // The freshest bar anyone has. If it is not from today, no trades were recorded today.
     let latest: Option<String> = sqlx::query_scalar("SELECT MAX(ts) FROM bars")

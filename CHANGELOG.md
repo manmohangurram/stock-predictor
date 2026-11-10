@@ -3,6 +3,41 @@
 Tags before `v0.19.0` were cut without notes; their subjects are in `git log`. This file starts
 here and records what changed for a reader of the software, not for a reader of the diff.
 
+## v0.21.0
+
+### Audit: the schedule first, the record below
+
+- **One card per scheduled prompt** — Stock plan, Fund plan, Short-term pass — each showing the
+  **time it last ran**, what came of it, **when it is due next**, and its cadence in words
+  (*"once a day, first tick after midnight IST"*). `GET /api/schedule` computes that from the same
+  markers the scheduler uses, so the page never re-implements the rules.
+- **`Run again` now runs.** A manual run used to be silently refused by the once-a-day gate and
+  reported as *"nothing worth doing"*; it now skips that gate (the daily call cap still applies)
+  and writes the day marker.
+- **Scheduled polls stop writing run rows** — ninety-six "nothing happened" rows a day that no
+  screen showed, while the calls they made are already the history table. Migration `0018` deletes
+  the old ones. The strip shows the three prompts that decide something.
+- **Filters**: prompt, call, model and review, server-side because the list is paged, with
+  `x-total-count` following the filter and the values read from `/api/calls/facets`. The channel
+  filter is `?channel=` so it cannot swallow `?call=<id>`, the deep link that opens one call.
+- **The drawer is two columns**: what was sent, and what came back — the parsed verdict above the
+  verbatim reply, instead of the same content shown twice.
+- Model names read as labels (`decide_v1` → **Decide v1**); prompt type and call are capitalised;
+  an empty review is an empty cell, not "no decision"; the Outcome column is gone.
+
+### Market state
+
+- **`GET /api/market`** reads the clock and the data: weekend, before the open, after the close,
+  open — or, on a weekday inside session hours with nothing priced today, *probably a holiday*, and
+  it says probably. There is no holiday calendar in this app, and the tooltip says so.
+- Shown **at the foot of the rail**: a dot for colour, the status in words, and the one date that
+  matters — *"Opens 11 Nov 09:15"*, or *"Closes 15:30"* when it is open.
+
+### The frame
+
+- **The rail never scrolls.** It is a full-height column that ends in the market block; only the
+  page column moves. On a phone the rail is a bar, the market state moves under the page title.
+
 ## v0.20.0
 
 ### Fills are correctable, and removable
