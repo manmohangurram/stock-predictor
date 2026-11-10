@@ -221,6 +221,8 @@ export interface Analysis {
     currency: string;
     timing_note: string;
     target_profit_pct: number | null;
+    /** False when archived: the page offers a way back instead of another archive. */
+    active: boolean;
   };
   bars: BarPoint[];
   indicators: {
@@ -247,6 +249,8 @@ export interface InstrumentDetail {
     currency: string;
     timing_note: string;
     target_profit_pct: number | null;
+    /** False when archived: the page offers a way back instead of another archive. */
+    active: boolean;
   };
   headlines: { id: number; title: string; publisher: string | null; published_at: string; url: string }[];
   signals: SignalRow[];

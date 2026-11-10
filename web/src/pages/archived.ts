@@ -35,11 +35,7 @@ export function renderArchived(rows: ArchivedInstrument[]): string {
         ? `${money(Math.abs(r.net_invested))} ${r.net_invested > 0 ? "in" : "out"}`
         : "closed out"
     }</div></td>
-  <td class="right">
-    <button class="btn ghost" type="button" data-restore="${escapeHtml(r.symbol)}"
-            title="Put it back in the book — prices are fetched again on the next poll">
-      Restore</button>
-  </td>
+  <td class="right"><span class="sub">open to restore</span></td>
 </tr>`;
         })
         .join("")

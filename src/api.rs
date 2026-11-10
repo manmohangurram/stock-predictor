@@ -542,6 +542,19 @@ async fn archive_instrument(
     })))
 }
 
+/// The instrument row both the detail page and the analysis payload need, in one place so the two
+/// cannot drift.
+#[derive(sqlx::FromRow)]
+struct InstrumentRecord {
+    id: i64,
+    symbol: String,
+    class: String,
+    name: String,
+    currency: String,
+    target_profit_pct: Option<f64>,
+    active: i64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct InstrumentRow {
     pub id: i64,
@@ -552,6 +565,9 @@ pub struct InstrumentRow {
     pub timing_note: String,
     /// The owner's expected profit, in percent. Decisions must reach it.
     pub target_profit_pct: Option<f64>,
+    /// False when the instrument has been archived: the page then offers a way back, and says
+    /// that the prices it is showing are the last ones before it left.
+    pub active: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -567,16 +583,24 @@ async fn instrument_detail(
     State(st): State<AppState>,
     Path(symbol): Path<String>,
 ) -> Result<Json<InstrumentDetail>, ApiError> {
-    let row: Option<(i64, String, String, String, String, Option<f64>)> = sqlx::query_as(
-        "SELECT id, symbol, class, name, currency, target_profit_pct
+    let row: Option<InstrumentRecord> = sqlx::query_as(
+        "SELECT id, symbol, class, name, currency, target_profit_pct, active
          FROM instruments WHERE symbol = ?",
     )
     .bind(&symbol)
     .fetch_optional(&st.pool)
     .await?;
-    let (id, symbol, class, name, currency, target_profit_pct) =
-        row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
-    let class = AssetClass::parse(&class).map_err(|_| ApiError::Internal)?;
+    let record = row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
+    let InstrumentRecord {
+        id,
+        symbol,
+        name,
+        currency,
+        target_profit_pct,
+        active,
+        ..
+    } = record;
+    let class = AssetClass::parse(&record.class).map_err(|_| ApiError::Internal)?;
 
     let headlines: Vec<HeadlineRow> =
         sqlx::query_as::<_, (i64, String, Option<String>, String, String)>(
@@ -612,6 +636,7 @@ async fn instrument_detail(
             currency,
             timing_note: class.timing_note().to_string(),
             target_profit_pct,
+            active: active != 0,
         },
         headlines,
         signals,
@@ -649,16 +674,24 @@ async fn analysis(
     State(st): State<AppState>,
     Path(symbol): Path<String>,
 ) -> Result<Json<Analysis>, ApiError> {
-    let row: Option<(i64, String, String, String, String, Option<f64>)> = sqlx::query_as(
-        "SELECT id, symbol, class, name, currency, target_profit_pct
+    let row: Option<InstrumentRecord> = sqlx::query_as(
+        "SELECT id, symbol, class, name, currency, target_profit_pct, active
          FROM instruments WHERE symbol = ?",
     )
     .bind(&symbol)
     .fetch_optional(&st.pool)
     .await?;
-    let (id, symbol, class_raw, name, currency, target_profit_pct) =
-        row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
-    let class = AssetClass::parse(&class_raw).map_err(|_| ApiError::Internal)?;
+    let record = row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
+    let InstrumentRecord {
+        id,
+        symbol,
+        name,
+        currency,
+        target_profit_pct,
+        active,
+        ..
+    } = record;
+    let class = AssetClass::parse(&record.class).map_err(|_| ApiError::Internal)?;
 
     let rows: Vec<(String, f64, f64, f64, f64, i64)> = sqlx::query_as(
         "SELECT ts, COALESCE(open, close), COALESCE(high, close), COALESCE(low, close), close,
@@ -693,7 +726,7 @@ async fn analysis(
         class,
         name: name.clone(),
         currency: currency.clone(),
-        active: true,
+        active: active != 0,
     };
 
     let ind = indicators::compute(&bars).ok();
@@ -766,6 +799,7 @@ async fn analysis(
             currency,
             timing_note: class.timing_note().to_string(),
             target_profit_pct,
+            active: active != 0,
         },
         bars: bars
             .iter()
@@ -1406,6 +1440,7 @@ async fn add_instrument(
         currency: "INR".into(),
         timing_note: class.timing_note().to_string(),
         target_profit_pct: None,
+        active: true,
     }))
 }
 

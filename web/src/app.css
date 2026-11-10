@@ -1244,3 +1244,17 @@
   .btn.danger { color: var(--stamp-oxide); border-color: var(--stamp-oxide-bg); }
   .btn.danger:hover { background: var(--stamp-oxide-bg); }
 }
+
+@layer components {
+  /* A card that folds: the summary is the header, and the arrow says which way it went. */
+  .card.fold { display: block; padding: 0; }
+  .card.fold > summary { padding: var(--space-3) var(--space-4); margin: 0; cursor: pointer;
+    list-style: none; align-items: center; }
+  .card.fold > summary::-webkit-details-marker { display: none; }
+  .card.fold > summary::after { content: "▸"; color: var(--ink-tertiary); font-size: var(--text-xs); }
+  .card.fold[open] > summary::after { content: "▾"; }
+  .card.fold > summary:hover { background: var(--paper-inset); }
+  .card.fold > .fold-body { padding: 0 var(--space-4) var(--space-4); }
+  /* The filter reads as a toolbar under the heading, not part of the toggle. */
+  .fold-filter { display: flex; justify-content: flex-end; margin-bottom: var(--space-2); }
+}

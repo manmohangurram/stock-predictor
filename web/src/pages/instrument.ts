@@ -308,6 +308,10 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
   const invested = p ? p.qty * p.avg_cost : null;
   const value = p && ltp !== null ? p.qty * ltp : null;
   const unrealised = invested !== null && value !== null ? value - invested : null;
+  // An archived instrument has no live price, so the only honest number is what its fills made.
+  const archived = !a.instrument.active;
+  const realised = list.reduce((n, t) => n + (t.realised ?? 0), 0);
+  const closedOut = list.length > 0 && realised !== 0;
 
   const rules = a.checks.length
     ? `<div class="rules">${a.checks
@@ -330,9 +334,15 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
         <div><span class="lbl">Last</span><b>${ltp === null ? "—" : money(ltp)}</b></div>
         <div><span class="lbl">Held</span><b>${p ? `${units(p.qty)} @ ${money(p.avg_cost)}` : "—"}</b></div>
         <div><span class="lbl">Value</span><b>${value === null ? "—" : money(value)}</b></div>
-        <div><span class="lbl">Unrealised</span><b class="${
-          unrealised === null ? "" : unrealised >= 0 ? "up" : "down"
-        }">${unrealised === null ? "—" : `${unrealised >= 0 ? "+" : "−"}${money(Math.abs(unrealised))}`}</b></div>
+        ${
+          archived
+            ? `<div><span class="lbl">Realised</span><b class="${realised >= 0 ? "up" : "down"}">${
+                closedOut ? `${realised >= 0 ? "+" : "−"}${money(Math.abs(realised))}` : "—"
+              }</b><div class="sub">from ${list.length} fill${list.length === 1 ? "" : "s"}</div></div>`
+            : `<div><span class="lbl">Unrealised</span><b class="${
+                unrealised === null ? "" : unrealised >= 0 ? "up" : "down"
+              }">${unrealised === null ? "—" : `${unrealised >= 0 ? "+" : "−"}${money(Math.abs(unrealised))}`}</b></div>`
+        }
       </div>
     </header>
     <div class="inst-grid">
@@ -355,15 +365,19 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
           </div>
           ${trades(list)}
         </section>
-        <section class="card">
-          <div class="card-head"><h2>Decisions</h2>
-            ${decisionFilterTabs(filter, typeof location === "undefined" ? "" : location.pathname)}</div>
-          ${decisions(d, a.instrument.target_profit_pct, filter)}
-        </section>
-        <section class="card">
-          <div class="card-head"><h2>Headlines</h2></div>
-          ${headlines}
-        </section>
+        <details class="card fold" ${d.signals.length ? "open" : ""}>
+          <summary class="card-head"><h2>Decisions</h2>
+            <span class="sub">${d.signals.length}${d.signals.length ? "" : " — nothing yet"}</span></summary>
+          <div class="fold-body">
+            <div class="fold-filter">${decisionFilterTabs(filter, typeof location === "undefined" ? "" : location.pathname)}</div>
+            ${decisions(d, a.instrument.target_profit_pct, filter)}
+          </div>
+        </details>
+        <details class="card fold" ${d.headlines.length ? "open" : ""}>
+          <summary class="card-head"><h2>Headlines</h2>
+            <span class="sub">${d.headlines.length}${d.headlines.length ? "" : " — nothing stored"}</span></summary>
+          <div class="fold-body">${headlines}</div>
+        </details>
       </div>
       <aside class="inst-side">
         <section class="card">
@@ -396,7 +410,15 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
           <button class="btn ghost" type="button" id="refresh-instrument"
                   data-symbol="${escapeHtml(a.instrument.symbol)}">Refresh prices and headlines</button>
           <p class="help" id="refresh-status" role="status">Fetches this symbol now, instead of waiting for the next poll.</p>
-          <button class="btn ghost" type="button" id="archive-instrument"
+          ${
+            archived
+              ? `<button class="btn primary" type="button" id="restore-instrument"
+                  data-symbol="${escapeHtml(a.instrument.symbol)}">Restore this instrument</button>
+          <p class="help" id="delete-status" role="status">
+            It is archived: no prices are fetched and no decisions are made. Restoring puts it back
+            in the book — the fills and decisions above were never touched.
+          </p>`
+              : `<button class="btn ghost" type="button" id="archive-instrument"
                   data-symbol="${escapeHtml(a.instrument.symbol)}" data-held="${p ? p.qty : 0}">
             ${p ? "Sell it before archiving" : "Archive this instrument"}
           </button>
@@ -406,7 +428,8 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
                 ? "An instrument you hold cannot be archived — sell it first."
                 : "Archiving clears the prices and headlines; the fills and decisions stay on the Archived page."
             }
-          </p>
+          </p>`
+          }
         </section>
         <section class="card">
           <div class="card-head"><h2>Indicators</h2></div>

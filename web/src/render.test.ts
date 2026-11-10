@@ -771,7 +771,7 @@ describe("decisions on the instrument page", () => {
   const base = {
     instrument: {
       id: 1, symbol: "INFY.NS", class: "stock", name: "Infosys", currency: "INR",
-      timing_note: "limit order", target_profit_pct: null,
+      timing_note: "limit order", target_profit_pct: null, active: true,
     },
     bars: [], indicators: null, checks: [], position: null, headlines: [], trades: [],
   };
@@ -809,10 +809,26 @@ describe("decisions on the instrument page", () => {
 });
 
 describe("removing an instrument", () => {
+  test("an archived instrument offers the way back, not a second archive", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const archived = {
+      instrument: {
+        id: 1, symbol: "TCS.NS", class: "stock", name: "TCS", currency: "INR",
+        timing_note: "limit order", target_profit_pct: null, active: false,
+      },
+      bars: [], indicators: null, checks: [], position: null,
+      headlines: [], signals: [], trades: [],
+    };
+    const html = renderInstrument(archived as never, archived as never, []);
+    expect(html).toContain('id="restore-instrument"');
+    expect(html).toContain("Restore this instrument");
+    expect(html).not.toContain('id="archive-instrument"');
+  });
+
   const base = {
     instrument: {
       id: 1, symbol: "TCS.NS", class: "stock", name: "TCS", currency: "INR",
-      timing_note: "limit order", target_profit_pct: null,
+      timing_note: "limit order", target_profit_pct: null, active: true,
     },
     bars: [], indicators: null, checks: [], position: null, headlines: [], signals: [], trades: [],
   };
@@ -873,7 +889,7 @@ describe("decisions filter on the overview", () => {
   const base = {
     instrument: {
       id: 1, symbol: "INFY.NS", class: "stock", name: "Infosys", currency: "INR",
-      timing_note: "limit order", target_profit_pct: null,
+      timing_note: "limit order", target_profit_pct: null, active: true,
     },
     bars: [], indicators: null, checks: [], position: null, headlines: [], trades: [],
   };
@@ -1044,7 +1060,7 @@ describe("a plan", () => {
 });
 
 describe("archived", () => {
-  test("shows what the fills made, and offers a restore", async () => {
+  test("shows what the fills made, and where to restore it", async () => {
     const { renderArchived } = await import("./pages/archived");
     const html = renderArchived([
       {
@@ -1063,8 +1079,10 @@ describe("archived", () => {
     // Realised, with its sign, and the round trip closed out.
     expect(html).toContain("+300.00");
     expect(html).toContain("300.00 out");
-    expect(html).toContain('data-restore="TCS"');
     expect(html).toContain("Realised");
+    // Restoring lives on the instrument's own page, not in this list.
+    expect(html).not.toContain("data-restore");
+    expect(html).toContain("open to restore");
   });
 
   test("an archive with no fills says so instead of inventing a zero", async () => {

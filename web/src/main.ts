@@ -59,6 +59,7 @@ async function route(): Promise<void> {
       wireDecisions();
       wireDecisionActions(route);
       wireDeleteInstrument();
+      wireRestoreInstrument();
       wireRefreshInstrument();
       wireTargetProfit(symbol);
     } else {
@@ -155,22 +156,6 @@ function wireDecisions(): void {
 
 /** An archived row opens the instrument: its record is there, its price history is not. */
 function wireArchivedRows(): void {
-  // Restore, without leaving the page: the row goes, and the instrument is back in the book.
-  document.querySelectorAll<HTMLButtonElement>("[data-restore]").forEach((button) => {
-    button.addEventListener("click", async (ev) => {
-      ev.stopPropagation(); // the row itself opens the instrument
-      const symbol = button.dataset.restore ?? "";
-      button.disabled = true;
-      button.textContent = "Restoring…";
-      try {
-        await api.restoreInstrument(symbol);
-        await route();
-      } catch (e) {
-        button.disabled = false;
-        button.textContent = String(e);
-      }
-    });
-  });
   document.querySelectorAll<HTMLTableRowElement>('.blotter .row').forEach((row) => {
     const symbol = row.dataset.symbol;
     if (!symbol) return;
@@ -208,6 +193,24 @@ function wireRefreshInstrument(): void {
 }
 
 /** Delete or archive, whichever the server decides — and say which it did. */
+/** Restore an archived instrument from its own page: it goes back in the book, prices return. */
+function wireRestoreInstrument(): void {
+  const button = document.querySelector<HTMLButtonElement>("#restore-instrument");
+  if (!button) return;
+  const status = document.querySelector<HTMLElement>("#delete-status");
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    if (status) status.textContent = "Restoring…";
+    try {
+      await api.restoreInstrument(button.dataset.symbol ?? "");
+      await route();
+    } catch (e) {
+      button.disabled = false;
+      if (status) status.textContent = String(e);
+    }
+  });
+}
+
 function wireDeleteInstrument(): void {
   const button = document.querySelector<HTMLButtonElement>("#archive-instrument");
   if (!button) return;
