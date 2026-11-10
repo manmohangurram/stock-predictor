@@ -25,7 +25,7 @@ const TOP_N: usize = 10;
 /// that merely has the stock's name in its title.
 const NEWS_WINDOW_DAYS: i64 = 3;
 /// The one query the daily scan searches. Broad on purpose — the model reads the results and picks.
-const TRENDING_QUERY: &str = "Indian stock market today biggest movers news";
+const TRENDING_QUERY: &str = "Indian stock market biggest movers news";
 /// The book is short-term: nothing is proposed beyond a week out.
 const MAX_HORIZON_HOURS: i64 = 24 * 7;
 
@@ -203,7 +203,7 @@ pub async fn run(
             pool,
             &model.base_url,
             transport,
-            &format!("{} news today", g.short_name()),
+            &dated_query(&format!("{} news today", g.short_name()), now),
             // The audit row names the holding: "search TATAMOTORS.NS".
             &format!("search {symbol}"),
         )
@@ -478,7 +478,7 @@ async fn searched_candidates(
             pool,
             &model.base_url,
             transport,
-            TRENDING_QUERY,
+            &dated_query(TRENDING_QUERY, now),
             "search the market",
         )
         .await?,
@@ -566,6 +566,14 @@ fn recent_hits(
                 .is_some_and(|d| d >= cutoff)
         })
         .collect()
+}
+
+/// The window, pushed into the query itself: `after:` and `before:` are real operators, and a search
+/// that is asked for three days comes back ranked for three days. `lang:en` because a source that is
+/// not in English is not one this book can read; the `date` filter below still decides what arrives.
+fn dated_query(query: &str, now: DateTime<Utc>) -> String {
+    let from = (now.date_naive() - chrono::Duration::days(NEWS_WINDOW_DAYS)).format("%Y-%m-%d");
+    format!("{query} after:{from} lang:en")
 }
 
 /// `2026-11-08T16:00:00+00:00` → 2026-11-08. The time of day is not the question; the day is.
@@ -1034,5 +1042,23 @@ mod news_window_tests {
         );
         assert_eq!(day_of("yesterday"), None);
         assert_eq!(day_of(""), None);
+    }
+}
+
+#[cfg(test)]
+mod dated_query_tests {
+    use super::*;
+
+    #[test]
+    fn the_query_asks_for_the_window_and_english() {
+        let now = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 11, 11, 6, 0, 0).unwrap();
+        let q = dated_query("CHOLAFIN news today", now);
+        assert_eq!(q, "CHOLAFIN news today after:2026-11-08 lang:en");
+    }
+
+    #[test]
+    fn the_scan_query_carries_the_same_window() {
+        let now = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 12, 1, 6, 0, 0).unwrap();
+        assert!(dated_query(TRENDING_QUERY, now).ends_with("after:2026-11-28 lang:en"));
     }
 }

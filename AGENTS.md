@@ -64,7 +64,9 @@ files directly when you need exact wording.
 - The short-term list is asked once per IST day (`trend_list_last`) and stored in
   `trend_candidates`: NSE's `allSec` gainers, NSE's `NIFTY` group (the Nifty 50's own movers) and
   one DeepSeek `/v1/tools/search` read by `trending_v1`. Deduped by symbol, the exchange winning.
-  Each candidate is then asked with its own search results as `{{web}}`.
+  Each candidate is then asked with its own search results as `{{web}}`. The search query carries
+  the window as operators — `after:YYYY-MM-DD lang:en` — and a result older than three days, undated
+  or untitled is dropped anyway (the API *does* support `after:`/`before:`/`lang:`/`site:`).
 - The proxy is chosen only by the database: `src/http.rs` is the one client builder and calls
   `.no_proxy()` first, so `HTTP_PROXY` can never win.
 
