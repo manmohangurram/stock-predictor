@@ -112,7 +112,6 @@ async fn dashboard_reports_available_committed_and_blocked() {
     assert_eq!(v["committed"], 1420.0);
     assert_eq!(v["available"], 98_580.0);
     assert_eq!(v["positions"].as_array().unwrap().len(), 1);
-    assert!(v["blocked"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -1562,8 +1561,9 @@ async fn the_three_monthly_purses_do_not_share_money() {
 
 #[tokio::test]
 async fn a_blocked_proposal_is_visible_in_the_record_with_its_shortfall() {
-    // Regression: a proposal refused for cash was stored as BLOCKED but filtered out of both the
-    // ledger and the stock overview, so a call you paid for left no visible decision.
+    // Regression: a proposal refused for cash was stored as BLOCKED and filtered out of the stock
+    // overview, so a call you paid for left no visible record. The ledger's decisions box is for
+    // decisions; the instrument's record keeps the refusal.
     let (_d, router, pool) = setup().await;
     sqlx::query(
         "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at, mode)
@@ -1573,15 +1573,9 @@ async fn a_blocked_proposal_is_visible_in_the_record_with_its_shortfall() {
          FROM instruments WHERE symbol = 'INFY'",
     ).execute(&pool).await.unwrap();
 
-    // The ledger returns it in the blocked list…
+    // The dashboard is decisions only: a refusal is not a decision to review.
     let (_, v) = get(&router, "/api/dashboard").await;
-    assert_eq!(v["blocked"].as_array().unwrap().len(), 1);
-    let reason = v["blocked"][0]["reasons"].to_string();
-    assert!(reason.contains("insufficient_cash"), "{reason}");
-    assert!(
-        reason.contains("99000"),
-        "the shortfall must be visible: {reason}"
-    );
+    assert!(v.get("blocked").is_none(), "the ledger no longer carries a blocked list");
 
     // …and the stock overview shows it as part of the record.
     let (s, v) = get(&router, "/api/instruments/INFY/analysis").await;

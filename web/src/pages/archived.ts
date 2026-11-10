@@ -1,6 +1,7 @@
 import type { ArchivedInstrument } from "../api";
 import { escapeHtml, histDate } from "../format";
 import { renderApp, renderHead } from "../components/shell";
+import { pill } from "../components/stamp";
 
 /** The record of what left the book: names and what was done with them, not their price history. */
 export function renderArchived(rows: ArchivedInstrument[]): string {
@@ -16,7 +17,7 @@ export function renderArchived(rows: ArchivedInstrument[]): string {
   <td class="num">${r.fills}</td>
   <td class="num">${r.decisions}</td>
   <td class="num hide-sm">${r.last_fill ? histDate(r.last_fill) : "—"}</td>
-  <td class="right"><span class="pill todo">archived</span></td>
+  <td class="right">${pill("todo", "archived")}</td>
 </tr>`,
         )
         .join("")

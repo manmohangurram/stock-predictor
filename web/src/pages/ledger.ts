@@ -4,7 +4,7 @@ import { renderDecisionActions } from "../components/decision-actions";
 import { decisionFilterTabs, isDecisionFilter, type DecisionFilter } from "../components/decision-filter";
 import { escapeHtml, histDate, money, units } from "../format";
 import { renderConfidence } from "../components/confidence";
-import { stamp } from "../components/stamp";
+import { actionStamp, stamp, statusPill, toneOf } from "../components/stamp";
 
 /** The portfolio strip: the four numbers that decide whether anything is affordable. */
 export function renderModeTabs(mode: Mode): string {
@@ -15,21 +15,6 @@ export function renderModeTabs(mode: Mode): string {
   </nav>`;
 }
 
-export function renderStrip(d: Dashboard): string {
-  const invested = d.positions.reduce((a, p) => a + (p.value ?? p.qty * p.avg_cost), 0);
-  const total = invested + d.available;
-  const realised = d.realised ?? 0;
-  return `<header class="strip">
-  <div><span class="lbl">Total value</span><b class="num total">${money(total, 0)}</b></div>
-  <div><span class="lbl">Invested</span><b class="num">${money(invested, 0)}</b></div>
-  <div><span class="lbl">Cash</span><b class="num">${money(d.available, 0)}</b></div>
-  <div><span class="lbl">Realised</span><b class="num ${realised < 0 ? "down" : realised > 0 ? "up" : ""}">${realised > 0 ? "+" : ""}${money(realised, 0)}</b></div>
-  <div class="exposure" aria-hidden="true">
-    <i class="stocks" style="width:${pct(invested, total)}%"></i>
-    <i class="cash" style="width:${pct(d.available, total)}%"></i>
-  </div>
-</header>`;
-}
 
 const pct = (part: number, whole: number): number =>
   whole <= 0 ? 0 : Math.max(0, Math.min(100, Math.round((part / whole) * 100)));
@@ -65,7 +50,7 @@ export function renderRow(d: Dashboard, p: Dashboard["positions"][number]): stri
       ? `<span class="muted">no exit set</span>`
       : `<span class="num">${p.stop === null ? "—" : money(p.stop)} → ${p.target === null ? "—" : money(p.target)}</span>`;
   const signal = s
-    ? `<span class="signal-cell">${stamp(s.action === "SELL" ? "sell" : "buy", s.action)}${renderConfidence(s.confidence)}</span>`
+    ? `<span class="signal-cell">${stamp(toneOf(s.action), s.action)}${renderConfidence(s.confidence)}</span>`
     : `<span class="muted">—</span>`;
   return `<tr class="row" data-symbol="${escapeHtml(p.symbol)}" tabindex="0" role="link"
       aria-label="${escapeHtml(p.name)}, open details">
@@ -126,7 +111,7 @@ export function renderPlan(legs: Dashboard["signals"]): string {
   const cost = buys.reduce((n, l) => n + (l.qty ?? 0) * (l.entry ?? 0), 0);
   const left = proceeds - cost;
   const leg = (l: Dashboard["signals"][number]) => `<div class="plan-leg">
-    <span class="stamp" data-stamp="${l.action === "SELL" ? "sell" : "buy"}">${l.action}</span>
+    ${actionStamp(l.action)}
     <b>${escapeHtml(l.name || l.symbol)}</b>
     <span class="sub">${escapeHtml(l.symbol)}</span>
     <span class="num">${l.entry === null ? "" : money(l.entry)}</span>
@@ -139,13 +124,11 @@ export function renderPlan(legs: Dashboard["signals"]): string {
   const status =
     first.status === "pending"
       ? ""
-      : `<span class="pill ${first.status === "approved" ? "ok" : "todo"}">${first.status}</span>`;
+      : statusPill(first.status);
   const actions = first.status === "pending" ? planActions(first, legs) : "";
   return `<div class="feed-row decision-feed plan-card">
     <div class="decision-main">
-      <div><span class="stamp" data-stamp="estimate">${
-        first.plan_scope === "fund" ? "FUND PLAN" : "STOCK PLAN"
-      }</span>
+      <div>${stamp("estimate", first.plan_scope === "fund" ? "FUND PLAN" : "STOCK PLAN")}
         <b>${legs.length} moves</b>
         ${status}
         <span class="sub">${histDate(first.created_at)}</span></div>
@@ -168,7 +151,7 @@ function planActions(
     </div>${legs
       .map(
         (l) => `<div class="plan-fill">
-        <span class="stamp" data-stamp="${l.action === "SELL" ? "sell" : "buy"}">${l.action}</span>
+        ${actionStamp(l.action)}
         <span class="plan-fill-name">${escapeHtml(l.name || l.symbol)}
           <span class="sub">${escapeHtml(l.symbol)}</span></span>
         <input name="qty-${l.id}" type="number" min="0" step="any" value="${l.qty ?? ""}"
@@ -212,18 +195,17 @@ function planActions(
 }
 
 function decisionRow(s: Dashboard["signals"][number]): string {
-  const tone = s.action === "SELL" ? "sell" : s.action === "BUY" ? "buy" : "blocked";
   const status =
     s.status === "pending"
       ? ""
-      : `<span class="pill ${s.status === "approved" ? "ok" : "todo"}">${s.status}</span>`;
+      : statusPill(s.status);
   const actions = renderDecisionActions(s);
   // A fund's scheme code (0P0000XV5C.BO) says nothing; its name does. The code stays underneath,
   // small, because that is what you paste into the search box.
   const named = s.name && s.name !== s.symbol;
   return `<div class="feed-row decision-feed">
     <div class="decision-main">
-      <div><span class="stamp" data-stamp="${tone}">${s.action}</span>
+      <div>${actionStamp(s.action)}
         <b title="${escapeHtml(s.symbol)}">${escapeHtml(named ? s.name : s.symbol)}</b>
         ${named ? `<span class="sub">${escapeHtml(s.symbol)}</span>` : ""}
         ${s.entry === null ? "" : `<span class="num">${money(s.entry)}</span>`}
@@ -279,8 +261,9 @@ export function renderLedger(d: Dashboard): string {
       ? new URLSearchParams(location.search).get("decisions")
       : null;
   const filter: DecisionFilter = isDecisionFilter(raw) ? raw : "pending";
-  // Blocked proposals sit with the decisions: they are what the app wanted to do and could not.
-  const shown = [...d.signals, ...d.blocked].sort((a, b) => b.id - a.id);
+  // A blocked proposal is not a decision to review: it is a record of something the app could not
+  // do. It stays on the instrument's page and in the audit, not in this box.
+  const shown = [...d.signals].sort((a, b) => b.id - a.id);
   const plans = new Map<number, Dashboard["signals"]>();
   for (const s of shown) {
     if (s.plan_id) plans.set(s.plan_id, [...(plans.get(s.plan_id) ?? []), s]);

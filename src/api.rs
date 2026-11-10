@@ -266,7 +266,7 @@ pub struct Dashboard {
     pub currency_locked: bool,
     pub positions: Vec<PositionRow>,
     pub signals: Vec<SignalRow>,
-    pub blocked: Vec<SignalRow>,
+
     /// The rail's recent fills: one request per page instead of two.
     pub recent_trades: Vec<crate::trades::Trade>,
 }
@@ -337,8 +337,8 @@ async fn dashboard(
     let committed = budget::committed_in(&st.pool, mode).await?;
     let positions = load_positions(&st.pool, mode).await?;
     let status = q.decisions.as_deref().unwrap_or("pending");
-    let signals = load_signals(&st.pool, false, mode, status).await?;
-    let blocked = load_signals(&st.pool, true, mode, "pending").await?;
+    let signals = load_signals(&st.pool, mode, status).await?;
+
     let etag = dashboard_etag(&st.pool, mode).await?;
     if headers
         .get(IF_NONE_MATCH)
@@ -358,7 +358,6 @@ async fn dashboard(
         currency_locked: s.currency_locked,
         positions,
         signals,
-        blocked,
         recent_trades: crate::trades::history(&st.pool, None, 20).await?,
     });
     Ok(([(ETAG, etag)], body).into_response())
@@ -594,7 +593,7 @@ async fn instrument_detail(
         .collect();
 
     let signals: Vec<SignalRow> =
-        load_signals(&st.pool, false, crate::models::Mode::Long, "everything")
+        load_signals(&st.pool, crate::models::Mode::Long, "everything")
             .await?
             .into_iter()
             .filter(|s| s.symbol == symbol)
@@ -747,7 +746,7 @@ async fn analysis(
         .collect();
 
     let signals: Vec<SignalRow> =
-        load_signals(&st.pool, false, crate::models::Mode::Long, "everything")
+        load_signals(&st.pool, crate::models::Mode::Long, "everything")
             .await?
             .into_iter()
             .filter(|s| s.symbol == symbol)
@@ -2122,13 +2121,10 @@ async fn reject_signal(
 
 async fn load_signals(
     pool: &SqlitePool,
-    blocked: bool,
     mode: crate::models::Mode,
     status: &str,
 ) -> Result<Vec<SignalRow>, ApiError> {
-    let predicate = if blocked {
-        "s.action = 'BLOCKED'"
-    } else if status == "everything" {
+    let predicate = if status == "everything" {
         // The instrument page's whole record, blocked proposals included: they are decisions too.
         "1 = 1"
     } else {

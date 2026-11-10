@@ -1,6 +1,7 @@
 import type { Settings } from "../api";
 import { escapeHtml, money } from "../format";
 import { renderApp, renderHead } from "../components/shell";
+import { pill } from "../components/stamp";
 import { TABS, tabRail, type Tab } from "./settings-tabs";
 
 export { isTab, TABS, type Tab } from "./settings-tabs";
@@ -267,7 +268,7 @@ function pane(s: Settings, tab: Tab): string {
   return `<main class="settings-pane" role="tabpanel" id="panel-${tab}" aria-labelledby="tab-${tab}" tabindex="0">
     <div class="pane-head">
       <h2>${spec.title}</h2>
-      <span class="pill ${dirty ? "todo" : "ok"}">${dirty ? "unsaved" : "saved"}</span>
+      ${pill(dirty ? "todo" : "ok", dirty ? "unsaved" : "saved")}
     </div>
     <p class="lede">${spec.lede}</p>
     <form id="tab-form" data-tab="${tab}" autocomplete="off">

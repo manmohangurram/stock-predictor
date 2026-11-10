@@ -1,6 +1,7 @@
 import type { CallRow, RunRow } from "../api";
 import { escapeHtml, money, units } from "../format";
 import { renderApp, renderHead } from "../components/shell";
+import { actionStamp, pill, stamp, toneOf } from "../components/stamp";
 import {
   declaredTools,
   parseReply,
@@ -31,18 +32,22 @@ function reviewBadge(r: CallRow): string {
   if (r.decision_action === "BLOCKED") {
     // A refused plan is the model's answer, recorded with its reason in View.
     // The reason is long; it lives in View, so the row stays one line.
-    return `<span class="pill todo" title="${escapeHtml(r.decision_reason ?? "")}">blocked</span>`;
+    return pill("todo", "blocked", escapeHtml(r.decision_reason ?? ""));
   }
   if (r.decision_action === "PLAN") {
     const state = r.decision_status ?? "pending";
     const label = state === "pending" ? "plan · awaiting you" : `plan · ${state}`;
-    return `<span class="pill ${state === "approved" ? "ok" : state === "rejected" ? "todo" : ""}">${label}</span>`;
+    return pill(state === "approved" ? "ok" : state === "rejected" ? "todo" : "", label);
   }
   if (!r.decision_status) return `<span class="muted">no decision</span>`;
   const tone = r.decision_status === "approved" ? "ok" : r.decision_status === "rejected" ? "todo" : "";
   const label =
     r.decision_status === "pending" ? "awaiting you" : r.decision_status;
-  return `<span class="pill ${tone}" ${r.decision_id ? `title="decision #${r.decision_id}"` : ""}>${label}</span>`;
+  return pill(
+    tone as "ok" | "todo" | "",
+    label,
+    r.decision_id ? `decision #${r.decision_id}` : "",
+  );
 }
 
 /**
@@ -99,12 +104,12 @@ export function renderRuns(runs: RunRow[], running: number): string {
   const earlier = Math.max(0, runs.length - shown.length);
 
   const card = (r: RunRow, i: number) => {
-    const pill =
+    const state =
       r.status === "running"
-        ? `<span class="pill running">running</span>`
+        ? pill("running", "running")
         : r.status === "failed"
-          ? `<span class="pill failed">failed</span>`
-          : `<span class="pill done">done</span>`;
+          ? pill("failed", "failed")
+          : pill("done", "done");
     // A one-instrument run needs its symbol, which only the summary carries; do not offer a
     // button that cannot know what to ask about.
     const again =
@@ -114,7 +119,7 @@ export function renderRuns(runs: RunRow[], running: number): string {
           : ""
         : `<button class="mini" type="button" data-run-again="${escapeHtml(r.prompt)}">Run again</button>`;
     return `<article class="rcard">
-      <div class="rcard-top">${pill}<span class="run-when">${escapeHtml(localTime(r.started_at))} · ${escapeHtml(took(r))}</span></div>
+      <div class="rcard-top">${state}<span class="run-when">${escapeHtml(localTime(r.started_at))} · ${escapeHtml(took(r))}</span></div>
       <div class="rcard-title">${escapeHtml(label[r.prompt] ?? r.prompt)}
         <span class="trigger">${escapeHtml(r.trigger)}</span></div>
       <div class="rcard-result">${escapeHtml(
@@ -128,7 +133,7 @@ export function renderRuns(runs: RunRow[], running: number): string {
   };
 
   const choice = (value: string, text: string) => `<option value="${value}">${text}</option>`;
-  return `<div class="strip">
+  return `<div class="runs-strip">
     ${shown.map(card).join("")}
     <article class="rcard rcard-add">
       <div class="rcard-title">Run now</div>
@@ -220,9 +225,9 @@ export function renderCalls(
 /** One answer card, always the same shape: a verdict head, its figures or moves, then its words. */
 function decisionCard(reply: string, when: string): string {
   const r = parseReply(reply);
-  const head = (stamp: string, tone: string, title: string) =>
+  const head = (label: string, tone: string, title: string) =>
     `<div class="answer-head">
-      <span class="stamp" data-stamp="${tone}">${escapeHtml(stamp)}</span>
+      ${stamp(tone as "buy" | "sell" | "estimate", label)}
       <span class="answer-title">${title}</span>
       <span class="answer-when">${escapeHtml(when)}</span>
     </div>`;
@@ -233,7 +238,7 @@ function decisionCard(reply: string, when: string): string {
       .map((m) => {
         const buy = m.action === "BUY";
         return `<tr>
-          <td><span class="stamp" data-stamp="${buy ? "buy" : "sell"}">${escapeHtml(m.action)}</span></td>
+          <td>${actionStamp(m.action)}</td>
           <td class="answer-sym">${escapeHtml(m.symbol)}${
             m.why ? `<div class="answer-why">${escapeHtml(m.why)}</div>` : ""
           }</td>

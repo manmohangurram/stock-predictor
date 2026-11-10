@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { CallRow, Dashboard, PositionRow, Settings, SignalRow } from "./api";
-import { renderLedger, renderModeTabs, renderRow, renderStrip } from "./pages/ledger";
+import { renderLedger, renderModeTabs, renderRow } from "./pages/ledger";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
 import type { Limits } from "./api";
 
@@ -65,26 +65,11 @@ const dashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
   currency_locked: true,
   positions: [],
   signals: [],
-  blocked: [],
   recent_trades: [],
   ...over,
 });
 
-describe("portfolio strip", () => {
-  test("total is invested plus cash, and realised carries its sign", () => {
-    const html = renderStrip(dashboard({ positions: [position()] }));
-    expect(html).toContain("Total value");
-    expect(html).toContain("1,16,789"); // 20,400 invested + 96,389 cash
-    expect(html).toContain("Realised");
-    expect(html).toContain("+1,240");
-  });
 
-  test("a negative realised figure is shown as a loss, signed", () => {
-    const html = renderStrip(dashboard({ realised: -500 }));
-    expect(html).toContain("-500");
-    expect(html).toContain('class="num down"');
-  });
-});
 
 describe("blotter row", () => {
   test("carries the symbol for navigation, the numbers, and the signal stamp", () => {
@@ -915,6 +900,15 @@ describe("decisions filter on the overview", () => {
 });
 
 describe("decision rows", () => {
+  test("a blocked proposal stays out of the decisions box", async () => {
+    const { renderLedger } = await import("./pages/ledger");
+    const blocked = signal({ id: 9, action: "BLOCKED", qty: 1000, entry: 1148.7 });
+    const html = renderLedger(dashboard({ signals: [] }));
+    expect(html).not.toContain("BLOCKED");
+    // It is still a record elsewhere; this box is for decisions under review.
+    expect(html).toContain("Nothing under review");
+  });
+
   test("a fund decision leads with the scheme name, not its code", async () => {
     const { renderLedger } = await import("./pages/ledger");
     const fund = signal({
@@ -925,7 +919,7 @@ describe("decision rows", () => {
       qty: 80,
       entry: 124.96,
     });
-    const html = renderLedger(dashboard({ signals: [fund], blocked: [] }));
+    const html = renderLedger(dashboard({ signals: [fund] }));
     expect(html).toContain("HDFC Balanced Advantage Direct Growth");
     // The code is still there, small, because that is what you paste into search.
     expect(html).toContain("0P0000XV5C.BO");

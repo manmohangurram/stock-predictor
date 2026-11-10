@@ -78,6 +78,21 @@ A UI change is done when a headless screenshot shows it, at 1440 and 390, not wh
 written — and when the alignment is measured, not eyeballed: `getBoundingClientRect()` on the
 left edge of every line that is supposed to share one, and on the right edge of every number.
 
+## Front end: three layers, no framework
+
+`web/src` is plain TypeScript that renders HTML strings. Keep the layers apart:
+
+- `pages/*.ts` — render only: a payload in, markup out, no DOM access, no event listeners. This is
+  why they can be unit-tested with `vitest` and why `renderLedger(d)` keeps its signature.
+- `components/*.ts` — shared atoms: `stamp.ts` (`stamp`, `actionStamp`, `toneOf`, `pill`,
+  `statusPill`), `decision-actions.ts`, `confidence.ts`, `risk.ts`, `shell.ts`, `call-viewer.ts`.
+  A stamp or pill is never hand-written in a page; it goes through the atom, so a BUY looks the
+  same on every screen.
+- `wiring/*.ts` — behaviour: one module per feature (`settings`, `add-instrument`, `decisions`,
+  `runs`, `fills`, `calls`). Each takes a `reload` callback instead of importing the router, which
+  is what keeps `main.ts` a router and a timer (about 280 lines).
+- `main.ts` — routing, the 60-second refresh, nothing else.
+
 ## Quality gates
 
 ```sh

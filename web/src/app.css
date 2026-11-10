@@ -320,12 +320,6 @@
   .topnav a { color: var(--ink-secondary); text-decoration: none; }
   .topnav a:hover { color: var(--ink); }
   .topnav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
-  .strip { display: flex; gap: var(--space-6); align-items: baseline; flex-wrap: wrap;
-    padding: var(--space-3) var(--space-4); background: var(--paper-raised);
-    border: 1px solid var(--rule-subtle); border-radius: var(--radius); }
-  .strip > div { display: grid; gap: 1px; }
-  .strip .total { font-size: var(--text-xl); font-weight: 500; }
-  .strip .num { font-size: var(--text-md); }
   .exposure { flex: 0 0 200px; display: flex; height: 6px; align-self: center;
     border-radius: 3px; overflow: hidden; background: var(--paper-inset); }
   .exposure i { display: block; height: 100%; }
@@ -402,8 +396,6 @@
   @media (max-width: 900px) {
     .body { grid-template-columns: 1fr; }
     .side { border-left: 0; border-top: 1px solid var(--rule-subtle); padding-left: 0; padding-top: var(--space-3); }
-    .strip { gap: var(--space-4); }
-    .strip .total { font-size: var(--text-lg); }
     .hide-sm { display: none; }
     .trade-form .row > input { flex: 1 1 100%; }
   }
@@ -474,7 +466,6 @@
 @layer components {
   /* Settings: six tabs, one section at a time, each stamped on its own. */
   .settings-shell { display: grid; grid-template-columns: 236px 1fr; gap: 0 var(--space-6); }
-  .settings-shell > .strip,
   .settings-shell > .topnav { grid-column: 1 / -1; }
 
   .settings-rail {
@@ -522,10 +513,7 @@
     }
     .settings-rail [role="tab"].on { border-left: 0; border-bottom: 2px solid var(--stamp-ink); }
     .settings-pane { padding: var(--space-4) 0 0; }
-    .settings-shell > .strip { flex-wrap: wrap; gap: var(--space-3); }
-    .settings-shell > .strip > div { flex: 1 1 auto; }
-    .pane-foot { position: sticky; bottom: 0; background: var(--paper); }
-  }
+    }
 }
 
 @layer components {
@@ -1216,8 +1204,8 @@
 
 @layer components {
   /* The last few runs as cards, so "anything running?" is answered before you read the table. */
-  .strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3);
-    margin-bottom: var(--space-4); }
+  .runs-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3); margin-bottom: var(--space-4); }
   .rcard { background: var(--paper-raised); border: 1px solid var(--rule-subtle);
     border-radius: var(--radius); padding: var(--space-3); display: grid; gap: var(--space-2);
     align-content: start; min-width: 0; }
@@ -1242,7 +1230,7 @@
     background: var(--paper-raised); color: var(--ink); }
   .rcard-add .help { font-size: var(--text-xs); color: var(--ink-tertiary); }
   @media (max-width: 900px) {
-    .strip { grid-template-columns: 1fr 1fr; }
+    .runs-strip { grid-template-columns: 1fr 1fr; }
   }
 }
 

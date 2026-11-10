@@ -58,7 +58,6 @@ export interface Dashboard {
   currency_locked: boolean;
   positions: PositionRow[];
   signals: SignalRow[];
-  blocked: SignalRow[];
   recent_trades: Trade[];
 }
 

@@ -3,6 +3,7 @@ import { clock, day, escapeHtml, money, units } from "../format";
 import { confidenceLabel, renderConfidence } from "../components/confidence";
 import { renderRisk } from "../components/risk";
 import { renderApp } from "../components/shell";
+import { actionStamp, pill, statusPill } from "../components/stamp";
 import { renderDecisionActions } from "../components/decision-actions";
 import { decisionFilterTabs, isDecisionFilter, type DecisionFilter } from "../components/decision-filter";
 
@@ -157,17 +158,16 @@ function decisions(
         s.target === null ? "" : `<div><span class="lbl">Take profit at</span><b class="num up">≥ ${money(s.target)}</b></div>`,
         s.valid_until ? `<div><span class="lbl">Valid until</span><b class="num">${day(s.valid_until)}</b></div>` : "",
       ].join("");
-      const tone = s.action === "SELL" ? "sell" : s.action === "BUY" ? "buy" : "blocked";
       return `<tr class="decision-row" data-decision="${i}" data-signal="${s.id}" tabindex="0" role="button"
             aria-expanded="false" aria-controls="decision-${i}">
         <td class="mono">${day(s.created_at)} ${clock(s.created_at)}</td>
-        <td><span class="stamp" data-stamp="${tone}">${s.action}</span></td>
+        <td>${actionStamp(s.action)}</td>
         <td class="num">${s.entry === null ? "—" : money(s.entry)}</td>
         <td class="num hide-md">${s.stop === null ? "—" : money(s.stop)}</td>
         <td class="num hide-md">${s.target === null ? "—" : money(s.target)}</td>
         <td class="hide-md">${
           s.status !== "pending"
-            ? `<span class="pill ${s.status === "approved" ? "ok" : "todo"}">${s.status}</span>`
+            ? statusPill(s.status)
             : s.confidence === null
             ? `<span class="muted">rules-derived, no model score</span>`
             : `<span class="conf-word">${renderConfidence(s.confidence)}<span class="lbl">${confidenceLabel(s.confidence)}</span></span>`
@@ -230,7 +230,7 @@ function trades(list: Trade[]): string {
     <tbody>${list
       .map(
         (t) => `<tr><td class="mono">${day(t.traded_at)}</td>
-      <td><span class="stamp" data-stamp="${t.side}">${t.side}</span></td>
+      <td>${actionStamp(t.side)}</td>
       <td class="num">${units(t.qty)}</td>
       <td class="num">${money(t.price)}</td>
       <td class="num hide-sm">${t.market_close === null ? "—" : money(t.market_close)}</td>
@@ -310,7 +310,7 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
   const rules = a.checks.length
     ? `<div class="rules">${a.checks
         .map(
-          (c) => `<div class="rule-row"><span class="pill ${c.passed ? "ok" : "todo"}">${c.passed ? "pass" : "block"}</span>
+          (c) => `<div class="rule-row">${pill(c.passed ? "ok" : "todo", c.passed ? "pass" : "block")}
         <span>${escapeHtml(c.name)} <span class="sub">${escapeHtml(c.detail)}</span></span></div>`,
         )
         .join("")}</div>`
