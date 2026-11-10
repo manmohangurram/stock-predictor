@@ -322,17 +322,31 @@ async fn main() -> Result<()> {
                             Err(e) => Err(format!("{e:#}")),
                         }
                     }
-                    Manual::Short => match stock_predictor::trend::run(
+                    Manual::Short => match stock_predictor::trend::forget_today(
                         &poll_pool,
-                        &market,
-                        &transport,
-                        &notifier,
-                        &runtime,
                         Utc::now(),
                     )
                     .await
                     {
-                        Ok(r) => Ok(format!("{} examined, {} proposed", r.examined, r.proposed)),
+                        // A person asked again: the day's list is re-asked, not replayed.
+                        Ok(()) => {
+                            match stock_predictor::trend::run(
+                                &poll_pool,
+                                &market,
+                                &transport,
+                                &notifier,
+                                &runtime,
+                                Utc::now(),
+                            )
+                            .await
+                            {
+                                Ok(r) => Ok(format!(
+                                    "{} examined, {} proposed",
+                                    r.examined, r.proposed
+                                )),
+                                Err(e) => Err(format!("{e:#}")),
+                            }
+                        }
                         Err(e) => Err(format!("{e:#}")),
                     },
                     Manual::Decide { symbol } => {

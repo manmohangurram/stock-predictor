@@ -1,5 +1,6 @@
 import type { CallRow, ScheduledPrompt } from "../api";
 import { dayTime, escapeHtml, humanLabel, money, titleCase, units } from "../format";
+import { renderMarkdown } from "../markdown";
 import { renderApp, renderHead } from "../components/shell";
 import { actionStamp, pill, stamp, toneOf } from "../components/stamp";
 import {
@@ -349,7 +350,7 @@ export function renderExchangeDetail(d: CallDetail): string {
         .map(
           (b) => `<section class="call-block">
       <div class="lbl">${escapeHtml(b.label)}</div>
-      <pre>${escapeHtml(b.text)}</pre>
+      <div class="call-md">${renderMarkdown(b.text)}</div>
     </section>`,
         )
         .join("")
@@ -380,10 +381,11 @@ export function renderExchangeDetail(d: CallDetail): string {
     <div class="call-col">
       <h3 class="call-h">Received</h3>
       ${
-        // A failed or empty reply has no verdict to show; the verbatim line says everything.
-        d.error || !reply ? "" : decisionCard(reply, dayTime(d.ts))
+        // The card is the answer. The JSON it was parsed from is one click away in Raw, below.
+        d.error || !reply
+          ? `<p class="call-empty">${d.error ? "The call failed before a reply." : "No reply stored for this call."}</p>`
+          : decisionCard(reply, dayTime(d.ts))
       }
-      <pre class="call-verbatim">${reply ? escapeHtml(reply) : "No reply stored for this call."}</pre>
     </div>
   </section>
 

@@ -492,3 +492,64 @@ fn the_stock_plan_prompt_demands_exits_and_forbids_funds() {
         rendered.text
     );
 }
+
+/// The short-term prompt now carries what the web says, numbered, and tells the model to cite it.
+#[test]
+fn the_short_term_prompt_carries_todays_web_and_asks_for_citations() {
+    let hits = vec![stock_predictor::llm::deepseek::SearchHit {
+        title: "Tata Motors Q2 profit beats estimates".into(),
+        url: "https://example.com/a".into(),
+        summary: "Profit rose 12% on strong JLR sales.".into(),
+        date: Some("2026-11-10".into()),
+    }];
+    let web = prompts::render_web_hits(&hits);
+    assert!(web.starts_with("[1] Tata Motors"), "{web}");
+    assert!(web.contains("https://example.com/a"), "{web}");
+    let rendered = prompts::render_trend(
+        "TATAMOTORS.NS · 780.50 now, +5.17% today",
+        "2026-11-10 close 780.50",
+        "(no headlines)",
+        &web,
+        "cash INR 200000.00, allowance 10000.00",
+    )
+    .unwrap();
+    assert!(rendered.text.contains("[1] Tata Motors"), "{}", rendered.text);
+    assert!(
+        rendered.text.contains("NSE and BSE"),
+        "the market is named: {}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains("T+1"),
+        "settlement is named: {}",
+        rendered.text
+    );
+    assert!(!rendered.text.contains("{{"), "unfilled: {}", rendered.text);
+}
+
+/// An empty search is said out loud rather than leaving a blank where evidence should be.
+#[test]
+fn no_web_results_is_a_sentence_not_an_empty_block() {
+    let web = prompts::render_web_hits(&[]);
+    assert!(web.contains("no web results"), "{web}");
+}
+
+/// The daily scan asks for NSE tickers, not Yahoo symbols, and allows "nothing today".
+#[test]
+fn the_daily_scan_prompt_asks_for_bare_tickers_and_allows_an_empty_day() {
+    let rendered =
+        prompts::render_trending("2026-11-10", &prompts::render_web_hits(&[])).unwrap();
+    assert_eq!(rendered.template, "trending_v1");
+    assert!(rendered.text.contains("2026-11-10"), "{}", rendered.text);
+    assert!(
+        rendered.text.contains("NSE ticker"),
+        "{}",
+        rendered.text
+    );
+    assert!(
+        rendered.text.contains(r#"{"symbols":[]"#),
+        "an empty day must be answerable: {}",
+        rendered.text
+    );
+    assert!(!rendered.text.contains("{{"), "unfilled: {}", rendered.text);
+}

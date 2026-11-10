@@ -9,6 +9,7 @@ pub const DECIDE_V1: &str = include_str!("../../prompts/decide_v1.md");
 pub const ESCALATE_V1: &str = include_str!("../../prompts/escalate_v1.md");
 pub const ROTATE_V1: &str = include_str!("../../prompts/rotate_v1.md");
 pub const TREND_V1: &str = include_str!("../../prompts/trend_v1.md");
+pub const TRENDING_V1: &str = include_str!("../../prompts/trending_v1.md");
 pub const SHORT_V1: &str = include_str!("../../prompts/short_v1.md");
 pub const PLAN_STOCK_V1: &str = include_str!("../../prompts/plan_stock_v1.md");
 pub const PLAN_MF_V1: &str = include_str!("../../prompts/plan_mf_v1.md");
@@ -65,6 +66,7 @@ pub fn template(name: &str) -> Result<&'static str> {
         "escalate_v1" => Ok(ESCALATE_V1),
         "rotate_v1" => Ok(ROTATE_V1),
         "trend_v1" => Ok(TREND_V1),
+        "trending_v1" => Ok(TRENDING_V1),
         "short_v1" => Ok(SHORT_V1),
         "plan_stock_v1" => Ok(PLAN_STOCK_V1),
         "plan_mf_v1" => Ok(PLAN_MF_V1),
@@ -128,6 +130,7 @@ pub fn render_trend(
     candidate: &str,
     tape: &str,
     headlines: &str,
+    web: &str,
     book: &str,
 ) -> Result<RenderedPrompt> {
     let template = template("trend_v1")?;
@@ -138,8 +141,43 @@ pub fn render_trend(
             .replace("{{candidate}}", candidate)
             .replace("{{tape}}", tape)
             .replace("{{headlines}}", headlines)
+            .replace("{{web}}", web)
             .replace("{{book}}", book),
     })
+}
+
+/// The daily scan: "what is India trading today", answered from web results we fetched.
+pub fn render_trending(date: &str, web: &str) -> Result<RenderedPrompt> {
+    let template = template("trending_v1")?;
+    Ok(RenderedPrompt {
+        template: "trending_v1".into(),
+        hash: template_hash("trending_v1")?,
+        text: template
+            .replace("{{date}}", date)
+            .replace("{{web}}", web),
+    })
+}
+
+/// Numbered web hits, the same shape the headline list has: a number, a title, and the gist.
+pub fn render_web_hits(hits: &[crate::llm::deepseek::SearchHit]) -> String {
+    if hits.is_empty() {
+        return "no web results — judge on the tape and the stored headlines alone".into();
+    }
+    hits.iter()
+        .enumerate()
+        .map(|(i, h)| {
+            let when = h.date.as_deref().map(|d| format!(" · {d}")).unwrap_or_default();
+            format!(
+                "[{}] {}{}\n    {}\n    {}",
+                i + 1,
+                h.title.trim(),
+                when,
+                h.url.trim(),
+                h.summary.trim()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Which playbook a decision uses. The trade pot's horizon is measured in hours, so it is asked a

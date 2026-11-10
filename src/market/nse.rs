@@ -24,6 +24,8 @@ pub struct Gainer {
 struct Envelope {
     #[serde(default, rename = "allSec")]
     all_sec: Option<Group>,
+    #[serde(default, rename = "NIFTY")]
+    nifty: Option<Group>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,7 +87,10 @@ fn from_text(raw: &str) -> Option<f64> {
     body.trim().parse::<f64>().ok().map(|n| n * scale)
 }
 
-pub async fn fetch_gainers(client: &reqwest::Client, top: usize) -> Result<Vec<Gainer>> {
+/// Both lists from one request: the whole market's top gainers (`allSec`), and the Nifty 50's own
+/// (`NIFTY`, which the exchange already ranks). The short-term scan needs both, and the second list
+/// is free once the first is fetched.
+pub async fn fetch_today(client: &reqwest::Client, top: usize) -> Result<(Vec<Gainer>, Vec<Gainer>)> {
     let body = client
         .get(GAINERS_URL)
         .header(reqwest::header::USER_AGENT, UA)
@@ -98,7 +103,10 @@ pub async fn fetch_gainers(client: &reqwest::Client, top: usize) -> Result<Vec<G
         .text()
         .await
         .context("nse: body")?;
-    parse_gainers(&body, top)
+    Ok((
+        parse_gainers(&body, top)?,
+        parse_benchmark_movers(&body, top)?,
+    ))
 }
 
 /// Pure, so the shape can be tested against a fixture.
@@ -108,6 +116,23 @@ pub fn parse_gainers(body: &str, top: usize) -> Result<Vec<Gainer>> {
         .all_sec
         .ok_or_else(|| anyhow::anyhow!("nse: no allSec group in the payload"))?
         .data;
+    Ok(rank(rows, top))
+}
+
+/// The Nifty 50's own top movers: the same payload's `NIFTY` group, already ranked by the
+/// exchange. `equity-stockIndices` — the obvious endpoint — refuses non-browser clients, so this
+/// group is the honest way in.
+pub fn parse_benchmark_movers(body: &str, top: usize) -> Result<Vec<Gainer>> {
+    let env: Envelope = serde_json::from_str(body).context("nse: payload shape")?;
+    let rows = env
+        .nifty
+        .ok_or_else(|| anyhow::anyhow!("nse: no NIFTY group in the payload"))?
+        .data;
+    Ok(rank(rows, top))
+}
+
+/// One mapper for both groups: a row is a row, whichever list it came in.
+fn rank(rows: Vec<Row>, top: usize) -> Vec<Gainer> {
     let mut out: Vec<Gainer> = rows
         .into_iter()
         .filter_map(|r| {
@@ -126,7 +151,7 @@ pub fn parse_gainers(body: &str, top: usize) -> Result<Vec<Gainer>> {
         .collect();
     out.sort_by(|a, b| b.per_change.total_cmp(&a.per_change));
     out.truncate(top);
-    Ok(out)
+    out
 }
 
 impl Gainer {
@@ -177,6 +202,23 @@ mod tests {
         assert_eq!(g.len(), 2, "the row with no price is skipped, not fatal");
         assert!((g[0].turnover.unwrap() - 2.286e8).abs() < 1.0);
         assert!((g[1].turnover.unwrap() - 1.5e5).abs() < 1.0);
+    }
+
+    #[test]
+    fn the_index_group_is_ranked_by_change_and_both_lists_come_from_one_body() {
+        // The live payload has an `open_price`/`high_price` row shape and a `NIFTY` group beside
+        // `allSec`; this is that shape, trimmed.
+        let payload = r#"{"allSec":{"data":[{"symbol":"ALEMBICLTD","ltp":113.21,"prev_price":99.15,"perChange":14.18}]},
+          "NIFTY":{"data":[
+            {"symbol":"SBIN","ltp":1042.0,"prev_price":1016.0,"perChange":2.56,"turnover":"2,497.44 Cr"},
+            {"symbol":"NESTLEIND","ltp":2450.0,"prev_price":2455.0,"perChange":-0.20},
+            {"symbol":"TRENT","ltp":1620.0,"prev_price":1588.0,"perChange":"2.02","turnover":"1.5 L"}
+        ]}}"#;
+        let g = parse_benchmark_movers(payload, 2).unwrap();
+        assert_eq!(g.len(), 2);
+        assert_eq!(g[0].symbol, "SBIN");
+        assert_eq!(g[1].symbol, "TRENT", "ranked by change, not by payload order");
+        assert_eq!(parse_gainers(payload, 5).unwrap()[0].symbol, "ALEMBICLTD");
     }
 
     #[test]

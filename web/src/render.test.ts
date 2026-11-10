@@ -3,6 +3,7 @@ import type { CallRow, Dashboard, PositionRow, ScheduledPrompt, Settings, Signal
 import { renderLedger, renderModeTabs, renderRow } from "./pages/ledger";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
 import type { Limits } from "./api";
+import { renderMarkdown } from "./markdown";
 
 const limits = (over: Partial<Limits> = {}): Limits => ({
   min_profit_pct: 5,
@@ -1164,5 +1165,47 @@ describe("labels from identifiers", () => {
     // Values without underscores keep their shape, including symbols.
     expect(humanLabel("chat+search")).toBe("Chat+search");
     expect(humanLabel("")).toBe("");
+  });
+});
+
+describe("markdown in the audit drawer", () => {
+  test("renders the prompt as prose, not as markup", () => {
+    const html = renderMarkdown("## Rules\n\n1. **Both exits.** `entry` below `stop`.\n\n- a\n- b");
+    expect(html).toContain("<h4>Rules</h4>");
+    expect(html).toContain("<strong>Both exits.</strong>");
+    expect(html).toContain("<code>entry</code>");
+    expect(html).toContain("<ol>");
+    expect(html).toContain("<ul>");
+  });
+
+  test("escapes the prompt's own angle brackets", () => {
+    expect(renderMarkdown("a <script>alert(1)</script> b")).toContain("&lt;script&gt;");
+  });
+
+  test("keeps a fenced JSON example verbatim", () => {
+    const html = renderMarkdown('```json\n{"action":"pass"}\n```');
+    // Escaped for HTML, so it renders as the text it is.
+    expect(html).toContain('<pre class="md-code"><code>{&quot;action&quot;:&quot;pass&quot;}</code></pre>');
+  });
+});
+
+describe("markdown numbering", () => {
+  test("a lazily numbered list stays one list and counts up", () => {
+    const html = renderMarkdown("1. first\n\n1. second\n\n1. third");
+    expect(html.match(/<ol>/g)?.length).toBe(1);
+    expect(html.match(/<li>/g)?.length).toBe(3);
+  });
+
+  test("a blank line between a list and prose still ends the list", () => {
+    const html = renderMarkdown("- a\n\nThen prose.");
+    expect(html).toContain("</ul>");
+    expect(html).toContain("<p>Then prose.</p>");
+  });
+});
+
+describe("markdown reflow", () => {
+  test("a hard-wrapped paragraph reflows instead of keeping the source's line breaks", () => {
+    const html = renderMarkdown("a setup that needs a\nweek to pay is not this book's trade");
+    expect(html).toBe("<p>a setup that needs a week to pay is not this book&#39;s trade</p>".replace("&#39;", "'"));
   });
 });

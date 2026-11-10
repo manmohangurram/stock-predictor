@@ -1,3 +1,33 @@
+## Unreleased
+
+### The short-term list is asked once a day, from three places
+
+- **The exchange's gainers** and **the Nifty 50's own top movers** — both from one NSE request
+  (`live-analysis-variations` carries an `allSec` group and a `NIFTY` group; the obvious
+  `equity-stockIndices` endpoint refuses non-browser clients).
+- **What the web says is moving** — one `/v1/tools/search` query, read by a new `trending_v1`
+  prompt that answers with bare NSE tickers and one line of why. The search and fetch APIs were
+  already written and audited in `src/llm/deepseek.rs`; nothing called them until now.
+- **Deduplicated by symbol**, the exchange's row winning because it carries a price, and stored in
+  `trend_candidates` (migration `0019`) for the IST day. A tick reads the list instead of buying it
+  again; *Run again* clears it (`trend::forget_today`).
+- **Each name is analysed with today's web**: one search per candidate, numbered results passed as
+  `{{web}}`, cites still indices so the validator and the audit drawer keep working.
+- The short-term prompt is now explicitly Indian: NSE/BSE delivery, **T+1 so the earliest exit is
+  tomorrow**, 2/5/10/20% circuit bands and an upper circuit you cannot buy, T2T/ASM/GSM and
+  F&O-ban names, no shorting, round-trip charges, IST session, `valid_until` in `+05:30`.
+- **The short-term gate finally bites.** It was documented as "only when the price moved or the
+  headlines changed" but never wrote its memo, so every tick asked about every name. It records
+  now, success or failure.
+
+### The audit drawer reads like a document
+
+- The prompt is **rendered markdown** — headings, numbered rules, emphasis, code — instead of a
+  `<pre>` dump, and it **scrolls in its own column** so the drawer is the height of the answer, not
+  the question.
+- The **duplicate JSON under the verdict is gone**: the card is the answer, and the raw bodies stay
+  one click away under *Raw request and response*.
+
 # Changelog
 
 Tags before `v0.19.0` were cut without notes; their subjects are in `git log`. This file starts

@@ -61,6 +61,10 @@ files directly when you need exact wording.
   at noon still asks. **Both** plans are once-a-day book decisions (`stock_plan_last` /
   `mf_plan_last`); per-stock calls cover the intraday. `plan_v1` still resolves to the stock prompt
   for old audit rows.
+- The short-term list is asked once per IST day (`trend_list_last`) and stored in
+  `trend_candidates`: NSE's `allSec` gainers, NSE's `NIFTY` group (the Nifty 50's own movers) and
+  one DeepSeek `/v1/tools/search` read by `trending_v1`. Deduped by symbol, the exchange winning.
+  Each candidate is then asked with its own search results as `{{web}}`.
 - The proxy is chosen only by the database: `src/http.rs` is the one client builder and calls
   `.no_proxy()` first, so `HTTP_PROXY` can never win.
 

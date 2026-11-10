@@ -60,6 +60,10 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "0018_drop_poll_runs",
         include_str!("../migrations/0018_drop_poll_runs.sql"),
     ),
+    (
+        "0019_trend_candidates",
+        include_str!("../migrations/0019_trend_candidates.sql"),
+    ),
 ];
 
 pub fn path_of(path: &str) -> &str {
