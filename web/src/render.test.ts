@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { CallRow, Dashboard, PositionRow, Settings, SignalRow } from "./api";
+import type { CallRow, Dashboard, PositionRow, ScheduledPrompt, Settings, SignalRow } from "./api";
 import { renderLedger, renderModeTabs, renderRow } from "./pages/ledger";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
 import type { Limits } from "./api";
@@ -1001,7 +1001,13 @@ describe("audit", () => {
       plan_legs: 0,
       model: "decide_v1",
     };
-    const list = renderCalls([], 0, [row], { prompts: [], calls: [], models: [] }, {});
+    const list = renderCalls(
+      { prompts: [], now: "2026-11-09T10:00:00Z" },
+      0,
+      [row],
+      { prompts: [], calls: [], models: [] },
+      {},
+    );
     expect(list).toContain("Infosys");
     expect(list).toContain("blocked");
     // The reason must not render in the row — as visible text it pushed the table off the page.
@@ -1098,5 +1104,53 @@ describe("archived", () => {
     ]);
     expect(html).toContain("Never traded");
     expect(html).toContain("—");
+  });
+});
+
+describe("the schedule strip", () => {
+  test("says when each prompt last ran, when it is next due, and how often", async () => {
+    const { renderSchedule } = await import("./pages/calls");
+    const prompt = (over: Partial<ScheduledPrompt>): ScheduledPrompt => ({
+      prompt: "plan_stock",
+      label: "Stock plan",
+      rule: "once a day, first tick after midnight IST",
+      next_due_at: "2026-11-11T00:05:00+05:30",
+      last: {
+        status: "done",
+        trigger: "schedule",
+        at: "2026-11-10T18:51:00Z",
+        finished_at: "2026-11-10T18:51:03Z",
+        summary: "2 moves stored",
+        error: null,
+      },
+      ...over,
+    });
+    const html = renderSchedule(
+      [
+        prompt({}),
+        prompt({
+          prompt: "plan_fund",
+          label: "Fund plan",
+          last: null,
+          next_due_at: null,
+        }),
+        prompt({
+          prompt: "short",
+          label: "Short-term pass",
+          rule: "every tick, 09:00–16:00 IST, Mon–Fri",
+          next_due_at: "2026-11-09T09:00:00Z",
+        }),
+      ],
+      "2026-11-09T10:00:00Z",
+      0,
+    );
+    expect(html).toContain("2 moves stored");
+    expect(html).toContain("once a day, first tick after midnight IST");
+    expect(html).toContain("Next due");
+    // A prompt that never ran says so, and still offers the run.
+    expect(html).toContain("never run");
+    expect(html).toContain('data-run-again="plan_fund"');
+    // A due date in the past reads as due now, not as a date.
+    expect(html).toContain("due now");
   });
 });

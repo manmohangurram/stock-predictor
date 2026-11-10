@@ -405,40 +405,16 @@ async fn main() -> Result<()> {
                     rules: RuleConfig::default(),
                     force: false,
                 };
-                let poll_run = stock_predictor::runs::start(
-                    &poll_pool,
-                    stock_predictor::runs::Prompt::Poll,
-                    stock_predictor::runs::Trigger::Schedule,
-                    None,
-                )
-                .await
-                .ok();
-                match engine::poll_once(&deps, now).await {
-                    Ok(r) => {
-                        tracing::info!(?r, "poll complete");
-                        if let Some(id) = poll_run {
-                            let _ = stock_predictor::runs::finish(
-                                &poll_pool,
-                                id,
-                                &format!(
-                                    "{} decisions, {} plans, {} blocked",
-                                    r.signals, r.plans, r.blocked
-                                ),
-                                None,
-                            )
-                            .await;
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!(error = %e, "poll failed");
-                        if let Some(id) = poll_run {
-                            let _ = stock_predictor::runs::fail(&poll_pool, id, &format!("{e:#}"))
-                                .await;
-                        }
-                    }
-                }
+                // A scheduled poll records no run row. At 15-minute ticks that would be ninety-six
+            // "nothing happened" rows a day, and the calls it made are already in `api_calls`. The
+            // three prompts that actually decide something — the two plans and the short-term
+            // pass — keep their rows, and so does a poll you start by hand.
+            match engine::poll_once(&deps, now).await {
+                Ok(r) => tracing::info!(?r, "poll complete"),
+                Err(e) => tracing::error!(error = %e, "poll failed"),
+            }
 
-                // Best-fund discovery: once a day, rank the curated list by trailing return.
+            // Best-fund discovery: once a day, rank the curated list by trailing return.
                 match stock_predictor::fundscan::run(&poll_pool, &runtime, Utc::now()).await {
                     Ok(r) if r.examined > 0 => tracing::info!(?r, "fund scan"),
                     Ok(_) => {}

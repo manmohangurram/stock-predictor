@@ -155,6 +155,22 @@ export interface ArchivedInstrument {
   net_invested: number;
 }
 
+/** One scheduled prompt: what it is, when it is next due, and how its last run went. */
+export interface ScheduledPrompt {
+  prompt: string;
+  label: string;
+  rule: string;
+  next_due_at: string | null;
+  last: {
+    status: "running" | "done" | "failed";
+    trigger: "schedule" | "change" | "manual";
+    at: string;
+    finished_at: string | null;
+    summary: string | null;
+    error: string | null;
+  } | null;
+}
+
 export interface CallRow {
   id: number;
   ts: string;
@@ -308,6 +324,9 @@ export const api = {
   /** Runs: what the scheduler started, opened before the work and closed after it. */
   runs: (limit = 25) =>
     req<{ runs: RunRow[]; running: number }>(`/api/runs?limit=${limit}`),
+  /** The schedule: each prompt's last run and when it is next due, computed by the server. */
+  schedule: () =>
+    req<{ now: string; prompts: ScheduledPrompt[] }>("/api/schedule"),
   runNow: (prompt: string, symbol?: string) =>
     req<{ id: number; status: string }>("/api/runs", json({ prompt, symbol })),
   /** The values the audit filters offer, straight from the record. */

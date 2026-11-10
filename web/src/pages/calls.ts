@@ -1,4 +1,4 @@
-import type { CallRow, RunRow } from "../api";
+import type { CallRow, ScheduledPrompt } from "../api";
 import { dayTime, escapeHtml, money, titleCase, units } from "../format";
 import { renderApp, renderHead } from "../components/shell";
 import { actionStamp, pill, stamp, toneOf } from "../components/stamp";
@@ -71,66 +71,64 @@ export function renderPager(offset: number, limit: number, total: number): strin
 }
 
 /**
- * The last few runs, as cards: state, when, how long, and what came of it. The fourth card is the
- * Run now form, so "what is running?" and "start something" are the same glance.
- *
- * The calls table below is untouched — this sits above it, not inside it.
+ * The schedule, one card per prompt: when it last ran and how that went, when it is due next, and
+ * a way to start it now. The cadence is printed in words because "next due 09:15" means nothing
+ * without "every tick, 09:00–16:00 IST, Mon–Fri".
  */
-export function renderRuns(runs: RunRow[], running: number): string {
-  const label: Record<string, string> = {
-    poll: "Poll",
-    plan_stock: "Stock plan",
-    plan_fund: "Fund plan",
-    short: "Short-term pass",
-    decide: "One instrument",
-    rotate: "Rotation",
+export function renderSchedule(
+  prompts: ScheduledPrompt[],
+  now: string,
+  running: number,
+): string {
+  const due = (iso: string | null) => {
+    if (!iso) return "—";
+    return Date.parse(iso) <= Date.parse(now) + 1000 ? "due now" : dayTime(iso);
   };
-  const took = (r: RunRow) => {
+  const took = (r: NonNullable<ScheduledPrompt["last"]>) => {
     if (!r.finished_at) return "running";
-    const ms = Date.parse(r.finished_at) - Date.parse(r.started_at);
+    const ms = Date.parse(r.finished_at) - Date.parse(r.at);
     if (!Number.isFinite(ms) || ms < 0) return "—";
     return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
   };
-  const shown = runs.slice(0, 3);
-  const earlier = Math.max(0, runs.length - shown.length);
 
-  const card = (r: RunRow, i: number) => {
-    const state =
-      r.status === "running"
+  const card = (p: ScheduledPrompt) => {
+    const r = p.last;
+    const state = !r
+      ? pill("", "never run")
+      : r.status === "running"
         ? pill("running", "running")
         : r.status === "failed"
           ? pill("failed", "failed")
           : pill("done", "done");
-    // A one-instrument run needs its symbol, which only the summary carries; do not offer a
-    // button that cannot know what to ask about.
-    const again =
-      r.status === "running" || r.prompt === "decide"
-        ? r.status === "running"
-          ? `<button class="mini" type="button" disabled>Working…</button>`
-          : ""
-        : `<button class="mini" type="button" data-run-again="${escapeHtml(r.prompt)}">Run again</button>`;
-    return `<article class="rcard" data-state="${r.status}">
-      <div class="rcard-top">${state}<span class="run-when">${escapeHtml(dayTime(r.started_at))} · ${escapeHtml(took(r))}</span></div>
-      <div class="rcard-title">${escapeHtml(label[r.prompt] ?? r.prompt)}
-        <span class="trigger">${escapeHtml(r.trigger)}</span></div>
+    const when = r ? `last ${dayTime(r.at)}` : "no run yet";
+    return `<article class="rcard" data-state="${r?.status ?? "none"}">
+      <div class="rcard-top">${state}<span class="run-when">${when}</span></div>
+      <div class="rcard-title">${escapeHtml(p.label)}
+        ${r ? `<span class="trigger">${escapeHtml(r.trigger)}${r.finished_at ? ` · ${took(r)}` : ""}</span>` : ""}</div>
       <div class="rcard-result">${escapeHtml(
-        r.error ?? r.summary ?? (r.status === "running" ? "working…" : "—"),
+        r?.error ?? r?.summary ?? (r ? "—" : "Nothing has run yet."),
       )}</div>
-      ${again}
+      <div class="rcard-next"><span class="lbl">Next due</span> <b>${escapeHtml(due(p.next_due_at))}</b></div>
+      <div class="rcard-rule">${escapeHtml(p.rule)}</div>
+      ${
+        r?.status === "running"
+          ? `<button class="mini" type="button" disabled>Working…</button>`
+          : `<button class="mini" type="button" data-run-again="${escapeHtml(p.prompt)}">Run again</button>`
+      }
     </article>`;
   };
 
   const choice = (value: string, text: string) => `<option value="${value}">${text}</option>`;
   return `<div class="runs-strip">
-    ${shown.map(card).join("")}
+    ${prompts.map(card).join("")}
     <article class="rcard rcard-add">
       <div class="rcard-title">Run now</div>
       <form class="run-now" data-run-now>
         <select name="prompt" aria-label="What to run">
-          ${choice("poll", "Poll")}
           ${choice("plan_stock", "Stock plan")}
           ${choice("plan_fund", "Fund plan")}
           ${choice("short", "Short-term pass")}
+          ${choice("poll", "A poll")}
           ${choice("decide", "One instrument")}
         </select>
         <input name="symbol" placeholder="INFY.NS" aria-label="Symbol" />
@@ -140,11 +138,7 @@ export function renderRuns(runs: RunRow[], running: number): string {
         }</span>
       </form>
     </article>
-  </div>${
-    earlier > 0
-      ? `<p class="runs-more">${earlier} earlier run${earlier === 1 ? "" : "s"} not shown</p>`
-      : ""
-  }`;
+  </div>`;
 }
 
 export interface CallFilters {
@@ -182,7 +176,7 @@ function filterBar(
 }
 
 export function renderCalls(
-  runs: RunRow[],
+  schedule: { prompts: ScheduledPrompt[]; now: string },
   running: number,
   rows: CallRow[],
   facets: { prompts: string[]; calls: string[]; models: string[] },
@@ -231,7 +225,7 @@ export function renderCalls(
       { label: "Failures", value: String(failures), tone: failures ? "neg" : undefined },
       { label: "Tokens", value: tokens.toLocaleString("en-IN") },
     ])}
-  ${renderRuns(runs, running)}
+  ${renderSchedule(schedule.prompts, schedule.now, running)}
   ${filterBar(facets, active)}
   <section class="main-body table-wrap">
     <table class="blotter">

@@ -46,14 +46,14 @@ async function route(): Promise<void> {
         model: params.get("model") ?? undefined,
         review: params.get("review") ?? undefined,
       };
-      const [runs, facets, list] = await Promise.all([
-        api.runs(25),
+      const [schedule, facets, list] = await Promise.all([
+        api.schedule(),
         api.callFacets(),
         api.calls(offset, limit, filters),
       ]);
       app.innerHTML = renderCalls(
-        runs.runs,
-        runs.running,
+        schedule,
+        0,
         list.rows,
         facets,
         filters,

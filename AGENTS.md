@@ -120,6 +120,13 @@ lever; the static prompt block is a prefix so DeepSeek's context cache can hit i
 Request count: one per page (`/api/dashboard` carries recent trades, `/analysis` carries signals
 and fills), and the dashboard answers 304 when its version tag is unchanged.
 
+A **run** (`src/runs.rs`, table `runs`) is one unit of scheduler work that *decides* something —
+stock plan, fund plan, short-term pass, or a run you started by hand. A scheduled poll writes no
+row: at 15-minute ticks that was ninety-six "nothing happened" rows a day, and the calls it made are
+already in `api_calls`. `GET /api/schedule` computes "last ran" and "next due" from the same markers
+the scheduler uses (`stock_plan_last`, `mf_plan_last`, the NSE window, `poll_secs`) — the page must
+not re-implement those rules.
+
 A **run** (`src/runs.rs`, table `runs`) is one unit of scheduler work — poll, stock plan, fund
 plan, short-term pass — opened *before* the work and closed after it, because `api_calls` rows only
 exist once a reply lands and therefore cannot show "running". Orphans left running by a killed

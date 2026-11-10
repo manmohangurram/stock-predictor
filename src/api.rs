@@ -111,6 +111,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/signals/{id}/reject", post(reject_signal))
         .route("/api/calls", get(calls))
         .route("/api/calls/facets", get(call_facets))
+        .route("/api/schedule", get(schedule_view))
         .route("/api/runs", get(list_runs).post(start_run))
         .route("/api/positions", post(post_position))
         .route("/api/positions/{id}", patch(patch_position))
@@ -970,6 +971,120 @@ pub struct CallsQuery {
     pub review: Option<String>,
 }
 
+/// The schedule, computed where the rules are: the daily markers, the NSE window and the poll
+/// cadence all live on this side, so the page does not re-implement three rules and drift.
+async fn schedule_view(State(st): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    let runs = crate::runs::latest_by_prompt(&st.pool).await?;
+    let latest = |prompt: &str| runs.iter().find(|r| r.prompt == prompt);
+    let runtime = crate::rules::runtime::load(&st.pool).await?;
+    let now = chrono::Utc::now();
+    let today = ist_day(now);
+    let marker = |key: &'static str| {
+        let pool = st.pool.clone();
+        async move {
+            let row: Option<(String,)> =
+                sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+                    .bind(key)
+                    .fetch_optional(&pool)
+                    .await
+                    .ok()
+                    .flatten();
+            row.map(|r| r.0)
+        }
+    };
+
+    // A daily prompt is due at the first tick after IST midnight; if it has not run today it is
+    // due now. A session prompt is due on the next tick inside 09:00–16:00 IST, Mon–Fri.
+    let daily_next = |ran_today: bool| -> Option<String> {
+        let ist = now + chrono::Duration::minutes(330);
+        let next_midnight = (ist.date_naive() + chrono::Days::new(1))
+            .and_hms_opt(0, 5, 0)
+            .map(|d| d.and_utc() - chrono::Duration::minutes(330));
+        if ran_today {
+            next_midnight.map(|d| d.to_rfc3339())
+        } else {
+            Some(now.to_rfc3339()) // due now
+        }
+    };
+    let session_next = || -> Option<String> {
+        let ist = now + chrono::Duration::minutes(330);
+        let open = |day: chrono::NaiveDate| {
+            day.and_hms_opt(9, 15, 0)
+                .map(|d| d.and_utc() - chrono::Duration::minutes(330))
+        };
+        if crate::schedule::in_stock_window(now) {
+            let close = ist.date_naive().and_hms_opt(16, 0, 0)
+                .map(|d| d.and_utc() - chrono::Duration::minutes(330))?;
+            let tick = now + chrono::Duration::seconds(runtime.poll_secs as i64);
+            return Some(tick.min(close).to_rfc3339());
+        }
+        // Closed: today's open if it is still ahead, otherwise the next weekday's.
+        let mut day = ist.date_naive();
+        if open(day).is_none_or(|d| d <= now) {
+            day = day.succ_opt().unwrap_or(day);
+        }
+        while matches!(
+            chrono::Datelike::weekday(&day),
+            chrono::Weekday::Sat | chrono::Weekday::Sun
+        ) {
+            day = day.succ_opt().unwrap_or(day);
+        }
+        open(day).map(|d| d.to_rfc3339())
+    };
+
+    let stock_ran = marker("stock_plan_last").await.as_deref() == Some(today.as_str());
+    let fund_ran = marker("mf_plan_last").await.as_deref() == Some(today.as_str());
+
+    let entry = |prompt: &'static str, label: &'static str, rule: &'static str, next: Option<String>| {
+        let last = latest(prompt);
+        serde_json::json!({
+            "prompt": prompt,
+            "label": label,
+            "rule": rule,
+            "next_due_at": next,
+            "last": last.map(|r| serde_json::json!({
+                "status": r.status,
+                "trigger": r.trigger,
+                "at": r.started_at,
+                "finished_at": r.finished_at,
+                "summary": r.summary,
+                "error": r.error,
+            })),
+        })
+    };
+
+    Ok(Json(serde_json::json!({
+        "now": now.to_rfc3339(),
+        "prompts": [
+            entry(
+                "plan_stock",
+                "Stock plan",
+                "once a day, first tick after midnight IST",
+                daily_next(stock_ran),
+            ),
+            entry(
+                "plan_fund",
+                "Fund plan",
+                "once a day, after the fund scan",
+                daily_next(fund_ran),
+            ),
+            entry(
+                "short",
+                "Short-term pass",
+                "every tick, 09:00–16:00 IST, Mon–Fri",
+                session_next(),
+            ),
+        ],
+    })))
+}
+
+/// `YYYY-MM-DD` of the current IST day — the unit the daily markers are written in.
+fn ist_day(now: chrono::DateTime<chrono::Utc>) -> String {
+    use chrono::Datelike;
+    let ist = now + chrono::Duration::minutes(330);
+    format!("{:04}-{:02}-{:02}", ist.year(), ist.month(), ist.day())
+}
+
 /// The distinct values the filters offer, so the page never hard-codes a list that drifts.
 async fn call_facets(State(st): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
     let distinct = |sql: &'static str| {
@@ -1000,6 +1115,9 @@ pub const CALLS_PER_PAGE: u32 = 25;
 #[derive(Debug, Deserialize)]
 pub struct RunQuery {
     pub limit: Option<i64>,
+    /// One run per prompt — what the audit strip shows, so a prompt that last ran yesterday is
+    /// not hidden behind a day of polls.
+    pub latest: Option<bool>,
 }
 
 /// The runs the scheduler (or you) started, newest first. `running` tells the page whether it is
@@ -1009,7 +1127,11 @@ async fn list_runs(
     axum::extract::Query(q): axum::extract::Query<RunQuery>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let limit = q.limit.unwrap_or(50).clamp(1, 200);
-    let rows = crate::runs::recent(&st.pool, limit).await?;
+    let rows = if q.latest.unwrap_or(false) {
+        crate::runs::latest_by_prompt(&st.pool).await?
+    } else {
+        crate::runs::recent(&st.pool, limit).await?
+    };
     let running = crate::runs::running(&st.pool).await?;
     Ok(Json(
         serde_json::json!({ "runs": rows, "running": running }),

@@ -158,6 +158,20 @@ pub async fn recent(pool: &SqlitePool, limit: i64) -> Result<Vec<Run>> {
     Ok(rows)
 }
 
+/// The most recent run of each prompt — one row per scheduled kind, however long ago it ran.
+pub async fn latest_by_prompt(pool: &SqlitePool) -> Result<Vec<Run>> {
+    let rows: Vec<Run> = sqlx::query_as(
+        "SELECT id, prompt, trigger, status, started_at, finished_at, summary,
+                conversation_id, error
+         FROM runs r
+         WHERE r.id = (SELECT MAX(id) FROM runs x WHERE x.prompt = r.prompt)
+         ORDER BY r.prompt",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn running(pool: &SqlitePool) -> Result<i64> {
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM runs WHERE status = 'running'")
         .fetch_one(pool)

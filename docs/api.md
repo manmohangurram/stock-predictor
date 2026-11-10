@@ -19,7 +19,8 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | POST | `/api/instruments/{symbol}/trades` | yes | Record a fill (backdatable, pot-aware) |
 | GET | `/api/trades` | yes | The last 200 fills, all instruments |
 | GET | `/api/search?q=` | yes | Yahoo + AMFI search — feeds the add-instrument dialog (⌘K on the ledger) |
-| GET | `/api/runs?limit=` | yes | Runs: state (`running`/`done`/`failed`), trigger, duration, result |
+| GET | `/api/schedule` | yes | The schedule: each prompt's last run and when it is next due (daily markers, NSE window, poll cadence) |
+| GET | `/api/runs?limit=&latest=1` | yes | Runs: state (`running`/`done`/`failed`), trigger, duration, result |
 | POST | `/api/runs` | yes | Start a run now: `{"prompt": "poll"\|"plan_stock"\|"plan_fund"\|"short"\|"decide", "symbol": "INFY.NS"}` |
 | GET | `/api/calls/facets` | yes | The distinct prompt verbs, endpoints and templates the filters offer |
 | GET | `/api/calls?offset=&limit=&prompt=&call=&model=&review=` | yes | One window of the audit list; total in `x-total-count` (also accepts `page`/`per_page`) |
