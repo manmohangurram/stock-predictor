@@ -171,7 +171,9 @@ pub fn render_web_hits(hits: &[crate::llm::deepseek::SearchHit]) -> String {
         .take(MAX)
         .collect();
     if kept.is_empty() {
-        return "no web results — judge on the tape and the stored headlines alone".into();
+        return "nothing dated in the last three days — judge on the tape and the stored headlines \
+                alone, and treat the move as having no known catalyst"
+            .into();
     }
     kept.iter()
         .enumerate()

@@ -20,6 +20,10 @@ use crate::llm::{memo, parse, validate};
 use crate::models::{Action, Bar, Mode};
 
 const TOP_N: usize = 10;
+/// How old a search result may be and still count as *news*. The API has no date filter — the only
+/// lever is the date on each result — so this is where "today's reason" is separated from a page
+/// that merely has the stock's name in its title.
+const NEWS_WINDOW_DAYS: i64 = 3;
 /// The one query the daily scan searches. Broad on purpose — the model reads the results and picks.
 const TRENDING_QUERY: &str = "Indian stock market today biggest movers news";
 /// The book is short-term: nothing is proposed beyond a week out.
@@ -205,7 +209,16 @@ pub async fn run(
         )
         .await
         {
-            Ok(hits) => crate::llm::prompts::render_web_hits(&hits),
+            Ok(hits) => {
+                let recent = recent_hits(hits.clone(), now);
+                if recent.is_empty() && !hits.is_empty() {
+                    report.notes.push(format!(
+                        "{symbol}: {} search hits, none dated inside {NEWS_WINDOW_DAYS} days",
+                        hits.len()
+                    ));
+                }
+                crate::llm::prompts::render_web_hits(&recent)
+            }
             Err(e) => {
                 report.notes.push(format!("{symbol}: search failed: {e}"));
                 crate::llm::prompts::render_web_hits(&[])
@@ -460,14 +473,17 @@ async fn searched_candidates(
     now: DateTime<Utc>,
 ) -> Result<Vec<Candidate>> {
     let model = crate::rules::settings::model_config(pool).await?;
-    let hits = crate::llm::deepseek::search_for(
-        pool,
-        &model.base_url,
-        transport,
-        TRENDING_QUERY,
-        "search the market",
-    )
-    .await?;
+    let hits = recent_hits(
+        crate::llm::deepseek::search_for(
+            pool,
+            &model.base_url,
+            transport,
+            TRENDING_QUERY,
+            "search the market",
+        )
+        .await?,
+        now,
+    );
     let prompt =
         crate::llm::prompts::render_trending(&ist_day(now), &crate::llm::prompts::render_web_hits(&hits))?;
     let reply = crate::llm::deepseek::chat(
@@ -533,6 +549,28 @@ pub fn parse_trending(content: &str) -> Vec<(String, String)> {
     }
     out.truncate(TOP_N);
     out
+}
+
+/// Keep only results dated inside the window. Undated pages go too: a quote page or a filings
+/// index has no date because it is not an article, and a blank date reads as "current".
+fn recent_hits(
+    hits: Vec<crate::llm::deepseek::SearchHit>,
+    now: DateTime<Utc>,
+) -> Vec<crate::llm::deepseek::SearchHit> {
+    let cutoff = now.date_naive() - chrono::Duration::days(NEWS_WINDOW_DAYS);
+    hits.into_iter()
+        .filter(|h| {
+            h.date
+                .as_deref()
+                .and_then(day_of)
+                .is_some_and(|d| d >= cutoff)
+        })
+        .collect()
+}
+
+/// `2026-11-08T16:00:00+00:00` → 2026-11-08. The time of day is not the question; the day is.
+fn day_of(raw: &str) -> Option<chrono::NaiveDate> {
+    chrono::NaiveDate::parse_from_str(raw.get(..10)?, "%Y-%m-%d").ok()
 }
 
 /// The scan's line, marked as what it is: a reading of the web by another model, which may quote a
@@ -951,5 +989,50 @@ mod feed_tests {
         }
         .describe();
         assert!(line.contains("tape below is the price"), "{line}");
+    }
+}
+
+#[cfg(test)]
+mod news_window_tests {
+    use super::*;
+    use crate::llm::deepseek::SearchHit;
+
+    fn hit(title: &str, date: Option<&str>) -> SearchHit {
+        SearchHit {
+            title: title.into(),
+            site: "Wire".into(),
+            url: "https://example.com".into(),
+            snippet: "s".into(),
+            summary: "m".into(),
+            date: date.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn only_the_last_three_days_survive() {
+        let now = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 11, 11, 6, 0, 0).unwrap();
+        let kept = recent_hits(
+            vec![
+                hit("today", Some("2026-11-11T04:00:00+00:00")),
+                hit("yesterday", Some("2026-11-10T16:00:00+00:00")),
+                hit("three days", Some("2026-11-08T16:00:00+00:00")),
+                hit("a week old", Some("2026-11-04T16:00:00+00:00")),
+                hit("a March transcript", Some("2026-03-10T16:00:00+00:00")),
+                hit("undated quote page", None),
+            ],
+            now,
+        );
+        let titles: Vec<&str> = kept.iter().map(|h| h.title.as_str()).collect();
+        assert_eq!(titles, vec!["today", "yesterday", "three days"]);
+    }
+
+    #[test]
+    fn a_date_is_read_as_a_day_not_a_timestamp() {
+        assert_eq!(
+            day_of("2026-11-08T16:00:00+00:00"),
+            Some(chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap())
+        );
+        assert_eq!(day_of("yesterday"), None);
+        assert_eq!(day_of(""), None);
     }
 }

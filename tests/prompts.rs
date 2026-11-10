@@ -540,7 +540,7 @@ fn the_short_term_prompt_carries_todays_web_and_asks_for_citations() {
 #[test]
 fn no_web_results_is_a_sentence_not_an_empty_block() {
     let web = prompts::render_web_hits(&[]);
-    assert!(web.contains("no web results"), "{web}");
+    assert!(web.contains("nothing dated in the last three days"), "{web}");
 }
 
 /// The daily scan asks for NSE tickers, not Yahoo symbols, and allows "nothing today".
