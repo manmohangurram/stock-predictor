@@ -1042,3 +1042,40 @@ describe("a plan", () => {
     expect(html).toContain("Post all fills");
   });
 });
+
+describe("archived", () => {
+  test("shows what the fills made, and offers a restore", async () => {
+    const { renderArchived } = await import("./pages/archived");
+    const html = renderArchived([
+      {
+        id: 1,
+        symbol: "TCS",
+        name: "Tata Consultancy",
+        class: "stock",
+        fills: 2,
+        decisions: 3,
+        last_fill: "2026-01-09T00:00:00Z",
+        realised: 300,
+        net_invested: -300,
+      },
+    ]);
+    expect(html).toContain("Tata Consultancy");
+    // Realised, with its sign, and the round trip closed out.
+    expect(html).toContain("+300.00");
+    expect(html).toContain("300.00 out");
+    expect(html).toContain('data-restore="TCS"');
+    expect(html).toContain("Realised");
+  });
+
+  test("an archive with no fills says so instead of inventing a zero", async () => {
+    const { renderArchived } = await import("./pages/archived");
+    const html = renderArchived([
+      {
+        id: 2, symbol: "XYZ", name: "Never traded", class: "stock",
+        fills: 0, decisions: 0, last_fill: null, realised: 0, net_invested: 0,
+      },
+    ]);
+    expect(html).toContain("Never traded");
+    expect(html).toContain("—");
+  });
+});

@@ -141,6 +141,20 @@ export interface RunRow {
   error: string | null;
 }
 
+export interface ArchivedInstrument {
+  id: number;
+  symbol: string;
+  name: string;
+  class: "stock" | "mutual_fund" | "ipo";
+  fills: number;
+  decisions: number;
+  last_fill: string | null;
+  /** What the round trip made, from the fills that were kept. There is no price to value it at. */
+  realised: number;
+  /** Money in minus money out: negative means the fills returned more than they took. */
+  net_invested: number;
+}
+
 export interface CallRow {
   id: number;
   ts: string;
@@ -167,17 +181,6 @@ export interface CallRow {
 }
 
 /** One call with its stored bodies. Fetched only when a row is opened. */
-/** An instrument that left the book, with its record rather than its price history. */
-export interface ArchivedInstrument {
-  id: number;
-  symbol: string;
-  name: string;
-  class: string;
-  fills: number;
-  decisions: number;
-  last_fill: string | null;
-}
-
 export interface CallDetail {
   id: number;
   ts: string;
@@ -309,9 +312,11 @@ export const api = {
     const total = Number(r.headers.get("x-total-count") ?? rows.length);
     return { rows, total, offset, limit };
   },
-  archived: () =>
-    req<{ id: number; symbol: string; name: string; class: string; fills: number; decisions: number; last_fill: string | null }[]>(
-      "/api/archived",
+  archived: () => req<ArchivedInstrument[]>("/api/archived"),
+  restoreInstrument: (symbol: string) =>
+    req<{ symbol: string; restored: boolean }>(
+      `/api/instruments/${encodeURIComponent(symbol)}/restore`,
+      { method: "POST" },
     ),
   approveSignal: (
     id: number,

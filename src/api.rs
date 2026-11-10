@@ -83,6 +83,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/trades", get(all_trades))
         .route("/api/trades/{id}", patch(edit_trade).delete(delete_trade))
         .route("/api/archived", get(archived_instruments))
+        .route(
+            "/api/instruments/{symbol}/restore",
+            post(restore_instrument),
+        )
         .route("/api/calls/{id}", get(call_detail))
         .route(
             "/api/instruments/{symbol}/trades",
@@ -1533,6 +1537,26 @@ async fn instrument_trades(
     Ok(Json(crate::trades::history(&st.pool, Some(id), 200).await?))
 }
 
+/// Put an archived instrument back in the book. Its prices were cleared on archive, so the next
+/// poll fetches them again — the fills and decisions were never touched.
+async fn restore_instrument(
+    State(st): State<AppState>,
+    axum::extract::Path(symbol): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
+    let changed = sqlx::query("UPDATE instruments SET active = 1 WHERE id = ? AND active = 0")
+        .bind(id)
+        .execute(&st.pool)
+        .await?
+        .rows_affected();
+    if changed == 0 {
+        return Err(ApiError::BadRequest(format!(
+            "{symbol} is not archived — there is nothing to restore"
+        )));
+    }
+    Ok(Json(serde_json::json!({ "symbol": symbol, "restored": true })))
+}
+
 /// Remove a fill: the position and the ledger move back, and the decision it satisfied reopens.
 async fn delete_trade(
     State(st): State<AppState>,
@@ -1613,6 +1637,12 @@ pub struct ArchivedRow {
     pub fills: i64,
     pub decisions: i64,
     pub last_fill: Option<String>,
+    /// What the round trip actually made, from the fills that were kept: sells carry a realised
+    /// figure, buys do not. Archived instruments have no price, so this is the only P&L left.
+    pub realised: f64,
+    /// Money in minus money out: what the round trip still has tied up. Negative means the fills
+    /// returned more than they took, which a realised figure alone would not show.
+    pub net_invested: f64,
 }
 
 async fn archived_instruments(
@@ -1627,12 +1657,21 @@ async fn archived_instruments(
         fills: i64,
         decisions: i64,
         last_fill: Option<String>,
+        realised: f64,
+        net_invested: f64,
     }
     let rows: Vec<ArchivedDbRow> = sqlx::query_as(
         "SELECT i.id, i.symbol, i.name, i.class,
                 (SELECT COUNT(*) FROM trades t WHERE t.instrument_id = i.id) AS fills,
                 (SELECT COUNT(*) FROM signals s WHERE s.instrument_id = i.id) AS decisions,
-                (SELECT MAX(t.traded_at) FROM trades t WHERE t.instrument_id = i.id) AS last_fill
+                (SELECT MAX(t.traded_at) FROM trades t WHERE t.instrument_id = i.id) AS last_fill,
+                -- CAST: SQLite stores 300.0 as INTEGER when it has no fraction, and sqlx will
+                -- not decode an INTEGER into f64. The cast costs nothing and cannot lose a row.
+                (SELECT CAST(COALESCE(SUM(t.realised), 0) AS REAL) FROM trades t
+                  WHERE t.instrument_id = i.id) AS realised,
+                (SELECT CAST(COALESCE(SUM(CASE t.side WHEN 'buy' THEN t.qty * t.price
+                                                       ELSE -t.qty * t.price END), 0) AS REAL)
+                   FROM trades t WHERE t.instrument_id = i.id) AS net_invested
          FROM instruments i
          WHERE i.active = 0
          ORDER BY last_fill DESC",
@@ -1649,6 +1688,8 @@ async fn archived_instruments(
                 fills: r.fills,
                 decisions: r.decisions,
                 last_fill: r.last_fill,
+                realised: r.realised,
+                net_invested: r.net_invested,
             })
             .collect(),
     ))

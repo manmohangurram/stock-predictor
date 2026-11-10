@@ -2475,3 +2475,63 @@ async fn deleting_a_fill_that_would_go_negative_is_refused() {
     .unwrap();
     assert_eq!(held.0, 2.0, "nothing moved");
 }
+
+/// An archived instrument keeps its fills, and its profit and loss comes from them — there is no
+/// price left to value it at.
+#[tokio::test]
+async fn an_archived_instrument_shows_what_its_fills_made() {
+    let (_d, router, pool) = setup().await;
+    // Buy 10 at 100, sell 10 at 130: realised 300, and the round trip is closed.
+    sqlx::query(
+        "INSERT INTO trades (instrument_id, side, qty, price, realised, traded_at, mode)
+         SELECT id, 'buy', 10, 100.0, NULL, '2026-01-02T00:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'TCS'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO trades (instrument_id, side, qty, price, realised, traded_at, mode)
+         SELECT id, 'sell', 10, 130.0, 300.0, '2026-01-09T00:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'TCS'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (s, _) = send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;
+    assert_eq!(s, StatusCode::OK);
+
+    let (s, v) = get(&router, "/api/archived").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let row = &v.as_array().unwrap()[0];
+    assert_eq!(row["symbol"], "TCS");
+    assert_eq!(row["realised"], 300.0);
+    // Bought 1,000, sold 1,300: 300 more came back than went in.
+    assert_eq!(row["net_invested"], -300.0);
+}
+
+/// Restoring puts it back in the book, and only an archived instrument can be restored.
+#[tokio::test]
+async fn an_archived_instrument_can_be_restored() {
+    let (_d, router, pool) = setup().await;
+    send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;
+    let archived: (i64,) =
+        sqlx::query_as("SELECT active FROM instruments WHERE symbol = 'TCS'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(archived.0, 0);
+
+    let (s, v) = send(&router, "POST", "/api/instruments/TCS/restore", json!({})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let active: (i64,) = sqlx::query_as("SELECT active FROM instruments WHERE symbol = 'TCS'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(active.0, 1);
+
+    // Restoring twice is refused: it is not archived any more.
+    let (s, _) = send(&router, "POST", "/api/instruments/TCS/restore", json!({})).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+}
