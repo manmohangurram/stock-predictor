@@ -161,7 +161,6 @@ describe("settings", () => {
       off_hours_secs: 7200,
       prompt_window_hours: 4,
       min_price_move: 2,
-      max_silence_secs: 3600,
       daily_cap: 200,
       proxy_configured: false,
       proxy_host: "",
@@ -219,7 +218,7 @@ describe("settings", () => {
 
   test("cadence shows the six knobs with their units", () => {
     const html = renderSettings(settings(), "cadence");
-    for (const name of ["poll_secs", "off_hours_secs", "prompt_window_hours", "daily_cap", "min_price_move", "max_silence_secs"]) {
+    for (const name of ["poll_secs", "off_hours_secs", "prompt_window_hours", "daily_cap", "min_price_move"]) {
       expect(html).toContain(`id="${name}"`);
     }
     expect(html).toContain("no restart");
@@ -370,7 +369,7 @@ describe("settings, second pot", () => {
       llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-      max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+      daily_cap: 200, proxy_configured: false, proxy_host: "",
       proxy_bypass: null,
     },
     });
@@ -531,7 +530,7 @@ describe("ntfy settings", () => {
     llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-      max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+      daily_cap: 200, proxy_configured: false, proxy_host: "",
       proxy_bypass: null,
     },
   };
@@ -567,7 +566,7 @@ describe("model provider settings", () => {
     llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-      max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+      daily_cap: 200, proxy_configured: false, proxy_host: "",
       proxy_bypass: null,
     },
   };
@@ -604,7 +603,7 @@ describe("per-pot limits", () => {
       limits_trade: limits({ max_trade_amount: 5_000, max_instrument_pct: 10 }),
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-      max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+      daily_cap: 200, proxy_configured: false, proxy_host: "",
       proxy_bypass: null,
     },
     };
@@ -632,7 +631,7 @@ describe("per-pot limits", () => {
       limits_long: limits(), limits_trade: limits(),
       runtime: {
         poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-        max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+        daily_cap: 200, proxy_configured: false, proxy_host: "",
         proxy_user: null, proxy_pass_configured: false, proxy_bypass: null,
       },
     }, "risk");
@@ -681,7 +680,7 @@ describe("cadence help text", () => {
         limits_long: limits(), limits_trade: limits(),
         runtime: {
           poll_secs: 7200, off_hours_secs: 900, prompt_window_hours: 4, min_price_move: 2,
-          max_silence_secs: 3600, daily_cap: 200, proxy_configured: false, proxy_host: "",
+          daily_cap: 200, proxy_configured: false, proxy_host: "",
           proxy_user: null, proxy_pass_configured: false, proxy_bypass: null,
         },
       },

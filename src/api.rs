@@ -388,7 +388,6 @@ pub struct PutSettings {
     pub off_hours_secs: Option<u64>,
     pub prompt_window_hours: Option<u32>,
     pub min_price_move: Option<f64>,
-    pub max_silence_secs: Option<i64>,
     pub daily_cap: Option<u32>,
     pub proxy: Option<String>,
     pub proxy_bypass: Option<String>,
@@ -422,7 +421,6 @@ async fn put_settings(
             off_hours_secs: body.off_hours_secs,
             prompt_window_hours: body.prompt_window_hours,
             min_price_move: body.min_price_move,
-            max_silence_secs: body.max_silence_secs,
             daily_cap: body.daily_cap,
             proxy: body.proxy,
             proxy_bypass: body.proxy_bypass,
@@ -871,7 +869,8 @@ async fn call_detail(
                 a.request_json, a.response_json, a.prompt_tokens, a.completion_tokens,
                 a.validator_verdict, a.error,
                 d.reason_json AS decision_reason,
-                i.name AS instrument_name, i.symbol AS instrument_symbol,
+                COALESCE(i.name, pi.name) AS instrument_name,
+                COALESCE(i.symbol, pi.symbol) AS instrument_symbol,
                 (SELECT COUNT(*) FROM signals p
                   WHERE p.conversation_id = a.conversation_id AND p.kind = 'plan') AS plan_legs
          FROM api_calls a
@@ -1021,7 +1020,8 @@ async fn calls(
                 a.validator_verdict AS validator_verdict, a.error AS error,
                 a.trigger AS trigger, d.id AS decision_id, d.status AS decision_status,
                 d.action AS decision_action, d.reason_json AS decision_reason,
-                i.name AS instrument_name, i.symbol AS instrument_symbol,
+                COALESCE(i.name, pi.name) AS instrument_name,
+                COALESCE(i.symbol, pi.symbol) AS instrument_symbol,
                 (SELECT COUNT(*) FROM signals p
                   WHERE p.conversation_id = a.conversation_id AND p.kind = 'plan') AS plan_legs
          FROM api_calls a
@@ -1029,6 +1029,8 @@ async fn calls(
              SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
              ORDER BY s.id DESC LIMIT 1)
          LEFT JOIN instruments i ON i.id = d.instrument_id
+         -- A call with no decision still names a holding in its purpose, after the verb.
+         LEFT JOIN instruments pi ON pi.symbol = trim(substr(a.purpose, instr(a.purpose, ' ') + 1))
          ORDER BY a.id DESC LIMIT ? OFFSET ?",
     )
     .bind(limit as i64)

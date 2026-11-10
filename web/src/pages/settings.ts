@@ -223,11 +223,7 @@ const CADENCE = (s: Settings, tab: Tab): string => `
     type: "number", step: "0.5", unit: s.currency,
     help: "Since the last call. A new headline always earns a call regardless.",
   })}
-  ${field(tab, "max_silence_secs", "…or after silence of", s.runtime.max_silence_secs, {
-    type: "number", step: "60", unit: "seconds",
-    help: `0 means a call is only for a change: no price move and no new headline, no call. ${derived("max_silence_secs", s.runtime.max_silence_secs, "Set above zero to also call every {v}.")}`,
-  })}
-`;
+  `;
 
 const NETWORK = (s: Settings, tab: Tab): string => `
   ${field(tab, "proxy", "Proxy address", "", {

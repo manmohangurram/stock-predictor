@@ -17,9 +17,6 @@ pub struct View {
     pub off_hours_secs: u64,
     pub prompt_window_hours: u32,
     pub min_price_move: f64,
-    /// Reconsider a held position after this long **even with no price move**. 0 = never:
-    /// a call is for a change, not for the passage of time.
-    pub max_silence_secs: i64,
     pub daily_cap: u32,
     pub proxy_configured: bool,
     pub proxy_host: String,
@@ -39,10 +36,6 @@ pub struct Runtime {
     pub prompt_window_hours: u32,
     /// Skip a model call unless the price moved at least this much...
     pub min_price_move: f64,
-    /// ...or this long has passed since the last one.
-    /// Reconsider a held position after this long **even with no price move**. 0 = never:
-    /// a call is for a change, not for the passage of time.
-    pub max_silence_secs: i64,
     /// Hard ceiling on model calls per day.
     pub daily_cap: u32,
     /// All outbound traffic goes through this, when set. Never carries credentials.
@@ -61,7 +54,6 @@ impl Default for Runtime {
             off_hours_secs: 7_200,
             prompt_window_hours: 4,
             min_price_move: 2.0,
-            max_silence_secs: 0,
             daily_cap: 200,
             proxy: None,
             proxy_user: None,
@@ -77,7 +69,6 @@ pub const KNOBS: &[(&str, f64, f64, f64)] = &[
     ("off_hours_secs", 7_200.0, 60.0, 86_400.0),
     ("prompt_window_hours", 4.0, 1.0, 24.0),
     ("min_price_move", 2.0, 0.0, 1_000_000.0),
-    ("max_silence_secs", 0.0, 0.0, 86_400.0),
     ("daily_cap", 200.0, 0.0, 10_000.0),
 ];
 
@@ -109,7 +100,6 @@ impl Runtime {
             off_hours_secs: num("off_hours_secs", d.off_hours_secs as f64) as u64,
             prompt_window_hours: num("prompt_window_hours", d.prompt_window_hours as f64) as u32,
             min_price_move: num("min_price_move", d.min_price_move),
-            max_silence_secs: num("max_silence_secs", d.max_silence_secs as f64) as i64,
             daily_cap: num("daily_cap", d.daily_cap as f64) as u32,
             proxy: text("proxy").map(split_legacy_proxy).map(|p| p.0),
             proxy_user: text("proxy_user")
@@ -125,7 +115,6 @@ impl Runtime {
             off_hours_secs: self.off_hours_secs,
             prompt_window_hours: self.prompt_window_hours,
             min_price_move: self.min_price_move,
-            max_silence_secs: self.max_silence_secs,
             daily_cap: self.daily_cap,
             proxy_configured: self.proxy.is_some(),
             proxy_host: self

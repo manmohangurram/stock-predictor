@@ -90,7 +90,6 @@ pub async fn run(
         let headlines_changed = news_newer_than_last_call(pool, id).await?;
         let gate = memo::CallGate {
             min_move: runtime.min_price_move,
-            max_interval_secs: runtime.max_silence_secs,
         };
         if !memo::should_call(pool, id, g.ltp, now, gate, headlines_changed).await? {
             continue;

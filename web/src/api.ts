@@ -114,7 +114,6 @@ export interface Runtime {
   off_hours_secs: number;
   prompt_window_hours: number;
   min_price_move: number;
-  max_silence_secs: number;
   daily_cap: number;
   proxy_configured: boolean;
   proxy_host: string;
@@ -391,7 +390,6 @@ export const api = {
       off_hours_secs?: number;
       prompt_window_hours?: number;
       min_price_move?: number;
-      max_silence_secs?: number;
       daily_cap?: number;
       proxy?: string;
       proxy_user?: string;

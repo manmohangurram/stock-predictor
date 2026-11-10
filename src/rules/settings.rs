@@ -64,7 +64,6 @@ pub struct SettingsPatch {
     pub off_hours_secs: Option<u64>,
     pub prompt_window_hours: Option<u32>,
     pub min_price_move: Option<f64>,
-    pub max_silence_secs: Option<i64>,
     pub daily_cap: Option<u32>,
     /// Empty string clears it; absent leaves it alone.
     pub proxy: Option<String>,
@@ -159,7 +158,6 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
             patch.prompt_window_hours.map(|v| v as f64),
         ),
         ("min_price_move", patch.min_price_move),
-        ("max_silence_secs", patch.max_silence_secs.map(|v| v as f64)),
         ("daily_cap", patch.daily_cap.map(|v| v as f64)),
     ] {
         if let Some(v) = value {

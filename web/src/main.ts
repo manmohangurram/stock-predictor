@@ -717,7 +717,6 @@ function wireSettings(tab: Tab, s: Settings): void {
           prompt_window_hours: num("prompt_window_hours"),
           daily_cap: num("daily_cap"),
           min_price_move: num("min_price_move"),
-          max_silence_secs: num("max_silence_secs"),
         };
         break;
       case "network": {

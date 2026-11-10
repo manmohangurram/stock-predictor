@@ -663,21 +663,6 @@ async fn the_call_gate_skips_small_moves_but_never_silences_for_more_than_an_hou
     )
     .await
     .unwrap());
-    // A configured floor still works, for anyone who wants the old behaviour back.
-    let patient = memo::CallGate {
-        min_move: 2.0,
-        max_interval_secs: 3600,
-    };
-    assert!(memo::should_call(
-        &pool,
-        id.0,
-        100.0,
-        t0 + chrono::Duration::hours(1),
-        patient,
-        false
-    )
-    .await
-    .unwrap());
 }
 
 #[tokio::test]
@@ -1216,4 +1201,64 @@ async fn the_stock_plan_is_asked_once_a_day() {
             .await
             .unwrap();
     assert_eq!(calls.0, 1, "one plan call for the day");
+}
+
+/// A quiet tick must be able to say it was quiet: the gate names what it left alone, so the run
+/// summary can read "0 decisions · 2 not asked: INFY.NS, HDFCBANK.NS" instead of a bare zero.
+#[tokio::test]
+async fn a_poll_reports_what_the_gate_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY.NS"]).await;
+    let market = FakeMarket::ok(bars_n(250));
+    let notifier = FakeNotifier::default();
+
+    // One poll with a key and force, so the memo records a price for the gate to compare against.
+    let reply = stock_predictor::llm::deepseek::HttpReply {
+        status: 200,
+        body: serde_json::json!({
+            "choices": [{"message": {"content": "{\"action\":\"pass\",\"why\":\"nothing new\"}"}}],
+            "usage": {}
+        })
+        .to_string(),
+    };
+    let first = FixtureTransport::new(vec![reply]);
+    let deps = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &first,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: true,
+    };
+    let _ = engine::poll_once(&deps, now()).await.unwrap();
+
+    // Second poll, unforced, same price: the gate must leave it alone and say so.
+    let empty = FixtureTransport::new(vec![]);
+    let second = EngineDeps {
+        pool: &pool,
+        runtime: cfg(),
+        market: &market,
+        transport: &empty,
+        notifier: &notifier,
+        rules: RuleConfig::default(),
+        force: false,
+    };
+    let report = engine::poll_once(&second, now() + chrono::Duration::minutes(15))
+        .await
+        .unwrap();
+    assert!(
+        report.not_asked.iter().any(|s| s == "INFY.NS"),
+        "{report:?}"
+    );
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("model not asked")),
+        "{report:?}"
+    );
 }

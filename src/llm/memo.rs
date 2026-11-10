@@ -35,16 +35,11 @@ pub async fn unchanged(pool: &SqlitePool, instrument_id: i64, fp: &str) -> Resul
 pub struct CallGate {
     /// Below this price move (in the instrument's currency), a call is not worth making.
     pub min_move: f64,
-    /// ...unless this long has passed since the last one, so nothing sits unwatched.
-    pub max_interval_secs: i64,
 }
 
 impl Default for CallGate {
     fn default() -> Self {
-        Self {
-            min_move: 2.0,
-            max_interval_secs: 0,
-        }
+        Self { min_move: 2.0 }
     }
 }
 
@@ -71,22 +66,13 @@ pub async fn should_call(
     let Some((last_price, last_call_at)) = row else {
         return Ok(true); // never asked: ask
     };
-    let moved = match last_price {
+    // Time alone is not a reason. Without a price move or a new headline there is nothing new to
+    // judge, and a call would be paid for to hear the same answer again.
+    let _ = (last_call_at, now);
+    Ok(match last_price {
         Some(p) => (price - p).abs() >= gate.min_move,
         None => true,
-    };
-    if moved {
-        return Ok(true);
-    }
-    // 0 means "time alone is never a reason": without a price move there is nothing new to judge.
-    if gate.max_interval_secs <= 0 {
-        return Ok(false);
-    }
-    let stale = last_call_at
-        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
-        .map(|d| (now - d.with_timezone(&chrono::Utc)).num_seconds() >= gate.max_interval_secs)
-        .unwrap_or(true);
-    Ok(stale)
+    })
 }
 
 /// Recorded after every attempt, success or failure: a failing call must not loop every tick.

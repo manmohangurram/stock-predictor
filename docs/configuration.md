@@ -28,13 +28,13 @@ without a restart — the scheduler reads them at the top of every tick:
 | **Risk limits** | both pots side by side: min and max profit %, smallest and largest trade, one-stock cap |
 | **Model** | provider, model, base URL, API key |
 | **Notifications** | ntfy server, topic, token, and a test button |
-| **Cadence** | `POLL_SECS`, `OFF_HOURS_SECS`, `PROMPT_WINDOW_HOURS`, `LLM_DAILY_CAP`, `LLM_MIN_PRICE_MOVE`, `LLM_MAX_SILENCE_SECS` |
+| **Cadence** | `POLL_SECS`, `OFF_HOURS_SECS`, `PROMPT_WINDOW_HOURS`, `LLM_DAILY_CAP`, `LLM_MIN_PRICE_MOVE` |
 | **Network** | the proxy URL and a bypass list, with a test button |
 
 | Retired variable | Now |
 |---|---|
 | `POLL_SECS`, `OFF_HOURS_SECS` | Cadence tab (default 900 s / 7200 s) |
-| `LLM_MIN_PRICE_MOVE`, `LLM_MAX_SILENCE_SECS` | Cadence tab (default 2.0 / 3600 s) |
+| `LLM_MIN_PRICE_MOVE` | Cadence tab (default 2.0) — below this move, and with no new headline, no call |
 | `LLM_DAILY_CAP` | Cadence tab (default 200 calls) |
 | `PROMPT_WINDOW_HOURS` | Cadence tab (default 4 hours of tape) |
 | `DEEPSEEK_BASE_URL` | gone — the Model tab's Base URL, or the provider's default |

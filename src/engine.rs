@@ -36,6 +36,8 @@ pub struct PollReport {
     pub signals: usize,
     pub notifications: usize,
     pub blocked: usize,
+    /// Instruments the gate left alone this tick: no price move, no new headline.
+    pub not_asked: Vec<String>,
     /// Plan calls that produced a plan. Zero is the normal answer.
     pub plans: usize,
     pub errors: Vec<String>,
@@ -693,9 +695,6 @@ async fn poll_instrument(
                 Some(format!("price moved {prev:.2} → {:.2}", candidate.entry))
             }
             None => Some("never asked about this instrument".to_string()),
-            _ if deps.runtime.max_silence_secs > 0 => {
-                Some("the silence interval elapsed".to_string())
-            }
             _ => None,
         }
     };
@@ -704,7 +703,6 @@ async fn poll_instrument(
     if !deps.force {
         let gate = crate::llm::memo::CallGate {
             min_move: deps.runtime.min_price_move,
-            max_interval_secs: deps.runtime.max_silence_secs,
         };
         if !crate::llm::memo::should_call(
             deps.pool,
@@ -720,6 +718,7 @@ async fn poll_instrument(
                 "{}: price moved less than {:.2} and no new headlines — model not asked",
                 instrument.symbol, gate.min_move
             ));
+            report.not_asked.push(instrument.symbol.clone());
             // The decision stands, but its price should not age: refresh the entry only.
             let _ = reuse_model_signal(deps.pool, instrument.id, candidate.entry, ind.atr14, now)
                 .await?;
