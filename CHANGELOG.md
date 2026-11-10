@@ -1,3 +1,33 @@
+## v0.25.0
+
+### The window goes into the search query
+
+I had said DeepSeek's search had no date filter. It has one: the query operators are `site:`,
+`-site:`, `-term`, `-"phrase"`, `"phrase"`, `lang:`, **`after:`** and **`before:`**. So the window is
+now asked for, not only enforced afterwards:
+
+```
+CHOLAFIN news today after:2026-11-08 lang:en
+Indian stock market biggest movers news after:2026-11-08 lang:en
+```
+
+Asking matters because `count` is five: filtering afterwards means asking for five and discarding
+three, and getting two. `lang:en` also drops the non-English quote pages that were turning up in the
+prompt. The `date` filter stays — the server **ranks** by recency, only our filter **guarantees** it.
+
+### The audit page ticks
+
+It is a live log while a run is happening and a static record otherwise, so the reader decides.
+
+- A **tick in the filter toolbar**, on by default, reloading the list every **five seconds** — with a
+  select beside it for **5 s · 15 s · 30 s · 1 min**, both remembered in `localStorage`.
+- It sits with the filters it updates, not in the page head: same height, same border, aligned to the
+  same baseline as the selects (measured, identical 377/404 box, flush right edge).
+- The dot is the state and the words are the meaning; the checkbox behind it is a real, focusable
+  input with an ink focus ring, not a decorated `<div>`.
+- One timer, re-armed on every render; it never fires while a form or a select has focus, or while
+  the tab is hidden. Verified: one request per 5 s, none at 15 s, none when off.
+
 ## v0.24.0
 
 ### A price in prose is not a price
