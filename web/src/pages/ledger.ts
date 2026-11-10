@@ -34,8 +34,9 @@ export function renderRow(d: Dashboard, p: Dashboard["positions"][number]): stri
   const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
   const nowCell = live ? money(ltp) : `<span class="muted">—</span>`;
   const valueCell = live ? money(value) : `<span class="muted">—</span>`;
+  const sign = (n: number) => (n === 0 ? "" : n > 0 ? "+" : "−");
   const pnlCell = live
-    ? `${pnl >= 0 ? "+" : "−"}${money(Math.abs(pnl))}<div class="sub">${pnlPct >= 0 ? "+" : "−"}${Math.abs(pnlPct).toFixed(1)}%</div>`
+    ? `${sign(pnl)}${money(Math.abs(pnl))}<div class="sub">${sign(pnlPct)}${Math.abs(pnlPct).toFixed(1)}%</div>`
     : `<span class="muted">no price yet</span>`;
   const isFund = p.class !== "stock";
   // A fund has no price exit: it is sold at NAV once the return you asked for is reached, so its
@@ -64,7 +65,7 @@ export function renderRow(d: Dashboard, p: Dashboard["positions"][number]): stri
   <td class="num hide-sm">${valueCell}</td>
   <td class="num ${live ? (pnl >= 0 ? "up" : "down") : ""}">${pnlCell}</td>
   <td class="signal-col">${signal}</td>
-  <td class="right hide-sm">${plan}</td>
+  <td class="right hide-sm num-text">${plan}</td>
 </tr>`;
 }
 
@@ -78,21 +79,23 @@ function section(title: string, note: string, head: string, body: string, total?
   </section>`;
 }
 
-const STOCK_HEAD = `<tr><th scope="col">Holding</th><th scope="col" class="hide-sm">Qty</th>
-  <th scope="col" class="hide-sm">Bought</th><th scope="col" class="hide-sm">Invested</th>
-  <th scope="col">Now</th><th scope="col" class="hide-sm">Value</th>
-  <th scope="col">P&amp;L</th><th scope="col">Signal</th><th scope="col" class="hide-sm">Exit plan</th></tr>`;
-const FUND_HEAD = `<tr><th scope="col">Scheme</th><th scope="col" class="hide-sm">Units</th>
-  <th scope="col" class="hide-sm">Avg NAV</th><th scope="col" class="hide-sm">Invested</th>
-  <th scope="col">NAV today</th><th scope="col" class="hide-sm">Value</th>
-  <th scope="col">P&amp;L</th><th scope="col">Signal</th><th scope="col" class="hide-sm">Exit plan</th></tr>`;
+const STOCK_HEAD = `<tr><th scope="col">Holding</th><th scope="col" class="hide-sm num">Qty</th>
+  <th scope="col" class="hide-sm num">Bought</th><th scope="col" class="hide-sm num">Invested</th>
+  <th scope="col" class="num">Now</th><th scope="col" class="hide-sm num">Value</th>
+  <th scope="col" class="num">P&amp;L</th><th scope="col">Signal</th>
+  <th scope="col" class="hide-sm num">Exit plan</th></tr>`;
+const FUND_HEAD = `<tr><th scope="col">Scheme</th><th scope="col" class="hide-sm num">Units</th>
+  <th scope="col" class="hide-sm num">Avg NAV</th><th scope="col" class="hide-sm num">Invested</th>
+  <th scope="col" class="num">NAV today</th><th scope="col" class="hide-sm num">Value</th>
+  <th scope="col" class="num">P&amp;L</th><th scope="col">Signal</th>
+  <th scope="col" class="hide-sm num">Exit plan</th></tr>`;
 
 const subtotal = (label: string, invested: number, value: number): string => {
   const pnl = value - invested;
   return `<tr class="subtotal"><td>${label}</td><td class="hide-sm">—</td><td class="hide-sm">—</td>
     <td class="num hide-sm">${money(invested)}</td><td>—</td>
     <td class="num hide-sm">${money(value)}</td>
-    <td class="num ${pnl >= 0 ? "up" : "down"}">${pnl >= 0 ? "+" : "−"}${money(Math.abs(pnl))}</td>
+    <td class="num ${pnl === 0 ? "" : pnl > 0 ? "up" : "down"}">${pnl === 0 ? "" : pnl > 0 ? "+" : "−"}${money(Math.abs(pnl))}</td>
     <td>—</td><td class="sub hide-sm">—</td></tr>`;
 };
 
@@ -334,7 +337,11 @@ export function renderLedger(d: Dashboard): string {
     [
       { label: "Invested", value: money(all.invested, 0) },
       { label: "Now", value: money(all.value, 0) },
-      { label: "Unrealised", value: `${pnl >= 0 ? "+" : "−"}${money(Math.abs(pnl), 0)}`, tone: pnl >= 0 ? "pos" : "neg" },
+      {
+        label: "Unrealised",
+        value: pnl === 0 ? money(0, 0) : `${pnl > 0 ? "+" : "−"}${money(Math.abs(pnl), 0)}`,
+        tone: pnl === 0 ? undefined : pnl > 0 ? "pos" : "neg",
+      },
       {
         label: "Free to deploy",
         value: money(d.available, 0),

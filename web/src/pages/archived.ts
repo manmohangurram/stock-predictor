@@ -48,15 +48,15 @@ export function renderArchived(rows: ArchivedInstrument[]): string {
       { label: "Fills kept", value: String(rows.reduce((n, r) => n + r.fills, 0)) },
       {
         label: "Realised",
-        value: `${total >= 0 ? "+" : "−"}${money(Math.abs(total), 0)}`,
-        tone: total >= 0 ? "pos" : "neg",
+        value: total === 0 ? money(0, 0) : `${total > 0 ? "+" : "−"}${money(Math.abs(total), 0)}`,
+        tone: total === 0 ? undefined : total > 0 ? "pos" : "neg",
       },
     ])}
   <section class="sect">
     <table class="blotter">
       <thead><tr>
-        <th scope="col">Holding</th><th scope="col" class="hide-sm">Fills</th>
-        <th scope="col" class="hide-sm">Decisions</th>
+        <th scope="col">Holding</th><th scope="col" class="hide-sm num">Fills</th>
+        <th scope="col" class="hide-sm num">Decisions</th>
         <th scope="col" class="hide-sm">Last fill</th>
         <th scope="col" class="num">Realised</th><th scope="col"></th>
       </tr></thead>

@@ -91,11 +91,6 @@ function derived(name: string, value: number, template: string): string {
 
 const MONEY = (s: Settings, tab: Tab): string => {
   return `
-    <p class="help" style="margin-bottom:var(--space-3)">
-      Three purses, each granted on the 1st and each expiring at month end. They never share money:
-      the short-term purse cannot buy a fund, the fund purse cannot buy a stock, and a leftover in one
-      does not top up another.
-    </p>
     ${field(tab, "budget", "Monthly allowance · long-term stocks", Math.round(s.budget), {
       type: "number",
       step: "1",

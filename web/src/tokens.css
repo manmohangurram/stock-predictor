@@ -30,6 +30,10 @@
     --stamp-graphite: oklch(0.4 0.006 60);
     --stamp-graphite-bg: oklch(0.94 0.004 60);
 
+    /* settled: a gain, an approval, a run that finished. Same hue as --paper-settled. */
+    --green: oklch(0.45 0.1 155);
+    --green-bg: oklch(0.94 0.04 155);
+
     --font-form: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
     --font-ledger: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
 
@@ -63,6 +67,8 @@
       --paper-raised: oklch(0.2 0.008 85);
       --paper-inset: oklch(0.13 0.008 85);
       --paper-settled: oklch(0.22 0.02 155);
+      --green: oklch(0.78 0.1 155);
+      --green-bg: oklch(0.32 0.05 155);
       --ink: oklch(0.92 0.008 85);
       --ink-secondary: oklch(0.72 0.008 85);
       --ink-tertiary: oklch(0.58 0.008 85);

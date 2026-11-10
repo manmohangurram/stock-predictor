@@ -209,8 +209,8 @@ function decisions(
     })
     .join("");
   return `<div class="table-wrap"><table class="blotter decisions">
-    <thead><tr><th scope="col">When</th><th scope="col">Action</th><th scope="col">Entry</th>
-      <th scope="col" class="hide-md">Stop</th><th scope="col" class="hide-md">Target</th>
+    <thead><tr><th scope="col">When</th><th scope="col">Action</th><th scope="col" class="num">Entry</th>
+      <th scope="col" class="hide-md num">Stop</th><th scope="col" class="hide-md num">Target</th>
       <th scope="col" class="hide-md">Confidence</th><th scope="col"></th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
@@ -224,9 +224,9 @@ function trades(list: Trade[]): string {
     return `<span class="num ${cls}">${diff >= 0 ? "+" : ""}${(diff * 100).toFixed(2)}%</span>`;
   };
   return `<div class="table-wrap"><table class="blotter fills">
-    <thead><tr><th scope="col">Date</th><th scope="col">Side</th><th scope="col">Qty</th>
-      <th scope="col">Your price</th><th scope="col" class="hide-sm">Close that day</th>
-      <th scope="col" class="hide-sm">vs close</th><th scope="col"></th></tr></thead>
+    <thead><tr><th scope="col">Date</th><th scope="col">Side</th><th scope="col" class="num">Qty</th>
+      <th scope="col" class="num">Your price</th><th scope="col" class="hide-sm num">Close that day</th>
+      <th scope="col" class="hide-sm num">vs close</th><th scope="col"></th></tr></thead>
     <tbody>${list
       .map(
         (t) => `<tr><td class="mono">${day(t.traded_at)}</td>

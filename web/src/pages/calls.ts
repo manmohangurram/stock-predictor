@@ -29,6 +29,10 @@ function localTime(iso: string): string {
 
 /** What you did with the decision this call produced — or why it never reached you. */
 function reviewBadge(r: CallRow): string {
+  if (r.error) {
+    // A call that broke is not a decision at all: say so here, and the message is in View.
+    return pill("failed", "failed", escapeHtml(r.error));
+  }
   if (r.decision_action === "BLOCKED") {
     // A refused plan is the model's answer, recorded with its reason in View.
     // The reason is long; it lives in View, so the row stays one line.
@@ -39,7 +43,7 @@ function reviewBadge(r: CallRow): string {
     const label = state === "pending" ? "plan · awaiting you" : `plan · ${state}`;
     return pill(state === "approved" ? "ok" : state === "rejected" ? "todo" : "", label);
   }
-  if (!r.decision_status) return `<span class="muted">no decision</span>`;
+  if (!r.decision_status) return pill("", "no decision");
   const tone = r.decision_status === "approved" ? "ok" : r.decision_status === "rejected" ? "todo" : "";
   const label =
     r.decision_status === "pending" ? "awaiting you" : r.decision_status;
@@ -118,7 +122,7 @@ export function renderRuns(runs: RunRow[], running: number): string {
           ? `<button class="mini" type="button" disabled>Working…</button>`
           : ""
         : `<button class="mini" type="button" data-run-again="${escapeHtml(r.prompt)}">Run again</button>`;
-    return `<article class="rcard">
+    return `<article class="rcard" data-state="${r.status}">
       <div class="rcard-top">${state}<span class="run-when">${escapeHtml(localTime(r.started_at))} · ${escapeHtml(took(r))}</span></div>
       <div class="rcard-title">${escapeHtml(label[r.prompt] ?? r.prompt)}
         <span class="trigger">${escapeHtml(r.trigger)}</span></div>
@@ -126,9 +130,6 @@ export function renderRuns(runs: RunRow[], running: number): string {
         r.error ?? r.summary ?? (r.status === "running" ? "working…" : "—"),
       )}</div>
       ${again}
-      ${i === shown.length - 1 && earlier > 0
-        ? `<div class="rcard-more">${earlier} earlier</div>`
-        : ""}
     </article>`;
   };
 
@@ -152,7 +153,11 @@ export function renderRuns(runs: RunRow[], running: number): string {
         }</span>
       </form>
     </article>
-  </div>`;
+  </div>${
+    earlier > 0
+      ? `<p class="runs-more">${earlier} earlier run${earlier === 1 ? "" : "s"} not shown</p>`
+      : ""
+  }`;
 }
 
 export function renderCalls(
@@ -184,18 +189,17 @@ export function renderCalls(
               }`
             : `<span class="muted">${escapeHtml(rest.join(" ") || "—")}</span>`;
       return `<tr>
-  <td class="time num" title="${escapeHtml(r.ts)}">${escapeHtml(localTime(r.ts))}</td>
-  <td>${escapeHtml(kind || "—")}</td>
+  <td class="time" title="${escapeHtml(r.ts)}">${escapeHtml(localTime(r.ts))}</td>
+  <td class="hide-sm">${escapeHtml(kind || "—")}</td>
   <td class="hide-sm">${escapeHtml(r.endpoint)}</td>
   <td>${holding}</td>
   <td class="review-td"><div class="review-cell">${reviewBadge(r)}</div></td>
-  <td class="hide-sm ${r.error ? "negative" : ""}">${escapeHtml(r.error ?? r.validator_verdict ?? "ok")}</td>
   <td class="right">
     <button class="btn ghost view-call" type="button" data-id="${r.id}"
             aria-expanded="false" aria-controls="call-${r.id}" aria-label="View the call">View</button>
   </td>
 </tr>
-<tr class="call-detail" id="call-${r.id}" hidden><td colspan="7"></td></tr>`;
+<tr class="call-detail" id="call-${r.id}" hidden><td colspan="6"></td></tr>`;
     })
     .join("");
 
@@ -204,18 +208,16 @@ export function renderCalls(
       { label: "Failures", value: String(failures), tone: failures ? "neg" : undefined },
       { label: "Tokens", value: tokens.toLocaleString("en-IN") },
     ])}
-  <p class="caption-line">The prompt and the reply are stored with every call — open one to read them</p>
   ${renderRuns(runs, running)}
   <section class="main-body table-wrap">
     <table class="blotter">
       <thead><tr>
-        <th scope="col">Time</th><th scope="col">Prompt type</th>
+        <th scope="col">Time</th><th scope="col" class="hide-sm">Prompt type</th>
         <th scope="col" class="hide-sm">Call</th>
         <th scope="col">Holding</th><th scope="col">Review</th>
-        <th scope="col" class="hide-sm">Outcome</th>
         <th scope="col" class="right"><span class="hide-sm">View</span></th>
       </tr></thead>
-      <tbody>${body || `<tr><td colspan="7" class="empty">No calls yet.</td></tr>`}</tbody>
+      <tbody>${body || `<tr><td colspan="6" class="empty">No calls yet.</td></tr>`}</tbody>
     </table>
     ${renderPager(offset, limit, total)}
   </section>`);
