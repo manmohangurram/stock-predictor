@@ -179,6 +179,18 @@ function filterBar(
     ${pick("model", "Model", facets.models)}
     ${pick("review", "Review", ["pending", "approved", "rejected", "blocked", "none"])}
     ${on ? `<a class="btn ghost" href="/calls">Clear</a>` : ""}
+    <div class="tick">
+      <label class="tick-toggle" title="Reload this list on a timer">
+        <input type="checkbox" id="auto-refresh" checked />
+        <span class="tick-dot" aria-hidden="true"></span>
+        <span class="tick-word">Auto-refresh</span>
+      </label>
+      <select id="auto-every" aria-label="Refresh interval">
+        ${[5, 15, 30, 60]
+          .map((s) => `<option value="${s}">${s === 60 ? "1 min" : `${s} s`}</option>`)
+          .join("")}
+      </select>
+    </div>
   </div>`;
 }
 

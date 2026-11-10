@@ -1470,3 +1470,34 @@
     background: var(--green-bg); }
   @media (max-width: 900px) { .copy { width: 40px; height: 40px; } }
 }
+
+@layer components {
+  /* A standing preference, not a button: it sits in the toolbar with the filters it updates, at the
+     same height and border, and it says what it does rather than showing a bare checkbox. */
+  .tick { display: inline-flex; align-items: stretch; margin-left: auto; height: 29px;
+    border: 1px solid var(--rule); border-radius: var(--radius);
+    background: var(--paper-raised); overflow: hidden;
+    font-family: var(--font-form); font-size: var(--text-sm); white-space: nowrap; }
+  .tick-toggle { display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: 0 var(--space-2) 0 var(--space-3); cursor: pointer; user-select: none; }
+  .tick input { position: absolute; opacity: 0; width: 0; height: 0; }
+  /* The dot is the colour, the words are the meaning — and the tick is still a real focusable input. */
+  .tick-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rule);
+    flex: none; transition: background 120ms ease; }
+  .tick:has(input:checked) .tick-dot { background: var(--green); }
+  .tick:has(input:not(:checked)) .tick-word { color: var(--ink-tertiary); }
+  .tick-toggle:has(input:focus-visible) { outline: 2px solid var(--stamp-ink); outline-offset: -2px; }
+  /* The cadence is part of the control, so it is a select next to the words — not a second box. */
+  /* A native caret: the control must read as "these are the choices" without a custom chevron. */
+  .tick select { border: 0; border-left: 1px solid var(--rule); border-radius: 0;
+    background: transparent; color: var(--ink-secondary); cursor: pointer;
+    font-family: var(--font-ledger); font-size: var(--text-xs);
+    padding: 0 var(--space-1) 0 var(--space-2); margin: 0; }
+  .tick select:hover { color: var(--ink); background: var(--paper); }
+  .tick select:focus-visible { outline: 2px solid var(--stamp-ink); outline-offset: -2px; }
+  .tick:has(input:not(:checked)) select { color: var(--ink-tertiary); }
+  @media (max-width: 900px) {
+    .tick { height: 40px; margin-left: 0; }
+    .tick select { font-size: var(--text-sm); padding-right: var(--space-2); }
+  }
+}

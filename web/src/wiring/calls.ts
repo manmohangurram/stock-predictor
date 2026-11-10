@@ -42,8 +42,69 @@ function wireCopy(): void {
   });
 }
 
-export function wireCallRows(): void {
+/** One timer, not one per render: every route() rebuilds this page. */
+let autoRefreshTimer: number | undefined;
+
+/**
+ * The audit page is a live log while a run is happening, and a static record otherwise. The tick
+ * decides which: on, it reloads every five seconds; off, main's minute timer still keeps it fresh.
+ * The choice is remembered, because a preference that resets on every render is not a preference.
+ */
+const INTERVALS = [5, 15, 30, 60] as const;
+const DEFAULT_EVERY = 5;
+
+/** Remembered, because a preference that resets on every render is not a preference. */
+function everyFromStore(): number {
+  const raw = Number(window.localStorage.getItem("calls.autoEvery"));
+  return INTERVALS.includes(raw as (typeof INTERVALS)[number]) ? raw : DEFAULT_EVERY;
+}
+
+function wireAutoRefresh(reload: () => void): void {
+  const box = document.querySelector<HTMLInputElement>("#auto-refresh");
+  const every = document.querySelector<HTMLSelectElement>("#auto-every");
+  const key = "calls.autoRefresh";
+  if (box) {
+    box.checked = window.localStorage.getItem(key) !== "off";
+    box.addEventListener("change", () => {
+      window.localStorage.setItem(key, box.checked ? "on" : "off");
+    });
+  }
+  if (every) {
+    every.value = String(everyFromStore());
+    every.addEventListener("change", () => {
+      window.localStorage.setItem("calls.autoEvery", every.value);
+      // A new cadence starts now, not after the old one expires.
+      startTimer();
+    });
+  }
+  window.clearInterval(autoRefreshTimer);
+  startTimer();
+
+  function startTimer(): void {
+    window.clearInterval(autoRefreshTimer);
+    autoRefreshTimer = window.setInterval(tick, everyFromStore() * 1000);
+  }
+
+  function tick(): void {
+    if (box && !box.checked) return;
+    if (document.hidden) return;
+    // Never pull the page out from under a form or a select the reader is using.
+    const el = document.activeElement;
+    if (
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLTextAreaElement ||
+      el instanceof HTMLSelectElement ||
+      document.querySelector("form.approve-form:not([hidden]), form.reject-form:not([hidden])")
+    ) {
+      return;
+    }
+    reload();
+  }
+}
+
+export function wireCallRows(reload: () => void = () => window.location.reload()): void {
   wireCopy();
+  wireAutoRefresh(reload);
   // ?call=12 opens that row directly, so a specific exchange can be linked to.
   const wanted = new URLSearchParams(location.search).get("call");
   document.querySelectorAll<HTMLButtonElement>(".view-call").forEach((button) => {

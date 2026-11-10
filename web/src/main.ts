@@ -79,7 +79,7 @@ async function route(): Promise<void> {
         const size = (ev.target as HTMLSelectElement).value;
         window.location.href = `/calls?offset=0&limit=${size}`;
       });
-      wireCallRows();
+      wireCallRows(route);
     } else if (path.startsWith("/i/")) {
       const symbol = decodeURIComponent(path.slice(3));
       // One request: the analysis payload carries the instrument, its signals and its fills.
