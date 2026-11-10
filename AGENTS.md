@@ -43,6 +43,10 @@ files directly when you need exact wording.
 - Design system: `.interface-design/system.md` (binding for all front-end work).
 - No test may hit the network. Fixtures only.
 - `api_calls` and `cash_ledger` are append-only. Nothing updates or deletes those rows.
+- **Every money write is one transaction.** A fill moves the position, the trade row and the
+  cash ledger together (`trades::record`), a correction does the same (`trades::edit`), and a whole
+  plan posts inside one transaction (`approve_plan`). A leg that cannot post rolls the others back —
+  half a swap is worse than none.
 - The environment is four variables only: `BIND`, `DB_PATH`, `PUBLIC_URL`, `SECRET_KEY`.
 - Provider keys, the ntfy token and the proxy password are encrypted at rest (`src/secrets.rs`,
   `enc:v1:` prefix). Losing the key means re-entering them. Everything else —

@@ -91,13 +91,41 @@ pub async fn record(
     at: Option<chrono::DateTime<chrono::Utc>>,
     mode: Mode,
 ) -> Result<()> {
+    // The position, the trade row and the money move together or not at all.
+    let mut tx = pool.begin().await?;
+    record_on(
+        &mut tx,
+        instrument_id,
+        side,
+        qty,
+        price,
+        note,
+        at,
+        mode,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn record_on(
+    conn: &mut sqlx::SqliteConnection,
+    instrument_id: i64,
+    side: Side,
+    qty: f64,
+    price: f64,
+    note: Option<&str>,
+    at: Option<chrono::DateTime<chrono::Utc>>,
+    mode: Mode,
+) -> Result<()> {
     ensure!(qty.is_finite() && qty > 0.0, "qty must be positive");
     ensure!(price.is_finite() && price > 0.0, "price must be positive");
 
     // A mutual fund has no intraday exit, so it cannot be a trading-pot fill.
     let class: (String,) = sqlx::query_as("SELECT class FROM instruments WHERE id = ?")
         .bind(instrument_id)
-        .fetch_one(pool)
+        .fetch_one(&mut *conn)
         .await?;
     let class = crate::models::AssetClass::parse(&class.0)?;
     ensure!(
@@ -118,14 +146,14 @@ pub async fn record(
     )
     .bind(instrument_id)
     .bind(mode.as_str())
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?;
 
     match side {
         Side::Buy => {
             let value = qty * price;
             let purse = budget::bucket_for(class);
-            let available = budget::cash_in_bucket(pool, mode, purse).await?;
+            let available = budget::cash_in_bucket_on(&mut *conn, mode, purse).await?;
             ensure!(
                 value <= available + 1e-9,
                 "cost {value:.2} exceeds available cash {available:.2}"
@@ -148,7 +176,7 @@ pub async fn record(
                     .bind(new_cost)
                     .bind(started)
                     .bind(id)
-                    .execute(pool)
+                    .execute(&mut *conn)
                     .await?;
                 }
                 None => {
@@ -161,13 +189,13 @@ pub async fn record(
                     .bind(price)
                     .bind(&now)
                     .bind(mode.as_str())
-                    .execute(pool)
+                    .execute(&mut *conn)
                     .await?;
                 }
             }
 
             insert_trade(
-                pool,
+                &mut *conn,
                 instrument_id,
                 side,
                 qty,
@@ -178,8 +206,8 @@ pub async fn record(
                 mode,
             )
             .await?;
-            budget::record_at_mode(
-                pool,
+            budget::record_on(
+                &mut *conn,
                 NewCashEntry {
                     kind: CashKind::Buy,
                     amount: -value,
@@ -208,18 +236,18 @@ pub async fn record(
             if remaining <= 1e-9 {
                 sqlx::query("UPDATE positions SET qty = 0, state = 'closed' WHERE id = ?")
                     .bind(id)
-                    .execute(pool)
+                    .execute(&mut *conn)
                     .await?;
             } else {
                 sqlx::query("UPDATE positions SET qty = ? WHERE id = ?")
                     .bind(remaining)
                     .bind(id)
-                    .execute(pool)
+                    .execute(&mut *conn)
                     .await?;
             }
 
             insert_trade(
-                pool,
+                &mut *conn,
                 instrument_id,
                 side,
                 qty,
@@ -230,8 +258,8 @@ pub async fn record(
                 mode,
             )
             .await?;
-            budget::record_at_mode(
-                pool,
+            budget::record_on(
+                &mut *conn,
                 NewCashEntry {
                     kind: CashKind::Sell,
                     amount: qty * price,
@@ -259,6 +287,21 @@ pub async fn edit(
     price: Option<f64>,
     at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<()> {
+    // The trade row, the position and the correction entry move together.
+    let mut tx = pool.begin().await?;
+    edit_on(&mut tx, id, qty, price, at).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// The body of an edit, on a connection so it can join a caller's transaction.
+pub async fn edit_on(
+    conn: &mut sqlx::SqliteConnection,
+    id: i64,
+    qty: Option<f64>,
+    price: Option<f64>,
+    at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<()> {
     #[derive(sqlx::FromRow)]
     struct Row {
         instrument_id: i64,
@@ -272,7 +315,7 @@ pub async fn edit(
         "SELECT instrument_id, side, qty, price, traded_at, mode FROM trades WHERE id = ?",
     )
     .bind(id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?
     .ok_or_else(|| anyhow::anyhow!("no fill {id}"))?;
     let mode = Mode::parse(&row.mode)?;
@@ -296,7 +339,7 @@ pub async fn edit(
     )
     .bind(row.instrument_id)
     .bind(mode.as_str())
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?;
     let (position_id, held, cost) = open.unwrap_or((0, 0.0, 0.0));
 
@@ -334,7 +377,7 @@ pub async fn edit(
             .bind(new_cost)
             .bind(if new_held > 1e-9 { "open" } else { "closed" })
             .bind(position_id)
-            .execute(pool)
+            .execute(&mut *conn)
             .await?;
     }
 
@@ -348,13 +391,13 @@ pub async fn edit(
         .bind(realised)
         .bind(when.to_rfc3339())
         .bind(id)
-        .execute(pool)
+        .execute(&mut *conn)
         .await?;
 
     if delta_cash.abs() > 1e-9 {
         // Money back when the fill was overstated, more when it was understated.
-        budget::record_at_mode(
-            pool,
+        budget::record_on(
+            &mut *conn,
             NewCashEntry {
                 kind: CashKind::Adjust,
                 amount: delta_cash,
@@ -371,7 +414,7 @@ pub async fn edit(
 
 #[allow(clippy::too_many_arguments)]
 async fn insert_trade(
-    pool: &SqlitePool,
+    conn: &mut sqlx::SqliteConnection,
     instrument_id: i64,
     side: Side,
     qty: f64,
@@ -393,7 +436,7 @@ async fn insert_trade(
     .bind(at)
     .bind(note)
     .bind(mode.as_str())
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }

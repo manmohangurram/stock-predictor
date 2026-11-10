@@ -1918,6 +1918,19 @@ async fn apply_exit_plan(
     stop: Option<f64>,
     target: Option<f64>,
 ) -> Result<(), ApiError> {
+    let mut tx = pool.begin().await?;
+    apply_exit_plan_on(&mut tx, instrument_id, mode, stop, target).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn apply_exit_plan_on(
+    conn: &mut sqlx::SqliteConnection,
+    instrument_id: i64,
+    mode: crate::models::Mode,
+    stop: Option<f64>,
+    target: Option<f64>,
+) -> Result<(), ApiError> {
     if stop.is_none() && target.is_none() {
         return Ok(());
     }
@@ -1931,7 +1944,7 @@ async fn apply_exit_plan(
     .bind(target)
     .bind(instrument_id)
     .bind(mode.as_str())
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }
@@ -2014,6 +2027,8 @@ async fn approve_plan(
 
     let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    // One transaction for the whole plan: a leg that cannot post undoes the legs before it.
+    let mut tx = st.pool.begin().await?;
     let mut posted = Vec::new();
     for (leg, qty, price) in planned {
         let side = match leg.action.as_str() {
@@ -2030,11 +2045,11 @@ async fn approve_plan(
             sqlx::query_as("SELECT id FROM trades WHERE note = ? AND instrument_id = ?")
                 .bind(&note)
                 .bind(leg.instrument_id)
-                .fetch_optional(&st.pool)
+                .fetch_optional(&mut *tx)
                 .await?;
         if already.is_none() {
-            crate::trades::record(
-                &st.pool,
+            crate::trades::record_on(
+                &mut tx,
                 leg.instrument_id,
                 side,
                 qty,
@@ -2054,12 +2069,13 @@ async fn approve_plan(
         .bind(qty)
         .bind(price)
         .bind(leg.id)
-        .execute(&st.pool)
+        .execute(&mut *tx)
         .await?;
         // Each leg carries its own exits; the position keeps them for the ledger.
-        apply_exit_plan(&st.pool, leg.instrument_id, mode, leg.stop, leg.target).await?;
+        apply_exit_plan_on(&mut tx, leg.instrument_id, mode, leg.stop, leg.target).await?;
         posted.push(leg.id);
     }
+    tx.commit().await?;
 
     Ok(Json(serde_json::json!({
         "id": id,

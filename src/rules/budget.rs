@@ -111,7 +111,11 @@ pub async fn cash_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
 }
 
 /// Cash in one purse. `None` is the pot's main purse; `Some("mf")` is the mutual-fund purse.
-pub async fn cash_in_bucket(pool: &SqlitePool, mode: Mode, bucket: Option<&str>) -> Result<f64> {
+pub async fn cash_in_bucket(
+    pool: &SqlitePool,
+    mode: Mode,
+    bucket: Option<&str>,
+) -> Result<f64> {
     let row: (Option<f64>,) = sqlx::query_as(
         "SELECT SUM(amount) FROM cash_ledger
          WHERE mode = ? AND COALESCE(bucket, '') = ?",
@@ -122,6 +126,32 @@ pub async fn cash_in_bucket(pool: &SqlitePool, mode: Mode, bucket: Option<&str>)
     .await
     .context("sum cash")?;
     Ok(row.0.unwrap_or(0.0))
+}
+
+/// The same sum on an existing connection, so a fill checks the purse inside its own transaction.
+pub async fn cash_in_bucket_on(
+    conn: &mut sqlx::SqliteConnection,
+    mode: Mode,
+    bucket: Option<&str>,
+) -> Result<f64> {
+    let row: (Option<f64>,) = sqlx::query_as(
+        "SELECT SUM(amount) FROM cash_ledger
+         WHERE mode = ? AND COALESCE(bucket, '') = ?",
+    )
+    .bind(mode.as_str())
+    .bind(bucket.unwrap_or(""))
+    .fetch_one(&mut *conn)
+    .await
+    .context("sum cash")?;
+    Ok(row.0.unwrap_or(0.0))
+}
+
+/// The pot's free cash on a connection, which is what a fill inside a transaction needs.
+pub async fn available_in_on(
+    conn: &mut sqlx::SqliteConnection,
+    mode: Mode,
+) -> Result<f64> {
+    cash_in_bucket_on(conn, mode, None).await
 }
 
 /// Free money in the mutual-fund purse of the long-term pot.
@@ -168,6 +198,24 @@ pub async fn record_at_mode(
     ts: &str,
     mode: Mode,
 ) -> Result<()> {
+    insert_entry(pool, entry, ts, mode).await
+}
+
+/// The same insert on a connection, so a fill can post its money in the same transaction as the
+/// position and the trade row. Half a fill is a corrupted book.
+pub async fn record_on(
+    conn: &mut sqlx::SqliteConnection,
+    entry: NewCashEntry,
+    ts: &str,
+    mode: Mode,
+) -> Result<()> {
+    insert_entry(&mut *conn, entry, ts, mode).await
+}
+
+async fn insert_entry<'e, E>(executor: E, entry: NewCashEntry, ts: &str, mode: Mode) -> Result<()>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     sqlx::query(
         "INSERT INTO cash_ledger (ts, kind, amount, ref, mode, bucket) VALUES (?, ?, ?, ?, ?, ?)",
     )
@@ -177,7 +225,7 @@ pub async fn record_at_mode(
     .bind(entry.reference)
     .bind(mode.as_str())
     .bind(entry.bucket.as_deref())
-    .execute(pool)
+    .execute(executor)
     .await
     .context("insert cash ledger")?;
     Ok(())

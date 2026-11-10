@@ -2253,3 +2253,122 @@ async fn starting_a_run_needs_a_loop_and_a_symbol() {
     let (s, _) = send(&router, "POST", "/api/runs", json!({"prompt": "nonsense"})).await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
+
+/// A plan is approved as a whole or not at all. A second leg that cannot post must undo the first
+/// — half a swap is worse than none.
+#[tokio::test]
+async fn a_failing_leg_rolls_the_whole_plan_back() {
+    let (_d, router, pool) = setup().await;
+    // A holding to sell, and a buy leg.
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, stop, target, state, mode, opened_at)
+         SELECT id, 2, 90.0, 80.0, 120.0, 'open', 'long', '2026-09-01T00:00:00Z'
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let sell: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status)
+         SELECT id, 'SELL', 2, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:00Z',
+                'long', 'plan', 'pending'
+         FROM instruments WHERE symbol = 'INFY' RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let buy: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, mode, kind, status, plan_id)
+         SELECT id, 'BUY', 1, 40.0, 36.0, 60.0, '2030-01-01T00:00:00Z', '{}',
+                '2026-11-09T10:00:01Z', 'long', 'plan', 'pending', ?
+         FROM instruments WHERE symbol = 'TCS' RETURNING id",
+    )
+    .bind(sell.0)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE signals SET plan_id = ? WHERE id = ?")
+        .bind(sell.0)
+        .bind(sell.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // The buy leg sells nothing, but asks for a quantity the purse cannot cover: it fails after
+    // the sell leg has already posted inside the same transaction.
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", buy.0),
+        json!({"fills": [
+            {"id": sell.0, "qty": 2.0, "price": 100.0},
+            {"id": buy.0, "qty": 99999.0, "price": 40.0}
+        ]}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+
+    let trades: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(trades.0, 0, "the sell was rolled back, not left posted");
+
+    let held: (f64,) = sqlx::query_as(
+        "SELECT qty FROM positions WHERE instrument_id =
+         (SELECT id FROM instruments WHERE symbol = 'INFY') AND state = 'open'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(held.0, 2.0, "the position is untouched");
+
+    let pending: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM signals WHERE plan_id = ? AND status = 'pending'")
+            .bind(sell.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(pending.0, 2, "both legs are still pending");
+}
+
+/// A fill that cannot post its money must leave neither a position nor a trade behind.
+#[tokio::test]
+async fn a_fill_that_cannot_post_its_money_writes_nothing() {
+    let (_d, router, pool) = setup().await;
+    // More than the purse holds: the cash post is what fails, after the position write.
+    let (s, _) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 100.0, "mode": "long"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10_000.0, "price": 100.0, "mode": "long"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+
+    let (qty,): (f64,) = sqlx::query_as(
+        "SELECT qty FROM positions WHERE instrument_id =
+         (SELECT id FROM instruments WHERE symbol = 'INFY') AND state = 'open'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(qty, 10.0, "the refused fill changed nothing");
+
+    let trades: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM trades")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(trades.0, 1, "only the first fill is recorded");
+}
