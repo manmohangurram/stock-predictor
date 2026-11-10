@@ -11,8 +11,3 @@ pub fn in_stock_window(now: DateTime<Utc>) -> bool {
     (9 * 60..=16 * 60).contains(&mins)
 }
 
-/// One pass a day for AMFI NAV and IPO status, after the Indian evening.
-pub fn is_daily_pass(now: DateTime<Utc>) -> bool {
-    let ist = now + chrono::Duration::minutes(330);
-    ist.hour() == 19 && ist.minute() < 10
-}

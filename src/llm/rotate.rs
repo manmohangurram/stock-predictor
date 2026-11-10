@@ -6,7 +6,7 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::models::{AssetClass, Mode};
+use crate::models::Mode;
 use crate::rules::limits::Limits;
 use crate::rules::settings::Settings;
 
@@ -213,11 +213,6 @@ pub fn validate(
         return Err(anyhow!("rotation: selling and buying the same symbol"));
     }
     Ok(())
-}
-
-/// A mutual fund has no intraday exit, so it can never be the buy leg of a trading-pot rotation.
-pub fn buy_allowed(class: AssetClass, mode: Mode) -> bool {
-    class.pot_allowed(mode)
 }
 
 #[cfg(test)]

@@ -10,7 +10,6 @@ use sqlx::SqlitePool;
 use super::audit::{self, ApiCallRow};
 
 /// The DeepSeek default model, kept for the fixture tests.
-pub const MODEL: &str = "deepseek-chat";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HttpReply {

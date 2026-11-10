@@ -463,10 +463,6 @@ pub async fn history(
         .collect())
 }
 
-pub async fn realised_total(pool: &SqlitePool) -> Result<f64> {
-    realised_in(pool, Mode::Long).await
-}
-
 pub async fn realised_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
     let row: (Option<f64>,) =
         sqlx::query_as("SELECT SUM(realised) FROM trades WHERE side = 'sell' AND mode = ?")

@@ -346,7 +346,7 @@ fn the_book_marks_the_instrument_under_review_and_truncates() {
             target: None,
         })
         .collect();
-    let book = stock_predictor::engine::format_book_for_test(&rows, "S3.NS");
+    let book = stock_predictor::engine::format_book(&rows, "S3.NS");
     assert!(
         book.contains("S3.NS Stock 3: 1.000 units at 100.00, now 110.00, +10.0%"),
         "{book}"
@@ -358,7 +358,7 @@ fn the_book_marks_the_instrument_under_review_and_truncates() {
 
 #[test]
 fn an_empty_book_says_so() {
-    let book = stock_predictor::engine::format_book_for_test(&[], "INFY.NS");
+    let book = stock_predictor::engine::format_book(&[], "INFY.NS");
     assert_eq!(book, "empty — nothing is held");
 }
 

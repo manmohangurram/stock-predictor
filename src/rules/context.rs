@@ -5,7 +5,7 @@
 //! and whether the market itself is risk-on. This module computes those from the bars we already
 //! store, so the prompt carries about twenty numbers instead of a thousand bars.
 
-use chrono::{DateTime, Datelike, Timelike, Utc};
+use chrono::{DateTime, Timelike, Utc};
 
 use crate::models::Bar;
 
@@ -170,12 +170,6 @@ pub fn compute(bars: &[Bar], intraday: &[Bar], now: DateTime<Utc>) -> ShortConte
         c.from_52w_low_pct = Some((last.close - lo) / lo * 100.0);
     }
     c
-}
-
-/// `YYYY-MM-DD` of the session the tape belongs to, for the prompt's "as of".
-pub fn session_date(now: DateTime<Utc>) -> String {
-    let ist = now + chrono::Duration::minutes(IST_OFFSET_MINUTES);
-    format!("{:04}-{:02}-{:02}", ist.year(), ist.month(), ist.day())
 }
 
 #[cfg(test)]

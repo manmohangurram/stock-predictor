@@ -410,20 +410,6 @@ pub async fn mf_allowance(pool: &SqlitePool) -> Result<f64> {
         .unwrap_or(0.0))
 }
 
-/// What the long-term pot already has committed to open fund positions. An MF buy must leave this
-/// under the earmark: the pot's cash is one pool, but the MF line is tracked separately so a fund
-/// cannot silently consume the money meant for stocks.
-pub async fn mf_committed(pool: &SqlitePool) -> Result<f64> {
-    let row: (Option<f64>,) = sqlx::query_as(
-        "SELECT SUM(p.qty * p.avg_cost) FROM positions p
-         JOIN instruments i ON i.id = p.instrument_id
-         WHERE p.mode = 'long' AND p.state <> 'closed' AND i.class = 'mutual_fund'",
-    )
-    .fetch_one(pool)
-    .await?;
-    Ok(row.0.unwrap_or(0.0))
-}
-
 /// The knobs the app reads while running. Read per tick so edits apply without a restart.
 pub use super::runtime::load as runtime;
 

@@ -61,11 +61,6 @@ pub fn cost(qty: f64, price: f64, class: AssetClass) -> f64 {
     }
 }
 
-/// The ceiling itself: the sum of every `budget` ledger row. One source of truth — the
-/// ledger — rather than a settings value that could drift away from its own history.
-pub async fn budget_total(pool: &SqlitePool) -> Result<f64> {
-    budget_total_in(pool, Mode::Long).await
-}
 
 pub async fn budget_total_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
     let row: (Option<f64>,) =

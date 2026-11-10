@@ -1414,12 +1414,6 @@ async fn record_blocked(
     Ok(())
 }
 
-/// The book renderer is private to the engine; tests outside the crate still need to pin the
-/// exact wording the model reads.
-pub fn format_book_for_test(rows: &[crate::llm::rotate::HoldingLine], current: &str) -> String {
-    format_book(rows, current)
-}
-
 /// Half-width of the validator band, surfaced for the UI's chart rules.
 pub fn band_for(last_close: f64, atr14: f64) -> indicators::Bands {
     atr_bands(last_close, atr14)
@@ -1475,7 +1469,7 @@ const BOOK_LINES: usize = 12;
 /// One line per holding, richest first, with the instrument under review marked. The model is
 /// being asked about the whole book, not one stock in a vacuum: "sell this to buy that" is only
 /// a thinkable answer if it can see both.
-fn format_book(rows: &[crate::llm::rotate::HoldingLine], current: &str) -> String {
+pub fn format_book(rows: &[crate::llm::rotate::HoldingLine], current: &str) -> String {
     if rows.is_empty() {
         return "empty — nothing is held".to_string();
     }

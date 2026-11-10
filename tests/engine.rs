@@ -323,12 +323,6 @@ fn market_window_respects_ist_hours_and_skips_weekends() {
     assert!(!schedule::in_stock_window(
         Utc.with_ymd_and_hms(2026, 10, 31, 4, 0, 0).unwrap() // Saturday
     ));
-    assert!(!schedule::is_daily_pass(
-        Utc.with_ymd_and_hms(2026, 10, 27, 5, 0, 0).unwrap()
-    ));
-    assert!(schedule::is_daily_pass(
-        Utc.with_ymd_and_hms(2026, 10, 27, 13, 35, 0).unwrap() // 19:05 IST
-    ));
 }
 
 #[tokio::test]
