@@ -1,3 +1,37 @@
+## v0.24.0
+
+### A price in prose is not a price
+
+A real prompt came back with a `pass` on CHOLAFIN, and it was right: the candidate line said
+*"Up 3.82% to ₹1604.2"* while our own tape said **₹1790.80** on 09 Nov. That ₹1604.20 was our own
+close from **29 October**, carried in the `why` line written by the *previous* scan's model from a
+web snippet — and we pasted it into the next call as a fact. Two prices from two worlds; a
+contradiction, and a contradiction is a `pass`.
+
+- The scan's line is now labelled for what it is: **"scan's note, unverified — do not take a price
+  from it"**, and the prompt says the tape is our own data and the only record of what the stock
+  traded at. An idea that only works at a feed's number is a `pass`.
+- **Feed versus tape is compared here, not by the model**: more than 5% apart and the line says so —
+  *"the feed says 1604.20 while our last close was 1790.80 (−10.4%) — one of the two is stale; trust
+  the tape"*.
+- A candidate with no exchange price says **"no exchange price for it, so the tape below is the
+  price"**, instead of "price read from the tape", which sounded like a measurement.
+
+### Three days is news, older is background
+
+The Search API has **no date filter** — `query`, `count`, `ori_question`, `localization`,
+`need_content`, and nothing else. Each result does carry a `date`, so the window is ours:
+
+- A hit older than **three days** is dropped, and so is an **undated** one — a quote page or an
+  `/api/xbrl` filings page has no date because it is not an article, and a blank date reads as
+  "current". In the CHOLAFIN prompt, four of eight results died to that rule.
+- The same window applies to the daily trending scan, so a March earnings transcript cannot land on
+  today's list.
+- A result with **no title** is dropped for the same reason: it renders as a bare URL.
+- When the search finds things but none inside the window, the prompt says *"nothing dated in the
+  last three days — treat the move as having no known catalyst"*, and the run notes record how many
+  hits were dropped.
+
 ## v0.23.0
 
 ### The audit page reads straight
