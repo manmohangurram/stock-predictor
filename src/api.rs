@@ -503,11 +503,17 @@ async fn archive_instrument(
     let Some((id, active)) = row else {
         return Err(ApiError::NotFound(format!("no instrument {symbol}")));
     };
-    if active == 0 {
+    let archived: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT archived_at FROM instruments WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&st.pool)
+            .await?;
+    if archived.and_then(|r| r.0).is_some() {
         return Err(ApiError::BadRequest(format!(
             "{symbol} is already archived"
         )));
     }
+    let _ = active;
 
     let held: (f64,) = sqlx::query_as(
         "SELECT CAST(COALESCE(SUM(qty), 0) AS REAL) FROM positions
@@ -524,7 +530,9 @@ async fn archive_instrument(
     }
 
     let mut tx = st.pool.begin().await?;
-    sqlx::query("UPDATE instruments SET active = 0 WHERE id = ?")
+    // `archived_at` is the record of a decision; `active = 0` alone is also what discovery writes.
+    sqlx::query("UPDATE instruments SET active = 0, archived_at = ? WHERE id = ?")
+        .bind(chrono::Utc::now().to_rfc3339())
         .bind(id)
         .execute(&mut *tx)
         .await?;
@@ -1897,7 +1905,9 @@ async fn restore_instrument(
     axum::extract::Path(symbol): axum::extract::Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let id = instrument_id_by_symbol(&st.pool, &symbol).await?;
-    let changed = sqlx::query("UPDATE instruments SET active = 1 WHERE id = ? AND active = 0")
+    let changed = sqlx::query(
+        "UPDATE instruments SET active = 1, archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL",
+    )
         .bind(id)
         .execute(&st.pool)
         .await?
@@ -2026,8 +2036,8 @@ async fn archived_instruments(
                                                        ELSE -t.qty * t.price END), 0) AS REAL)
                    FROM trades t WHERE t.instrument_id = i.id) AS net_invested
          FROM instruments i
-         WHERE i.active = 0
-         ORDER BY last_fill DESC",
+         WHERE i.archived_at IS NOT NULL
+         ORDER BY COALESCE(last_fill, i.archived_at) DESC",
     )
     .fetch_all(&st.pool)
     .await?;

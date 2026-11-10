@@ -35,11 +35,10 @@ export function renderArchived(rows: ArchivedInstrument[]): string {
         ? `${money(Math.abs(r.net_invested))} ${r.net_invested > 0 ? "in" : "out"}`
         : "closed out"
     }</div></td>
-  <td class="right"><span class="sub">open to restore</span></td>
 </tr>`;
         })
         .join("")
-    : `<tr><td colspan="6" class="empty">Nothing archived yet. Archive an instrument from its page — its record lands here.</td></tr>`;
+    : `<tr><td colspan="5" class="empty">Nothing archived yet. Archive an instrument from its page — its record lands here.</td></tr>`;
 
   return renderApp(
     "archived",
@@ -58,7 +57,7 @@ export function renderArchived(rows: ArchivedInstrument[]): string {
         <th scope="col">Holding</th><th scope="col" class="hide-sm num">Fills</th>
         <th scope="col" class="hide-sm num">Decisions</th>
         <th scope="col" class="hide-sm">Last fill</th>
-        <th scope="col" class="num">Realised</th><th scope="col"></th>
+        <th scope="col" class="num">Realised</th>
       </tr></thead>
       <tbody>${body}</tbody>
     </table>

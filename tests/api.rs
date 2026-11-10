@@ -2660,3 +2660,45 @@ fn the_market_state_is_read_from_the_clock_and_the_data() {
     assert_eq!(state, "holiday");
     assert!(reason.contains("probably"), "{reason}");
 }
+
+/// Discovery writes `active = 0` for a name the short-term scan noticed, exactly like archiving
+/// does. The page must show what the owner put away, not what the scan found — otherwise every
+/// ticker NSE mentioned is "archived".
+#[tokio::test]
+async fn a_discovered_name_is_not_archived() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO instruments (symbol, class, name, currency, active)
+         VALUES ('MAKERSL.NS', 'stock', 'Makers Labs', 'INR', 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (s, v) = get(&router, "/api/archived").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert!(v.as_array().unwrap().is_empty(), "nothing was archived yet: {v}");
+
+    // Archiving the same name by hand does put it there.
+    send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;
+    let (_, v) = get(&router, "/api/archived").await;
+    let rows = v.as_array().unwrap();
+    assert_eq!(rows.len(), 1, "{v}");
+    assert_eq!(rows[0]["symbol"], "TCS");
+}
+
+/// Restore clears the date, so the instrument is neither archived nor mistaken for discovered.
+#[tokio::test]
+async fn restoring_clears_the_archive_date() {
+    let (_d, router, pool) = setup().await;
+    send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;
+    let (s, v) = send(&router, "POST", "/api/instruments/TCS/restore", json!({})).await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let row: (i64, Option<String>) =
+        sqlx::query_as("SELECT active, archived_at FROM instruments WHERE symbol = 'TCS'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(row.0, 1);
+    assert!(row.1.is_none());
+}

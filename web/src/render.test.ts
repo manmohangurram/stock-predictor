@@ -1092,9 +1092,10 @@ describe("archived", () => {
     expect(html).toContain("+300.00");
     expect(html).toContain("300.00 out");
     expect(html).toContain("Realised");
-    // Restoring lives on the instrument's own page, not in this list.
+    // Restoring lives on the instrument's own page, and the row does not advertise it: the whole
+    // row is the link, so a trailing column repeating that was noise.
     expect(html).not.toContain("data-restore");
-    expect(html).toContain("open to restore");
+    expect(html).not.toContain("open to restore");
   });
 
   test("an archive with no fills says so instead of inventing a zero", async () => {
