@@ -52,6 +52,10 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "0016_drop_silence",
         include_str!("../migrations/0016_drop_silence.sql"),
     ),
+    (
+        "0017_drop_unused_indexes",
+        include_str!("../migrations/0017_drop_unused_indexes.sql"),
+    ),
 ];
 
 pub fn path_of(path: &str) -> &str {

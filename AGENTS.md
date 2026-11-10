@@ -87,6 +87,11 @@ cargo bench --bench hot_paths                # indicators, prompt render, bar up
 cd web && npx vitest run && npm run build
 ```
 
+Indexes answer a query that exists. Every one was checked with `EXPLAIN QUERY PLAN` against the
+real statements; three were dead (`runs_by_started`, `idx_api_calls_conversation`,
+`idx_signals_status`) and are dropped. `runs_running` is a *partial* index — only running rows —
+because `runs` only grows and the audit page asks "anything running?" on every load.
+
 Budgets to keep: `indicators::compute` ~2.8 µs per 250 bars, prompt render ~58 µs (the book block and cap line cost ~2 µs),
 a poll's bar write ~0.2 ms (only the tail is written; a cold 250-row load is ~18 ms).
 
