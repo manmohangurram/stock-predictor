@@ -124,7 +124,7 @@ export function renderTradeForm(
           : `<input type="hidden" name="mode" value="long" /><span class="static">Long-term only</span>`
       }</label>
   </div>
-  <button class="btn primary wide" type="submit">Record the fill</button>
+  <button class="btn primary wide" type="submit">Record fill</button>
   <p class="help" id="trade-status" role="status">
     A buy is limited by cash; a sell by what you hold${held === null ? "" : ` (${units(held)})`}.
   </p>
@@ -251,10 +251,10 @@ function trades(list: Trade[]): string {
               <input name="at" type="date" value="${t.traded_at.slice(0, 10)}" max="${today()}" /></label>
           </div>
           <div class="row">
-            <button class="btn primary" type="submit">Save the correction</button>
+            <button class="btn primary" type="submit">Save</button>
             <button class="btn ghost" type="button" data-cancel-fill="${t.id}">Cancel</button>
             <button class="btn ghost danger push-right" type="button" data-delete-fill="${t.id}"
-                    data-confirm="Delete this fill? The units and the money come back, and any decision it satisfied reopens.">Delete this fill</button>
+                    data-confirm="Delete this fill? The units and the money come back, and any decision it satisfied reopens.">Delete fill</button>
             <span class="help" data-fill-status="${t.id}" role="status">The position and the cash move by the difference.</span>
           </div>
         </form>
@@ -357,7 +357,7 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
             <div class="row">
               <span class="sub">${list.length ? `${list.length} recorded · what you actually paid` : "nothing recorded yet"}</span>
               <button class="btn" type="button" data-record-toggle="${escapeHtml(a.instrument.symbol)}"
-                      aria-expanded="false" aria-controls="record-panel">Record a fill</button>
+                      aria-expanded="false" aria-controls="record-panel">Record fill</button>
             </div>
           </div>
           <div class="record-panel" id="record-panel" hidden>
@@ -408,20 +408,19 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
         <section class="card">
           <div class="card-head"><h2>Manage</h2></div>
           <button class="btn ghost" type="button" id="refresh-instrument"
-                  data-symbol="${escapeHtml(a.instrument.symbol)}">Refresh prices and headlines</button>
+                  data-symbol="${escapeHtml(a.instrument.symbol)}">Refresh</button>
           <p class="help" id="refresh-status" role="status">Fetches this symbol now, instead of waiting for the next poll.</p>
           ${
             archived
               ? `<button class="btn primary" type="button" id="restore-instrument"
-                  data-symbol="${escapeHtml(a.instrument.symbol)}">Restore this instrument</button>
+                  data-symbol="${escapeHtml(a.instrument.symbol)}">Restore</button>
           <p class="help" id="delete-status" role="status">
             It is archived: no prices are fetched and no decisions are made. Restoring puts it back
             in the book — the fills and decisions above were never touched.
           </p>`
               : `<button class="btn ghost" type="button" id="archive-instrument"
-                  data-symbol="${escapeHtml(a.instrument.symbol)}" data-held="${p ? p.qty : 0}">
-            ${p ? "Sell it before archiving" : "Archive this instrument"}
-          </button>
+                  data-symbol="${escapeHtml(a.instrument.symbol)}" data-held="${p ? p.qty : 0}"
+                  ${p ? "disabled" : ""}>Archive</button>
           <p class="help" id="delete-status" role="status">
             ${
               p

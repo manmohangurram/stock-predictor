@@ -37,7 +37,7 @@ export function renderDecisionActions(s: SignalRow): string {
         <span class="static">${s.qty === null ? "—" : units(s.qty)} @ ${s.entry === null ? "—" : money(s.entry)}</span></label>
     </div>
     <div class="row">
-      <button class="btn primary" type="submit">Post the fill</button>
+      <button class="btn primary" type="submit">Post fill</button>
       <button class="btn ghost" type="button" data-cancel="${s.id}">Cancel</button>
       <span class="help" data-status="${s.id}" role="status"></span>
     </div>

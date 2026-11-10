@@ -182,7 +182,7 @@ function planActions(
   <form class="approve-form" data-approve-form="${first.id}" data-plan="${legs.map((l) => l.id).join(",")}" hidden>
     <div class="plan-fills">${fills}</div>
     <div class="row">
-      <button class="btn primary" type="submit">Post all fills</button>
+      <button class="btn primary" type="submit">Post fills</button>
       <button class="btn ghost" type="button" data-cancel="${first.id}">Cancel</button>
       <span class="help" data-status="${first.id}" role="status"></span>
     </div>
@@ -349,7 +349,7 @@ export function renderLedger(d: Dashboard): string {
       },
     ],
     `<button class="btn primary head-action" type="button" data-add-open
-             aria-haspopup="dialog">+ Add instrument</button>`,
+             aria-haspopup="dialog">Add instrument…</button>`,
   )}
   <div class="mode-row">${renderModeTabs(d.mode)}<span class="sub">${d.currency} · as of the last poll</span></div>
   <section class="card" id="decisions-card">

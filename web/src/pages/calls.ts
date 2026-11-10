@@ -196,7 +196,7 @@ export function renderCalls(
   <td class="review-td"><div class="review-cell">${reviewBadge(r)}</div></td>
   <td class="right">
     <button class="btn ghost view-call" type="button" data-id="${r.id}"
-            aria-expanded="false" aria-controls="call-${r.id}" aria-label="View the call">View</button>
+            aria-expanded="false" aria-controls="call-${r.id}" aria-label="Open the call">Open</button>
   </td>
 </tr>
 <tr class="call-detail" id="call-${r.id}" hidden><td colspan="6"></td></tr>`;
@@ -215,7 +215,7 @@ export function renderCalls(
         <th scope="col">Time</th><th scope="col" class="hide-sm">Prompt type</th>
         <th scope="col" class="hide-sm">Call</th>
         <th scope="col">Holding</th><th scope="col">Review</th>
-        <th scope="col" class="right"><span class="hide-sm">View</span></th>
+        <th scope="col" class="right"><span class="hide-sm">Open</span></th>
       </tr></thead>
       <tbody>${body || `<tr><td colspan="6" class="empty">No calls yet.</td></tr>`}</tbody>
     </table>

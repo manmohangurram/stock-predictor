@@ -193,7 +193,7 @@ const NOTIFICATIONS = (s: Settings, tab: Tab): string => `
       : "Optional. Needed only when the topic requires authentication.",
   })}
   <div class="row">
-    <button class="btn" type="button" id="test-notify">Send a test notification</button>
+    <button class="btn" type="button" id="test-notify">Send test</button>
     <span class="help" id="notify-status" role="status"></span>
   </div>
 `;
@@ -243,7 +243,7 @@ const NETWORK = (s: Settings, tab: Tab): string => `
     help: "Comma-separated hosts that connect directly.",
   })}
   <div class="row">
-    <button class="btn" type="button" id="test-proxy">Test the proxy</button>
+    <button class="btn" type="button" id="test-proxy">Test proxy</button>
     <span class="help" id="proxy-status" role="status"></span>
   </div>
 `;
@@ -271,8 +271,8 @@ function pane(s: Settings, tab: Tab): string {
       <div class="pane-foot">
         <span class="note" id="tab-status" role="status"></span>
         <div class="row">
-          <button class="btn ghost" type="button" id="revert">Revert</button>
-          <button class="btn" type="submit">Stamp</button>
+          <button class="btn ghost" type="button" id="revert">Discard</button>
+          <button class="btn" type="submit">Save</button>
         </div>
       </div>
     </form>

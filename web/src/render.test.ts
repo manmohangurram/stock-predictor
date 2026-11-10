@@ -175,7 +175,7 @@ describe("settings", () => {
   test("each tab carries its own stamp, never a page-wide save", () => {
     for (const tab of ["money", "risk", "model", "notifications", "cadence", "network"] as const) {
       const html = renderSettings(settings(), tab);
-      expect(html).toContain(">Stamp<");
+      expect(html).toContain(">Save<");
       expect(html).toContain('id="revert"');
     }
   });
@@ -536,7 +536,7 @@ describe("ntfy settings", () => {
     expect(html).toContain('name="ntfy_token"');
     // The deep-link host is PUBLIC_URL in the environment now, not a settings field.
     expect(html).not.toContain('name="public_url"');
-    expect(html).toContain("Send a test notification");
+    expect(html).toContain("Send test");
     expect(html).toContain("Anyone who knows the name can read it");
   });
 
@@ -821,7 +821,7 @@ describe("removing an instrument", () => {
     };
     const html = renderInstrument(archived as never, archived as never, []);
     expect(html).toContain('id="restore-instrument"');
-    expect(html).toContain("Restore this instrument");
+    expect(html).toContain(">Restore<");
     expect(html).not.toContain('id="archive-instrument"');
   });
 
@@ -837,7 +837,7 @@ describe("removing an instrument", () => {
     const { renderInstrument } = await import("./pages/instrument");
     const html = renderInstrument(base as never, base as never, []);
     expect(html).toContain('id="archive-instrument"');
-    expect(html).toContain("Archive this instrument");
+    expect(html).toContain(">Archive<");
     expect(html).toContain("fills and decisions stay");
   });
 
@@ -851,7 +851,9 @@ describe("removing an instrument", () => {
       },
     };
     const html = renderInstrument(held as never, held as never, []);
-    expect(html).toContain("Sell it before archiving");
+    // The control says "Archive" and is disabled; the sentence explaining why is help text.
+    expect(html).toContain(">Archive</button>");
+    expect(html).toMatch(/id="archive-instrument"[^>]*disabled/);
     expect(html).toContain("cannot be archived");
   });
 });
@@ -1055,7 +1057,7 @@ describe("a plan", () => {
     expect(html).toContain('name="qty-2"');
     expect(html).toContain('name="qty-3"');
     expect(html).toContain('name="price-3"');
-    expect(html).toContain("Post all fills");
+    expect(html).toContain("Post fills");
   });
 });
 
