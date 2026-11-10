@@ -10,6 +10,7 @@ import { wireRuns } from "./wiring/runs";
 import { wireFillEdits, wireTradeForm } from "./wiring/fills";
 import { wireCallRows } from "./wiring/calls";
 import { wireDecisionActions } from "./wiring/decisions";
+import { wireMarket } from "./wiring/market";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 let dashboardEtag: string | null = null;
@@ -117,6 +118,8 @@ async function route(): Promise<void> {
   } catch (e) {
     app.innerHTML = failure(e);
   }
+  // The rail's market chip is filled after the draw: no page waits on it.
+  void wireMarket();
 }
 
 

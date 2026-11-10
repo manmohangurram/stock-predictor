@@ -112,6 +112,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/calls", get(calls))
         .route("/api/calls/facets", get(call_facets))
         .route("/api/schedule", get(schedule_view))
+        .route("/api/market", get(market_state))
         .route("/api/runs", get(list_runs).post(start_run))
         .route("/api/positions", post(post_position))
         .route("/api/positions/{id}", patch(patch_position))
@@ -969,6 +970,106 @@ pub struct CallsQuery {
     pub model: Option<String>,
     /// pending | approved | rejected | blocked | none.
     pub review: Option<String>,
+}
+
+/// The reading, with the clock and the data passed in so it can be tested on any day.
+pub fn market_state_for(
+    weekday: bool,
+    minutes: u32,
+    priced_today: bool,
+) -> (&'static str, &'static str) {
+    if !weekday {
+        return ("closed", "Weekend");
+    }
+    if !(9 * 60 + 15..=15 * 60 + 30).contains(&minutes) {
+        return (
+            "closed",
+            if minutes < 9 * 60 + 15 {
+                "Before the open"
+            } else {
+                "After the close"
+            },
+        );
+    }
+    if priced_today {
+        ("open", "Trading")
+    } else {
+        // In session, a weekday, and nothing has priced today.
+        (
+            "holiday",
+            "No prices recorded today — the exchange is probably closed for a holiday",
+        )
+    }
+}
+
+/// Is the exchange trading right now?
+///
+/// There is no holiday calendar in this app, so "holiday" is a *reading of the data*: a weekday
+/// inside session hours with no prices recorded today. That is worth saying out loud — the
+/// alternative is to claim "open" while every poll returns yesterday's close.
+async fn market_state(State(st): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
+    use chrono::{Datelike, Timelike};
+    let now = chrono::Utc::now();
+    let ist = now + chrono::Duration::minutes(330);
+    let weekday = !matches!(ist.weekday(), chrono::Weekday::Sat | chrono::Weekday::Sun);
+    let minutes = ist.hour() * 60 + ist.minute();
+    // The exchange trades 09:15–15:30 IST; the poll window is the wider 09:00–16:00.
+    let in_session = (9 * 60 + 15..=15 * 60 + 30).contains(&minutes);
+
+    // The freshest bar anyone has. If it is not from today, no trades were recorded today.
+    let latest: Option<String> = sqlx::query_scalar("SELECT MAX(ts) FROM bars")
+        .fetch_one(&st.pool)
+        .await?;
+    let latest_day = latest
+        .as_ref()
+        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        .map(|d| (d + chrono::Duration::minutes(330)).date_naive());
+    let today = ist.date_naive();
+    let priced_today = latest_day == Some(today);
+
+    let (state, reason) = market_state_for(weekday, minutes, priced_today);
+    // When it next opens, and when it closes if it is open now. A holiday is not a calendar this
+    // app has, so "next open" is the next weekday's 09:15 — the tooltip says as much.
+    let to_utc = |d: chrono::NaiveDate, hour: u32, minute: u32| -> Option<chrono::DateTime<chrono::Utc>> {
+        let naive = d.and_hms_opt(hour, minute, 0)?;
+        Some(
+            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc)
+                - chrono::Duration::minutes(330),
+        )
+    };
+    let next_open_at = {
+        let mut day = ist.date_naive();
+        let mut found = None;
+        for _ in 0..9 {
+            let weekday = !matches!(chrono::Datelike::weekday(&day), chrono::Weekday::Sat | chrono::Weekday::Sun);
+            if weekday {
+                if let Some(at) = to_utc(day, 9, 15) {
+                    if at > now {
+                        found = Some(at);
+                        break;
+                    }
+                }
+            }
+            day = day.succ_opt().unwrap_or(day);
+        }
+        found.map(|d| d.to_rfc3339())
+    };
+    let closes_at = if state == "open" {
+        to_utc(ist.date_naive(), 15, 30).map(|d| d.to_rfc3339())
+    } else {
+        None
+    };
+
+    Ok(Json(serde_json::json!({
+        "state": state,
+        "reason": reason,
+        "as_of": now.to_rfc3339(),
+        "session": "09:15–15:30 IST, Mon–Fri",
+        "last_bar_at": latest,
+        "next_open_at": next_open_at,
+        "closes_at": closes_at,
+        "holiday_calendar": false,
+    })))
 }
 
 /// The schedule, computed where the rules are: the daily markers, the NSE window and the poll

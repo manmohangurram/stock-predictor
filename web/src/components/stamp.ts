@@ -18,7 +18,11 @@ export const toneOf = (action: string): StampKind =>
 export const actionStamp = (action: string): string => stamp(toneOf(action), action);
 
 /** A status pill — pending, approved, rejected, done, failed, running — one shape everywhere. */
-export const pill = (tone: "ok" | "todo" | "running" | "done" | "failed" | "", label: string, title = ""): string =>
+export const pill = (
+  tone: "ok" | "todo" | "running" | "done" | "failed" | "graphite" | "",
+  label: string,
+  title = "",
+): string =>
   `<span class="pill ${tone}"${title ? ` title="${title}"` : ""}>${label}</span>`;
 
 /** Approved reads as done, rejected as a to-do, pending as plain. */

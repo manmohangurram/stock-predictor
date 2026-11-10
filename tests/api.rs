@@ -2642,3 +2642,21 @@ async fn the_audit_list_can_be_narrowed() {
     assert_eq!(v["prompts"], json!(["decide", "plan"]));
     assert_eq!(v["models"], json!(["decide_v1", "plan_stock_v1"]));
 }
+
+/// The market reading: weekends, the closed hours, an open session, and the suspicious one — a
+/// weekday inside session hours with no prices.
+#[test]
+fn the_market_state_is_read_from_the_clock_and_the_data() {
+    use stock_predictor::api::market_state_for;
+    // Sat/Sun, whatever the hour.
+    assert_eq!(market_state_for(false, 10 * 60, true), ("closed", "Weekend"));
+    // A weekday, before 09:15 and after 15:30.
+    assert_eq!(market_state_for(true, 8 * 60, false), ("closed", "Before the open"));
+    assert_eq!(market_state_for(true, 16 * 60, true), ("closed", "After the close"));
+    // In session, with prices: trading.
+    assert_eq!(market_state_for(true, 11 * 60, true), ("open", "Trading"));
+    // In session, with nothing priced: the honest guess is a holiday, and it says so.
+    let (state, reason) = market_state_for(true, 11 * 60, false);
+    assert_eq!(state, "holiday");
+    assert!(reason.contains("probably"), "{reason}");
+}

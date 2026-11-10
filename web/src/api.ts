@@ -324,6 +324,19 @@ export const api = {
   /** Runs: what the scheduler started, opened before the work and closed after it. */
   runs: (limit = 25) =>
     req<{ runs: RunRow[]; running: number }>(`/api/runs?limit=${limit}`),
+  /** Whether the exchange is trading right now, and why. */
+  market: () =>
+    req<{
+      state: "open" | "closed" | "holiday";
+      reason: string;
+      as_of: string;
+      session: string;
+      last_bar_at: string | null;
+      /** When the exchange next opens; when it closes, if it is open now. */
+      next_open_at: string | null;
+      closes_at: string | null;
+      holiday_calendar: boolean;
+    }>("/api/market"),
   /** The schedule: each prompt's last run and when it is next due, computed by the server. */
   schedule: () =>
     req<{ now: string; prompts: ScheduledPrompt[] }>("/api/schedule"),

@@ -34,6 +34,7 @@ export function renderRail(
       <span>${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
     </div>
     ${items}
+    <div class="rail-market" data-market role="status" aria-live="polite"></div>
   </nav>`;
 }
 
@@ -60,8 +61,13 @@ export function renderHead(
   action = "",
 ): string {
   return `<div class="page-head">
-    <div><h1>${title}</h1><div class="page-sub">${subtitle}</div></div>
+    <div>
+      <h1>${title}</h1>
+      <div class="page-sub">${subtitle}</div>
+      <div class="head-market" data-market role="status" aria-live="polite"></div>
+    </div>
     <div class="head-right">
+    <div class="head-row">
     ${
       figures.length
         ? `<div class="figures">${figures
@@ -75,6 +81,7 @@ export function renderHead(
         : ""
     }
     ${action}
+    </div>
     </div>
   </div>`;
 }
