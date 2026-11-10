@@ -1,3 +1,26 @@
+## v0.25.1
+
+### Hotfix: the Archived page showed everything the scan had ever noticed
+
+Discovery and archiving both wrote `instruments.active = 0`, so the page that lists what *you*
+archived was listing **every ticker the short-term scan mentioned** — in a demo database, twenty
+rows of names that were never in the book, one of which was the owner's.
+
+- Migration `0020` adds `instruments.archived_at`: the record of a decision, null for a name the
+  scan merely noticed. The page lists on that.
+- The backfill keeps every instrument with **fills or decisions** — history is a person's trail — and
+  drops the ones with neither.
+- **Restore** clears the date, so a row is neither archived nor mistaken for discovered.
+- The trailing **"open to restore"** column is gone: the whole row is the link to the instrument,
+  where Restore lives, so the column repeated what the row already does.
+
+### Hotfix: the Last fill column did not share the page's edge
+
+Its header was left-aligned over a right-aligned value. Header and date are both right now, so
+Fills, Decisions, Last fill and Realised end on the same line as every other figure on the page
+(measured: header right edge 1159/1159, Realised 1393/1393). The instrument page's `vs close` column
+had the same inversion and is fixed with it.
+
 ## v0.25.0
 
 ### The window goes into the search query
