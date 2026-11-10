@@ -213,3 +213,70 @@ fn a_target_reached_is_notified_as_a_profit_not_a_stop() {
     assert!(n.body.contains("target 1318.00 reached"), "{}", n.body);
     assert!(!n.body.contains("stop"), "{}", n.body);
 }
+
+/// The one test that leaves the machine: a real push to ntfy.sh, read back from the service.
+///
+/// Ignored by default because no test may touch the network (AGENTS.md). Run it when the question
+/// is not "does the code shape look right" but "is a notification actually arriving":
+///
+/// ```sh
+/// cargo test --test notify live -- --ignored --nocapture
+/// ```
+///
+/// Set `NTFY_TOPIC` to prove your own channel; with no topic it uses a throwaway one and says so.
+#[tokio::test]
+#[ignore = "live network: sends a real push to ntfy.sh"]
+async fn live_a_push_lands_on_the_service() {
+    use stock_predictor::notify::{Notifier as _, Ntfy};
+
+    let topic = std::env::var("NTFY_TOPIC")
+        .unwrap_or_else(|_| format!("stock-predictor-selftest-{}", std::process::id()));
+    println!("topic: {topic}");
+    let rt = stock_predictor::rules::runtime::Runtime::default();
+    let ntfy = Ntfy::new("https://ntfy.sh", &topic, "", "http://127.0.0.1:8080", &rt).unwrap();
+    let n = Notification {
+        title: "SELF TEST · push is working".into(),
+        body: "sent by cargo test --ignored".into(),
+        priority: Priority::Default,
+        dedupe_key: format!("selftest-{}", std::process::id()),
+        signal_id: None,
+        symbol: "INFY.NS".into(),
+    };
+    ntfy.send(&n).await.expect("the push must be accepted");
+
+    // Read it back: an accepted request is not proof that the service kept it.
+    let url = format!("https://ntfy.sh/{topic}/json?poll=1&since=10m");
+    let body = reqwest::get(&url).await.unwrap().text().await.unwrap();
+    println!("polled: {}", body.lines().count());
+    assert!(
+        body.contains("push is working"),
+        "the message is not on the topic: {body}"
+    );
+}
+
+/// No topic in settings is "off", not "POST to the root and fail the decision".
+#[tokio::test]
+async fn an_unconfigured_notifier_sends_nothing_and_records_nothing() {
+    use stock_predictor::notify::{Ntfy, Notifier as _};
+
+    let (_d, pool) = pool().await;
+    let rt = stock_predictor::rules::runtime::Runtime::default();
+    let ntfy = Ntfy::new("https://ntfy.sh", "", "", "", &rt).unwrap();
+    assert!(!ntfy.configured());
+
+    let n = Notification {
+        title: "BUY · INFY 5 units".into(),
+        body: "entry 1405.20".into(),
+        priority: Priority::Default,
+        dedupe_key: "off".into(),
+        signal_id: None,
+        symbol: "INFY.NS".into(),
+    };
+    let sent = notify::dispatch(&pool, &ntfy, &n).await.unwrap();
+    assert!(!sent);
+    let rows: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notifications")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rows.0, 0, "no push claimed, so no row either");
+}

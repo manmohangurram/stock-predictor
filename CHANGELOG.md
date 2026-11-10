@@ -1,4 +1,18 @@
-## Unreleased
+## v0.22.0
+
+### Notifications: off is off, and a push is provable
+
+- **No ntfy topic used to mean a broken push, not a silent one.** The notifier was built with an
+  empty topic and pointed at the service root, so every decision that produced a signal failed its
+  push — and, worse, reported the failure against the decision. A notifier with no topic now reports
+  `configured() == false`; nothing is sent, no `notifications` row is written, and the run says
+  *"recorded without a push"* instead of silently doing nothing.
+- A push that **fails** is still an error in the run report, and still retried on the next tick,
+  because the dedupe row is only written after a successful send.
+- A **live test** now exists for the question "is a notification actually arriving":
+  `cargo test --test notify live -- --ignored`. It pushes to ntfy.sh, then reads the topic back —
+  an accepted request is not proof the service kept it. Ignored by default, so no test hits the
+  network.
 
 ### The short-term list is asked once a day, from three places
 

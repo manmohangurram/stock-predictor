@@ -119,6 +119,12 @@ pub trait Notifier: Send + Sync {
         &'a self,
         n: &'a Notification,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>>;
+
+    /// False when there is nowhere to push: ntfy with no topic. A decision is still recorded, it
+    /// just does not reach a phone — and the run says so instead of pretending a push happened.
+    fn configured(&self) -> bool {
+        true
+    }
 }
 
 pub struct Ntfy {
@@ -126,6 +132,8 @@ pub struct Ntfy {
     url: String,
     token: String,
     public_url: String,
+    /// Empty topic means "off", not "post to the root and fail".
+    enabled: bool,
 }
 
 impl Ntfy {
@@ -145,6 +153,7 @@ impl Ntfy {
             ),
             token: token.to_string(),
             public_url: public_url.trim_end_matches('/').to_string(),
+            enabled: !topic.trim().is_empty(),
         })
     }
 
@@ -205,6 +214,10 @@ impl Ntfy {
 }
 
 impl Notifier for Ntfy {
+    fn configured(&self) -> bool {
+        self.enabled
+    }
+
     fn send<'a>(
         &'a self,
         n: &'a Notification,
@@ -272,6 +285,9 @@ pub async fn dispatch(
     notifier: &dyn Notifier,
     n: &Notification,
 ) -> Result<bool> {
+    if !notifier.configured() {
+        return Ok(false);
+    }
     let existing: Option<(i64,)> =
         sqlx::query_as("SELECT id FROM notifications WHERE dedupe_key = ?")
             .bind(&n.dedupe_key)

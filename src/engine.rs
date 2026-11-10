@@ -1093,8 +1093,17 @@ async fn finish(
         &as_candidate,
     ) {
         n.signal_id = Some(signal_id);
-        if notify::dispatch(deps.pool, deps.notifier, &n).await? {
-            report.notifications += 1;
+        match notify::dispatch(deps.pool, deps.notifier, &n).await {
+            Ok(true) => report.notifications += 1,
+            Ok(false) if !deps.notifier.configured() => report
+                .notes
+                .push(format!("{}: no ntfy topic — recorded without a push", instrument.symbol)),
+            Ok(false) => {}
+            // A push that fails must not lose the decision: the row is already written, and the
+            // notification is retried on the next tick because no dedupe row was kept.
+            Err(e) => report
+                .errors
+                .push(format!("{}: push failed: {e}", instrument.symbol)),
         }
     }
     Ok(())
