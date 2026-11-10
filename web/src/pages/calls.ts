@@ -199,11 +199,18 @@ export function renderCalls(
   );
   const body = rows
     .map((r) => {
-      // "decide INFY.NS" is two facts: what the call was for, and which holding it was about.
+      // What the call was: a prompt for a model, or a tool call. A search's purpose is the query,
+      // so its first word is not a prompt type — "MARUTI news today" is not a call named MARUTI.
+      const tool = r.endpoint === "search" || r.endpoint === "fetch";
       const [kind, ...rest] = (r.purpose ?? "").split(/\s+/);
+      const promptType = tool
+        ? r.endpoint === "search"
+          ? "Web search"
+          : "Web fetch"
+        : titleCase(kind || "—");
       // A book call is about no single holding: say so, instead of printing "book".
       const holding =
-        kind === "plan"
+        !tool && kind === "plan"
           ? `<b>Whole book</b><div class="sub">every holding</div>`
           : r.instrument_name
             ? `<b>${escapeHtml(r.instrument_name)}</b>${
@@ -211,10 +218,14 @@ export function renderCalls(
                   ? `<div class="sub">${escapeHtml(r.instrument_symbol)}</div>`
                   : ""
               }`
-            : `<span class="muted">${escapeHtml(rest.join(" ") || "—")}</span>`;
+            : tool
+              ? // A tool call's purpose is the query itself ("MARUTI news today"), which is the
+                // most a row can say when the holding is not in the book yet.
+                `<span class="muted">${escapeHtml(r.purpose ?? "—")}</span>`
+              : `<span class="muted">${escapeHtml(rest.join(" ") || "—")}</span>`;
       return `<tr>
   <td class="time" title="${escapeHtml(r.ts)}">${escapeHtml(dayTime(r.ts))}</td>
-  <td class="hide-sm">${escapeHtml(titleCase(kind || "—"))}</td>
+  <td class="hide-sm">${escapeHtml(promptType)}</td>
   <td class="hide-sm">${escapeHtml(titleCase(r.endpoint))}</td>
   <td>${holding}</td>
   <td class="review-td"><div class="review-cell">${reviewBadge(r)}</div></td>

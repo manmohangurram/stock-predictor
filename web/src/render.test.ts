@@ -5,7 +5,7 @@ import { renderSettings, shouldDisableSave } from "./pages/settings";
 import type { Limits } from "./api";
 import { renderMarkdown } from "./markdown";
 import { searchQuery, searchResults } from "./components/call-viewer";
-import { renderExchangeDetail } from "./pages/calls";
+import { renderCalls, renderExchangeDetail } from "./pages/calls";
 
 const limits = (over: Partial<Limits> = {}): Limits => ({
   min_profit_pct: 5,
@@ -1250,5 +1250,38 @@ describe("a search call is shown as a question and its results", () => {
     expect(html).toContain("Hindustan Times");
     expect(html).toContain("search-gist");
     expect(html).not.toContain("Sent to the model");
+  });
+});
+
+describe("the prompt type column says what the call was", () => {
+  const row = (over: Partial<CallRow>): CallRow => ({
+    id: 1, ts: "2026-11-10T19:57:00Z", endpoint: "chat", purpose: "trend MARUTI.NS",
+    decision_id: null, decision_status: null, decision_action: null, decision_reason: null,
+    instrument_name: "Maruti", instrument_symbol: "MARUTI.NS", plan_legs: 0,
+    model: "trend_v1", round: 1, prompt_tokens: 10, completion_tokens: 5,
+    validator_verdict: null, trigger: null, error: null, ...over,
+  });
+
+  const table = (rows: CallRow[]) =>
+    renderCalls(
+      { prompts: [], now: "2026-11-10T20:00:00Z" },
+      0,
+      rows,
+      { prompts: [], calls: [], models: [] },
+      {},
+    );
+
+  test("a search is named for what it is, not for the first word of its query", () => {
+    const html = table([
+      row({ endpoint: "search", purpose: "MARUTI news today", instrument_name: null, instrument_symbol: null }),
+    ]);
+    expect(html).toContain("Web search");
+    expect(html).not.toContain('<td class="hide-sm">Maruti</td>');
+  });
+
+  test("a model call is named for its prompt", () => {
+    const html = table([row({})]);
+    expect(html).toContain("Trend");
+    expect(html).toContain("Maruti");
   });
 });
