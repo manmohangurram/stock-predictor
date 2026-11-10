@@ -1,3 +1,31 @@
+## v0.23.0
+
+### The audit page reads straight
+
+- **A long answer is no longer cut off.** The drawer lives inside a blotter table cell, and the
+  cell's `white-space: nowrap` was inherited by everything inside it — so a paragraph of reasoning
+  laid itself out as one endless line, ran off the row, and looked truncated. The drawer is prose
+  again; measured, not eyeballed: no horizontal overflow, prose `scrollWidth === clientWidth`, and
+  the verdict card fills its column.
+- **Copy, on both sides.** Every raw block carries a copy button in its top-right corner that copies
+  the stored JSON **byte for byte** (the full text sits beside the truncated `<pre>`), with the
+  count confirmed on the button and a 40px target on a phone.
+- **A search call is not a failed chat.** It has its own view: the query, how many results were
+  asked for, how many came back, and the ranked list with title, source, date and snippet — in a
+  **fixed-height, scrollable panel**, so the sheet does not jump between one hit and five.
+- **Prompt type says what the call was.** It was the first word of `purpose`, which for a search is
+  the query — so `"MARUTI news today"` printed **MARUTI** as a prompt type and pushed "news today"
+  into the holding column. Tool calls now read **Web search** / **Web fetch**; the holding column
+  names the instrument, or the query when the name is not in the book.
+- Search rows **name their holding**: a search is recorded as `search SYMBOL`, which the audit's
+  purpose-join already reads.
+
+### Less prompt, more signal
+
+- What the model reads from a web search is now **title · day · source · snippet** — no URL it
+  cannot open, no 700-word article dump, and **5** results instead of 8. A dated reason is the
+  point; the rest was tokens.
+
 ## v0.22.0
 
 ### Notifications: off is off, and a push is provable
