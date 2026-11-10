@@ -2535,3 +2535,38 @@ async fn an_archived_instrument_can_be_restored() {
     let (s, _) = send(&router, "POST", "/api/instruments/TCS/restore", json!({})).await;
     assert_eq!(s, StatusCode::BAD_REQUEST);
 }
+
+/// Opening a call must work with and without a decision: the drawer is the only place the stored
+/// prompt and reply are readable, so a 500 here makes the whole audit page useless.
+#[tokio::test]
+async fn a_call_can_be_opened_with_and_without_a_decision() {
+    let (_d, router, pool) = setup().await;
+    // One call that produced a decision, one that did not.
+    sqlx::query(
+        "INSERT INTO api_calls (id, ts, conversation_id, endpoint, purpose, http_status)
+         VALUES (11, '2026-11-09T10:00:00Z', 'conv-a', 'chat', 'decide INFY', 200),
+                (12, '2026-11-09T10:01:00Z', 'conv-b', 'chat', 'decide TCS', 200)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, conversation_id)
+         SELECT id, 'BUY', 1, 100.0, '2030-01-01T00:00:00Z', '{}', '2026-11-09T10:00:01Z',
+                'long', 'conv-a'
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (s, v) = get(&router, "/api/calls/11").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["instrument_name"], "INFY Ltd");
+
+    // No decision behind it: the holding is still named, from the purpose.
+    let (s, v) = get(&router, "/api/calls/12").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    assert_eq!(v["instrument_name"], "TCS Ltd");
+}

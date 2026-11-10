@@ -915,6 +915,8 @@ async fn call_detail(
              SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
              ORDER BY s.id DESC LIMIT 1)
          LEFT JOIN instruments i ON i.id = d.instrument_id
+         -- A call with no decision still names a holding in its purpose, after the verb.
+         LEFT JOIN instruments pi ON pi.symbol = trim(substr(a.purpose, instr(a.purpose, ' ') + 1))
          WHERE a.id = ?",
     )
     .bind(id)
