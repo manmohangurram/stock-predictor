@@ -42,7 +42,7 @@ async function route(): Promise<void> {
       const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
       const filters = {
         prompt: params.get("prompt") ?? undefined,
-        call: params.get("call") ?? undefined,
+        channel: params.get("channel") ?? undefined,
         model: params.get("model") ?? undefined,
         review: params.get("review") ?? undefined,
       };

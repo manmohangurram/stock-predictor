@@ -143,7 +143,11 @@ export function renderSchedule(
 
 export interface CallFilters {
   prompt?: string;
-  call?: string;
+  /**
+   * The exchange channel — named `channel` in the URL because `?call=` already means
+   * "open this call", and a filter that silently swallowed the deep link emptied the table.
+   */
+  channel?: string;
   model?: string;
   review?: string;
 }
@@ -168,7 +172,7 @@ function filterBar(
   const on = Object.values(active).some(Boolean);
   return `<div class="filter-bar">
     ${pick("prompt", "Prompt", facets.prompts)}
-    ${pick("call", "Call", facets.calls)}
+    ${pick("channel", "Call", facets.calls)}
     ${pick("model", "Model", facets.models)}
     ${pick("review", "Review", ["pending", "approved", "rejected", "blocked", "none"])}
     ${on ? `<a class="btn ghost" href="/calls">Clear</a>` : ""}
@@ -358,7 +362,7 @@ export function renderExchangeDetail(d: CallDetail): string {
 
   return `<div class="call">
   <div class="call-bar">
-    ${fact("Model", escapeHtml(d.prompt_template ?? firstWord(d.purpose)))}
+    ${fact("Model", escapeHtml(humanLabel(d.prompt_template ?? firstWord(d.purpose))))}
     ${fact("Time", escapeHtml(dayTime(d.ts)))}
     ${d.round ? fact("Round", String(d.round)) : ""}
     ${fact("Tokens", `${d.prompt_tokens ?? 0} in · ${d.completion_tokens ?? 0} out`)}
@@ -368,23 +372,18 @@ export function renderExchangeDetail(d: CallDetail): string {
     ${d.error ? `<span class="call-fact refused"><span class="lbl">Failed</span><b>${escapeHtml(d.error)}</b></span>` : ""}
   </div>
 
-  ${
-    d.error
-      ? ""
-      : `<section class="call-sec">
-    <h3 class="call-h">The answer</h3>
-    ${decisionCard(reply, dayTime(d.ts))}
-  </section>`
-  }
-
   <section class="call-sec call-exchange">
     <div class="call-col">
       <h3 class="call-h">Sent to the model</h3>
       ${prompt}
     </div>
     <div class="call-col">
-      <h3 class="call-h">Received, verbatim</h3>
-      <pre class="call-verbatim">${reply ? escapeHtml(reply) : "no content"}</pre>
+      <h3 class="call-h">Received</h3>
+      ${
+        // A failed or empty reply has no verdict to show; the verbatim line says everything.
+        d.error || !reply ? "" : decisionCard(reply, dayTime(d.ts))
+      }
+      <pre class="call-verbatim">${reply ? escapeHtml(reply) : "No reply stored for this call."}</pre>
     </div>
   </section>
 

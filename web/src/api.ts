@@ -336,10 +336,15 @@ export const api = {
   calls: async (
     offset = 0,
     limit = 25,
-    filters: { prompt?: string; call?: string; model?: string; review?: string } = {},
+    filters: { prompt?: string; channel?: string; model?: string; review?: string } = {},
   ) => {
     const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-    for (const [k, v] of Object.entries(filters)) if (v) q.set(k, v);
+    // The record's own name for the exchange channel is `call`; the URL calls it `channel` so it
+    // cannot collide with `?call=<id>`, the deep link that opens one call.
+    for (const [k, v] of Object.entries(filters)) {
+      if (!v) continue;
+      q.set(k === "channel" ? "call" : k, v);
+    }
     const r = await fetch(`/api/calls?${q}`);
     if (!r.ok) throw new Error(`/api/calls: ${r.status} ${(await r.text()).slice(0, 200)}`);
     const rows = (await r.json()) as CallRow[];
