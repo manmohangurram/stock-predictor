@@ -28,6 +28,7 @@ export function renderArchived(rows: ArchivedInstrument[]): string {
   </td>
   <td class="num hide-sm">${r.fills}</td>
   <td class="num hide-sm">${r.decisions}</td>
+  <!-- Right, with the figures beside it: a date column reads as a column, not as prose. -->
   <td class="num hide-sm">${r.last_fill ? histDate(r.last_fill) : "—"}</td>
   <td class="num ${tone}">${shown}
     <div class="sub">${
@@ -56,7 +57,7 @@ export function renderArchived(rows: ArchivedInstrument[]): string {
       <thead><tr>
         <th scope="col">Holding</th><th scope="col" class="hide-sm num">Fills</th>
         <th scope="col" class="hide-sm num">Decisions</th>
-        <th scope="col" class="hide-sm">Last fill</th>
+        <th scope="col" class="hide-sm num">Last fill</th>
         <th scope="col" class="num">Realised</th>
       </tr></thead>
       <tbody>${body}</tbody>

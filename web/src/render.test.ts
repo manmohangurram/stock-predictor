@@ -1286,3 +1286,26 @@ describe("the prompt type column says what the call was", () => {
     expect(html).toContain("Maruti");
   });
 });
+
+describe("every column agrees with its own header", () => {
+  // No DOM here, so the classes are read from the markup: a header says how its column is aligned.
+  const classes = (html: string, tag: "th" | "td") =>
+    [...html.matchAll(new RegExp(`<${tag}(?=[ >])([^>]*)>`, "g"))].map(
+      (m) => /class="([^"]*)"/.exec(m[1])?.[1] ?? "",
+    );
+  const numeric = (cls: string) => cls.split(/\s+/).includes("num");
+
+  test("archived: the date column lines up with the figures beside it", async () => {
+    const { renderArchived } = await import("./pages/archived");
+    const html = renderArchived([
+      {
+        id: 1, symbol: "TCS.NS", name: "Tata Consultancy", class: "stock",
+        fills: 2, decisions: 0, last_fill: "2026-01-09T00:00:00Z",
+        realised: 300, net_invested: -300,
+      },
+    ]);
+    // Holding, fills, decisions, last fill, realised — the date shares the figures' edge.
+    expect(classes(html, "th").map(numeric)).toEqual([false, true, true, true, true]);
+    expect(classes(html, "td").map(numeric)).toEqual([false, true, true, true, true]);
+  });
+});

@@ -234,7 +234,7 @@ function trades(list: Trade[]): string {
       <td class="num">${units(t.qty)}</td>
       <td class="num">${money(t.price)}</td>
       <td class="num hide-sm">${t.market_close === null ? "—" : money(t.market_close)}</td>
-      <td class="hide-sm">${vsClose(t)}</td>
+      <td class="num hide-sm">${vsClose(t)}</td>
       <td class="right"><button class="btn ghost icon-btn" type="button" data-edit-fill="${t.id}"
           aria-expanded="false" title="Correct this fill" aria-label="Correct this fill">
         <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
