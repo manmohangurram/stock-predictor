@@ -2702,3 +2702,61 @@ async fn restoring_clears_the_archive_date() {
     assert_eq!(row.0, 1);
     assert!(row.1.is_none());
 }
+
+/// Adding a name the scan already noticed must make it active. `INSERT OR IGNORE` used to honour
+/// the discovered row, so the instrument was "added" and stayed active = 0 — which the ledger
+/// filters out of the holdings table and the page reads as archived.
+#[tokio::test]
+async fn adding_a_discovered_name_promotes_it_instead_of_leaving_it_inactive() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO instruments (symbol, class, name, currency, active)
+         VALUES ('MAKERSL.NS', 'stock', 'Makers Labs', 'INR', 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // The promotion, without the endpoint's price refresh (which would reach the network).
+    let id = stock_predictor::api::add_or_promote(&pool, "MAKERSL.NS", "stock", "Makers Labs")
+        .await
+        .unwrap();
+    let row: (i64, Option<String>) =
+        sqlx::query_as("SELECT active, archived_at FROM instruments WHERE id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(row.0, 1, "added means active");
+    assert!(row.1.is_none(), "and not archived");
+
+    let (_, v) = get(&router, "/api/archived").await;
+    assert!(v.as_array().unwrap().is_empty(), "{v}");
+
+    // And a position on it is now visible: that query filters `i.active = 1`, which is why a
+    // held-but-inactive instrument vanished from the ledger.
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, mode, state, opened_at)
+         VALUES (?, 10, 100.0, 'long', 'open', '2026-11-10T05:00:00Z')",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (_, dash) = get(&router, "/api/dashboard?mode=long").await;
+    assert_eq!(dash["positions"][0]["symbol"], "MAKERSL.NS", "{dash}");
+}
+
+/// A genuinely archived instrument is not revived by adding it again — the page holds the way back.
+#[tokio::test]
+async fn adding_an_archived_instrument_is_refused_with_the_way_back() {
+    let (_d, _router, pool) = setup().await;
+    send(&_router, "DELETE", "/api/instruments/TCS", json!({})).await;
+    let err = stock_predictor::api::add_or_promote(&pool, "TCS", "stock", "Tata Consultancy")
+        .await
+        .unwrap_err();
+    assert!(
+        format!("{err:?}").contains("restore it from its own page"),
+        "{err:?}"
+    );
+}

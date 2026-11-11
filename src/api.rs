@@ -564,6 +564,8 @@ struct InstrumentRecord {
     currency: String,
     target_profit_pct: Option<f64>,
     active: i64,
+    /// Null unless a person archived it: discovery writes `active = 0` too.
+    archived_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -595,7 +597,7 @@ async fn instrument_detail(
     Path(symbol): Path<String>,
 ) -> Result<Json<InstrumentDetail>, ApiError> {
     let row: Option<InstrumentRecord> = sqlx::query_as(
-        "SELECT id, symbol, class, name, currency, target_profit_pct, active
+        "SELECT id, symbol, class, name, currency, target_profit_pct, active, archived_at
          FROM instruments WHERE symbol = ?",
     )
     .bind(&symbol)
@@ -609,8 +611,11 @@ async fn instrument_detail(
         currency,
         target_profit_pct,
         active,
+        archived_at,
         ..
     } = record;
+    let _ = active;
+    let archived = archived_at.is_some();
     let class = AssetClass::parse(&record.class).map_err(|_| ApiError::Internal)?;
 
     let headlines: Vec<HeadlineRow> =
@@ -647,7 +652,8 @@ async fn instrument_detail(
             currency,
             timing_note: class.timing_note().to_string(),
             target_profit_pct,
-            active: active != 0,
+            // The page asks "is there a way back?", which only an archive decision answers.
+            active: !archived,
         },
         headlines,
         signals,
@@ -686,7 +692,7 @@ async fn analysis(
     Path(symbol): Path<String>,
 ) -> Result<Json<Analysis>, ApiError> {
     let row: Option<InstrumentRecord> = sqlx::query_as(
-        "SELECT id, symbol, class, name, currency, target_profit_pct, active
+        "SELECT id, symbol, class, name, currency, target_profit_pct, active, archived_at
          FROM instruments WHERE symbol = ?",
     )
     .bind(&symbol)
@@ -700,8 +706,11 @@ async fn analysis(
         currency,
         target_profit_pct,
         active,
+        archived_at,
         ..
     } = record;
+    let _ = active;
+    let archived = archived_at.is_some();
     let class = AssetClass::parse(&record.class).map_err(|_| ApiError::Internal)?;
 
     let rows: Vec<(String, f64, f64, f64, f64, i64)> = sqlx::query_as(
@@ -810,7 +819,8 @@ async fn analysis(
             currency,
             timing_note: class.timing_note().to_string(),
             target_profit_pct,
-            active: active != 0,
+            // The page asks "is there a way back?", which only an archive decision answers.
+            active: !archived,
         },
         bars: bars
             .iter()
@@ -1689,6 +1699,42 @@ pub struct AddInstrument {
     pub class: Option<String>,
 }
 
+/// Adding is an act of intent, so it makes the row active — including a row the short-term scan
+/// already created as a candidate. A genuinely archived instrument is not revived by it: the way
+/// back is its own page, which says so.
+pub async fn add_or_promote(
+    pool: &SqlitePool,
+    code: &str,
+    class: &str,
+    name: &str,
+) -> Result<i64, ApiError> {
+    let before: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT archived_at FROM instruments WHERE symbol = ?")
+            .bind(code)
+            .fetch_optional(pool)
+            .await?;
+    if let Some((Some(_),)) = before {
+        return Err(ApiError::BadRequest(format!(
+            "{code} is archived — restore it from its own page"
+        )));
+    }
+    sqlx::query(
+        "INSERT INTO instruments (symbol, class, name, currency, active)
+         VALUES (?, ?, ?, 'INR', 1)
+         ON CONFLICT(symbol) DO UPDATE SET active = 1",
+    )
+    .bind(code)
+    .bind(class)
+    .bind(name)
+    .execute(pool)
+    .await?;
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = ?")
+        .bind(code)
+        .fetch_one(pool)
+        .await?;
+    Ok(id.0)
+}
+
 async fn add_instrument(
     State(st): State<AppState>,
     Json(body): Json<AddInstrument>,
@@ -1731,19 +1777,10 @@ async fn add_instrument(
         ),
     };
 
-    sqlx::query(
-        "INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES (?, ?, ?, 'INR')",
-    )
-    .bind(code)
-    .bind(class.as_str())
-    .bind(&name)
-    .execute(&st.pool)
-    .await?;
-
-    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = ?")
-        .bind(code)
-        .fetch_one(&st.pool)
-        .await?;
+    // `OR IGNORE` means an existing row wins — and the short-term scan creates rows for every name
+    // it notices, with `active = 0`. Adding one of those must promote it, or the instrument is
+    // created and immediately looks archived. A genuinely archived name is not revived silently.
+    let id = add_or_promote(&st.pool, code, class.as_str(), &name).await?;
 
     // A newly added symbol should have a chart and headlines on first open, not tomorrow
     // morning. AMFI scheme codes have no Yahoo series; a Yahoo-coded fund (0P…BO) does.
@@ -1751,7 +1788,7 @@ async fn add_instrument(
         if let Ok(market) =
             crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?)
         {
-            let fetch = crate::store::refresh(&st.pool, id.0, code, &market);
+            let fetch = crate::store::refresh(&st.pool, id, code, &market);
             match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
                 Ok(Ok((bars, news))) => {
                     tracing::info!(symbol = code, bars, news, "prices and headlines stored")
@@ -1763,7 +1800,7 @@ async fn add_instrument(
     }
 
     Ok(Json(InstrumentRow {
-        id: id.0,
+        id,
         symbol: code.to_string(),
         class: class.as_str().to_string(),
         name,
