@@ -13,6 +13,7 @@ pub const TRENDING_V1: &str = include_str!("../../prompts/trending_v1.md");
 pub const SHORT_V1: &str = include_str!("../../prompts/short_v1.md");
 pub const PLAN_STOCK_V1: &str = include_str!("../../prompts/plan_stock_v1.md");
 pub const PLAN_MF_V1: &str = include_str!("../../prompts/plan_mf_v1.md");
+pub const PLAN_TRADE_V1: &str = include_str!("../../prompts/plan_trade_v1.md");
 
 #[derive(Debug, Clone)]
 pub struct RenderedPrompt {
@@ -70,6 +71,7 @@ pub fn template(name: &str) -> Result<&'static str> {
         "short_v1" => Ok(SHORT_V1),
         "plan_stock_v1" => Ok(PLAN_STOCK_V1),
         "plan_mf_v1" => Ok(PLAN_MF_V1),
+        "plan_trade_v1" => Ok(PLAN_TRADE_V1),
         // The old name still resolves, so an audit row written before the split still renders.
         "plan_v1" => Ok(PLAN_STOCK_V1),
         other => Err(anyhow!("unknown prompt template {other:?}")),
@@ -99,6 +101,7 @@ pub fn render_plan(
     let text = match scope {
         crate::llm::plan::Scope::Stock => PLAN_STOCK_V1,
         crate::llm::plan::Scope::Fund => PLAN_MF_V1,
+        crate::llm::plan::Scope::Trade => PLAN_TRADE_V1,
     }
     .replace("{{book}}", book)
     .replace("{{cap}}", cap)

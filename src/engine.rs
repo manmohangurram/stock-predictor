@@ -100,35 +100,59 @@ async fn plan_book(
 ) -> Result<Option<()>> {
     let fund = scope.is_fund();
     // A book decision, not an intraday one: asked once per IST day, on the first tick that can
-    // ask it. Per-stock calls already cover what moves inside the day.
-    let today = ist_day(now);
-    let marker = if fund {
-        "mf_plan_last"
+    // ask it. The trade plan is the exception — it lives for hours, so it is asked again every
+    // slot the session offers.
+    // A person asking is not the clock asking: a manual run skips both the slot and the session
+    // check, and writes no marker, so it cannot swallow the next scheduled question.
+    let manual = run.is_some();
+    let slot = if scope.is_trade() {
+        match crate::schedule::trade_slot(now) {
+            Some(slot) => slot,
+            None if manual => String::new(),
+            None => return Ok(None), // outside the session: nothing can be done anyway
+        }
     } else {
-        "stock_plan_last"
+        ist_day(now)
     };
-    let last: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
-        .bind(marker)
-        .fetch_optional(deps.pool)
-        .await?;
-    if last.map(|r| r.0).as_deref() == Some(today.as_str()) {
-        return Ok(None);
+    let marker = match scope {
+        crate::llm::plan::Scope::Fund => "mf_plan_last",
+        crate::llm::plan::Scope::Trade => "trade_plan_last_slot",
+        crate::llm::plan::Scope::Stock => "stock_plan_last",
+    };
+    if !manual {
+        let last: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+            .bind(marker)
+            .fetch_optional(deps.pool)
+            .await?;
+        if last.map(|r| r.0).as_deref() == Some(slot.as_str()) {
+            return Ok(None);
+        }
     }
     let funds = fund_symbols(deps.pool).await?;
-    // Two books, two prompts: this call only ever sees its own half.
+    // Three books, three prompts: this call only ever sees its own half. A trade plan sees the
+    // trade purse's holdings — the stocks it is allowed to sell.
     let book: Vec<crate::llm::rotate::HoldingLine> =
-        load_holdings(deps.pool, crate::models::Mode::Long)
-            .await?
-            .into_iter()
-            .filter(|h| funds.contains(&h.symbol) == fund)
-            .collect();
-    if book.is_empty() {
-        return Ok(None); // nothing to reason about, and nothing to pay a call for
+        load_holdings(deps.pool, if scope.is_trade() {
+            crate::models::Mode::Trade
+        } else {
+            crate::models::Mode::Long
+        })
+        .await?
+        .into_iter()
+        .filter(|h| if scope.is_trade() { true } else { funds.contains(&h.symbol) == fund })
+        .collect();
+    // A book plan needs a book. The trade plan does not: opening the first position is exactly
+    // what an empty trade purse is waiting for, and today's list is the reason to call.
+    if book.is_empty() && !scope.is_trade() {
+        return Ok(None);
     }
     let settings = crate::rules::settings::get(deps.pool).await?;
-    // A fund plan draws on the fund purse; a stock plan on the stock purse. Never both.
+    // A fund plan draws on the fund purse, a stock plan on the stock purse, a trade plan on the
+    // trade purse. Never two at once.
     let available = if fund {
         budget::available_mf(deps.pool).await?
+    } else if scope.is_trade() {
+        budget::available_in(deps.pool, crate::models::Mode::Trade).await?
     } else {
         budget::available_in(deps.pool, crate::models::Mode::Long).await?
     };
@@ -140,7 +164,9 @@ async fn plan_book(
     // The stock plan is offered the market, not itself: the book block already lists what is held,
     // so today's list is the Nifty 100's best five-session performers. The fund plan keeps its own
     // arithmetic list — funds are ranked by the scan, not by a benchmark.
-    let candidates = if fund {
+    let candidates = if scope.is_trade() {
+        crate::trend::candidate_block(deps.pool, deps.market, deps.transport, now).await
+    } else if fund {
         candidates_for_plan(deps.pool, &settings.currency, scope).await?
     } else {
         match crate::benchmark::daily_list(deps.pool, deps.market, now).await {
@@ -155,10 +181,22 @@ async fn plan_book(
             }
         }
     };
+    if scope.is_trade() && book.is_empty() && candidates.trim().is_empty() {
+        return Ok(None); // nothing held, nothing offered: no call worth paying for
+    }
     let limits = if fund {
         format!(
             "the whole plan may spend at most {:.2} {currency}, which is everything the fund purse holds; there is no per-trade ceiling for funds",
             available, currency = settings.currency
+        )
+    } else if scope.is_trade() {
+        format!(
+            "spend at most {:.2} {currency} across the plan; no single buy above {:.2}; a take-profit between {:.0}% and {:.0}% — and every move carries an expiry",
+            settings.limits_trade.max_trade_amount,
+            settings.limits_trade.max_trade_amount,
+            settings.limits_trade.min_profit_pct,
+            settings.limits_trade.max_profit_pct,
+            currency = settings.currency
         )
     } else {
         format!(
@@ -185,10 +223,10 @@ async fn plan_book(
         None => Some(
             crate::runs::start(
                 deps.pool,
-                if fund {
-                    crate::runs::Prompt::PlanFund
-                } else {
-                    crate::runs::Prompt::PlanStock
+                match scope {
+                    crate::llm::plan::Scope::Fund => crate::runs::Prompt::PlanFund,
+                    crate::llm::plan::Scope::Trade => crate::runs::Prompt::PlanTrade,
+                    crate::llm::plan::Scope::Stock => crate::runs::Prompt::PlanStock,
                 },
                 crate::runs::Trigger::Schedule,
                 None,
@@ -209,22 +247,22 @@ async fn plan_book(
             prompt_hash: rendered.hash,
             trigger: Some(format!(
                 "{} plan: {} holdings, {:.2} {} free — looked for moves that fit together",
-                if fund { "fund" } else { "stock" },
+                scope.purse_name(),
                 book.len(),
                 available,
                 settings.currency
             )),
-            purpose: if fund {
-                "plan funds".to_string()
-            } else {
-                "plan stocks".to_string()
-            },
+            purpose: format!("plan {}s", scope.purse_name()),
         },
     )
     .await
     {
         Ok(reply) => reply,
         Err(e) => {
+            // A failed call looked at a list too; the glances go back before the error does.
+            if scope.is_trade() {
+                let _ = crate::trend::sweep_glances(deps.pool).await;
+            }
             // A failed call must close its run, or the page shows a spinner that will not stop.
             if let Some(id) = run {
                 crate::runs::fail(deps.pool, id, &format!("{e:#}")).await?;
@@ -233,15 +271,17 @@ async fn plan_book(
         }
     };
 
-    sqlx::query(
-        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-    )
-    .bind(marker)
-    .bind(&today)
-    .bind(now.to_rfc3339())
-    .execute(deps.pool)
-    .await?;
+    if !manual {
+        sqlx::query(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        )
+        .bind(marker)
+        .bind(&slot)
+        .bind(now.to_rfc3339())
+        .execute(deps.pool)
+        .await?;
+    }
 
     let answer = match crate::llm::plan::parse(&reply.content) {
         Ok(a) => a,
@@ -263,26 +303,40 @@ async fn plan_book(
             )
             .await?;
         }
+        // A trade plan may have looked at twenty tickers to make two moves; the rest are gone.
+        if scope.is_trade() {
+            let _ = crate::trend::sweep_glances(deps.pool).await;
+        }
         return Ok(None);
     };
 
     // One purse per plan: the other is reported as zero, so a mixed plan cannot balance.
-    let cash = if fund {
-        crate::llm::plan::Cash {
+    let cash = match scope {
+        crate::llm::plan::Scope::Fund => crate::llm::plan::Cash {
             stock: 0.0,
             fund: available,
-        }
-    } else {
-        crate::llm::plan::Cash {
+            trade: 0.0,
+        },
+        crate::llm::plan::Scope::Trade => crate::llm::plan::Cash {
+            stock: 0.0,
+            fund: 0.0,
+            trade: available,
+        },
+        crate::llm::plan::Scope::Stock => crate::llm::plan::Cash {
             stock: available,
             fund: 0.0,
-        }
+            trade: 0.0,
+        },
     };
     if let Err(e) = crate::llm::plan::validate(
         &plan,
         &book,
         cash,
-        &settings.limits_long,
+        if scope.is_trade() {
+            &settings.limits_trade
+        } else {
+            &settings.limits_long
+        },
         &settings.currency,
         now,
         &funds,
@@ -302,7 +356,7 @@ async fn plan_book(
         let id: Option<(i64,)> = sqlx::query_as(
             "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
                 reason_json, created_at, confidence, mode, kind, status, plan_id, conversation_id)
-             SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'long', 'plan', 'pending', ?, ?
+             SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'plan', 'pending', ?, ?
              FROM instruments WHERE symbol = ? RETURNING id",
         )
         .bind(m.action.as_str())
@@ -310,19 +364,26 @@ async fn plan_book(
         .bind(m.price)
         .bind(m.stop)
         .bind(m.target)
-        .bind((now + chrono::Duration::hours(18)).to_rfc3339())
+        // A trade plan's move carries its own expiry; the others get the long book's 18 hours.
+        .bind(
+            m.valid_until
+                .clone()
+                .unwrap_or_else(|| (now + chrono::Duration::hours(18)).to_rfc3339()),
+        )
         .bind(
             serde_json::json!({
                 "reasons": [],
                 "rationale": m.why,
                 "plan_rationale": plan.rationale,
                 "plan": true,
-                "scope": if fund { "fund" } else { "stock" },
+                "scope": scope.purse_name(),
             })
             .to_string(),
         )
         .bind(now.to_rfc3339())
         .bind(Option::<String>::None)
+        // The purse the move draws on. Bound here, after `confidence`, where the column list puts it.
+        .bind(if scope.is_trade() { "trade" } else { "long" })
         .bind(plan_id)
         .bind(&conversation)
         .bind(&m.symbol)
@@ -363,6 +424,13 @@ async fn plan_book(
                 .execute(deps.pool)
                 .await?;
             plan_id = Some(id);
+        }
+    }
+    if scope.is_trade() {
+        // The list was evidence, not a watchlist: names the plan did not move on are dropped.
+        let dropped = crate::trend::sweep_glances(deps.pool).await.unwrap_or(0);
+        if dropped > 0 {
+            tracing::info!(dropped, "trade plan swept its glances");
         }
     }
     if let Some(id) = run {
@@ -436,6 +504,18 @@ pub async fn decide_one(
         .find(|i| i.symbol == symbol)
         .ok_or_else(|| anyhow::anyhow!("{symbol} is not an active instrument"))?;
     advise(deps, &instrument, now).await
+}
+
+/// The trade purse's plan: every two hours in session, or when a person asks. It replaced the
+/// per-stock short-term pass, because only a book call can say "sell this to buy that".
+pub async fn plan_trade(
+    deps: &EngineDeps<'_>,
+    now: DateTime<Utc>,
+    run: Option<i64>,
+) -> Result<bool> {
+    Ok(plan_book(deps, now, crate::llm::plan::Scope::Trade, run)
+        .await?
+        .is_some())
 }
 
 /// The fund plan, run once a day after the arithmetic scan has ranked today's funds. Separate

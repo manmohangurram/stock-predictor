@@ -1,3 +1,7 @@
+use std::future::Future;
+use std::pin::Pin;
+
+use anyhow::Result;
 use serde_json::json;
 use stock_predictor::db;
 use stock_predictor::llm::deepseek::{FixtureTransport, HttpReply};
@@ -13,6 +17,12 @@ struct FakeMarket {
 }
 
 impl stock_predictor::market::MarketSource for FakeMarket {
+    fn constituents<'a>(
+        &'a self,
+    ) -> Pin<Box<dyn Future<Output = Result<stock_predictor::market::Constituents>> + Send + 'a>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     fn bars<'a>(
         &'a self,
         _s: &'a str,

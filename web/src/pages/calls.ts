@@ -130,7 +130,7 @@ export function renderSchedule(
         <select name="prompt" aria-label="What to run">
           ${choice("plan_stock", "Stock plan")}
           ${choice("plan_fund", "Fund plan")}
-          ${choice("short", "Short-term pass")}
+          ${choice("plan_trade", "Trade plan")}
           ${choice("poll", "A poll")}
           ${choice("decide", "One instrument")}
         </select>

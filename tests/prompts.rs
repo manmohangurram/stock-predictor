@@ -591,3 +591,33 @@ fn undated_and_untitled_results_do_not_reach_the_model() {
     assert!(!web.contains("xbrl"), "the untitled page is dropped: {web}");
     assert!(web.contains("2026-11-08 · TipRanks"), "{web}");
 }
+
+/// The trade plan is the third book: its own prompt, stocks only, and every move carries an expiry.
+#[test]
+fn the_trade_plan_prompt_is_a_book_call_that_expires() {
+    let rendered = prompts::render_plan(
+        stock_predictor::llm::plan::Scope::Trade,
+        "TATAMOTORS.NS | Tata Motors | 40.000 | 780.50 | 812.30 | +4.1% | 740.00 | 860.00",
+        &prompts::cap_line(50_000.0, "INR"),
+        50_000.0,
+        "INR",
+        "spend at most 25000.00 INR across the plan",
+        "1. IDEA.NS · 13.40 on the exchange feed, +6.20% today",
+    )
+    .unwrap();
+    assert_eq!(rendered.template, "plan_trade_v1");
+    for needle in [
+        "zero to two moves",
+        "Delivery, T+1",
+        "expiry",
+        "three sessions",
+        "Stocks only",
+    ] {
+        assert!(
+            rendered.text.contains(needle),
+            "the prompt must say {needle:?}: {}",
+            rendered.text
+        );
+    }
+    assert!(!rendered.text.contains("{{"), "unfilled: {}", rendered.text);
+}

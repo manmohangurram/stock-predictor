@@ -214,12 +214,19 @@ async fn main() -> Result<()> {
                 println!("fund scan: {r:#?}");
             }
         }
-        match stock_predictor::trend::run(&pool, &market, &transport, &notifier, &rt, Utc::now())
-            .await
-        {
-            Ok(r) if r.examined > 0 => println!("short-term pass: {r:#?}"),
-            Ok(_) => {}
-            Err(e) => println!("short-term pass failed: {e}"),
+        let once_deps = EngineDeps {
+            pool: &pool,
+            runtime: rt.clone(),
+            market: &market,
+            transport: &transport,
+            notifier: &notifier,
+            rules: RuleConfig::default(),
+            force: true,
+        };
+        match engine::plan_trade(&once_deps, Utc::now(), None).await {
+            Ok(true) => println!("trade plan: stored"),
+            Ok(false) => println!("trade plan: nothing worth doing"),
+            Err(e) => println!("trade plan failed: {e:#}"),
         }
         if !flag("--serve") {
             return Ok(());
@@ -315,6 +322,13 @@ async fn main() -> Result<()> {
                             Err(e) => Err(format!("{e:#}")),
                         }
                     }
+                    Manual::PlanTrade => {
+                        match engine::plan_trade(&manual_deps, Utc::now(), Some(run_id)).await {
+                            Ok(true) => Ok("a trade plan is in the ledger".to_string()),
+                            Ok(false) => Ok("nothing worth doing — no trade plan".to_string()),
+                            Err(e) => Err(format!("{e:#}")),
+                        }
+                    }
                     Manual::PlanFund => {
                         match engine::plan_funds(&manual_deps, Utc::now(), Some(run_id)).await {
                             Ok(true) => Ok("a fund plan is in the ledger".to_string()),
@@ -322,33 +336,6 @@ async fn main() -> Result<()> {
                             Err(e) => Err(format!("{e:#}")),
                         }
                     }
-                    Manual::Short => match stock_predictor::trend::forget_today(
-                        &poll_pool,
-                        Utc::now(),
-                    )
-                    .await
-                    {
-                        // A person asked again: the day's list is re-asked, not replayed.
-                        Ok(()) => {
-                            match stock_predictor::trend::run(
-                                &poll_pool,
-                                &market,
-                                &transport,
-                                &notifier,
-                                &runtime,
-                                Utc::now(),
-                            )
-                            .await
-                            {
-                                Ok(r) => Ok(format!(
-                                    "{} examined, {} proposed, {} passed",
-                                    r.examined, r.proposed, r.passed
-                                )),
-                                Err(e) => Err(format!("{e:#}")),
-                            }
-                        }
-                        Err(e) => Err(format!("{e:#}")),
-                    },
                     Manual::Decide { symbol } => {
                         match engine::decide_one(&manual_deps, &symbol, Utc::now()).await {
                             Ok(Some(line)) => Ok(line),
@@ -452,51 +439,13 @@ async fn main() -> Result<()> {
                     Err(e) => tracing::warn!(error = %e, "fund plan failed"),
                 }
 
-                // Short-term mode: only while the market is open. After the close the exchange list is
-                // yesterday's, and nothing reprices until the next session — a call then would judge a
-                // stale tape.
-                if schedule::in_stock_window(Utc::now()) {
-                    let short_run = stock_predictor::runs::start(
-                        &poll_pool,
-                        stock_predictor::runs::Prompt::Short,
-                        stock_predictor::runs::Trigger::Change,
-                        None,
-                    )
-                    .await
-                    .ok();
-                    match stock_predictor::trend::run(
-                        &poll_pool,
-                        &market,
-                        &transport,
-                        &notifier,
-                        &runtime,
-                        Utc::now(),
-                    )
-                    .await
-                    {
-                        Ok(r) => {
-                            if r.examined > 0 {
-                                tracing::info!(?r, "short-term pass");
-                            }
-                            if let Some(id) = short_run {
-                                let _ = stock_predictor::runs::finish(
-                                    &poll_pool,
-                                    id,
-                                    &format!("{} examined, {} proposed", r.examined, r.proposed),
-                                    None,
-                                )
-                                .await;
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!(error = %e, "short-term pass failed");
-                            if let Some(id) = short_run {
-                                let _ =
-                                    stock_predictor::runs::fail(&poll_pool, id, &format!("{e:#}"))
-                                        .await;
-                            }
-                        }
-                    }
+                // The trade plan: every two hours in session, and only then. Its own gate
+                // (the slot marker) decides whether this tick is due; asking outside the session
+                // would judge a tape nobody can trade on.
+                match stock_predictor::engine::plan_trade(&deps, Utc::now(), None).await {
+                    Ok(true) => tracing::info!("trade plan stored"),
+                    Ok(false) => {}
+                    Err(e) => tracing::warn!(error = %e, "trade plan failed"),
                 }
             }
 

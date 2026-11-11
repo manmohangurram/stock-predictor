@@ -1139,8 +1139,8 @@ describe("the schedule strip", () => {
           next_due_at: null,
         }),
         prompt({
-          prompt: "short",
-          label: "Short-term pass",
+          prompt: "plan_trade",
+          label: "Trade plan",
           rule: "every tick, 09:00–16:00 IST, Mon–Fri",
           next_due_at: "2026-11-09T09:00:00Z",
         }),

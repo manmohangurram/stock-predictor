@@ -15,6 +15,11 @@ use crate::rules::limits::Limits;
 
 /// More than this is not a plan, it is a wish list.
 pub const MAX_MOVES: usize = 3;
+/// A trade plan is allowed at most this many moves: one exit and the one entry it funds.
+pub const MAX_TRADE_MOVES: usize = 2;
+/// The furthest a trade idea may be said to last. Three sessions is a delivery trade; beyond that
+/// it is the long-term book's business.
+pub const TRADE_MAX_SESSIONS: i64 = 3;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Move {
@@ -35,6 +40,9 @@ pub struct Move {
     pub target: Option<f64>,
     #[serde(default)]
     pub why: String,
+    /// When the idea goes stale. Required by a trade plan, ignored by the others.
+    #[serde(default)]
+    pub valid_until: Option<String>,
 }
 
 fn action_of<'de, D>(d: D) -> std::result::Result<Action, D::Error>
@@ -113,6 +121,9 @@ fn extract_json(content: &str) -> Option<serde_json::Value> {
 pub enum Scope {
     Stock,
     Fund,
+    /// The trade purse: a book that lives for hours, not months. Same plan shape, different
+    /// appetite — its moves carry an expiry, because the reason for them expires too.
+    Trade,
 }
 
 impl Scope {
@@ -120,11 +131,25 @@ impl Scope {
         match self {
             Scope::Stock => "plan_stock_v1",
             Scope::Fund => "plan_mf_v1",
+            Scope::Trade => "plan_trade_v1",
         }
     }
 
     pub fn is_fund(self) -> bool {
         self == Scope::Fund
+    }
+
+    pub fn is_trade(self) -> bool {
+        self == Scope::Trade
+    }
+
+    /// The word used in a refusal, so the message names the purse the reader thinks in.
+    pub fn purse_name(self) -> &'static str {
+        match self {
+            Scope::Fund => "fund",
+            Scope::Trade => "trade",
+            Scope::Stock => "stock",
+        }
     }
 }
 
@@ -133,6 +158,7 @@ impl Scope {
 pub enum Purse {
     Stock,
     Fund,
+    Trade,
 }
 
 /// Cash free in each purse, before this plan's own sales.
@@ -140,6 +166,7 @@ pub enum Purse {
 pub struct Cash {
     pub stock: f64,
     pub fund: f64,
+    pub trade: f64,
 }
 
 impl Cash {
@@ -147,6 +174,7 @@ impl Cash {
         match purse {
             Purse::Stock => self.stock,
             Purse::Fund => self.fund,
+            Purse::Trade => self.trade,
         }
     }
 }
@@ -168,11 +196,11 @@ pub fn validate(
     funds: &[String],
     scope: Scope,
 ) -> Result<()> {
-    // A plan has one purse. The other is reported as zero, so a mixed plan cannot balance.
-    let purse = if scope.is_fund() {
-        Purse::Fund
-    } else {
-        Purse::Stock
+    // A plan has one purse. The others are reported as zero, so a mixed plan cannot balance.
+    let purse = match scope {
+        Scope::Fund => Purse::Fund,
+        Scope::Trade => Purse::Trade,
+        Scope::Stock => Purse::Stock,
     };
     let mut freed = 0.0;
     let mut spent = 0.0;
@@ -182,6 +210,12 @@ pub fn validate(
     for m in &plan.moves {
         let is_fund = funds.iter().any(|f| f == &m.symbol);
         match (scope, is_fund) {
+            (Scope::Trade, true) => {
+                return Err(anyhow!(
+                    "{} is a mutual fund: the trade plan may only move stocks",
+                    m.symbol
+                ))
+            }
             (Scope::Stock, true) => {
                 return Err(anyhow!(
                     "{} is a mutual fund: it belongs to the fund plan, not the stock plan",
@@ -201,6 +235,27 @@ pub fn validate(
         }
         seen.push(&m.symbol);
 
+        // A short-term idea has a shelf life; the move says when it expires, and the book never
+        // holds an idea past three sessions.
+        if scope.is_trade() {
+            let until = m
+                .valid_until
+                .as_deref()
+                .ok_or_else(|| anyhow!("{} has no expiry — a trade move goes stale", m.symbol))?;
+            let parsed = DateTime::parse_from_rfc3339(until)
+                .map_err(|_| anyhow!("{}: expiry {until} is not a time", m.symbol))?
+                .with_timezone(&Utc);
+            if parsed <= now {
+                return Err(anyhow!("{}: expiry {until} is already past", m.symbol));
+            }
+            if parsed > now + chrono::Duration::days(TRADE_MAX_SESSIONS) {
+                return Err(anyhow!(
+                    "{}: expiry is more than {TRADE_MAX_SESSIONS} sessions out — that is not this book's trade",
+                    m.symbol
+                ));
+            }
+        }
+
         // Money is the unit of account: stock plans price it as qty × price, fund plans take rupees.
         let value = match scope {
             Scope::Fund => m
@@ -212,7 +267,7 @@ pub fn validate(
                         m.symbol
                     )
                 })?,
-            Scope::Stock => {
+            Scope::Stock | Scope::Trade => {
                 let qty = m
                     .qty
                     .filter(|q| q.is_finite() && *q > 0.0)
@@ -280,11 +335,11 @@ pub fn validate(
     if spent > freed + cash.get(purse) + 1e-6 {
         return Err(anyhow!(
             "the {} purse does not balance: buys cost {:.2} but the plan frees {:.2} plus {:.2} {currency} of {} cash",
-            if scope.is_fund() { "fund" } else { "stock" },
+            scope.purse_name(),
             spent,
             freed,
             cash.get(purse),
-            if scope.is_fund() { "fund" } else { "stock" }
+            scope.purse_name()
         ));
     }
     if spent > limits.max_trade_amount + freed + 1e-6 {

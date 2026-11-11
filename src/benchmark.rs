@@ -18,9 +18,6 @@ use crate::market::MarketSource;
 pub const SESSIONS: usize = 5;
 /// How many names the plan is offered.
 pub const TOP: usize = 10;
-/// One index, one file. Any NSE index works here; the long-term book is judged on the largest
-/// liquid names, not the mid-caps.
-const LIST_URL: &str = "https://nsearchives.nseindia.com/content/indices/ind_nifty100list.csv";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pick {
@@ -112,18 +109,8 @@ pub async fn daily_list(
         return Ok(stored);
     }
 
-    let client = crate::http::client_with(&crate::rules::settings::runtime(pool).await?, 20, None)?;
-    let csv = client
-        .get(LIST_URL)
-        .header("User-Agent", "Mozilla/5.0 stock-predictor")
-        .send()
-        .await
-        .context("nifty 100 list")?
-        .text()
-        .await
-        .context("nifty 100 list body")?;
     let mut measured = Vec::new();
-    for (symbol, name) in parse_constituents(&csv) {
+    for (symbol, name) in market.constituents().await.context("nifty 100 list")? {
         if let Some(p) = measure(market, &symbol, &name).await {
             measured.push(p);
         }

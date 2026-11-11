@@ -16,8 +16,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 
-use crate::llm::{memo, parse, validate};
-use crate::models::{Action, Bar, Mode};
+use crate::models::Bar;
 
 const TOP_N: usize = 10;
 /// How old a search result may be and still count as *news*. The API has no date filter — the only
@@ -26,9 +25,6 @@ const TOP_N: usize = 10;
 const NEWS_WINDOW_DAYS: i64 = 3;
 /// The one query the daily scan searches. Broad on purpose — the model reads the results and picks.
 const TRENDING_QUERY: &str = "Indian stock market biggest movers news";
-/// The book is short-term: nothing is proposed beyond a week out.
-const MAX_HORIZON_HOURS: i64 = 24 * 7;
-
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct TrendReport {
     pub examined: usize,
@@ -106,339 +102,122 @@ impl Candidate {
     }
 }
 
-/// The decision row a trend proposal becomes.
-struct Proposal {
-    instrument_id: i64,
-    entry: f64,
-    stop: f64,
-    target: f64,
-    qty: f64,
-    confidence: String,
-    rationale: String,
-    expires: String,
+/// Remove the names a plan call looked at and never used: inactive, never archived, and with no
+/// decision, no fill and no position. The plan may look at twenty tickers and buy one; the other
+/// nineteen must not stay in the book.
+pub async fn sweep_glances(pool: &SqlitePool) -> Result<usize> {
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT i.id FROM instruments i
+          WHERE i.active = 0
+            AND i.archived_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM signals   s WHERE s.instrument_id = i.id)
+            AND NOT EXISTS (SELECT 1 FROM trades    t WHERE t.instrument_id = i.id)
+            AND NOT EXISTS (SELECT 1 FROM positions p WHERE p.instrument_id = i.id)",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut dropped = 0;
+    for (id,) in rows {
+        let mut tx = pool.begin().await?;
+        for sql in [
+            "DELETE FROM bars WHERE instrument_id = ?",
+            "DELETE FROM news WHERE instrument_id = ?",
+            "DELETE FROM llm_memos WHERE instrument_id = ?",
+            "DELETE FROM trend_candidates WHERE symbol = (SELECT symbol FROM instruments WHERE id = ?)",
+            "DELETE FROM instruments WHERE id = ?",
+        ] {
+            sqlx::query(sql).bind(id).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        dropped += 1;
+    }
+    Ok(dropped)
 }
 
-pub async fn run(
+/// The trade plan's list: what moved today, with the tape and today's dated web evidence for the
+/// few names worth a look. One call, one book — the shape in which "sell A to buy B" is possible.
+///
+/// Evidence for four names, not twenty: the model can only act on two moves, so twenty names' worth
+/// of tape and headlines is prompt spent on names nobody will buy.
+pub async fn candidate_block(
     pool: &SqlitePool,
     market: &dyn crate::market::MarketSource,
     transport: &dyn crate::llm::deepseek::Transport,
-    notifier: &dyn crate::notify::Notifier,
-    runtime: &crate::rules::runtime::Runtime,
     now: DateTime<Utc>,
-) -> Result<TrendReport> {
+) -> String {
+    const EVIDENCE: usize = 4;
+    let Ok(client) = crate::http::client_with(
+        &crate::rules::settings::runtime(pool).await.unwrap_or_default(),
+        20,
+        Some("Mozilla/5.0 stock-predictor"),
+    ) else {
+        return "no list today — the exchange could not be reached\n".into();
+    };
     let mut report = TrendReport::default();
-
-    let client = crate::http::client_with(runtime, 20, Some("Mozilla/5.0 stock-predictor"))?;
-    let candidates = daily_list(pool, &client, transport, now, &mut report).await?;
-    report.examined = candidates.len();
-    if candidates.is_empty() {
-        report.notes.push("no candidates on today's list".into());
-        return Ok(report);
-    }
-
-    // The daily cap is a ceiling on *all* model calls, not just the long-term path.
-    let cap = runtime.daily_cap as i64;
-    let mut used = crate::llm::orchestrate::daily_chat_calls(pool).await?;
-    if used >= cap {
-        report
-            .notes
-            .push(format!("daily call cap reached ({used}/{cap})"));
-        return Ok(report);
-    }
-
-    let settings = crate::rules::settings::get(pool).await?;
-    let limits = settings.limits_trade;
-    let cash = crate::rules::budget::available_in(pool, Mode::Trade).await?;
-    let pot = crate::rules::budget::cash_in(pool, Mode::Trade).await?;
-    let model = crate::rules::settings::model_config(pool).await?;
-
-    // Names this tick created for the sake of looking at them. A name that produces nothing is
-    // removed again below: the scan may *look* at a hundred tickers, but it must not leave rows
-    // behind for the ones it passed on.
-    let mut created: Vec<i64> = Vec::new();
-    let mut kept: Vec<i64> = Vec::new();
-    for g in candidates {
-        let symbol = g.symbol.clone();
-        let (id, fresh) = match ensure_instrument(pool, &symbol, g.short_name()).await? {
-            Some(pair) => pair,
-            None => {
-                report.notes.push(format!(
-                    "{symbol}: already held in the trading pot, skipped"
-                ));
-                continue;
-            }
-        };
-        if fresh {
-            created.push(id);
-        };
-
-        // Gate first, network second: ten refresh pairs per tick is the expensive part, and most
-        // of these names have not moved since the last pass.
-        let headlines_changed = news_newer_than_last_call(pool, id).await?;
-        let gate = memo::CallGate {
-            min_move: runtime.min_price_move,
-        };
-        // A name discovered by the search has no exchange price yet, so the bar close stands in.
-        let price = match g.ltp {
-            Some(ltp) => ltp,
-            None => last_close(pool, id).await?.unwrap_or(0.0),
-        };
-        if !memo::should_call(pool, id, price, now, gate, headlines_changed).await? {
-            continue;
-        }
-        // Only now is the tape worth fetching.
-        if let Err(e) = crate::store::refresh(pool, id, &symbol, market).await {
-            report.notes.push(format!("{symbol}: {e}"));
-            continue;
-        }
-
-        let bars = load_bars(pool, id).await?;
-        if bars.len() < 30 {
-            continue;
-        }
-        let news = recent_headlines(pool, id).await?;
-        let headlines = render_headlines(&news);
-        let headline_fp = memo::fingerprint(
-            &news
-                .iter()
-                .map(|(title, at)| crate::models::Headline {
-                    id: 0,
-                    title: title.clone(),
-                    publisher: String::new(),
-                    published_at: at.clone(),
-                    url: String::new(),
-                })
-                .collect::<Vec<_>>(),
-        );
-        // The web is asked about this one name, so the model reads today's reason and not only
-        // what our own poller happened to store. A failed search costs a note, not the call.
-        let web = match crate::llm::deepseek::search_for(
-            pool,
-            &model.base_url,
-            transport,
-            &dated_query(&format!("{} news today", g.short_name()), now),
-            // The audit row names the holding: "search TATAMOTORS.NS".
-            &format!("search {symbol}"),
-        )
+    let list = daily_list(pool, &client, transport, now, &mut report)
         .await
-        {
-            Ok(hits) => {
-                let recent = recent_hits(hits.clone(), now);
-                if recent.is_empty() && !hits.is_empty() {
-                    report.notes.push(format!(
-                        "{symbol}: {} search hits, none dated inside {NEWS_WINDOW_DAYS} days",
-                        hits.len()
-                    ));
-                }
-                crate::llm::prompts::render_web_hits(&recent)
+        .unwrap_or_default();
+    if list.is_empty() {
+        return format!(
+            "no candidates today{}\n",
+            if report.notes.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", report.notes.join("; "))
             }
-            Err(e) => {
-                report.notes.push(format!("{symbol}: search failed: {e}"));
-                crate::llm::prompts::render_web_hits(&[])
-            }
-        };
-        // The feed and our own tape are compared here, not by the model: two prices from two
-        // worlds look like a contradiction to it, and a contradiction is a `pass`.
-        let last_close = bars.last().map(|b| b.close);
-        let warn = g
-            .disagrees_with(last_close)
-            .map(|w| format!(" · {w}"))
-            .unwrap_or_default();
-        let prompt = crate::llm::prompts::render_trend(
-            &format!("{} · {} · {}{warn}", symbol, g.describe(), scan_note(&g.why)),
-            &tape(&bars),
-            &headlines,
-            &web,
-            &format!(
-                "cash {} {:.2}, allowance {:.2}",
-                settings.currency, cash, pot
-            ),
-        )?;
-
-        if used >= cap {
-            report
-                .notes
-                .push(format!("daily call cap reached ({used}/{cap})"));
-            break;
-        }
-        report.called += 1;
-        used += 1;
-        let reply = crate::llm::deepseek::chat(
-            pool,
-            &model,
-            transport,
-            crate::llm::deepseek::ChatRequest {
-                conversation_id: format!("trend-{symbol}-{}", now.timestamp_millis()),
-                round: 1,
-                prompt: prompt.text,
-                prompt_template: prompt.template,
-                prompt_hash: prompt.hash,
-                trigger: Some(if headlines_changed {
-                    format!(
-                        "short-term scan: {:+.2}% today, new headlines since the last call",
-                        g.change_pct.unwrap_or(0.0)
-                    )
-                } else {
-                    format!(
-                        "short-term scan: {:+.2}% today, price moved",
-                        g.change_pct.unwrap_or(0.0)
-                    )
-                }),
-                purpose: format!("trend {symbol}"),
-            },
-        )
-        .await;
-        // Recorded before the outcome is judged, success or failure: a failing call that is not
-        // remembered would be paid for again on the next tick.
-        memo::record_call(pool, id, price, now, &headline_fp).await?;
-        let reply = match reply {
-            Ok(r) => r,
-            Err(e) => {
-                report.notes.push(format!("{symbol}: call failed: {e}"));
-                continue;
-            }
-        };
-
-        let proposal = match parse::verdict(&reply.content) {
-            Ok(parse::LlmVerdict::Decide(p)) => p,
-            Ok(parse::LlmVerdict::Pass { why }) => {
-                report.passed += 1;
-                report.notes.push(format!("{symbol}: pass — {why}"));
-                continue;
-            }
-            Ok(parse::LlmVerdict::NeedMore(_)) => {
-                report.notes.push(format!("{symbol}: asked for more data"));
-                continue;
-            }
-            Err(e) => {
-                report
-                    .notes
-                    .push(format!("{symbol}: unreadable reply: {e}"));
-                continue;
-            }
-        };
-        if proposal.action != Action::Buy {
-            report.notes.push(format!(
-                "{symbol}: {:?} is not a short-term entry",
-                proposal.action
-            ));
-            continue;
-        }
-
-        let (Some(stop), Some(target)) = (proposal.stop, proposal.target) else {
-            report.notes.push(format!("{symbol}: no exit plan"));
-            continue;
-        };
-        let ind = match crate::rules::indicators::compute(&bars) {
-            Ok(i) => i,
-            Err(e) => {
-                report.notes.push(format!("{symbol}: {e}"));
-                continue;
-            }
-        };
-        let qty = proposal
-            .qty
-            .filter(|q| q.is_finite() && *q > 0.0)
-            .unwrap_or_else(|| (cash / proposal.entry).floor());
-        let check = validate::check(
-            &proposal,
-            &validate::ValidateCtx {
-                requires_high_confidence: true, // short-term: high confidence or nothing
-                bands: crate::engine::band_for(bars[bars.len() - 1].close, ind.atr14),
-                atr: ind.atr14,
-                available_cash: cash,
-                qty,
-                held_qty: 0.0,
-                sent_headline_ids: &[],
-                requires_exit: true,
-                limits,
-                required_profit_pct: limits.min_profit_pct,
-                instrument_exposure: 0.0,
-                pot,
-                now,
-            },
         );
-        if let Err(e) = check {
-            report.notes.push(format!("{symbol}: blocked — {e}"));
+    }
+    let mut out = String::new();
+    for (i, g) in list.iter().enumerate() {
+        out.push_str(&format!(
+            "{}. {} · {} · {}\n",
+            i + 1,
+            g.symbol,
+            g.describe(),
+            scan_note(&g.why)
+        ));
+        if i >= EVIDENCE {
             continue;
         }
-
-        let expires = clamp_expiry(&proposal.valid_until, now)
-            .unwrap_or_else(|| (now + chrono::Duration::hours(MAX_HORIZON_HOURS)).to_rfc3339());
-        let row = Proposal {
-            instrument_id: id,
-            entry: proposal.entry,
-            stop,
-            target,
-            qty,
-            confidence: proposal.confidence.as_str().to_string(),
-            rationale: proposal.rationale.clone(),
-            expires,
+        // The evidence only for the ones the model might actually act on.
+        let Ok(Some((id, _))) = ensure_instrument(pool, &g.symbol, g.short_name()).await else {
+            continue;
         };
-        store(pool, &row, now).await?;
-        kept.push(id);
-        report.proposed += 1;
-        // `ideas` is what the one notification for the pass is built from. It was never filled,
-        // so a short-term proposal was recorded and never announced.
-        report.ideas.push(format!(
-            "{} · {qty:.0} at {:0.2}, target {:0.2}, stop {:0.2} · {}",
-            g.short_name(),
-            row.entry,
-            row.target,
-            row.stop,
-            row.confidence
-        ));
-        report.notes.push(format!(
-            "{symbol}: proposed {qty:.0} units at {:.2}",
-            row.entry
-        ));
-    }
-
-    let dropped = drop_unused(pool, &created, &kept).await?;
-    if dropped > 0 {
-        report.notes.push(format!(
-            "{dropped} examined name{} kept no row — the scan looked, nothing was proposed",
-            plural(dropped)
-        ));
-    }
-
-    if !report.ideas.is_empty() {
-        // One notification for the pass, not one per name: the ledger is where you act on them.
-        let n = crate::notify::Notification {
-            title: format!(
-                "Short-term · {} idea{}",
-                report.ideas.len(),
-                plural(report.ideas.len())
-            ),
-            body: report.ideas.join("\n"),
-            priority: crate::notify::Priority::Default,
-            dedupe_key: crate::llm::memo::fingerprint(
-                &report
-                    .ideas
-                    .iter()
-                    .map(|i| crate::models::Headline {
-                        id: 0,
-                        title: i.clone(),
-                        publisher: String::new(),
-                        published_at: ist_day(now),
-                        url: String::new(),
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-            signal_id: None,
-            symbol: report
-                .ideas
-                .first()
-                .and_then(|i| i.split(' ').next())
-                .unwrap_or("")
-                .to_string(),
+        if crate::store::refresh(pool, id, &g.symbol, market).await.is_err() {
+            continue;
+        }
+        let Ok(bars) = load_bars(pool, id).await else {
+            continue;
         };
-        if crate::notify::dispatch(pool, notifier, &n).await? {
-            report.notified = 1;
+        out.push_str(&format!("   tape: {}\n", tape(&bars).replace('\n', "; ")));
+        if let Some(warn) = g.disagrees_with(bars.last().map(|b| b.close)) {
+            out.push_str(&format!("   feed vs tape: {warn}\n"));
+        }
+        let news = recent_headlines(pool, id).await.unwrap_or_default();
+        if !news.is_empty() {
+            out.push_str(&format!("   headlines: {}\n", render_headlines(&news).replace('\n', " | ")));
+        }
+        if let Ok(model) = crate::rules::settings::model_config(pool).await {
+            if let Ok(hits) = crate::llm::deepseek::search_for(
+                pool,
+                &model.base_url,
+                transport,
+                &dated_query(&format!("{} news today", g.short_name()), now),
+                &format!("search {}", g.symbol),
+            )
+            .await
+            {
+                let recent = recent_hits(hits, now);
+                if !recent.is_empty() {
+                    out.push_str(&format!("   web: {}\n", crate::llm::prompts::render_web_hits(&recent).replace('\n', " ")));
+                }
+            }
         }
     }
-
-    Ok(report)
+    out.push_str(&format!(
+        "\n(evidence supplied for the first {EVIDENCE}; the rest are prices only)\n"
+    ));
+    out
 }
 
 /// Today's list: read from the table if it was asked, otherwise asked and stored.
@@ -701,17 +480,6 @@ async fn set_marker(pool: &SqlitePool, key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-/// The last close we have stored, for a name the exchange has not priced for us yet.
-async fn last_close(pool: &SqlitePool, instrument_id: i64) -> Result<Option<f64>> {
-    let row: Option<(f64,)> = sqlx::query_as(
-        "SELECT close FROM bars WHERE instrument_id = ? ORDER BY ts DESC LIMIT 1",
-    )
-    .bind(instrument_id)
-    .fetch_optional(pool)
-    .await?;
-    Ok(row.map(|r| r.0))
-}
-
 /// `YYYY-MM-DD` in IST — the day the tape belongs to, used for dedupe.
 fn ist_day(now: DateTime<Utc>) -> String {
     (now + chrono::Duration::minutes(330))
@@ -719,13 +487,6 @@ fn ist_day(now: DateTime<Utc>) -> String {
         .to_string()
 }
 
-fn plural(n: usize) -> &'static str {
-    if n == 1 {
-        ""
-    } else {
-        "s"
-    }
-}
 
 /// The instrument for a discovered symbol: found, or created **for this tick only**. The second
 /// element says the row is new, so the tick can take it back if nothing came of it.
@@ -761,58 +522,6 @@ async fn ensure_instrument(
 }
 
 /// Take back the rows this tick created and never used: no decision, no fill, no position. The
-/// scan looked, and looking is not a reason to keep a name in the book.
-async fn drop_unused(pool: &SqlitePool, created: &[i64], kept: &[i64]) -> Result<usize> {
-    let mut dropped = 0;
-    for id in created {
-        if kept.contains(id) {
-            continue;
-        }
-        let used: (i64,) = sqlx::query_as(
-            "SELECT (SELECT COUNT(*) FROM signals WHERE instrument_id = ?1)
-                  + (SELECT COUNT(*) FROM trades WHERE instrument_id = ?1)
-                  + (SELECT COUNT(*) FROM positions WHERE instrument_id = ?1)",
-        )
-        .bind(id)
-        .fetch_one(pool)
-        .await?;
-        if used.0 > 0 {
-            continue;
-        }
-        let mut tx = pool.begin().await?;
-        for sql in [
-            "DELETE FROM bars WHERE instrument_id = ?",
-            "DELETE FROM news WHERE instrument_id = ?",
-            "DELETE FROM llm_memos WHERE instrument_id = ?",
-            "DELETE FROM trend_candidates WHERE symbol = (SELECT symbol FROM instruments WHERE id = ?)",
-            "DELETE FROM instruments WHERE id = ?",
-        ] {
-            sqlx::query(sql).bind(id).execute(&mut *tx).await?;
-        }
-        tx.commit().await?;
-        dropped += 1;
-    }
-    Ok(dropped)
-}
-
-async fn news_newer_than_last_call(pool: &SqlitePool, instrument_id: i64) -> Result<bool> {
-    let last: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT last_call_at FROM llm_memos WHERE instrument_id = ?")
-            .bind(instrument_id)
-            .fetch_optional(pool)
-            .await?;
-    let Some((Some(at),)) = last else {
-        return Ok(true);
-    };
-    let fresh: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM news WHERE instrument_id = ? AND published_at > ?")
-            .bind(instrument_id)
-            .bind(at)
-            .fetch_one(pool)
-            .await?;
-    Ok(fresh.0 > 0)
-}
-
 async fn load_bars(pool: &SqlitePool, instrument_id: i64) -> Result<Vec<Bar>> {
     let rows: Vec<(String, f64, f64, f64, f64, i64)> = sqlx::query_as(
         "SELECT ts, open, high, low, close, volume FROM bars WHERE instrument_id = ?
@@ -866,41 +575,6 @@ fn tape(bars: &[Bar]) -> String {
         .join("\n")
 }
 
-/// A proposal is never allowed past the book's horizon, whatever date it asked for.
-fn clamp_expiry(asked: &str, now: DateTime<Utc>) -> Option<String> {
-    let parsed = chrono::DateTime::parse_from_rfc3339(asked)
-        .ok()?
-        .with_timezone(&Utc);
-    let cap = now + chrono::Duration::hours(MAX_HORIZON_HOURS);
-    Some(parsed.min(cap).to_rfc3339())
-}
-
-async fn store(pool: &SqlitePool, p: &Proposal, now: DateTime<Utc>) -> Result<()> {
-    let reason = serde_json::json!({
-        "reasons": [],
-        "rationale": p.rationale,
-        "source": "nse gainers",
-    })
-    .to_string();
-    sqlx::query(
-        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-            reason_json, created_at, confidence, mode, kind, status)
-         VALUES (?, 'BUY', ?, ?, ?, ?, ?, ?, ?, ?, 'trade', 'trend', 'pending')",
-    )
-    .bind(p.instrument_id)
-    .bind(p.qty)
-    .bind(p.entry)
-    .bind(p.stop)
-    .bind(p.target)
-    .bind(&p.expires)
-    .bind(reason)
-    .bind(now.to_rfc3339())
-    .bind(&p.confidence)
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -914,22 +588,6 @@ mod tests {
             close,
             volume: 1,
         }
-    }
-
-    #[test]
-    fn a_proposal_is_never_allowed_past_a_week() {
-        let now = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 11, 9, 10, 0, 0).unwrap();
-        let asked = (now + chrono::Duration::days(30)).to_rfc3339();
-        let got = clamp_expiry(&asked, now).unwrap();
-        let parsed = chrono::DateTime::parse_from_rfc3339(&got).unwrap();
-        assert!(parsed <= now + chrono::Duration::days(7));
-    }
-
-    #[test]
-    fn an_earlier_expiry_is_kept() {
-        let now = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 11, 9, 10, 0, 0).unwrap();
-        let asked = (now + chrono::Duration::hours(6)).to_rfc3339();
-        assert_eq!(clamp_expiry(&asked, now).unwrap(), asked);
     }
 
     #[test]
@@ -1157,7 +815,7 @@ mod row_hygiene_tests {
             .await
             .unwrap();
 
-        let dropped = drop_unused(&pool, &[looked_at], &[]).await.unwrap();
+        let dropped = sweep_glances(&pool).await.unwrap();
         assert_eq!(dropped, 1);
         let left: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM instruments WHERE symbol = 'MAKERSL.NS'")
             .fetch_one(&pool)
@@ -1201,8 +859,8 @@ mod row_hygiene_tests {
         .await
         .unwrap();
 
-        let dropped = drop_unused(&pool, &[id], &[id]).await.unwrap();
-        assert_eq!(dropped, 0);
+        let dropped = sweep_glances(&pool).await.unwrap();
+        assert_eq!(dropped, 0, "a name with a decision keeps its row");
         let left: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM instruments WHERE id = ?")
             .bind(id)
             .fetch_one(&pool)

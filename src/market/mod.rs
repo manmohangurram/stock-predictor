@@ -8,9 +8,12 @@ pub mod yahoo;
 use std::future::Future;
 use std::pin::Pin;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::models::{Bar, Headline};
+
+/// (yahoo symbol, name) — one row of an index.
+pub type Constituents = Vec<(String, String)>;
 
 /// Everything the engine needs from the outside market. Tests implement this with fakes, so
 /// no test reaches the network.
@@ -32,6 +35,10 @@ pub trait MarketSource: Send + Sync {
         &'a self,
         symbol: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<Vec<Headline>>> + Send + 'a>>;
+
+    /// The constituents of the long-term benchmark, as (yahoo symbol, name). Behind the trait so a
+    /// test can answer with a list instead of reaching NSE.
+    fn constituents<'a>(&'a self) -> Pin<Box<dyn Future<Output = Result<Constituents>> + Send + 'a>>;
 }
 
 /// Search across both sources. Yahoo for exchange-listed instruments, AMFI for Indian funds.
@@ -69,6 +76,26 @@ impl YahooSource {
 }
 
 impl MarketSource for YahooSource {
+    fn constituents<'a>(
+        &'a self,
+    ) -> Pin<Box<dyn Future<Output = Result<Constituents>> + Send + 'a>> {
+        Box::pin(async move {
+            // NSE refuses `equity-stockIndices` to a non-browser client, so the index comes from
+            // its archives CSV — the same list the exchange publishes.
+            let body = self
+                .client
+                .get("https://nsearchives.nseindia.com/content/indices/ind_nifty100list.csv")
+                .header(reqwest::header::USER_AGENT, "Mozilla/5.0 stock-predictor")
+                .send()
+                .await
+                .context("nifty 100 list")?
+                .text()
+                .await
+                .context("nifty 100 list body")?;
+            Ok(crate::benchmark::parse_constituents(&body))
+        })
+    }
+
     fn bars<'a>(
         &'a self,
         symbol: &'a str,

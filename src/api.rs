@@ -1094,7 +1094,6 @@ async fn market_state(State(st): State<AppState>) -> Result<Json<serde_json::Val
 async fn schedule_view(State(st): State<AppState>) -> Result<Json<serde_json::Value>, ApiError> {
     let runs = crate::runs::latest_by_prompt(&st.pool).await?;
     let latest = |prompt: &str| runs.iter().find(|r| r.prompt == prompt);
-    let runtime = crate::rules::runtime::load(&st.pool).await?;
     let now = chrono::Utc::now();
     let today = ist_day(now);
     let marker = |key: &'static str| {
@@ -1123,31 +1122,6 @@ async fn schedule_view(State(st): State<AppState>) -> Result<Json<serde_json::Va
         } else {
             Some(now.to_rfc3339()) // due now
         }
-    };
-    let session_next = || -> Option<String> {
-        let ist = now + chrono::Duration::minutes(330);
-        let open = |day: chrono::NaiveDate| {
-            day.and_hms_opt(9, 15, 0)
-                .map(|d| d.and_utc() - chrono::Duration::minutes(330))
-        };
-        if crate::schedule::in_stock_window(now) {
-            let close = ist.date_naive().and_hms_opt(16, 0, 0)
-                .map(|d| d.and_utc() - chrono::Duration::minutes(330))?;
-            let tick = now + chrono::Duration::seconds(runtime.poll_secs as i64);
-            return Some(tick.min(close).to_rfc3339());
-        }
-        // Closed: today's open if it is still ahead, otherwise the next weekday's.
-        let mut day = ist.date_naive();
-        if open(day).is_none_or(|d| d <= now) {
-            day = day.succ_opt().unwrap_or(day);
-        }
-        while matches!(
-            chrono::Datelike::weekday(&day),
-            chrono::Weekday::Sat | chrono::Weekday::Sun
-        ) {
-            day = day.succ_opt().unwrap_or(day);
-        }
-        open(day).map(|d| d.to_rfc3339())
     };
 
     let stock_ran = marker("stock_plan_last").await.as_deref() == Some(today.as_str());
@@ -1187,13 +1161,26 @@ async fn schedule_view(State(st): State<AppState>) -> Result<Json<serde_json::Va
                 daily_next(fund_ran),
             ),
             entry(
-                "short",
-                "Short-term pass",
-                "every tick, 09:00–16:00 IST, Mon–Fri",
-                session_next(),
+                "plan_trade",
+                "Trade plan",
+                "every two hours in session — 09:15, 11:15, 13:15 IST",
+                trade_next(now),
             ),
         ],
     })))
+}
+
+/// The next trade slot, from the same function the scheduler uses, so the card cannot promise a
+/// cadence the loop does not keep.
+fn trade_next(now: chrono::DateTime<chrono::Utc>) -> Option<String> {
+    // Walk forward in minutes until a slot appears: at most a day and a half of ticks.
+    for step in 0..(60 * 40) {
+        let at = now + chrono::Duration::minutes(step);
+        if crate::schedule::trade_slot(at).is_some() && step > 0 {
+            return Some(at.to_rfc3339());
+        }
+    }
+    None
 }
 
 /// `YYYY-MM-DD` of the current IST day — the unit the daily markers are written in.
@@ -1273,7 +1260,7 @@ async fn start_run(
         "poll" => crate::runs::Prompt::Poll,
         "plan_stock" => crate::runs::Prompt::PlanStock,
         "plan_fund" => crate::runs::Prompt::PlanFund,
-        "short" => crate::runs::Prompt::Short,
+        "plan_trade" => crate::runs::Prompt::PlanTrade,
         "decide" => crate::runs::Prompt::Decide,
         other => {
             return Err(ApiError::BadRequest(format!(
@@ -1304,8 +1291,8 @@ async fn start_run(
     let manual = match prompt {
         crate::runs::Prompt::Poll => crate::runs::Manual::Poll,
         crate::runs::Prompt::PlanStock => crate::runs::Manual::PlanStock,
+        crate::runs::Prompt::PlanTrade => crate::runs::Manual::PlanTrade,
         crate::runs::Prompt::PlanFund => crate::runs::Manual::PlanFund,
-        crate::runs::Prompt::Short => crate::runs::Manual::Short,
         _ => crate::runs::Manual::Decide {
             symbol: symbol.unwrap_or_default().to_string(),
         },

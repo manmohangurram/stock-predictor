@@ -15,7 +15,9 @@ pub enum Prompt {
     Poll,
     PlanStock,
     PlanFund,
-    /// The short-term pass over NSE gainers.
+    /// The trade purse's plan: every two hours in session, replacing the old per-stock pass.
+    PlanTrade,
+    /// Historical: the per-stock short-term pass, replaced by `PlanTrade`. Old rows still read.
     Short,
     /// One instrument, asked on its own.
     Decide,
@@ -29,7 +31,8 @@ impl Prompt {
             Prompt::Poll => "poll",
             Prompt::PlanStock => "plan_stock",
             Prompt::PlanFund => "plan_fund",
-            Prompt::Short => "short",
+            Prompt::PlanTrade => "plan_trade",
+            Prompt::Short => "short", // historical rows only; the trade plan replaced it
             Prompt::Decide => "decide",
             Prompt::Rotate => "rotate",
         }
@@ -40,6 +43,7 @@ impl Prompt {
             "poll" => Prompt::Poll,
             "plan_stock" => Prompt::PlanStock,
             "plan_fund" => Prompt::PlanFund,
+            "plan_trade" => Prompt::PlanTrade,
             "short" => Prompt::Short,
             "decide" => Prompt::Decide,
             "rotate" => Prompt::Rotate,
@@ -185,7 +189,8 @@ pub enum Manual {
     Poll,
     PlanStock,
     PlanFund,
-    Short,
+    /// The trade purse's plan: every two hours in session, replacing the old per-stock pass.
+    PlanTrade,
     /// One instrument, asked on its own — the precise version of a poll.
     Decide {
         symbol: String,
