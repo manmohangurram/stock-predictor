@@ -1314,3 +1314,96 @@ async fn a_refused_proposal_is_recorded_so_it_is_not_only_in_the_audit() {
         row.1
     );
 }
+
+/// The trade book's clock: an expired idea is a sell, whoever the model is and whatever it thinks.
+#[tokio::test]
+async fn an_expired_trade_idea_issues_a_sell_by_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY.NS"]).await;
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'INFY.NS'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    // A trade position, entered on an approved buy whose idea has gone stale.
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode, stop, target)
+         VALUES (?, 100, 100.0, '2026-10-20T05:00:00Z', 'open', 'trade', 95.0, 108.0)",
+    )
+    .bind(id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status)
+         VALUES (?, 'BUY', 100, 100.0, '2026-10-21T15:30:00+05:30', '{}',
+                 '2026-10-20T05:00:00Z', 'trade', 'plan', 'approved')",
+    )
+    .bind(id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let lines = stock_predictor::engine::expire_trade_positions(&pool, now())
+        .await
+        .unwrap();
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(lines[0].contains("INFY.NS"), "{lines:?}");
+
+    let sell: (String, String, f64) = sqlx::query_as(
+        "SELECT action, mode, qty FROM signals WHERE kind = 'expiry' ORDER BY id DESC LIMIT 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(sell.0, "SELL");
+    assert_eq!(sell.1, "trade", "the exit belongs to the trade purse");
+    assert_eq!(sell.2, 100.0);
+
+    // One exit at a time: the second sweep adds nothing while this one waits to be approved.
+    let again = stock_predictor::engine::expire_trade_positions(&pool, now())
+        .await
+        .unwrap();
+    assert!(again.is_empty(), "{again:?}");
+}
+
+/// A live idea is left alone: expiry is the clock, not an opinion about price.
+#[tokio::test]
+async fn a_live_trade_idea_is_not_expired() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY.NS"]).await;
+    let id: (i64,) = sqlx::query_as("SELECT id FROM instruments WHERE symbol = 'INFY.NS'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode, stop, target)
+         VALUES (?, 10, 100.0, '2026-10-26T05:00:00Z', 'open', 'trade', 95.0, 130.0)",
+    )
+    .bind(id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status)
+         VALUES (?, 'BUY', 10, 100.0, '2026-11-30T15:30:00+05:30', '{}',
+                 '2026-10-26T05:00:00Z', 'trade', 'plan', 'approved')",
+    )
+    .bind(id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let lines = stock_predictor::engine::expire_trade_positions(&pool, now())
+        .await
+        .unwrap();
+    assert!(lines.is_empty(), "{lines:?}");
+}

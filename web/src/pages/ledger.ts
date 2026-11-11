@@ -225,7 +225,15 @@ function decisionRow(s: Dashboard["signals"][number]): string {
         }
         ${status}
         <span class="sub">${histDate(s.created_at)}</span></div>
-      ${s.rationale ? `<p class="decision-prose">${escapeHtml(s.rationale)}</p>` : ""}
+      ${
+        // The model's reasoning when there is one; the rules' reason when there is not — an exit at
+        // the stop or at the idea's expiry has no rationale, and the card must still say why.
+        s.rationale
+          ? `<p class="decision-prose">${escapeHtml(s.rationale)}</p>`
+          : s.action !== "BLOCKED" && s.reasons.length
+            ? `<p class="decision-prose">${escapeHtml(s.reasons[0])}</p>`
+            : ""
+      }
       ${
         s.action === "BLOCKED" && s.reasons.length
           ? `<p class="decision-note">${s.reasons.map((r) => escapeHtml(r)).join(" · ")}</p>`

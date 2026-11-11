@@ -508,14 +508,92 @@ pub async fn decide_one(
 
 /// The trade purse's plan: every two hours in session, or when a person asks. It replaced the
 /// per-stock short-term pass, because only a book call can say "sell this to buy that".
+/// The trade book's clock. An idea that has passed its own expiry is closed **by the app**, not by
+/// the model's opinion of it: the plan said how long the reason lasts, and the reason has expired.
+///
+/// Runs after each trade plan, so the exit appears in the ledger in the same slot the idea died.
+/// One SELL per open position, and none while one is already waiting to be approved.
+pub async fn expire_trade_positions(pool: &SqlitePool, now: DateTime<Utc>) -> Result<Vec<String>> {
+    let rows: Vec<(i64, String, String, f64, Option<f64>)> = sqlx::query_as(
+        "SELECT p.instrument_id, i.symbol, i.name, p.qty,
+                (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
+                 ORDER BY b.ts DESC LIMIT 1) AS close
+           FROM positions p
+           JOIN instruments i ON i.id = p.instrument_id
+          WHERE p.mode = 'trade' AND p.state = 'open'
+            AND EXISTS (
+                SELECT 1 FROM signals s
+                 WHERE s.instrument_id = p.instrument_id
+                   AND s.mode = 'trade' AND s.action = 'BUY'
+                   AND s.status = 'approved'
+                   AND s.valid_until IS NOT NULL
+                   AND s.valid_until <= ?)
+            AND NOT EXISTS (
+                SELECT 1 FROM signals s2
+                 WHERE s2.instrument_id = p.instrument_id
+                   AND s2.mode = 'trade' AND s2.action = 'SELL'
+                   AND s2.status = 'pending')",
+    )
+    .bind(now.to_rfc3339())
+    .fetch_all(pool)
+    .await?;
+
+    let mut out = Vec::new();
+    for (instrument_id, symbol, name, qty, close) in rows {
+        let reason = serde_json::json!({
+            "reasons": ["the idea's own expiry has passed — neither target nor stop was touched"],
+            "expired": true,
+        })
+        .to_string();
+        sqlx::query(
+            "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+                created_at, mode, kind, status)
+             VALUES (?, 'SELL', ?, ?, ?, ?, ?, 'trade', 'expiry', 'pending')",
+        )
+        .bind(instrument_id)
+        .bind(qty)
+        .bind(close.unwrap_or(0.0))
+        .bind((now + chrono::Duration::hours(18)).to_rfc3339())
+        .bind(reason)
+        .bind(now.to_rfc3339())
+        .execute(pool)
+        .await?;
+        out.push(format!("{symbol} · {qty:.0} units — {name} expired"));
+    }
+    Ok(out)
+}
+
 pub async fn plan_trade(
     deps: &EngineDeps<'_>,
     now: DateTime<Utc>,
     run: Option<i64>,
 ) -> Result<bool> {
-    Ok(plan_book(deps, now, crate::llm::plan::Scope::Trade, run)
+    let planned = plan_book(deps, now, crate::llm::plan::Scope::Trade, run)
         .await?
-        .is_some())
+        .is_some();
+    // The clock is not the model's business: whatever the plan said, an expired idea is a sell.
+    match expire_trade_positions(deps.pool, now).await {
+        Ok(lines) if !lines.is_empty() => {
+            for line in &lines {
+                // One push per exit: the ledger holds the detail, the push makes you look.
+                let n = crate::notify::Notification {
+                    title: format!("SELL · {}", line.split(' ').next().unwrap_or("")),
+                    body: line.clone(),
+                    priority: crate::notify::Priority::High,
+                    dedupe_key: format!("expiry-{}-{}", line, now.timestamp() / 900),
+                    signal_id: None,
+                    symbol: line.split(' ').next().unwrap_or("").to_string(),
+                };
+                if let Err(e) = crate::notify::dispatch(deps.pool, deps.notifier, &n).await {
+                    tracing::warn!(error = %e, "expiry push failed");
+                }
+                tracing::info!(%line, "trade idea expired");
+            }
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "expiry sweep failed"),
+    }
+    Ok(planned)
 }
 
 /// The fund plan, run once a day after the arithmetic scan has ranked today's funds. Separate
