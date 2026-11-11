@@ -1,3 +1,75 @@
+## v0.26.0
+
+The two books have different appetites now. Design: `docs/superpowers/specs/2026-11-11-two-books-design.md`.
+
+### The long-term book is offered the market, not itself
+
+Its "today's list" was every active instrument — the book showing itself its own holdings, which is
+no choice at all. It is now the **Nifty 100, ranked by five-session return**: positive only, best
+first, ten names.
+
+- Constituents from the NSE archives CSV (that endpoint refuses a non-browser client), one Yahoo
+  daily chart per symbol, once per IST day.
+- Five sessions, and six closes are required to be ranked; a window containing a zero or a NaN is
+  dropped rather than read as a crash.
+- Positive only: a top ten from a falling market would be the names that fell least.
+- Kept in `plan_candidates` for the day, so a retry costs nothing.
+
+### The trade purse gets a book call every two hours
+
+`plan_trade_v1` — **0–2 moves that only make sense together**, at **09:15, 11:15, 13:15 IST**. It
+replaced the per-stock short-term pass, which could never say *"sell A to fund B"* because each call
+knew only its own candidate.
+
+- Delivery, T+1: nothing can be sold the session it was bought, and the first exit is the next open.
+- **The stop is the loss trigger**, not the entry — a 0.2% wobble must not close a good trade.
+- Every move carries an **expiry**, enforced at three sessions.
+- Evidence for four candidates, not twenty: tape, stored headlines and dated web results.
+- `trend::sweep_glances` removes the names a plan looked at and did not move on, so a twenty-ticker
+  scan that buys one leaves one row. Migration `0021` clears the glances older builds left behind.
+
+### An expired idea is a sell the app makes
+
+An open trade position whose approved entry has passed its own `valid_until` gets a SELL —
+recorded, pending, in the trade purse, with the reason on the record, and a push. One exit at a
+time; none while one waits to be approved. The plan says how long the reason lasts; the app does
+not hope it changes its mind.
+
+### A refused proposal is no longer invisible
+
+`Outcome::Rejected` fell back to the rules' candidate, which is usually a HOLD, and a HOLD records
+nothing — so a `decide_v1` verdict could be a real buy with entry, stop and target, refused for a
+concrete reason, and leave no trace outside Audit. It is now recorded as BLOCKED with the validator's
+reason, shown in the ledger's Decisions box as **REFUSED**, and never pushed (there is nothing to
+approve). Short-term proposals also announce themselves again: `report.ideas` was read to build the
+push and never written.
+
+### Adding an instrument makes it active
+
+`INSERT OR IGNORE` honoured the row the scan had already created for a discovered name — which is
+`active = 0` — so the record appeared to be created and then vanished from the ledger (whose
+holdings query filters `i.active = 1`) while the instrument page offered **Restore** for something
+never archived. Adding promotes the row; a genuinely archived name is refused with *restore it from
+its own page*.
+
+### A browser flow suite, and the bugs it found
+
+`docs/testing/flows.md` — every page, every control, what it must do — walked with the Chrome
+DevTools MCP against a throwaway database. **A release is not cut until it is green.** CI does not
+run it; it needs a browser.
+
+Walking it found: a NYSE ADR could be added and its dollars read as rupees (**+11,674%** "vs close");
+the refresh button printed *undefined headlines* (client read `news`, server sends `headlines`);
+Archive used a native `confirm()` unlike every other two-step control; the reject form's submit
+duplicated the opener's label and could reject a decision by accident; the currency select looked
+editable while locked; and a filtered audit page with no matches said *No calls yet*.
+
+### Removed
+
+`src/backtest.rs` (a 120-line harness with no caller), `balance-rail.ts`, `ledger-row.ts`,
+`budget::available_in_on`, 43 CSS classes with no markup behind them, two tokens nothing read, and
+the per-stock short-term pass with its run kind and manual path (old audit rows still read).
+
 ## v0.25.1
 
 ### Hotfix: the Archived page showed everything the scan had ever noticed
