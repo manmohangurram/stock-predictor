@@ -54,11 +54,21 @@ function field(
   </div>`;
 }
 
-function select(tab: Tab, name: string, label: string, value: string, options: [string, string][], help = "") {
+function select(
+  tab: Tab,
+  name: string,
+  label: string,
+  value: string,
+  options: [string, string][],
+  help = "",
+  // A control that cannot be changed is disabled: an enabled select that the server refuses is
+  // a promise the page cannot keep.
+  locked = false,
+) {
   const current = draftOf(tab, name) ?? value;
   return `<div class="field">
     <label class="lbl" for="${name}">${label}</label>
-    <select id="${name}" name="${name}">
+    <select id="${name}" name="${name}"${locked ? " disabled" : ""}>
       ${options
         .map(([v, text]) => `<option value="${v}" ${v === current ? "selected" : ""}>${text}</option>`)
         .join("")}
@@ -112,7 +122,8 @@ const MONEY = (s: Settings, tab: Tab): string => {
     ${select(tab, "currency", "Currency", s.currency, ["INR", "USD", "EUR", "GBP"].map((c) => [c, c]),
       s.currency_locked
         ? "Currency is fixed once the ledger has entries."
-        : "Locked permanently after the first recorded transaction.")}
+        : "Locked permanently after the first recorded transaction.",
+      s.currency_locked)}
   `;
 };
 

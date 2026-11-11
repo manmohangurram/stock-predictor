@@ -19,9 +19,18 @@ export function wireAddDialog(): void {
   // Six is a chooser, not a directory: it keeps the list on one screen, so no scrollbar can
   // push the rows out of line with the field above them.
   const SHOWN = 6;
+  /**
+   * Only Indian listings. The book is denominated in rupees and follows NSE/BSE rules (T+1,
+   * circuit bands), so a NYSE ADR would be priced in dollars and the app would read that price as
+   * rupees — a +11,000% "return" that is really a currency mismatch.
+   */
+  const indian = (h: Hit) =>
+    h.class === "mutual_fund" || h.venue === "NSE" || h.venue === "Bombay" || /\.(NS|BO)$/.test(h.code);
+
   const groups = (list: Hit[]) => {
-    const stock = list.filter((h) => h.class !== "mutual_fund");
-    const fund = list.filter((h) => h.class === "mutual_fund");
+    const local = list.filter(indian);
+    const stock = local.filter((h) => h.class !== "mutual_fund");
+    const fund = local.filter((h) => h.class === "mutual_fund");
     return [
       { label: "Stocks", items: stock },
       { label: "Mutual funds", items: fund },

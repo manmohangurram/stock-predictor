@@ -1731,6 +1731,17 @@ async fn add_instrument(
         return Err(ApiError::BadRequest("code is required".into()));
     }
 
+    // The book is one currency and one exchange's rules. A foreign listing would be priced in its
+    // own money and read here as rupees, which is how a $2.17 ADR produced a +11,000% "return".
+    let indian_listing = code.ends_with(".NS")
+        || code.ends_with(".BO")
+        || body.class.as_deref() == Some("mutual_fund");
+    if !indian_listing {
+        return Err(ApiError::BadRequest(format!(
+            "{code} is not an Indian listing — add an NSE (.NS) or BSE (.BO) symbol, or a fund by its AMFI code"
+        )));
+    }
+
     let (class, name) = match body.class.as_deref() {
         Some("mutual_fund") => {
             // Two kinds of fund code exist: AMFI's (135762, with NAV in the scheme list) and

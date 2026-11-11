@@ -46,7 +46,9 @@ export function renderDecisionActions(s: SignalRow): string {
     <div class="row">
       <input name="reason" placeholder="Why not? (optional)" aria-label="Reason"
              value="${escapeHtml(s.status_reason ?? "")}" />
-      <button class="btn" type="submit">Reject</button>
+      <!-- Not "Reject": that is the name of the control that opened this form, and two buttons
+           with one label is how a decision gets rejected by accident. -->
+      <button class="btn" type="submit">Reject decision</button>
       <button class="btn ghost" type="button" data-cancel="${s.id}">Cancel</button>
       <span class="help" data-status="${s.id}" role="status"></span>
     </div>

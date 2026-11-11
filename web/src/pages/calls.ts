@@ -265,7 +265,15 @@ export function renderCalls(
         <th scope="col">Holding</th><th scope="col">Review</th>
         <th scope="col" class="right"><span class="hide-sm">Open</span></th>
       </tr></thead>
-      <tbody>${body || `<tr><td colspan="6" class="empty">No calls yet.</td></tr>`}</tbody>
+      <tbody>${
+        body ||
+        // An empty page under a filter is not an empty log: say which it is, and offer the way out.
+        `<tr><td colspan="6" class="empty">${
+          Object.values(active).some(Boolean)
+            ? "No calls match these filters — <a href=\"/calls\">clear them</a>."
+            : "No calls yet."
+        }</td></tr>`
+      }</tbody>
     </table>
     ${renderPager(offset, limit, total)}
   </section>`);

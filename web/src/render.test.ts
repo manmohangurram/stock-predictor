@@ -1309,3 +1309,31 @@ describe("every column agrees with its own header", () => {
     expect(classes(html, "td").map(numeric)).toEqual([false, true, true, true, true]);
   });
 });
+
+describe("an empty audit page under a filter", () => {
+  test("says the filters matched nothing, and offers the way out", async () => {
+    const { renderCalls } = await import("./pages/calls");
+    const html = renderCalls(
+      { prompts: [], now: "2026-11-11T12:00:00Z" },
+      0,
+      [],
+      { prompts: [], calls: [], models: [] },
+      { prompt: "decide_v1" },
+    );
+    expect(html).toContain("No calls match these filters");
+    expect(html).toContain('href="/calls"');
+    expect(html).not.toContain("No calls yet.");
+  });
+
+  test("an unfiltered empty page still says there are none yet", async () => {
+    const { renderCalls } = await import("./pages/calls");
+    const html = renderCalls(
+      { prompts: [], now: "2026-11-11T12:00:00Z" },
+      0,
+      [],
+      { prompts: [], calls: [], models: [] },
+      {},
+    );
+    expect(html).toContain("No calls yet.");
+  });
+});

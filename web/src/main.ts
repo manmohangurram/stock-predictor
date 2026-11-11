@@ -216,7 +216,7 @@ function wireRefreshInstrument(): void {
     if (status) status.textContent = "Fetching…";
     try {
       const r = await api.refreshInstrument(symbol);
-      if (status) status.textContent = `Stored ${r.bars} bars and ${r.news} headlines.`;
+      if (status) status.textContent = `Stored ${r.bars} bars and ${r.headlines} headlines.`;
       await route();
     } catch (e) {
       if (status) status.textContent = String(e);
@@ -253,8 +253,23 @@ function wireDeleteInstrument(): void {
     button.disabled = true;
     return;
   }
+  // Two-step, like deleting a fill: the label carries the warning, and a native confirm() is a
+  // dialog the app cannot style, cannot test, and cannot undo.
+  const original = button.textContent ?? "Archive";
+  let armed = false;
   button.addEventListener("click", async () => {
-    if (!window.confirm(`Archive ${symbol}? Prices and headlines are cleared; fills and decisions are kept.`)) return;
+    if (!armed) {
+      armed = true;
+      button.textContent = "Archive? Click again — prices cleared, fills kept";
+      if (status) status.textContent = "Archiving clears prices and headlines; fills and decisions stay.";
+      window.setTimeout(() => {
+        if (armed) {
+          armed = false;
+          button.textContent = original;
+        }
+      }, 5000);
+      return;
+    }
     button.disabled = true;
     if (status) status.textContent = "Removing…";
     try {

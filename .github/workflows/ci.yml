@@ -77,3 +77,4 @@ jobs:
       - name: Served bundle parses
         run: node --check dist/assets/*.js
         working-directory: web
+

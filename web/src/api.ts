@@ -394,7 +394,8 @@ export const api = {
   rejectSignal: (id: number, reason?: string) =>
     req<{ id: number; status: string }>(`/api/signals/${id}/reject`, json({ reason })),
   refreshInstrument: (symbol: string) =>
-    req<{ ok: boolean; bars: number; news: number }>(
+    // The server answers `{bars, headlines}`; the old name said `news` and printed "undefined".
+    req<{ ok: boolean; bars: number; headlines: number }>(
       `/api/instruments/${encodeURIComponent(symbol)}/refresh`,
       { method: "POST" },
     ),

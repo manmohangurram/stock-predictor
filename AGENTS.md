@@ -106,6 +106,10 @@ first clause lands in the JOIN's `ON`, where it silently filters nothing.
 
 ## Quality gates
 
+Before a release, **the browser flows must pass**: `docs/testing/flows.md` is the list — every
+page, every control, what it must do — and it is walked with the Chrome DevTools MCP against a
+throwaway database. CI does not run it (it needs a browser); a release is not cut until it is green.
+
 ```sh
 cargo test                                   # 261 tests, no network
 cargo clippy --all-targets                   # must be warning-free

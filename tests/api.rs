@@ -2760,3 +2760,22 @@ async fn adding_an_archived_instrument_is_refused_with_the_way_back() {
         "{err:?}"
     );
 }
+
+/// One currency, one exchange's rules: a foreign listing is refused, because its price would be
+/// read as rupees. This is how a $2.17 ADR produced a +11,000% "return" on an instrument page.
+#[tokio::test]
+async fn a_foreign_listing_is_refused_with_the_way_in() {
+    let (_d, router, _pool) = setup().await;
+    let (s, v) = send(
+        &router,
+        "POST",
+        "/api/instruments",
+        json!({"code": "WIT", "name": "Wipro Limited", "class": "stock"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
+    assert!(
+        v["error"].as_str().unwrap_or_default().contains(".NS"),
+        "the message says what to add instead: {v}"
+    );
+}
