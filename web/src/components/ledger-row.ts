@@ -17,13 +17,18 @@ export function timingText(s: SignalRow): string {
   return "";
 }
 
+/** A refusal is the model's proposal turned down with a reason; a budget block is arithmetic. */
+export const isRefusal = (s: { action: string; reasons: string[] }): boolean =>
+  s.action === "BLOCKED" && s.reasons.length > 0 && !s.reasons[0].startsWith("insufficient");
+
 export function renderLedgerRow(s: SignalView): string {
   const isBlocked = s.action === "BLOCKED";
   const isEstimate = ESTIMATE_CLASSES.includes(s.class);
   const blockedAttr = isBlocked ? " data-blocked" : "";
 
+  const refused = isRefusal(s);
   const actionStamp = isBlocked
-    ? stamp("blocked", "blocked")
+    ? stamp("blocked", refused ? "refused" : "blocked")
     : isEstimate
       ? stamp("estimate", "estimate")
       : stamp(s.action === "SELL" ? "sell" : "buy", s.action);
@@ -51,7 +56,9 @@ export function renderLedgerRow(s: SignalView): string {
 <tr class="detail-row" hidden><td colspan="7">
   ${
     isBlocked
-      ? `<p class="blocked-note">insufficient cash — ${escapeHtml(shortfall ?? "short of the budget")}</p>`
+      ? refused
+        ? `<p class="blocked-note">the model proposed this and it was refused — ${escapeHtml(s.reasons[0])}</p>`
+        : `<p class="blocked-note">insufficient cash — ${escapeHtml(shortfall ?? "short of the budget")}</p>`
       : `<ul>${s.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("")}</ul>`
   }
   ${s.rationale ? `<p class="rationale">${escapeHtml(s.rationale)}</p>` : ""}

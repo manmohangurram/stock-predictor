@@ -5,6 +5,7 @@ import { decisionFilterTabs, isDecisionFilter, type DecisionFilter } from "../co
 import { escapeHtml, histDate, money, units } from "../format";
 import { renderConfidence } from "../components/confidence";
 import { actionStamp, stamp, statusPill, toneOf } from "../components/stamp";
+import { isRefusal } from "../components/ledger-row";
 
 /** The portfolio strip: the four numbers that decide whether anything is affordable. */
 export function renderModeTabs(mode: Mode): string {
@@ -208,7 +209,9 @@ function decisionRow(s: Dashboard["signals"][number]): string {
   const named = s.name && s.name !== s.symbol;
   return `<div class="feed-row decision-feed">
     <div class="decision-main">
-      <div>${actionStamp(s.action)}
+      <div>${
+        isRefusal(s) ? stamp("blocked", "refused") : actionStamp(s.action)
+      }
         <b title="${escapeHtml(s.symbol)}">${escapeHtml(named ? s.name : s.symbol)}</b>
         ${named ? `<span class="sub">${escapeHtml(s.symbol)}</span>` : ""}
         ${s.entry === null ? "" : `<span class="num">${money(s.entry)}</span>`}

@@ -341,8 +341,8 @@ async fn main() -> Result<()> {
                             .await
                             {
                                 Ok(r) => Ok(format!(
-                                    "{} examined, {} proposed",
-                                    r.examined, r.proposed
+                                    "{} examined, {} proposed, {} passed",
+                                    r.examined, r.proposed, r.passed
                                 )),
                                 Err(e) => Err(format!("{e:#}")),
                             }

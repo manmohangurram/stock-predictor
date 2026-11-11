@@ -1259,3 +1259,58 @@ async fn a_poll_reports_what_the_gate_left_alone() {
     assert_eq!(report.polled, 1, "{report:?}");
     assert_eq!(report.asked, 0, "{report:?}");
 }
+
+/// A proposal the validator refused used to disappear: the rules' fallback is a HOLD and a HOLD
+/// records nothing, so the model's answer was visible in Audit and nowhere else.
+#[tokio::test]
+async fn a_refused_proposal_is_recorded_so_it_is_not_only_in_the_audit() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+        .await
+        .unwrap();
+    seed(&pool, &["INFY"]).await;
+
+    // Flat tape, so the rules see no entry and the model's answer is the only proposal. A stop
+    // above the entry is refused by the validator, and the rules' fallback is a HOLD.
+    let refused = serde_json::json!({
+        "choices": [{"message": {"content": serde_json::json!({
+            "action": "decide",
+            "signal": {
+                "action": "BUY", "entry": 1405.20, "stop": 1412.00, "target": 1510.00,
+                "qty": 5, "valid_until": "2026-11-09T15:30:00+05:30",
+                "confidence": "high", "rationale": "momentum", "cites": []
+            }
+        }).to_string()}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5}
+    })
+    .to_string();
+
+    let flat: Vec<_> = (0..250)
+        .map(|i| common::bar(&format!("2026-01-01T00:{:02}:00Z", i % 60), 100.0))
+        .collect();
+    let market = FakeMarket::ok(flat);
+    let notifier = FakeNotifier::default();
+    let report = poll_with(
+        &pool,
+        &market,
+        &notifier,
+        cfg(),
+        now(),
+        vec![stock_predictor::llm::deepseek::HttpReply { status: 200, body: refused }],
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.signals, 0, "{report:?}");
+    assert_eq!(notifier.count(), 0, "nothing to approve, nothing to push");
+    let row: (String, String) = sqlx::query_as("SELECT action, reason_json FROM signals")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(row.0, "BLOCKED");
+    assert!(
+        row.1.contains("refused") && row.1.contains("detail"),
+        "the reason is recorded, not just the verdict: {}",
+        row.1
+    );
+}

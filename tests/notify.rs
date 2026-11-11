@@ -280,3 +280,25 @@ async fn an_unconfigured_notifier_sends_nothing_and_records_nothing() {
         .unwrap();
     assert_eq!(rows.0, 0, "no push claimed, so no row either");
 }
+
+/// A short-term proposal is announced. It was not: `report.ideas` was read to build the push and
+/// never written to, so the pass recorded a decision and told nobody.
+#[test]
+fn a_short_term_idea_becomes_the_line_that_is_pushed() {
+    let (sym, qty, entry, target, stop, conf) =
+        ("MAKERSL", 12.0_f64, 268.34_f64, 300.00_f64, 250.00_f64, "high");
+    let line = format!(
+        "{sym} · {qty:.0} at {entry:.2}, target {target:.2}, stop {stop:.2} · {conf}"
+    );
+    assert_eq!(line, "MAKERSL · 12 at 268.34, target 300.00, stop 250.00 · high");
+    let n = Notification {
+        title: format!("Short-term · {} idea{}", 1, ""),
+        body: line.clone(),
+        priority: Priority::Default,
+        dedupe_key: "k".into(),
+        signal_id: None,
+        symbol: "MAKERSL.NS".into(),
+    };
+    let (_, body) = stock_predictor::notify::payload(&n, "http://192.168.1.10:8080");
+    assert_eq!(body, line, "the push carries the idea, not just a count");
+}

@@ -1454,6 +1454,10 @@ fn blocked_reason(raw: Option<&str>) -> Option<String> {
     let kind = v.get("blocked")?.as_str()?;
     let cost = v.get("cost").and_then(|c| c.as_f64());
     let available = v.get("available").and_then(|c| c.as_f64());
+    // A refusal names what was wrong; a shortfall names the money it needed.
+    if let Some(detail) = v.get("detail").and_then(|d| d.as_str()) {
+        return Some(format!("{kind}: {detail}"));
+    }
     Some(match (cost, available) {
         (Some(c), Some(a)) => format!("{kind}: cost {c:.2}, available {a:.2}"),
         _ => kind.to_string(),
@@ -2548,7 +2552,9 @@ async fn load_signals(
             "all" => "s.action <> 'BLOCKED'",
             "approved" => "s.action <> 'BLOCKED' AND s.status = 'approved'",
             "rejected" => "s.action <> 'BLOCKED' AND s.status = 'rejected'",
-            _ => "s.action <> 'BLOCKED' AND s.status = 'pending'",
+            // A proposal the model made and the validator refused is a decision the owner asked
+            // for — it belongs in the box, unlike a budget block, which is arithmetic.
+            _ => "(s.action <> 'BLOCKED' OR s.reason_json LIKE '%\"detail\"%') AND s.status = 'pending'",
         }
     };
     let rows: Vec<SignalDbRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
@@ -2585,6 +2591,9 @@ async fn load_signals(
                         .collect()
                 })
                 .unwrap_or_default();
+            if let Some(detail) = reason.get("detail").and_then(|v| v.as_str()) {
+                reasons.push(detail.to_string());
+            }
             if let (Some(blocked), Some(cost), Some(available)) = (
                 reason.get("blocked").and_then(|v| v.as_str()),
                 reason.get("cost").and_then(|v| v.as_f64()),

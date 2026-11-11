@@ -34,6 +34,8 @@ pub struct TrendReport {
     pub examined: usize,
     pub called: usize,
     pub proposed: usize,
+    /// Names the model looked at and refused. A decision with nothing to approve.
+    pub passed: usize,
     /// One line per proposal, ready to put in a notification.
     pub ideas: Vec<String>,
     pub notes: Vec<String>,
@@ -289,6 +291,7 @@ pub async fn run(
         let proposal = match parse::verdict(&reply.content) {
             Ok(parse::LlmVerdict::Decide(p)) => p,
             Ok(parse::LlmVerdict::Pass { why }) => {
+                report.passed += 1;
                 report.notes.push(format!("{symbol}: pass — {why}"));
                 continue;
             }
@@ -363,6 +366,16 @@ pub async fn run(
         };
         store(pool, &row, now).await?;
         report.proposed += 1;
+        // `ideas` is what the one notification for the pass is built from. It was never filled,
+        // so a short-term proposal was recorded and never announced.
+        report.ideas.push(format!(
+            "{} · {qty:.0} at {:0.2}, target {:0.2}, stop {:0.2} · {}",
+            g.short_name(),
+            row.entry,
+            row.target,
+            row.stop,
+            row.confidence
+        ));
         report.notes.push(format!(
             "{symbol}: proposed {qty:.0} units at {:.2}",
             row.entry

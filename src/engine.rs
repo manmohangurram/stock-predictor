@@ -839,9 +839,42 @@ async fn poll_instrument(
         .await?;
 
     report.asked += 1;
+    // A proposal the validator refused is still a decision the owner should be able to see: the
+    // model said "buy at X", and the answer was no, with a reason. Without this it vanished — the
+    // rules' fallback is usually a HOLD, and `finish` records nothing for a HOLD.
+    let refused = match &decision.outcome {
+        Outcome::Rejected { proposal, error }
+            if !matches!(
+                error,
+                crate::llm::validate::ValidationError::InsufficientCash
+            ) =>
+        {
+            Some((proposal.clone(), error.to_string()))
+        }
+        _ => None,
+    };
     let Some(resolved) = resolve(&candidate, decision.outcome, now) else {
         return Ok(());
     };
+    if !matches!(resolved.action, Action::Buy | Action::Sell) {
+        if let Some((proposal, why)) = refused {
+            record_refused(
+                deps.pool,
+                instrument,
+                &proposal,
+                &why,
+                now,
+                Some(&decision.conversation_id),
+            )
+            .await?;
+            report.blocked += 1;
+            report.notes.push(format!(
+                "{}: model proposed {:?} at {:.2} — refused: {why}",
+                instrument.symbol, proposal.action, proposal.entry
+            ));
+            return Ok(());
+        }
+    }
 
     finish(
         deps,
@@ -1423,6 +1456,49 @@ async fn record_blocked(
     .bind(&r.valid_until)
     .bind(reason)
     .bind(now.to_rfc3339())
+    .bind(conversation_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// A proposal the validator refused: recorded as not-actionable with the reason the model was told,
+/// so Audit and the ledger agree about what happened. No push — there is nothing to approve.
+async fn record_refused(
+    pool: &SqlitePool,
+    instrument: &Instrument,
+    p: &crate::llm::parse::Proposal,
+    why: &str,
+    now: DateTime<Utc>,
+    conversation_id: Option<&str>,
+) -> Result<()> {
+    let reason = serde_json::json!({
+        "blocked": "the model's proposal was refused",
+        "detail": why,
+        "proposed": {
+            "action": p.action.as_str(),
+            "qty": p.qty,
+            "entry": p.entry,
+            "stop": p.stop,
+            "target": p.target,
+            "rationale": p.rationale,
+        },
+    })
+    .to_string();
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, confidence, conversation_id)
+         VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(instrument.id)
+    .bind(p.qty)
+    .bind(p.entry)
+    .bind(p.stop)
+    .bind(p.target)
+    .bind(&p.valid_until)
+    .bind(reason)
+    .bind(now.to_rfc3339())
+    .bind(p.confidence.as_str())
     .bind(conversation_id)
     .execute(pool)
     .await?;
