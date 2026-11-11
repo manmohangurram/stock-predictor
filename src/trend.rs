@@ -152,13 +152,24 @@ pub async fn run(
     let pot = crate::rules::budget::cash_in(pool, Mode::Trade).await?;
     let model = crate::rules::settings::model_config(pool).await?;
 
+    // Names this tick created for the sake of looking at them. A name that produces nothing is
+    // removed again below: the scan may *look* at a hundred tickers, but it must not leave rows
+    // behind for the ones it passed on.
+    let mut created: Vec<i64> = Vec::new();
+    let mut kept: Vec<i64> = Vec::new();
     for g in candidates {
         let symbol = g.symbol.clone();
-        let Some(id) = ensure_instrument(pool, &symbol, g.short_name()).await? else {
-            report.notes.push(format!(
-                "{symbol}: already held in the trading pot, skipped"
-            ));
-            continue;
+        let (id, fresh) = match ensure_instrument(pool, &symbol, g.short_name()).await? {
+            Some(pair) => pair,
+            None => {
+                report.notes.push(format!(
+                    "{symbol}: already held in the trading pot, skipped"
+                ));
+                continue;
+            }
+        };
+        if fresh {
+            created.push(id);
         };
 
         // Gate first, network second: ten refresh pairs per tick is the expensive part, and most
@@ -365,6 +376,7 @@ pub async fn run(
             expires,
         };
         store(pool, &row, now).await?;
+        kept.push(id);
         report.proposed += 1;
         // `ideas` is what the one notification for the pass is built from. It was never filled,
         // so a short-term proposal was recorded and never announced.
@@ -379,6 +391,14 @@ pub async fn run(
         report.notes.push(format!(
             "{symbol}: proposed {qty:.0} units at {:.2}",
             row.entry
+        ));
+    }
+
+    let dropped = drop_unused(pool, &created, &kept).await?;
+    if dropped > 0 {
+        report.notes.push(format!(
+            "{dropped} examined name{} kept no row — the scan looked, nothing was proposed",
+            plural(dropped)
         ));
     }
 
@@ -707,12 +727,13 @@ fn plural(n: usize) -> &'static str {
     }
 }
 
-/// The instrument for a discovered symbol, created inactive so discovery never starts polling.
+/// The instrument for a discovered symbol: found, or created **for this tick only**. The second
+/// element says the row is new, so the tick can take it back if nothing came of it.
 async fn ensure_instrument(
     pool: &SqlitePool,
     yahoo_symbol: &str,
     short_name: &str,
-) -> Result<Option<i64>> {
+) -> Result<Option<(i64, bool)>> {
     let existing: Option<(i64, i64)> =
         sqlx::query_as("SELECT id, active FROM instruments WHERE symbol = ?")
             .bind(yahoo_symbol)
@@ -726,7 +747,7 @@ async fn ensure_instrument(
         .bind(id)
         .fetch_one(pool)
         .await?;
-        return Ok(if held.0 > 0.0 { None } else { Some(id) });
+        return Ok(if held.0 > 0.0 { None } else { Some((id, false)) });
     }
     let row: (i64,) = sqlx::query_as(
         "INSERT INTO instruments (symbol, class, name, currency, active)
@@ -736,7 +757,42 @@ async fn ensure_instrument(
     .bind(short_name)
     .fetch_one(pool)
     .await?;
-    Ok(Some(row.0))
+    Ok(Some((row.0, true)))
+}
+
+/// Take back the rows this tick created and never used: no decision, no fill, no position. The
+/// scan looked, and looking is not a reason to keep a name in the book.
+async fn drop_unused(pool: &SqlitePool, created: &[i64], kept: &[i64]) -> Result<usize> {
+    let mut dropped = 0;
+    for id in created {
+        if kept.contains(id) {
+            continue;
+        }
+        let used: (i64,) = sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM signals WHERE instrument_id = ?1)
+                  + (SELECT COUNT(*) FROM trades WHERE instrument_id = ?1)
+                  + (SELECT COUNT(*) FROM positions WHERE instrument_id = ?1)",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await?;
+        if used.0 > 0 {
+            continue;
+        }
+        let mut tx = pool.begin().await?;
+        for sql in [
+            "DELETE FROM bars WHERE instrument_id = ?",
+            "DELETE FROM news WHERE instrument_id = ?",
+            "DELETE FROM llm_memos WHERE instrument_id = ?",
+            "DELETE FROM trend_candidates WHERE symbol = (SELECT symbol FROM instruments WHERE id = ?)",
+            "DELETE FROM instruments WHERE id = ?",
+        ] {
+            sqlx::query(sql).bind(id).execute(&mut *tx).await?;
+        }
+        tx.commit().await?;
+        dropped += 1;
+    }
+    Ok(dropped)
 }
 
 async fn news_newer_than_last_call(pool: &SqlitePool, instrument_id: i64) -> Result<bool> {
@@ -1073,5 +1129,85 @@ mod dated_query_tests {
     fn the_scan_query_carries_the_same_window() {
         let now = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 12, 1, 6, 0, 0).unwrap();
         assert!(dated_query(TRENDING_QUERY, now).ends_with("after:2026-11-28 lang:en"));
+    }
+}
+
+#[cfg(test)]
+mod row_hygiene_tests {
+    use super::*;
+
+    /// A name the tick created is taken back when nothing came of it — no signal, no fill, no
+    /// position. The scan may look at a hundred tickers; the book must not remember them.
+    #[tokio::test]
+    async fn a_created_row_with_no_decision_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        let now = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 11, 11, 6, 0, 0).unwrap();
+
+        let (looked_at, fresh) = ensure_instrument(&pool, "MAKERSL.NS", "MAKERSL")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(fresh, "a name not in the book is created for the tick");
+        sqlx::query("INSERT INTO bars (instrument_id, ts, close) VALUES (?, '2026-11-10', 100.0)")
+            .bind(looked_at)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let dropped = drop_unused(&pool, &[looked_at], &[]).await.unwrap();
+        assert_eq!(dropped, 1);
+        let left: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM instruments WHERE symbol = 'MAKERSL.NS'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(left.0, 0, "no row, and no orphan bars");
+        let bars: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM bars")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(bars.0, 0);
+
+        // And asking again makes it fresh again, which is the point: nothing was remembered.
+        let (_, again) = ensure_instrument(&pool, "MAKERSL.NS", "MAKERSL")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(again);
+        let _ = now;
+    }
+
+    /// A name that produced a proposal keeps its row: that is the decision the reader can act on.
+    #[tokio::test]
+    async fn a_created_row_that_proposed_something_stays() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::connect_and_migrate(dir.path().join("t.db").to_str().unwrap())
+            .await
+            .unwrap();
+        let (id, _) = ensure_instrument(&pool, "MAKERSL.NS", "MAKERSL")
+            .await
+            .unwrap()
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+                created_at, mode, status, kind)
+             VALUES (?, 'BUY', 10, 268.34, '2026-11-12T15:30:00+05:30', '{}',
+                     '2026-11-11T06:00:00Z', 'trade', 'pending', 'trend')",
+        )
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let dropped = drop_unused(&pool, &[id], &[id]).await.unwrap();
+        assert_eq!(dropped, 0);
+        let left: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM instruments WHERE id = ?")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(left.0, 1);
     }
 }
