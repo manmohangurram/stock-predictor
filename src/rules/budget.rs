@@ -146,14 +146,6 @@ pub async fn cash_in_bucket_on(
     Ok(row.0.unwrap_or(0.0))
 }
 
-/// The pot's free cash on a connection, which is what a fill inside a transaction needs.
-pub async fn available_in_on(
-    conn: &mut sqlx::SqliteConnection,
-    mode: Mode,
-) -> Result<f64> {
-    cash_in_bucket_on(conn, mode, None).await
-}
-
 /// Free money in the mutual-fund purse of the long-term pot.
 pub async fn available_mf(pool: &SqlitePool) -> Result<f64> {
     cash_in_bucket(pool, Mode::Long, Some("mf")).await

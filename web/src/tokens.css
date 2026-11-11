@@ -42,7 +42,6 @@
     --text-base: 0.875rem;
     --text-md: 1rem;
     --text-lg: 1.25rem;
-    --text-xl: 1.625rem;
     --text-2xl: 2.125rem;
 
     --space-1: 4px;
@@ -55,7 +54,6 @@
 
     --radius: 3px;
     --radius-stamp: 2px;
-    --row-h: 32px;
     --row-h-touch: 44px;
 
     color-scheme: light dark;

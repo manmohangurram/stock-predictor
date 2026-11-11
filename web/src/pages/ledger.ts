@@ -5,7 +5,6 @@ import { decisionFilterTabs, isDecisionFilter, type DecisionFilter } from "../co
 import { escapeHtml, histDate, money, units } from "../format";
 import { renderConfidence } from "../components/confidence";
 import { actionStamp, stamp, statusPill, toneOf } from "../components/stamp";
-import { isRefusal } from "../components/ledger-row";
 
 /** The portfolio strip: the four numbers that decide whether anything is affordable. */
 export function renderModeTabs(mode: Mode): string {
@@ -197,6 +196,10 @@ function planActions(
     </div>
   </form>`;
 }
+
+/** A refusal is the model's proposal turned down with a reason; a budget block is arithmetic. */
+const isRefusal = (s: { action: string; reasons: string[] }): boolean =>
+  s.action === "BLOCKED" && s.reasons.length > 0 && !s.reasons[0].startsWith("insufficient");
 
 function decisionRow(s: Dashboard["signals"][number]): string {
   const status =
