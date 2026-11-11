@@ -137,7 +137,24 @@ async fn plan_book(
         return Ok(None);
     }
 
-    let candidates = candidates_for_plan(deps.pool, &settings.currency, scope).await?;
+    // The stock plan is offered the market, not itself: the book block already lists what is held,
+    // so today's list is the Nifty 100's best five-session performers. The fund plan keeps its own
+    // arithmetic list — funds are ranked by the scan, not by a benchmark.
+    let candidates = if fund {
+        candidates_for_plan(deps.pool, &settings.currency, scope).await?
+    } else {
+        match crate::benchmark::daily_list(deps.pool, deps.market, now).await {
+            Ok(picks) if !picks.is_empty() => picks
+                .iter()
+                .map(|p| format!("{}\n", p.line(&settings.currency)))
+                .collect::<String>(),
+            Ok(_) => "no candidate cleared a positive five-session return today\n".to_string(),
+            Err(e) => {
+                tracing::warn!(error = %e, "nifty 100 list unavailable");
+                format!("the benchmark list could not be built today ({e:#})\n")
+            }
+        }
+    };
     let limits = if fund {
         format!(
             "the whole plan may spend at most {:.2} {currency}, which is everything the fund purse holds; there is no per-trade ceiling for funds",
@@ -448,8 +465,8 @@ async fn fund_symbols(pool: &SqlitePool) -> Result<Vec<String>> {
     Ok(rows.into_iter().map(|r| r.0).collect())
 }
 
-/// Today's list for the book call: the active instruments and their last two closes, so the model
-/// can weigh a holding against what else is on offer.
+/// The fund plan's list: the active funds and their last two NAVs. The stock plan's list comes from
+/// `benchmark::daily_list` instead — a holding cannot be weighed against itself.
 async fn candidates_for_plan(
     pool: &SqlitePool,
     currency: &str,

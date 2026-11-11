@@ -9,6 +9,7 @@ pub fn hex(bytes: &[u8]) -> String {
 
 pub mod api;
 pub mod backtest;
+pub mod benchmark;
 pub mod config;
 pub mod db;
 pub mod engine;
