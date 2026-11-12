@@ -5,17 +5,18 @@ name: Prune packages
 # moved to the Actions cache — the registry build cache. Several versions per release, each a few
 # hundred megabytes of layers.
 #
-# Rule: keep the newest KEEP release images (the tagged index and the children built around it),
-# delete everything older. Monthly, and by hand before a release.
+# Rule: keep the newest KEEP release images — five by default, the tagged index and the children
+# built around it — and delete everything older. Weekly, and by hand before a release.
 on:
   schedule:
-    - cron: "0 3 1 * *" # 03:00 UTC on the first of the month
+    # Weekly, Sunday 03:00 UTC — before the week's work, after the weekend's releases.
+    - cron: "0 3 * * 0"
   workflow_dispatch:
     inputs:
       keep:
-        description: "How many release images to keep"
+        description: "How many release images to keep (default 5 — a rollback target should not be the only one)"
         required: false
-        default: "3"
+        default: "5"
       dry_run:
         description: "Only report what would be deleted"
         type: boolean
@@ -35,7 +36,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
           PACKAGE: ${{ github.event.repository.name }}
-          KEEP: ${{ github.event.inputs.keep || '3' }}
+          KEEP: ${{ github.event.inputs.keep || '5' }}
           DRY: ${{ github.event.inputs.dry_run || 'false' }}
         run: |
           set -euo pipefail
