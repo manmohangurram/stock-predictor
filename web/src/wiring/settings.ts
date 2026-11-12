@@ -1,5 +1,5 @@
 import { api, type Settings, type Limits } from "../api";
-import { clearDraft, humanDuration, setDraft, type Tab } from "../pages/settings";
+import { clearDraft, humanDuration, rupees, setDraft, type Tab } from "../pages/settings";
 
 function readLimits(data: FormData, mode: "long" | "trade") {
   const num = (name: string) => Number(data.get(`${mode}_${name}`) ?? 0);
@@ -89,7 +89,11 @@ export function wireSettings(
           daily_cap: num("daily_cap"),
           min_price_move: num("min_price_move"),
           scan_min_price: num("scan_min_price"),
-          scan_min_turnover: num("scan_min_turnover"),
+          // Typed in crore, stored in rupees.
+          scan_min_turnover:
+            num("scan_min_turnover") === undefined
+              ? undefined
+              : rupees(num("scan_min_turnover") ?? 0),
           scan_locked_pct: num("scan_locked_pct"),
         };
         break;

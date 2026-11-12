@@ -1364,8 +1364,9 @@ describe("the scan filters are settings, not constants", () => {
     expect(html).toContain('name="scan_min_turnover"');
     expect(html).toContain('name="scan_locked_pct"');
     expect(html).toContain("What the short-term scan may offer");
-    expect(html).toContain('value="10000000"'); // the turnover default, in rupees
-    expect(html).toContain("one crore is 1,00,00,000");
+    // Stored in rupees, typed in crore: 10,000,000 shows as 1.
+    expect(html).toMatch(/id="scan_min_turnover"[^>]*value="1"/);
+    expect(html).toContain("in crore");
   });
 
   test("a changed floor is shown as stored", async () => {
@@ -1376,5 +1377,41 @@ describe("the scan filters are settings, not constants", () => {
       "cadence",
     );
     expect(html).toMatch(/id="scan_min_price"[^>]*value="25"|value="25"[^>]*id="scan_min_price"/);
+  });
+});
+
+describe("the turnover floor is typed in crore", () => {
+  test("rupees and crore round-trip without drift", async () => {
+    const { crore, rupees } = await import("./pages/settings");
+    expect(crore(10_000_000)).toBe(1);
+    expect(crore(5_000_000)).toBe(0.5);
+    expect(crore(2_500_000)).toBe(0.25);
+    expect(rupees(1)).toBe(10_000_000);
+    expect(rupees(0.5)).toBe(5_000_000);
+    expect(rupees(crore(7_000_000))).toBe(7_000_000);
+  });
+
+  test("a stored value reads back as the crore a person would type", async () => {
+    const { renderSettings, crore } = await import("./pages/settings");
+    const html = renderSettings(
+      {
+        budget: 500_000, committed: 0, available: 500_000, currency: "INR",
+        currency_locked: false, deepseek_configured: false,
+        trading_budget: 100_000, trading_available: 80_000, mf_budget: 0, mf_available: 0,
+        ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
+        llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
+        llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
+        public_url: "http://localhost:8099",
+        runtime: {
+          poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
+          daily_cap: 200, scan_min_price: 10, scan_min_turnover: 50_000_000, scan_locked_pct: 19.5,
+          proxy_configured: false, proxy_host: "", proxy_bypass: null, proxy_user: null,
+          proxy_pass_configured: false,
+        },
+      } as never,
+      "cadence",
+    );
+    expect(crore(50_000_000)).toBe(5);
+    expect(html).toMatch(/id="scan_min_turnover"[^>]*value="5"/);
   });
 });
