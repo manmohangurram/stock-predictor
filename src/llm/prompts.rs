@@ -8,9 +8,7 @@ use crate::rules::indicators::Indicators;
 pub const DECIDE_V1: &str = include_str!("../../prompts/decide_v1.md");
 pub const ESCALATE_V1: &str = include_str!("../../prompts/escalate_v1.md");
 pub const ROTATE_V1: &str = include_str!("../../prompts/rotate_v1.md");
-pub const TREND_V1: &str = include_str!("../../prompts/trend_v1.md");
 pub const TRENDING_V1: &str = include_str!("../../prompts/trending_v1.md");
-pub const SHORT_V1: &str = include_str!("../../prompts/short_v1.md");
 pub const PLAN_STOCK_V1: &str = include_str!("../../prompts/plan_stock_v1.md");
 pub const PLAN_MF_V1: &str = include_str!("../../prompts/plan_mf_v1.md");
 pub const PLAN_TRADE_V1: &str = include_str!("../../prompts/plan_trade_v1.md");
@@ -66,9 +64,7 @@ pub fn template(name: &str) -> Result<&'static str> {
         "decide_v1" => Ok(DECIDE_V1),
         "escalate_v1" => Ok(ESCALATE_V1),
         "rotate_v1" => Ok(ROTATE_V1),
-        "trend_v1" => Ok(TREND_V1),
         "trending_v1" => Ok(TRENDING_V1),
-        "short_v1" => Ok(SHORT_V1),
         "plan_stock_v1" => Ok(PLAN_STOCK_V1),
         "plan_mf_v1" => Ok(PLAN_MF_V1),
         "plan_trade_v1" => Ok(PLAN_TRADE_V1),
@@ -128,27 +124,6 @@ pub fn render_rotation(holdings: &str, candidate: &str) -> Result<RenderedPrompt
     })
 }
 
-/// The short-term prompt: one mover, its tape, its headlines, and the book's cash.
-pub fn render_trend(
-    candidate: &str,
-    tape: &str,
-    headlines: &str,
-    web: &str,
-    book: &str,
-) -> Result<RenderedPrompt> {
-    let template = template("trend_v1")?;
-    Ok(RenderedPrompt {
-        template: "trend_v1".into(),
-        hash: template_hash("trend_v1")?,
-        text: template
-            .replace("{{candidate}}", candidate)
-            .replace("{{tape}}", tape)
-            .replace("{{headlines}}", headlines)
-            .replace("{{web}}", web)
-            .replace("{{book}}", book),
-    })
-}
-
 /// The daily scan: "what is India trading today", answered from web results we fetched.
 pub fn render_trending(date: &str, web: &str) -> Result<RenderedPrompt> {
     let template = template("trending_v1")?;
@@ -200,15 +175,7 @@ pub fn render_web_hits(hits: &[crate::llm::deepseek::SearchHit]) -> String {
         .join("\n")
 }
 
-/// Which playbook a decision uses. The trade pot's horizon is measured in hours, so it is asked a
-/// different question than the long-term book.
-pub fn decide_template(mode: crate::models::Mode) -> &'static str {
-    match mode {
-        crate::models::Mode::Trade => "short_v1",
-        crate::models::Mode::Long => "decide_v1",
-    }
-}
-
+/// Every prompt goes through here: the template, then one substitution per field the prompt names.
 pub fn render(name: &str, ctx: &PromptContext<'_>) -> Result<RenderedPrompt> {
     let headline_block = if ctx.headlines.is_empty() {
         "(no headlines in the last 7 days)".to_string()

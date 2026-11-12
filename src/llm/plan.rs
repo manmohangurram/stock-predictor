@@ -236,8 +236,9 @@ pub fn validate(
         seen.push(&m.symbol);
 
         // A short-term idea has a shelf life; the move says when it expires, and the book never
-        // holds an idea past three sessions.
-        if scope.is_trade() {
+        // holds an idea past three sessions. A SELL is an exit, not an idea — it has no shelf life,
+        // and demanding one refused a perfectly good "take the profit now".
+        if scope.is_trade() && m.action == Action::Buy {
             let until = m
                 .valid_until
                 .as_deref()

@@ -274,26 +274,6 @@ fn the_prompt_carries_financials_or_says_unavailable() {
     );
 }
 
-#[test]
-fn the_trade_book_uses_the_short_playbook_and_the_long_book_does_not() {
-    use stock_predictor::llm::prompts::decide_template;
-    use stock_predictor::models::Mode;
-    assert_eq!(decide_template(Mode::Trade), "short_v1");
-    assert_eq!(decide_template(Mode::Long), "decide_v1");
-
-    let short = stock_predictor::llm::prompts::template("short_v1").unwrap();
-    // The gate and the data it is judged on must both be in the playbook.
-    assert!(short.contains("Relative volume ≥ 1.2"), "volume evidence");
-    assert!(
-        short.contains("confidence\":\"high"),
-        "the confidence contract"
-    );
-    assert!(
-        short.contains("{{short_context}}"),
-        "the short card is wired in"
-    );
-    assert!(short.contains("at most 168"), "the horizon cap");
-}
 
 #[test]
 fn the_long_book_says_its_horizon_is_months() {
@@ -491,49 +471,6 @@ fn the_stock_plan_prompt_demands_exits_and_forbids_funds() {
         "{}",
         rendered.text
     );
-}
-
-/// The short-term prompt now carries what the web says, numbered, and tells the model to cite it.
-#[test]
-fn the_short_term_prompt_carries_todays_web_and_asks_for_citations() {
-    let hits = vec![stock_predictor::llm::deepseek::SearchHit {
-        title: "Tata Motors Q2 profit beats estimates".into(),
-        site: "Hindustan Times".into(),
-        url: "https://example.com/a".into(),
-        snippet: "Profit rose 12% on strong JLR sales.".into(),
-        summary: "A much longer summary that the model does not need.".into(),
-        date: Some("2026-11-09T16:00:00+00:00".into()),
-    }];
-    let web = prompts::render_web_hits(&hits);
-    assert!(web.starts_with("[1] Tata Motors"), "{web}");
-    // Title, date and the short gist; a URL is a string the model cannot open.
-    assert!(web.contains("Profit rose 12%"), "{web}");
-    // The date is a day, not an ISO timestamp, and the source is named.
-    assert!(web.contains("2026-11-09"), "{web}");
-    assert!(web.contains("Hindustan Times"), "{web}");
-    assert!(!web.contains("T16:00:00"), "{web}");
-    assert!(!web.contains("https://"), "no url in the prompt: {web}");
-    assert!(!web.contains("much longer summary"), "{web}");
-    let rendered = prompts::render_trend(
-        "TATAMOTORS.NS · 780.50 now, +5.17% today",
-        "2026-11-10 close 780.50",
-        "(no headlines)",
-        &web,
-        "cash INR 200000.00, allowance 10000.00",
-    )
-    .unwrap();
-    assert!(rendered.text.contains("[1] Tata Motors"), "{}", rendered.text);
-    assert!(
-        rendered.text.contains("NSE and BSE"),
-        "the market is named: {}",
-        rendered.text
-    );
-    assert!(
-        rendered.text.contains("T+1"),
-        "settlement is named: {}",
-        rendered.text
-    );
-    assert!(!rendered.text.contains("{{"), "unfilled: {}", rendered.text);
 }
 
 /// An empty search is said out loud rather than leaving a blank where evidence should be.

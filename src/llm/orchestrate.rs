@@ -122,7 +122,7 @@ pub async fn run(deps: &LlmDeps<'_>, input: RunInput<'_>) -> Result<Decision> {
         price_history: "",
     };
 
-    let rendered = prompts::render(prompts::decide_template(input.mode), &base)?;
+    let rendered = prompts::render("decide_v1", &base)?;
     let model = crate::rules::settings::model_config(deps.pool).await?;
     let reply = deepseek::chat(
         deps.pool,

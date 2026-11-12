@@ -552,3 +552,40 @@ fn a_trade_move_needs_an_expiry_inside_three_sessions() {
     let err = check(move_with(Some(past), "IDEA.NS")).unwrap_err().to_string();
     assert!(err.contains("already past"), "{err}");
 }
+
+/// A SELL is an exit, not an idea: demanding an expiry on it refused a good "take the profit now".
+#[test]
+fn a_trade_sell_needs_no_expiry_but_a_buy_does() {
+    let now = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 11, 11, 6, 0, 0).unwrap();
+    let cash = Cash {
+        stock: 0.0,
+        fund: 0.0,
+        trade: 50_000.0,
+    };
+    let held: Vec<HoldingLine> = vec![HoldingLine {
+        symbol: "RELIANCE.NS".into(),
+        name: "Reliance".into(),
+        qty: 5.0,
+        avg_cost: 1200.0,
+        ltp: Some(1339.70),
+        stop: None,
+        target: None,
+    }];
+    let sell = Move {
+        action: Action::Sell,
+        symbol: "RELIANCE.NS".into(),
+        qty: Some(5.0),
+        price: Some(1339.70),
+        amount: None,
+        stop: None,
+        target: None,
+        why: "unprotected winner".into(),
+        valid_until: None,
+    };
+    let plan = Plan {
+        moves: vec![sell],
+        rationale: "take the profit".into(),
+    };
+    let ctx_ok = plan::validate(&plan, &held, cash, &at(100_000.0), "INR", now, &[], Scope::Trade);
+    assert!(ctx_ok.is_ok(), "a sell needs no expiry: {ctx_ok:?}");
+}

@@ -466,13 +466,15 @@ async fn record_plan_refusal(
     sqlx::query(
         "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
             created_at, mode, kind, status, conversation_id)
-         SELECT id, 'BLOCKED', 0, 0, ?, ?, ?, 'long', 'plan', 'pending', ?
+         SELECT id, 'BLOCKED', 0, 0, ?, ?, ?, ?, 'plan', 'pending', ?
          FROM instruments WHERE (class = 'mutual_fund') = ? AND active = 1
          ORDER BY id LIMIT 1",
     )
     .bind((now + chrono::Duration::hours(18)).to_rfc3339())
     .bind(reason)
     .bind(now.to_rfc3339())
+    // A refusal belongs to the purse that asked, or the ledger shows it in the wrong book.
+    .bind(if scope.is_trade() { "trade" } else { "long" })
     .bind(conversation_id)
     .bind(scope.is_fund())
     .execute(pool)

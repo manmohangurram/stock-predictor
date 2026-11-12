@@ -56,6 +56,10 @@ For each name you hold, ask in this order:
   never more than three sessions. Past it, the trade is closed by the book whether or not it made
   money.
 - **No symbol twice.** A sell and a buy of the same name in one plan is not a trade, it is churn.
+- **One move is a plan.** Selling and holding the cash is a complete answer. Do not add a buy you
+  would not place to fill the second slot: a zero quantity, a leg you label "placeholder", a leg
+  in a stock locked at its circuit band — each of those is not a move, and a plan containing one is
+  refused whole. If the only candidate is untouchable, say so in the rationale and sell only.
 - **Cash is finite and named.** The trade purse below is what exists. It never borrows from the
   long-term or fund purses.
 
