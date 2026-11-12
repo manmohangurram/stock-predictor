@@ -56,8 +56,15 @@ function field(
 
 /** Rupees on the wire, crore on the screen: 10,000,000 reads badly in a number box. */
 const CRORE = 10_000_000;
-export const crore = (rupees: number): number =>
-  Number.isFinite(rupees) ? Math.round((rupees / CRORE) * 100) / 100 : 0;
+/**
+ * Whole crore reads as an integer; anything else is shown exactly as stored, because rounding the
+ * display would silently claim the floor is 3 crore when the database says 2.5.
+ */
+export const crore = (rupees: number): number => {
+  if (!Number.isFinite(rupees)) return 0;
+  const cr = rupees / CRORE;
+  return Number.isInteger(cr) ? cr : Math.round(cr * 100) / 100;
+};
 export const rupees = (croreValue: number): number => Math.round(croreValue * CRORE);
 
 function select(
@@ -242,8 +249,8 @@ const CADENCE = (s: Settings, tab: Tab): string => `
     help: "Below this, a single tick is a large part of the move. Micro-caps at ₹1–₹4 are not tradeable at this size.",
   })}
   ${field(tab, "scan_min_turnover", "Turnover floor, per day", crore(s.runtime.scan_min_turnover), {
-    type: "number", step: "0.5", unit: "crore",
-    help: `The day's traded value a candidate must reach, in crore — 0.5 is 50 lakh. An order from this purse has to be a rounding error against it.`,
+    type: "number", step: "1", unit: "crore",
+    help: `The day's traded value a candidate must reach, in whole crore — 1 crore is 1,00,00,000. An order from this purse has to be a rounding error against it.`,
   })}
   ${field(tab, "scan_locked_pct", "Locked at the circuit at", s.runtime.scan_locked_pct, {
     type: "number", step: "0.5", unit: "% up",
