@@ -1,3 +1,57 @@
+## v0.27.0
+
+### The short-term list has floors
+
+The scan was offering ₹0.73–₹3.85 micro-caps pinned at their circuit band, and every plan came back
+*"nothing clears costs"* — correctly, because you cannot buy a locked band or trade a stock whose
+whole move is three ticks. Three floors now decide what the model is even offered, and all three are
+**settings** (Settings → Cadence → *What the short-term scan may offer*):
+
+- **Price floor ₹10** — below that a single tick is a large part of the move.
+- **Turnover floor, one crore a day** — an order from this purse has to be a rounding error. Typed in
+  **whole crore**; stored in rupees.
+- **Locked-band cut-off 19.5%** — a stock at its ceiling has no fill at any price you name.
+
+Same day, same exchange list: **21 candidates became 14**, and the plan that followed was the first
+actionable one — sell RELIANCE (+11.6%, no stop, no catalyst), buy GABRIEL 27 @ 1619 with a stop at
+1540, a target at 1790 and an expiry at tomorrow's close.
+
+### Every prompt was tested against the live model
+
+`plan_stock_v1`, `plan_mf_v1`, `plan_trade_v1`, `decide_v1` and `trending_v1`, on a throwaway
+database, with real replies read back. No prompt carried an unfilled placeholder, nothing 4xx'd,
+nothing failed to parse. Three bugs fell out:
+
+- **A trade SELL was refused for having no expiry.** An exit has no shelf life; the expiry is a
+  BUY's contract. That refusal threw away a perfectly good *"take the profit now"*.
+- **A refused plan was filed in the long purse** whatever purse asked.
+- **`plan_trade_v1` invited a placeholder second leg** — the model emitted `qty: 0, why:
+  "placeholder"` to fill the slot and the whole plan was refused. The prompt now says one move is a
+  plan, and that a leg you would not place refuses the plan whole.
+
+Removed as unreachable: `prompts/trend_v1.md`, `prompts/short_v1.md`, `render_trend` and
+`decide_template` — no `RunInput` is ever built with `Mode::Trade`.
+
+### Web search asks about the company, not the ticker
+
+`ANTGRAPHIC news today` was tokenised into `ant` and returned **Anthropic's IPO**. The query now
+quotes the company's name (`"Antarctica" OR ANTGRAPHIC share news`), and a result reaches the prompt
+only if the ticker or the first two words of the name appear in its title or snippet.
+
+### Development: a `.env`, and never in the repository
+
+A gitignored `.env` can carry `DEEPSEEK_API_KEY` (`OPENAI`/`GEMINI`/`CUSTOM` too) so prompts can be
+exercised without a key at rest. It only fills variables that are not already exported and **never
+writes a setting** — a stored key wins. `.env.example` is the template; `.env` never ships.
+
+### Packages: arm64 only, cached in Actions, pruned weekly
+
+Every release left nine package versions behind — one tagged index, the platform manifests, their
+attestations and two registry cache images — and GHCR has no retention policy for a user-owned
+package. Now: build cache in the Actions cache, **arm64 only** (the deployment is arm64; the second
+architecture doubled every manifest and layer), and a **weekly prune** keeping the newest five
+releases. Swept by hand: **423 versions → 27**, **94 artifacts → 0**.
+
 ## v0.26.0
 
 The two books have different appetites now. Design: `docs/superpowers/specs/2026-11-11-two-books-design.md`.
