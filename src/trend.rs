@@ -186,6 +186,16 @@ pub async fn candidate_block(
         if crate::store::refresh(pool, id, &g.symbol, market).await.is_err() {
             continue;
         }
+        // The search engine tokenises: "ANTGRAPHIC news today" matched Anthropic's $ANT IPO posts.
+        // Ask with the company's own name — quoted — when the book knows it.
+        let known_name: Option<String> = sqlx::query_as("SELECT name FROM instruments WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .map(|(n,): (String,)| n)
+            .filter(|n| !n.trim().is_empty() && !g.short_name().eq_ignore_ascii_case(n.trim()));
         let Ok(bars) = load_bars(pool, id).await else {
             continue;
         };
@@ -202,12 +212,12 @@ pub async fn candidate_block(
                 pool,
                 &model.base_url,
                 transport,
-                &dated_query(&format!("{} news today", g.short_name()), now),
+                &dated_query(&news_query(g.short_name(), known_name.as_deref()), now),
                 &format!("search {}", g.symbol),
             )
             .await
             {
-                let recent = recent_hits(hits, now);
+                let recent = relevant(recent_hits(hits, now), g.short_name(), known_name.as_deref());
                 if !recent.is_empty() {
                     out.push_str(&format!("   web: {}\n", crate::llm::prompts::render_web_hits(&recent).replace('\n', " ")));
                 }
@@ -377,6 +387,42 @@ fn recent_hits(
                 .and_then(day_of)
                 .is_some_and(|d| d >= cutoff)
         })
+        .collect()
+}
+
+/// What to search for, given a ticker and (when known) the company's name.
+///
+/// The ticker alone is not enough: search engines split `ANTGRAPHIC` into `ant` and hand back
+/// Anthropic's IPO. The name, quoted, is what a news page actually writes.
+fn news_query(ticker: &str, name: Option<&str>) -> String {
+    match name {
+        Some(name) => format!("\"{}\" OR {} share news", name.trim(), ticker),
+        None => format!("{ticker} share news"),
+    }
+}
+
+/// Keep only the hits that are about *this* stock: the ticker or the company's name must appear in
+/// the title or the snippet. A result that mentions neither is a different company — it costs tokens
+/// and it lies to the model about what the catalyst is.
+fn relevant(
+    hits: Vec<crate::llm::deepseek::SearchHit>,
+    ticker: &str,
+    name: Option<&str>,
+) -> Vec<crate::llm::deepseek::SearchHit> {
+    let needle = |haystack: &str| {
+        let lower = haystack.to_lowercase();
+        let ticker_hit = lower.contains(&ticker.to_lowercase());
+        // The first two words of a company name are the distinctive part ("Orchasp Limited" →
+        // "orchasp"), and the rest ("limited", "ltd", "industries") is shared by half the market.
+        let name_hit = name.is_some_and(|n| {
+            n.split_whitespace()
+                .take(2)
+                .any(|word| word.len() >= 4 && lower.contains(&word.to_lowercase()))
+        });
+        ticker_hit || name_hit
+    };
+    hits.into_iter()
+        .filter(|h| needle(&h.title) || needle(&h.snippet))
         .collect()
 }
 
@@ -867,5 +913,63 @@ mod row_hygiene_tests {
             .await
             .unwrap();
         assert_eq!(left.0, 1);
+    }
+}
+
+#[cfg(test)]
+mod relevance_tests {
+    use super::*;
+    use crate::llm::deepseek::SearchHit;
+
+    fn hit(title: &str, snippet: &str) -> SearchHit {
+        SearchHit {
+            title: title.into(),
+            site: "Wire".into(),
+            url: "https://example.com".into(),
+            snippet: snippet.into(),
+            summary: String::new(),
+            date: Some("2026-11-11".into()),
+        }
+    }
+
+    /// The real failure: `ANTGRAPHIC` was tokenised as "ant", and the prompt got Anthropic's IPO.
+    #[test]
+    fn a_hit_about_a_different_company_is_dropped() {
+        let kept = relevant(
+            vec![
+                hit("Anthropic retracts its $70–80bn IPO range", "$ANT listing expected next week"),
+                hit("Antarctica Ltd jumps 19.67% on the BSE", "Antarctica Ltd closed at Rs 0.73"),
+            ],
+            "ANTGRAPHIC",
+            Some("Antarctica"),
+        );
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        assert!(kept[0].title.contains("Antarctica"));
+    }
+
+    #[test]
+    fn the_name_is_what_makes_a_hit_relevant() {
+        let kept = relevant(
+            vec![hit("Prozone Realty Q2 profit jumps to ₹555 cr", "revenue rises 7%")],
+            "PROZONER",
+            Some("Prozone Realty Limited"),
+        );
+        assert_eq!(kept.len(), 1);
+        // Without the name, the ticker is all we have, and this hit does not carry it.
+        assert!(relevant(
+            vec![hit("Prozone Realty Q2 profit jumps", "revenue rises 7%")],
+            "PROZONER",
+            None
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn the_query_asks_for_the_name_when_there_is_one() {
+        assert_eq!(
+            news_query("ANTGRAPHIC", Some("Antarctica")),
+            "\"Antarctica\" OR ANTGRAPHIC share news"
+        );
+        assert_eq!(news_query("IDEA", None), "IDEA share news");
     }
 }
