@@ -1,0 +1,97 @@
+name: Prune packages
+
+# GHCR has no retention policy for a user-owned package, so every release leaves its image behind
+# for ever: one tagged index, two platform manifests, their attestations, and — before the cache
+# moved to the Actions cache — the registry build cache. Several versions per release, each a few
+# hundred megabytes of layers.
+#
+# Rule: keep the newest KEEP release images (the tagged index and the children built around it),
+# delete everything older. Monthly, and by hand before a release.
+on:
+  schedule:
+    - cron: "0 3 1 * *" # 03:00 UTC on the first of the month
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "How many release images to keep"
+        required: false
+        default: "3"
+      dry_run:
+        description: "Only report what would be deleted"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the package versions of old releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ github.event.repository.name }}
+          KEEP: ${{ github.event.inputs.keep || '3' }}
+          DRY: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, sys
+          from datetime import datetime, timedelta
+
+          owner, pkg = os.environ["OWNER"], os.environ["PACKAGE"]
+          keep, dry = int(os.environ["KEEP"]), os.environ["DRY"] == "true"
+          api = f"/users/{owner}/packages/container/{pkg}/versions"
+          gh = lambda *a: subprocess.run(["gh", "api", *a], capture_output=True, text=True)
+
+          versions = []
+          for page in range(1, 11):
+              r = gh(f"{api}?per_page=100&page={page}")
+              if r.returncode != 0 or not r.stdout.strip():
+                  break
+              for v in json.loads(r.stdout):
+                  tags = [t for t in (v["metadata"]["container"].get("tags") or [])
+                          if not t.startswith("buildcache")]
+                  versions.append({"id": v["id"],
+                                   "at": datetime.strptime(v["updated_at"], "%Y-%m-%dT%H:%M:%SZ"),
+                                   "tags": tags})
+          if not versions:
+              sys.exit("no versions read")
+          print(f"versions: {len(versions)}")
+
+          # A build run is one cluster: its versions land within a couple of minutes of each other,
+          # and releases are at least a working day apart. Ten minutes of silence starts a new one.
+          versions.sort(key=lambda v: v["at"])
+          clusters, current = [], [versions[0]]
+          for v in versions[1:]:
+              if v["at"] - current[-1]["at"] > timedelta(minutes=10):
+                  clusters.append(current)
+                  current = [v]
+              else:
+                  current.append(v)
+          clusters.append(current)
+
+          releases = [c for c in clusters if any(v["tags"] for v in c)]
+          if len(releases) <= keep:
+              print(f"{len(releases)} release image(s) — nothing to prune")
+              sys.exit(0)
+          doomed = [v for c in releases[:-keep] for v in c]
+          kept = [sorted({t for v in c for t in v["tags"]}) for c in releases[-keep:]]
+          print("keeping:", kept)
+          print("deleting:", len(doomed), "versions from", len(releases) - keep, "old release(s)")
+          if dry:
+              sys.exit(0)
+          ok = 0
+          for v in doomed:
+              if gh("-X", "DELETE", f"{api}/{v['id']}").returncode == 0:
+                  ok += 1
+              else:
+                  print("could not delete", v["id"])
+          print("deleted:", ok)
+          left = gh(f"/users/{owner}/packages/container/{pkg}", "--jq", ".version_count")
+          print("left:", left.stdout.strip(), "versions")
+          PY

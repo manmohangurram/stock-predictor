@@ -17,11 +17,11 @@ jobs:
   build:
     strategy:
       fail-fast: false
+      # One platform, deliberately. The deployment is arm64, and a second architecture doubles
+      # every image version: its manifest, its attestations, its layers. To publish amd64 again,
+      # add it here — nothing else needs to change.
       matrix:
         arch:
-          - name: amd64
-            platform: linux/amd64
-            runner: ubuntu-latest
           - name: arm64
             platform: linux/arm64
             runner: ubuntu-24.04-arm
@@ -50,8 +50,11 @@ jobs:
           context: .
           platforms: ${{ matrix.arch.platform }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch.name }}
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch.name }},mode=max
+          # The build cache lives in the Actions cache, not in the registry: `type=registry`
+          # published two extra package versions per release (`buildcache-amd64`, `-arm64`)
+          # that nothing ever pulls, and their layers are the bulk of the storage.
+          cache-from: type=gha,scope=${{ matrix.arch.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch.name }}
 
       - name: Export digest
         run: |
