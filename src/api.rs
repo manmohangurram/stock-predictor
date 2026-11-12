@@ -2588,14 +2588,14 @@ async fn load_signals(
         // The instrument page's whole record, blocked proposals included: they are decisions too.
         "1 = 1"
     } else {
-        // The ledger is a to-do list: pending only, unless a filter asks for history.
+        // The ledger is a to-do list: only proposals you can act on (BUY/SELL) belong in the box.
+        // A blocked or refused proposal is a record, not a decision to review — it stays on the
+        // instrument's page and in the audit.
         match status {
             "all" => "s.action <> 'BLOCKED'",
             "approved" => "s.action <> 'BLOCKED' AND s.status = 'approved'",
             "rejected" => "s.action <> 'BLOCKED' AND s.status = 'rejected'",
-            // A proposal the model made and the validator refused is a decision the owner asked
-            // for — it belongs in the box, unlike a budget block, which is arithmetic.
-            _ => "(s.action <> 'BLOCKED' OR s.reason_json LIKE '%\"detail\"%') AND s.status = 'pending'",
+            _ => "s.action <> 'BLOCKED' AND s.status = 'pending'",
         }
     };
     let rows: Vec<SignalDbRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(

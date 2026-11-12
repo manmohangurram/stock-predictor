@@ -1252,6 +1252,39 @@ async fn the_ledger_shows_pending_decisions_only_unless_filtered() {
 }
 
 #[tokio::test]
+async fn a_refused_proposal_is_not_a_decision_to_review() {
+    // A proposal the validator turned down is stored BLOCKED with a `detail`. Nothing there can be
+    // approved — there is no fill to post — so the ledger's box must not offer it.
+    let (_d, router, pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at, mode)
+         SELECT id, 'BLOCKED', 10, 100.0, '2030-01-01T00:00:00Z',
+                '{\"blocked\":\"refused\",\"detail\":\"no stop on a BUY\"}',
+                '2026-11-09T10:00:00Z', 'long'
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (_, v) = get(&router, "/api/dashboard").await;
+    assert!(
+        v["signals"].as_array().unwrap().is_empty(),
+        "a refused proposal is a record, not something to approve"
+    );
+
+    // …and it is still visible where the record lives.
+    let (_, v) = get(&router, "/api/instruments/INFY/analysis").await;
+    let actions: Vec<String> = v["signals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["action"].as_str().unwrap().to_string())
+        .collect();
+    assert!(actions.contains(&"BLOCKED".to_string()), "{actions:?}");
+}
+
+#[tokio::test]
 async fn approving_a_rotation_posts_both_legs_together() {
     let (_d, router, pool) = setup().await;
     sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES ('HDFCBANK','stock','HDFC Bank','INR')")

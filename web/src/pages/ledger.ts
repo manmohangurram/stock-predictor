@@ -197,10 +197,6 @@ function planActions(
   </form>`;
 }
 
-/** A refusal is the model's proposal turned down with a reason; a budget block is arithmetic. */
-const isRefusal = (s: { action: string; reasons: string[] }): boolean =>
-  s.action === "BLOCKED" && s.reasons.length > 0 && !s.reasons[0].startsWith("insufficient");
-
 function decisionRow(s: Dashboard["signals"][number]): string {
   const status =
     s.status === "pending"
@@ -212,9 +208,7 @@ function decisionRow(s: Dashboard["signals"][number]): string {
   const named = s.name && s.name !== s.symbol;
   return `<div class="feed-row decision-feed">
     <div class="decision-main">
-      <div>${
-        isRefusal(s) ? stamp("blocked", "refused") : actionStamp(s.action)
-      }
+      <div>${actionStamp(s.action)}
         <b title="${escapeHtml(s.symbol)}">${escapeHtml(named ? s.name : s.symbol)}</b>
         ${named ? `<span class="sub">${escapeHtml(s.symbol)}</span>` : ""}
         ${s.entry === null ? "" : `<span class="num">${money(s.entry)}</span>`}
@@ -230,14 +224,9 @@ function decisionRow(s: Dashboard["signals"][number]): string {
         // the stop or at the idea's expiry has no rationale, and the card must still say why.
         s.rationale
           ? `<p class="decision-prose">${escapeHtml(s.rationale)}</p>`
-          : s.action !== "BLOCKED" && s.reasons.length
+          : s.reasons.length
             ? `<p class="decision-prose">${escapeHtml(s.reasons[0])}</p>`
             : ""
-      }
-      ${
-        s.action === "BLOCKED" && s.reasons.length
-          ? `<p class="decision-note">${s.reasons.map((r) => escapeHtml(r)).join(" · ")}</p>`
-          : ""
       }
       ${actions}
     </div>
