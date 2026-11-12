@@ -405,6 +405,30 @@ async fn recording_a_buy_then_a_sell_writes_history_and_realised_pnl() {
 }
 
 #[tokio::test]
+async fn a_fully_sold_position_leaves_the_ledger() {
+    let (_d, router, _pool) = setup().await;
+    let _ = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "buy", "qty": 10.0, "price": 100.0}),
+    )
+    .await;
+    let _ = send(
+        &router,
+        "POST",
+        "/api/instruments/INFY/trades",
+        json!({"side": "sell", "qty": 10.0, "price": 110.0}),
+    )
+    .await;
+    let (_, d) = get(&router, "/api/dashboard").await;
+    assert!(
+        d["positions"].as_array().unwrap().is_empty(),
+        "a closed position must not linger in the holdings table"
+    );
+}
+
+#[tokio::test]
 async fn selling_more_than_is_held_is_refused() {
     let (_d, router, _pool) = setup().await;
     let _ = send(

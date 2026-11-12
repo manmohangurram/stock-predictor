@@ -2123,7 +2123,7 @@ async fn load_positions(
                 (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
                  ORDER BY b.ts DESC LIMIT 1) AS ltp
          FROM positions p JOIN instruments i ON i.id = p.instrument_id
-         WHERE p.mode = ? AND i.active = 1 ORDER BY p.id DESC",
+         WHERE p.mode = ? AND i.active = 1 AND p.state = 'open' ORDER BY p.id DESC",
     )
     .bind(mode.as_str())
     .fetch_all(pool)

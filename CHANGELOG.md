@@ -1,3 +1,13 @@
+## v0.27.1
+
+### Hotfix: a sold-out holding lingered as a zero-quantity row
+
+A position fully sold off is closed (`qty = 0, state = 'closed'`) in the database, but the ledger
+query that builds the holdings table returned every position for the mode, closed or not. The
+result was a phantom row — the same stock again, with `Qty 0`, `Invested ₹0.00` and `P&L ₹0.00` —
+sitting under the live holding. The instrument page already filtered to `state = 'open'`; the
+ledger now does too, so a closed position leaves the book the moment it is sold.
+
 ## v0.27.0
 
 ### The short-term list has floors
