@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1.4
 # One container: the Rust server serves both the JSON API and the built Vite app.
-# Build stages run on BUILDPLATFORM (native speed, no QEMU) and cross-compile to
-# TARGETARCH. cargo-chef caches the dependency build so only this crate recompiles
-# when source changes.
+# Build stages run on BUILDPLATFORM (native speed, no QEMU): they build natively
+# when that equals TARGETPLATFORM and cross-compile otherwise. cargo-chef plus
+# cargo cache mounts keep the dependency build cached so only this crate
+# recompiles when source changes.
 
 FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
 WORKDIR /app/web
@@ -13,7 +14,8 @@ COPY web/ ./
 RUN npm run build
 
 FROM --platform=$BUILDPLATFORM rust:1.98 AS chef
-RUN cargo install --locked cargo-chef
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    cargo install --locked cargo-chef
 WORKDIR /app
 
 FROM chef AS planner
@@ -22,28 +24,43 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 ARG TARGETARCH
-RUN case ${TARGETARCH} in \
-        arm64) rustup target add aarch64-unknown-linux-gnu && \
-               apt-get update && apt-get install -y --no-install-recommends \
-                 gcc-aarch64-linux-gnu libc6-dev-arm64-cross && \
-               rm -rf /var/lib/apt/lists/*;; \
-    esac
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
+# Cross-compile only when the build host differs from the target. A native arm64
+# runner (build == target) uses its own toolchain, so the dependency layers are
+# stable and cache from one arm64 build to the next. The cross toolchain and
+# `--target` are paid for only when building arm64 from an amd64 host.
+RUN if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ]; then \
+        case "${TARGETARCH}" in \
+            arm64) rustup target add aarch64-unknown-linux-gnu && \
+                   apt-get update && apt-get install -y --no-install-recommends \
+                     gcc-aarch64-linux-gnu libc6-dev-arm64-cross && \
+                   rm -rf /var/lib/apt/lists/*;; \
+        esac; \
+    fi
 COPY --from=planner /app/recipe.json recipe.json
-RUN case ${TARGETARCH} in \
-        arm64) CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
-               CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
-               cargo chef cook --release --locked --target aarch64-unknown-linux-gnu --recipe-path recipe.json;; \
-        *)     cargo chef cook --release --locked --recipe-path recipe.json;; \
-    esac
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ] && [ "${TARGETARCH}" = "arm64" ]; then \
+        CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+        cargo chef cook --release --locked --target aarch64-unknown-linux-gnu --recipe-path recipe.json; \
+    else \
+        cargo chef cook --release --locked --recipe-path recipe.json; \
+    fi
 COPY . .
-RUN case ${TARGETARCH} in \
-        arm64) CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
-               CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
-               cargo build --release --locked --target aarch64-unknown-linux-gnu && \
-               cp target/aarch64-unknown-linux-gnu/release/stock-predictor /app/stock-predictor;; \
-        *)     cargo build --release --locked && \
-               cp target/release/stock-predictor /app/stock-predictor;; \
-    esac
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ] && [ "${TARGETARCH}" = "arm64" ]; then \
+        CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+        cargo build --release --locked --target aarch64-unknown-linux-gnu && \
+        cp target/aarch64-unknown-linux-gnu/release/stock-predictor /app/stock-predictor; \
+    else \
+        cargo build --release --locked && \
+        cp target/release/stock-predictor /app/stock-predictor; \
+    fi
 
 # Must match the builder's glibc: rust:1.98 is Debian trixie (2.41). A bookworm runtime here
 # produced binaries asking for GLIBC_2.38 and failing at startup on arm64.
