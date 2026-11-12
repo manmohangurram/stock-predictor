@@ -50,11 +50,13 @@ jobs:
           context: .
           platforms: ${{ matrix.arch.platform }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          # The build cache lives in the Actions cache, not in the registry: `type=registry`
-          # published two extra package versions per release (`buildcache-amd64`, `-arm64`)
-          # that nothing ever pulls, and their layers are the bulk of the storage.
-          cache-from: type=gha,scope=${{ matrix.arch.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch.name }}
+          # Registry cache, not the Actions cache: `type=gha` has a hard 10 GB
+          # repo-wide limit shared with Swatinem/rust-cache, and the arm64 release
+          # dependency layer is large enough to get evicted — every build then
+          # re-downloaded and recompiled the world. A registry cache has no size
+          # limit and no eviction; its only cost is storage, pruned weekly.
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch.name }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch.name }},mode=max
 
       - name: Export digest
         run: |
