@@ -16,6 +16,18 @@ pub struct Config {
     pub secret_key: Option<Vec<u8>>,
 }
 
+/// The variable a developer's `.env` may carry a model key in, per provider. Read only when the
+/// database has no key for that provider.
+pub fn key_env_name(provider: crate::llm::provider::Provider) -> &'static str {
+    use crate::llm::provider::Provider;
+    match provider {
+        Provider::Deepseek => "DEEPSEEK_API_KEY",
+        Provider::Openai => "OPENAI_API_KEY",
+        Provider::Gemini => "GEMINI_API_KEY",
+        Provider::Custom => "CUSTOM_API_KEY",
+    }
+}
+
 /// Variables that used to configure the app and are now settings. Boot warns when one is still
 /// set, because a silently ignored `POLL_SECS=600` is an evening lost to wondering.
 pub const RETIRED: &[&str] = &[
@@ -27,6 +39,59 @@ pub const RETIRED: &[&str] = &[
     "PROMPT_WINDOW_HOURS",
     "DEEPSEEK_BASE_URL",
 ];
+
+/// Read a developer's `.env` into the process environment, for local runs only.
+///
+/// Nothing here is a setting: `.env` never ships, the file is gitignored, and a variable only
+/// takes effect when the same name is not already exported. The app's rules are unchanged — the
+/// database is the source of truth for anything a person edits; this exists so `DEEPSEEK_API_KEY`
+/// can live in one file on a development machine instead of in a shell history.
+pub fn load_dotenv() -> Vec<String> {
+    let path = std::path::Path::new(".env");
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let pairs = parse_dotenv(&raw);
+    let mut loaded = Vec::new();
+    for (key, value) in pairs {
+        if std::env::var_os(&key).is_none() {
+            // Safe in a single-threaded start-up path, which is where this is called.
+            std::env::set_var(&key, value);
+            loaded.push(key);
+        }
+    }
+    loaded
+}
+
+/// `KEY=value`, `KEY="a b"`, `# comment`, blank lines. Quotes are stripped, `export` ignored.
+pub fn parse_dotenv(raw: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        let value = value.trim();
+        let value = if (value.starts_with('"') && value.ends_with('"') && value.len() >= 2)
+            || (value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2)
+        {
+            value[1..value.len() - 1].to_string()
+        } else {
+            // An unquoted value ends at a trailing comment.
+            value.split(" #").next().unwrap_or(value).trim().to_string()
+        };
+        out.push((key.to_string(), value));
+    }
+    out
+}
 
 /// 32 bytes as 64 hex characters, or base64 (44 with padding, 43 without).
 fn parse_key(raw: &str) -> Result<Vec<u8>> {

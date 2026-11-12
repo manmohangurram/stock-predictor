@@ -22,6 +22,18 @@ before you see it.
 
 <img src="docs/screenshot.png" alt="The ledger: holdings split into stocks and mutual funds, with P&L and exit plans">
 
+### Trying prompts locally
+
+Copy `.env.example` to `.env` (gitignored) and put a key in it:
+
+```sh
+DEEPSEEK_API_KEY=sk-...
+```
+
+The server reads `.env` at start-up. A key stored in Settings wins over this one, and nothing
+from `.env` is ever written into the database — it exists so a prompt can be run against a
+real model without keeping a key at rest. Development convenience, not a deployment variable.
+
 ## Current Features
 
 - **Three monthly allowances, not ceilings.** Long-term stocks, mutual funds and the short-term book

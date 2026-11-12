@@ -57,6 +57,11 @@ async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flag = |name: &str| args.iter().any(|a| a == name);
 
+    // A developer's `.env`, if there is one. It can only fill variables that are not already set,
+    // and it never seeds a setting: the database stays the source of truth.
+    for name in stock_predictor::config::load_dotenv() {
+        tracing::debug!(%name, "loaded from .env");
+    }
     let cfg = Config::from_env()?;
     for name in Config::retired_warnings() {
         tracing::warn!(

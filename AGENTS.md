@@ -48,6 +48,10 @@ files directly when you need exact wording.
   plan posts inside one transaction (`approve_plan`). A leg that cannot post rolls the others back —
   half a swap is worse than none.
 - The environment is four variables only: `BIND`, `DB_PATH`, `PUBLIC_URL`, `SECRET_KEY`.
+- A developer's `.env` (gitignored; `.env.example` is the template) is read at start-up and may
+  carry `DEEPSEEK_API_KEY` (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `CUSTOM_API_KEY`) so prompts can
+  be exercised without a key at rest. It never writes a setting: a stored key wins, and an
+  already-exported variable is not overridden. Nothing from `.env` ships.
 - Provider keys, the ntfy token and the proxy password are encrypted at rest (`src/secrets.rs`,
   `enc:v1:` prefix). Losing the key means re-entering them. Everything else —
   budget, limits, provider and keys, ntfy, polling cadence, the proxy — is a `settings` row,

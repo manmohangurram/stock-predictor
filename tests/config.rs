@@ -246,3 +246,40 @@ fn the_legacy_file_is_looked_for_beside_the_configured_one() {
     // A custom name has no old spelling to look for.
     assert_eq!(db::legacy_sibling("/data/ledger.db"), None);
 }
+
+/// A developer's `.env`: comments, quotes, `export`, and an inline comment after an unquoted value.
+#[test]
+fn dotenv_lines_are_read_the_way_a_person_writes_them() {
+    let raw = r#"
+# the key I am testing prompts with
+export DEEPSEEK_API_KEY=sk-abc123
+QUOTED="a value with spaces"
+SINGLE='single quoted'
+INLINE=plain # this is a comment
+BROKEN_LINE_WITHOUT_EQUALS
+=novalue
+BAD KEY=value
+"#;
+    let pairs = stock_predictor::config::parse_dotenv(raw);
+    let get = |k: &str| pairs.iter().find(|(key, _)| key == k).map(|(_, v)| v.as_str());
+    assert_eq!(get("DEEPSEEK_API_KEY"), Some("sk-abc123"));
+    assert_eq!(get("QUOTED"), Some("a value with spaces"));
+    assert_eq!(get("SINGLE"), Some("single quoted"));
+    assert_eq!(get("INLINE"), Some("plain"));
+    assert_eq!(get("BROKEN_LINE_WITHOUT_EQUALS"), None, "no '=' is skipped");
+    assert_eq!(pairs.len(), 4, "only the four well-formed lines: {pairs:?}");
+}
+
+/// The variable a key may hide in, per provider — nothing here is written to a setting.
+#[test]
+fn each_provider_has_one_environment_name() {
+    use stock_predictor::llm::provider::Provider;
+    assert_eq!(
+        stock_predictor::config::key_env_name(Provider::Deepseek),
+        "DEEPSEEK_API_KEY"
+    );
+    assert_eq!(
+        stock_predictor::config::key_env_name(Provider::Gemini),
+        "GEMINI_API_KEY"
+    );
+}

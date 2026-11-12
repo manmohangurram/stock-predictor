@@ -437,11 +437,21 @@ fn key_name(provider: crate::llm::provider::Provider) -> &'static str {
 }
 
 /// The key for one provider, whatever is currently selected.
+/// The key for one provider. The database wins; a developer's `.env` is the fallback, so a prompt
+/// can be exercised locally without storing a key at rest. Nothing read from the environment is
+/// ever written back to a setting.
 pub async fn key_for(
     pool: &SqlitePool,
     provider: crate::llm::provider::Provider,
 ) -> Result<Option<String>> {
-    crate::secrets::get_secret(pool, key_name(provider)).await
+    if let Some(stored) = crate::secrets::get_secret(pool, key_name(provider)).await? {
+        if !stored.trim().is_empty() {
+            return Ok(Some(stored));
+        }
+    }
+    Ok(std::env::var(crate::config::key_env_name(provider))
+        .ok()
+        .filter(|k| !k.trim().is_empty()))
 }
 
 /// The limits for one pot, defaulted field by field so a partial configuration still works.
