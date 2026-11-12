@@ -65,6 +65,10 @@ pub struct SettingsPatch {
     pub prompt_window_hours: Option<u32>,
     pub min_price_move: Option<f64>,
     pub daily_cap: Option<u32>,
+    /// The short-term scan's filters: price floor, turnover floor, locked-band cut-off.
+    pub scan_min_price: Option<f64>,
+    pub scan_min_turnover: Option<f64>,
+    pub scan_locked_pct: Option<f64>,
     /// Empty string clears it; absent leaves it alone.
     pub proxy: Option<String>,
     pub proxy_bypass: Option<String>,
@@ -159,6 +163,9 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
         ),
         ("min_price_move", patch.min_price_move),
         ("daily_cap", patch.daily_cap.map(|v| v as f64)),
+        ("scan_min_price", patch.scan_min_price),
+        ("scan_min_turnover", patch.scan_min_turnover),
+        ("scan_locked_pct", patch.scan_locked_pct),
     ] {
         if let Some(v) = value {
             super::runtime::Runtime::check(key, v).map_err(SettingsError::BadRequest)?;

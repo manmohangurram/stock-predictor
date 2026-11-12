@@ -114,6 +114,10 @@ export interface Runtime {
   prompt_window_hours: number;
   min_price_move: number;
   daily_cap: number;
+  /** The short-term scan's three filters: price floor, turnover floor, locked-band cut-off. */
+  scan_min_price: number;
+  scan_min_turnover: number;
+  scan_locked_pct: number;
   proxy_configured: boolean;
   proxy_host: string;
   proxy_user: string | null;
@@ -449,6 +453,9 @@ export const api = {
       off_hours_secs?: number;
       prompt_window_hours?: number;
       min_price_move?: number;
+      scan_min_price?: number;
+      scan_min_turnover?: number;
+      scan_locked_pct?: number;
       daily_cap?: number;
       proxy?: string;
       proxy_user?: string;

@@ -53,6 +53,18 @@ struct Candidate {
     turnover: Option<f64>,
 }
 
+/// What the scan may offer, before the model is asked anything. Three numbers from Settings:
+/// a price floor (a paise tick must not be a large part of the move), a turnover floor (this pot's
+/// order has to be a rounding error), and the locked-band cut-off (a stock at its ceiling cannot be
+/// bought at any price you name).
+fn worth_offering(c: &Candidate, min_price: f64, min_turnover: f64, locked_pct: f64) -> bool {
+    // A name with no exchange price yet is left to the model: it has no numbers to judge by here.
+    let (Some(ltp), Some(turnover), Some(change)) = (c.ltp, c.turnover, c.change_pct) else {
+        return true;
+    };
+    ltp >= min_price && turnover >= min_turnover && change.abs() < locked_pct
+}
+
 impl Candidate {
     fn from_gainer(g: &crate::market::nse::Gainer, source: &str) -> Self {
         Self {
@@ -154,9 +166,27 @@ pub async fn candidate_block(
         return "no list today — the exchange could not be reached\n".into();
     };
     let mut report = TrendReport::default();
-    let list = daily_list(pool, &client, transport, now, &mut report)
+    let filters = crate::rules::runtime::load(pool).await.unwrap_or_default();
+    let list: Vec<Candidate> = daily_list(pool, &client, transport, now, &mut report)
         .await
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|c| {
+            let keep = worth_offering(
+                c,
+                filters.scan_min_price,
+                filters.scan_min_turnover,
+                filters.scan_locked_pct,
+            );
+            if !keep {
+                report.notes.push(format!(
+                    "{} left out: under {:.0} rupees, under {:.0} turnover, or locked at the band",
+                    c.symbol, filters.scan_min_price, filters.scan_min_turnover
+                ));
+            }
+            keep
+        })
+        .collect();
     if list.is_empty() {
         return format!(
             "no candidates today{}\n",
@@ -971,5 +1001,61 @@ mod relevance_tests {
             "\"Antarctica\" OR ANTGRAPHIC share news"
         );
         assert_eq!(news_query("IDEA", None), "IDEA share news");
+    }
+}
+
+#[cfg(test)]
+mod filter_tests {
+    use super::*;
+
+    fn c(ltp: Option<f64>, turnover: Option<f64>, pct: Option<f64>) -> Candidate {
+        Candidate {
+            symbol: "X.NS".into(),
+            source: "gainers".into(),
+            why: String::new(),
+            ltp,
+            change_pct: pct,
+            previous_close: ltp.map(|p| p / (1.0 + pct.unwrap_or(0.0) / 100.0)),
+            turnover,
+        }
+    }
+
+    /// The four micro-caps from the operator's own list, which the model refused three times in a
+    /// row in its own words. The floor does the refusing now, before a token is spent.
+    #[test]
+    fn the_micro_caps_at_the_band_are_not_offered() {
+        let (price, turnover, locked) = (10.0, 10_000_000.0, 19.5);
+        // ORCHASP 1.38, 51.9 lakh, +20.00
+        assert!(!worth_offering(&c(Some(1.38), Some(5_195_000.0), Some(20.0)), price, turnover, locked));
+        // ANTGRAPHIC 0.73, 27.7 lakh, +19.67
+        assert!(!worth_offering(&c(Some(0.73), Some(2_773_000.0), Some(19.67)), price, turnover, locked));
+        // FLEXITUFF 3.85, 10.6 lakh, +19.94
+        assert!(!worth_offering(&c(Some(3.85), Some(1_056_000.0), Some(19.94)), price, turnover, locked));
+        // PROZONER 63.76, 13.5 Cr, +19.98 — liquid and dear enough, but locked at the ceiling.
+        assert!(!worth_offering(&c(Some(63.76), Some(135_500_000.0), Some(19.98)), price, turnover, locked));
+    }
+
+    /// A real mover that is not locked survives, which is the point of a floor.
+    #[test]
+    fn a_liquid_mover_is_still_offered() {
+        let (price, turnover, locked) = (10.0, 10_000_000.0, 19.5);
+        // GABRIEL 1619, 1289 Cr, +14.95
+        assert!(worth_offering(&c(Some(1619.0), Some(12_897_300_000.0), Some(14.95)), price, turnover, locked));
+        // JARO 404, 361 Cr, +16.65
+        assert!(worth_offering(&c(Some(404.0), Some(361_040_000.0), Some(16.65)), price, turnover, locked));
+    }
+
+    /// A name the search found has no exchange numbers yet — the model judges it, not this filter.
+    #[test]
+    fn a_name_without_numbers_is_left_to_the_model() {
+        assert!(worth_offering(&c(None, None, None), 10.0, 10_000_000.0, 19.5));
+    }
+
+    /// The thresholds are settings: a looser floor lets the same name through.
+    #[test]
+    fn the_floors_are_what_settings_say_they_are() {
+        let flexituff = c(Some(3.85), Some(1_056_000.0), Some(19.94));
+        assert!(!worth_offering(&flexituff, 10.0, 10_000_000.0, 19.5));
+        assert!(worth_offering(&flexituff, 1.0, 100_000.0, 20.5), "a looser set of numbers keeps it");
     }
 }

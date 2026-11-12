@@ -18,6 +18,10 @@ pub struct View {
     pub prompt_window_hours: u32,
     pub min_price_move: f64,
     pub daily_cap: u32,
+    /// The short-term scan's filters: price floor, turnover floor, locked-band cut-off.
+    pub scan_min_price: f64,
+    pub scan_min_turnover: f64,
+    pub scan_locked_pct: f64,
     pub proxy_configured: bool,
     pub proxy_host: String,
     /// The username is shown back; the password never is.
@@ -38,6 +42,14 @@ pub struct Runtime {
     pub min_price_move: f64,
     /// Hard ceiling on model calls per day.
     pub daily_cap: u32,
+    /// What the short-term scan is allowed to offer, in rupees: below this price a single tick is
+    /// a large part of the move.
+    pub scan_min_price: f64,
+    /// Daily turnover (rupees) a candidate must trade: an order the size of this pot has to be a
+    /// rounding error against the day's volume.
+    pub scan_min_turnover: f64,
+    /// A stock already this far up is pinned at its 20% circuit: no fill is available at any price.
+    pub scan_locked_pct: f64,
     /// All outbound traffic goes through this, when set. Never carries credentials.
     pub proxy: Option<String>,
     /// Proxy credentials, stored apart from the URL so the password can be masked like a key.
@@ -55,6 +67,9 @@ impl Default for Runtime {
             prompt_window_hours: 4,
             min_price_move: 2.0,
             daily_cap: 200,
+            scan_min_price: 10.0,
+            scan_min_turnover: 10_000_000.0,
+            scan_locked_pct: 19.5,
             proxy: None,
             proxy_user: None,
             proxy_pass: None,
@@ -70,6 +85,10 @@ pub const KNOBS: &[(&str, f64, f64, f64)] = &[
     ("prompt_window_hours", 4.0, 1.0, 24.0),
     ("min_price_move", 2.0, 0.0, 1_000_000.0),
     ("daily_cap", 200.0, 0.0, 10_000.0),
+    // The short-term scan's three filters, in rupees and percent.
+    ("scan_min_price", 10.0, 0.0, 1_000_000.0),
+    ("scan_min_turnover", 10_000_000.0, 0.0, 1e13),
+    ("scan_locked_pct", 19.5, 0.0, 100.0),
 ];
 
 impl Runtime {
@@ -101,6 +120,9 @@ impl Runtime {
             prompt_window_hours: num("prompt_window_hours", d.prompt_window_hours as f64) as u32,
             min_price_move: num("min_price_move", d.min_price_move),
             daily_cap: num("daily_cap", d.daily_cap as f64) as u32,
+            scan_min_price: num("scan_min_price", d.scan_min_price),
+            scan_min_turnover: num("scan_min_turnover", d.scan_min_turnover),
+            scan_locked_pct: num("scan_locked_pct", d.scan_locked_pct),
             proxy: text("proxy").map(split_legacy_proxy).map(|p| p.0),
             proxy_user: text("proxy_user")
                 .or_else(|| text("proxy").and_then(|p| split_legacy_proxy(p).1)),
@@ -116,6 +138,9 @@ impl Runtime {
             prompt_window_hours: self.prompt_window_hours,
             min_price_move: self.min_price_move,
             daily_cap: self.daily_cap,
+            scan_min_price: self.scan_min_price,
+            scan_min_turnover: self.scan_min_turnover,
+            scan_locked_pct: self.scan_locked_pct,
             proxy_configured: self.proxy.is_some(),
             proxy_host: self
                 .proxy

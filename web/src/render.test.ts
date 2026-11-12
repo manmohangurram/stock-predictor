@@ -154,6 +154,7 @@ describe("settings", () => {
       prompt_window_hours: 4,
       min_price_move: 2,
       daily_cap: 200,
+      scan_min_price: 10, scan_min_turnover: 10_000_000, scan_locked_pct: 19.5,
       proxy_configured: false,
       proxy_host: "",
       proxy_user: null,
@@ -363,7 +364,7 @@ describe("settings, second pot", () => {
     mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-      daily_cap: 200, proxy_configured: false, proxy_host: "",
+      scan_min_price: 10, scan_min_turnover: 10_000_000, scan_locked_pct: 19.5, daily_cap: 200, proxy_configured: false, proxy_host: "",
       proxy_bypass: null, proxy_user: null, proxy_pass_configured: false,
     },
     });
@@ -525,7 +526,7 @@ describe("ntfy settings", () => {
     mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-      daily_cap: 200, proxy_configured: false, proxy_host: "",
+      scan_min_price: 10, scan_min_turnover: 10_000_000, scan_locked_pct: 19.5, daily_cap: 200, proxy_configured: false, proxy_host: "",
       proxy_bypass: null, proxy_user: null, proxy_pass_configured: false,
     },
   };
@@ -562,7 +563,7 @@ describe("model provider settings", () => {
     mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-      daily_cap: 200, proxy_configured: false, proxy_host: "",
+      scan_min_price: 10, scan_min_turnover: 10_000_000, scan_locked_pct: 19.5, daily_cap: 200, proxy_configured: false, proxy_host: "",
       proxy_bypass: null, proxy_user: null, proxy_pass_configured: false,
     },
   };
@@ -600,7 +601,7 @@ describe("per-pot limits", () => {
       mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
     runtime: {
       poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-      daily_cap: 200, proxy_configured: false, proxy_host: "",
+      scan_min_price: 10, scan_min_turnover: 10_000_000, scan_locked_pct: 19.5, daily_cap: 200, proxy_configured: false, proxy_host: "",
       proxy_bypass: null, proxy_user: null, proxy_pass_configured: false,
     },
     };
@@ -629,7 +630,7 @@ describe("per-pot limits", () => {
       mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
       runtime: {
         poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
-        daily_cap: 200, proxy_configured: false, proxy_host: "",
+        scan_min_price: 10, scan_min_turnover: 10_000_000, scan_locked_pct: 19.5, daily_cap: 200, proxy_configured: false, proxy_host: "",
         proxy_user: null, proxy_pass_configured: false, proxy_bypass: null,
       },
     }, "risk");
@@ -679,7 +680,7 @@ describe("cadence help text", () => {
         mf_budget: 0, mf_available: 0, public_url: "http://localhost:8099",
         runtime: {
           poll_secs: 7200, off_hours_secs: 900, prompt_window_hours: 4, min_price_move: 2,
-          daily_cap: 200, proxy_configured: false, proxy_host: "",
+          scan_min_price: 10, scan_min_turnover: 10_000_000, scan_locked_pct: 19.5, daily_cap: 200, proxy_configured: false, proxy_host: "",
           proxy_user: null, proxy_pass_configured: false, proxy_bypass: null,
         },
       },
@@ -1335,5 +1336,45 @@ describe("an empty audit page under a filter", () => {
       {},
     );
     expect(html).toContain("No calls yet.");
+  });
+});
+
+describe("the scan filters are settings, not constants", () => {
+  const base = (over: Record<string, unknown>) => ({
+    budget: 500_000, committed: 0, available: 500_000, currency: "INR",
+    currency_locked: false, deepseek_configured: false,
+    trading_budget: 100_000, trading_available: 80_000, mf_budget: 0, mf_available: 0,
+    ntfy_url: "https://ntfy.sh", ntfy_topic: "", ntfy_token_configured: false,
+    llm_provider: "deepseek", llm_model: "deepseek-chat", llm_base_url: "https://api.deepseek.com",
+    llm_key_configured: false, limits_long: limits(), limits_trade: limits(),
+    public_url: "http://localhost:8099",
+    runtime: {
+      poll_secs: 900, off_hours_secs: 7200, prompt_window_hours: 4, min_price_move: 2,
+      daily_cap: 200, scan_min_price: 10, scan_min_turnover: 10_000_000, scan_locked_pct: 19.5,
+      proxy_configured: false, proxy_host: "", proxy_bypass: null, proxy_user: null,
+      proxy_pass_configured: false,
+    },
+    ...over,
+  });
+
+  test("the cadence tab carries the three floors and says what they do", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const html = renderSettings(base({}) as never, "cadence");
+    expect(html).toContain('name="scan_min_price"');
+    expect(html).toContain('name="scan_min_turnover"');
+    expect(html).toContain('name="scan_locked_pct"');
+    expect(html).toContain("What the short-term scan may offer");
+    expect(html).toContain('value="10000000"'); // the turnover default, in rupees
+    expect(html).toContain("one crore is 1,00,00,000");
+  });
+
+  test("a changed floor is shown as stored", async () => {
+    const { renderSettings } = await import("./pages/settings");
+    const s = base({}) as { runtime: Record<string, unknown> };
+    const html = renderSettings(
+      base({ runtime: { ...s.runtime, scan_min_price: 25 } }) as never,
+      "cadence",
+    );
+    expect(html).toMatch(/id="scan_min_price"[^>]*value="25"|value="25"[^>]*id="scan_min_price"/);
   });
 });

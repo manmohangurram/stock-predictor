@@ -230,6 +230,19 @@ const CADENCE = (s: Settings, tab: Tab): string => `
     type: "number", step: "0.5", unit: s.currency,
     help: "Since the last call. A new headline always earns a call regardless.",
   })}
+  <h3 class="settings-group">What the short-term scan may offer</h3>
+  ${field(tab, "scan_min_price", "Price floor", s.runtime.scan_min_price, {
+    type: "number", step: "1", unit: s.currency,
+    help: "Below this, a single tick is a large part of the move. Micro-caps at ₹1–₹4 are not tradeable at this size.",
+  })}
+  ${field(tab, "scan_min_turnover", "Turnover floor, per day", s.runtime.scan_min_turnover, {
+    type: "number", step: "1000000", unit: s.currency,
+    help: `The day's traded value a candidate must reach, in ${s.currency} — one crore is 1,00,00,000. An order from this purse has to be a rounding error against it.`,
+  })}
+  ${field(tab, "scan_locked_pct", "Locked at the circuit at", s.runtime.scan_locked_pct, {
+    type: "number", step: "0.5", unit: "% up",
+    help: "A stock this far up is pinned at its 20% band: no fill is available at any price you name.",
+  })}
   `;
 
 const NETWORK = (s: Settings, tab: Tab): string => `
