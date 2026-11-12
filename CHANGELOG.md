@@ -1,3 +1,14 @@
+## v0.27.2
+
+### Hotfix: a refused proposal was offered as a decision
+
+The ledger's Decisions box let a refused proposal through — a call the validator turned down,
+stored `BLOCKED` with a `detail` — and stamped it REFUSED. There was nothing to approve on it:
+no fill to post, no money to move. It is a record of what happened, not a thing to decide.
+
+The box is a to-do list again: only `BUY` and `SELL` proposals reach it. Blocked and refused rows
+stay where the record lives — the instrument's page and the audit.
+
 ## v0.27.1
 
 ### Hotfix: a sold-out holding lingered as a zero-quantity row
