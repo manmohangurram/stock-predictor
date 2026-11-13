@@ -1,5 +1,19 @@
 # stock-predictor — agent notes
 
+## Comments: never add noise
+
+**Do not add explanatory comments.** No narration of what the code does, no paragraphs above a
+CSS rule or a branch saying why it is nicer this way, no "this fixes X" beside a line. If a change
+needs a story, the story belongs in `CHANGELOG.md` or the commit message.
+
+The only comment allowed is one line stating a why the code cannot show — a boundary that looks
+arbitrary (`// 15:30 IST == 10:00 UTC; NSE has no DST`), a trap (`// The WHERE 1 = 1 anchor is
+load-bearing`), or a trade-off with a number behind it. One line. If it needs two, it is not a
+comment, it is a changelog entry.
+
+Existing comments in this repo predate the rule. Do not add to them, and do not use them as
+precedent for a new multi-line block.
+
 ## Reading code: never open a whole file to inspect one function
 
 **Always load the `code-read` skill before touching code** (`/skill:code-read`, or `read`

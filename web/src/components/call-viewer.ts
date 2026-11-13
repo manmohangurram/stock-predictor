@@ -16,6 +16,8 @@ export interface CallDetail {
   decision_reason: string | null;
   instrument_name: string | null;
   instrument_symbol: string | null;
+  /** symbol → name for the moves this call planned, so a scheme code is not all you see. */
+  plan_names?: Record<string, string> | null;
   prompt_template: string | null;
   completion_tokens: number | null;
   request_json: string | null;

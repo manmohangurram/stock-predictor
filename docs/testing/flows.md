@@ -121,7 +121,7 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 | Filter that matches nothing | *No calls match these filters — clear them.* (never "No calls yet") |
 | Auto-refresh tick | Off by default only if the reader turned it off; reloads every N seconds; the choice and the interval persist |
 | Interval select | 5 s / 15 s / 30 s / 1 min, remembered |
-| Open | Drawer: **Sent to the model** (markdown: headings, numbered rules, code) and **Received** (verdict card, one answer, no duplicate JSON) |
+| Show / Hide | The control says what the next click does. Drawer: **Sent to the model** (markdown: headings, numbered rules, code) and **Received** (verdict card, one answer, no duplicate JSON) |
 | Copy button | One per raw block, top-right; copies the stored JSON byte for byte |
 | Page size | 25 / 50 / 100 per page, reflected in the URL |
 
@@ -165,4 +165,5 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 
 | Date | Build | Result | Notes |
 |---|---|---|---|
+| 2026-11-13 | `f128ffb` + this commit | **green** | 9 sections walked at 1440 and 390. Found and fixed: the ledger's mode tabs (30px) and decision-filter icons (26px) were under the 40px touch target. Confirmed: approve opens pre-filled and posts (TCS 10 → 15 units), cancel writes nothing, reject writes a reason and moves no money, delete fill arms then deletes, Save survives a reload (`poll_secs` 600). The instrument page's chart is an in-page scroller (324px view over a 560px drawing), not a page overflow. |
 | 2026-11-11 | `ebd2413` + this commit | **green** | 9 pages, 60+ controls walked. Found and fixed: a US ADR could be added (nonsense `vs close`), the refresh status said *undefined headlines*, Archive used a native `confirm`, the currency select looked editable while locked, the reject form's submit duplicated the opener's label, and a filtered audit page said "No calls yet". |

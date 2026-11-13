@@ -370,6 +370,8 @@
     color: var(--ink); font-weight: 600; }
   @media (max-width: 900px) {
     .trade-form .row > input { flex: 1 1 100%; }
+    .mode-tab { display: inline-flex; align-items: center; min-height: 40px;
+      padding: var(--space-2) var(--space-3); }
   }
 }
 
@@ -734,7 +736,7 @@
   .seg-item svg { flex: 0 0 auto; }
   @media (max-width: 720px) {
     .seg-item span { display: none; }
-    .seg-item { padding: 6px 10px; }
+    .seg-item { padding: 6px 10px; min-height: 40px; min-width: 40px; justify-content: center; }
   }
 }
 

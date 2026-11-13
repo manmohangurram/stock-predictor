@@ -1139,6 +1139,37 @@ describe("audit", () => {
     expect(html).not.toContain("Qty");
   });
 
+  test("a move shows the fund's name, not only its scheme code", async () => {
+    const { renderExchangeDetail } = await import("./pages/calls");
+    const content = JSON.stringify({
+      action: "plan",
+      rationale: "a NAV dip in a fund already held",
+      moves: [{ action: "BUY", symbol: "0P0000XV5C.BO", amount: 2250 }],
+    });
+    const html = renderExchangeDetail({
+      id: 11,
+      ts: "2026-11-13T03:35:00Z",
+      endpoint: "chat",
+      purpose: "fund plan",
+      round: 1,
+      trigger: "clock",
+      decision_reason: null,
+      prompt_template: "plan_mf_v1",
+      request_json: null,
+      response_json: JSON.stringify({ choices: [{ message: { content } }] }),
+      prompt_tokens: 10,
+      completion_tokens: 2,
+      validator_verdict: "pass",
+      error: null,
+      instrument_name: null,
+      instrument_symbol: null,
+      plan_names: { "0P0000XV5C.BO": "HDFC Balanced Advantage Direct Growth" },
+    });
+    const card = html.slice(html.indexOf('<article class="answer"'), html.indexOf("</article>") + 10);
+    expect(card).toContain("HDFC Balanced Advantage Direct Growth");
+    expect(card).not.toContain("0P0000XV5C.BO");
+  });
+
   test("a refused plan is not a plan awaiting you", async () => {
     const { renderCalls } = await import("./pages/calls");
     const row: CallRow = {

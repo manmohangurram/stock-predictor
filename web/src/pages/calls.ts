@@ -287,7 +287,7 @@ export function renderCalls(
 
 /** The reply as a decision, not as JSON: a verdict, its numbers, and what it wants next. */
 /** One answer card, always the same shape: a verdict head, its figures or moves, then its words. */
-function decisionCard(reply: string, when: string): string {
+function decisionCard(reply: string, when: string, names: Record<string, string>): string {
   const r = parseReply(reply);
   const head = (label: string, tone: string, title: string) =>
     `<div class="answer-head">
@@ -315,7 +315,7 @@ function decisionCard(reply: string, when: string): string {
         ].join("");
         return `<div class="docket-move">
           ${actionStamp(m.action)}
-          <span class="docket-sym">${escapeHtml(m.symbol)}</span>
+          <span class="docket-sym">${escapeHtml(names[m.symbol] || m.symbol)}</span>
           <span class="docket-figs">${figs}</span>
         </div>`;
       })
@@ -526,7 +526,7 @@ export function renderExchangeDetail(d: CallDetail): string {
         // The card is the answer. The JSON it was parsed from is one click away in Raw, below.
         d.error || !reply
           ? `<p class="call-empty">${d.error ? "The call failed before a reply." : "No reply stored for this call."}</p>`
-          : decisionCard(reply, dayTime(d.ts))
+          : decisionCard(reply, dayTime(d.ts), d.plan_names ?? {})
       }
     </div>
   </section>

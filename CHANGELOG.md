@@ -1,3 +1,23 @@
+## v0.27.10
+
+### A fund shows its name, not its AMFI code
+
+The plan card reads the reply, which names moves by symbol — so a fund appeared as `0P0000XV5C.BO`.
+The call detail now carries the names of the symbols that call actually moved, and the card prints
+*Axis ELSS Tax Saver*.
+
+### The ledger's touch targets were under 40px on a phone
+
+The browser-flow gate caught it: the mode tabs were 30px tall and the decision-filter icons 26px.
+Both are 40px below 900px, and the icons are 40×40 below 720px.
+
+### The flow gate is green
+
+`docs/testing/flows.md` walked at 1440 and 390 against a throwaway database — nine sections,
+including approve/cancel/reject/delete-fill and a settings save that survives a reload. Run log
+updated. One false alarm worth recording: the instrument page's chart is an in-page scroller, not a
+page overflow.
+
 ## v0.27.9
 
 ### A fund plan's rupee size was being thrown away

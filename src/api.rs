@@ -956,6 +956,17 @@ async fn call_detail(
     let Some(r) = row else {
         return Err(ApiError::NotFound(format!("no call {id}")));
     };
+    // A reply names its moves by symbol; the scheme code says nothing, so the names come from
+    // the book. Only the symbols this call actually moved.
+    let named: Vec<(String, String)> = sqlx::query_as(
+        "SELECT i.symbol, i.name FROM signals s JOIN instruments i ON i.id = s.instrument_id
+         WHERE s.conversation_id = (SELECT conversation_id FROM api_calls WHERE id = ?)
+           AND s.kind = 'plan'",
+    )
+    .bind(id)
+    .fetch_all(&st.pool)
+    .await?;
+    let names: std::collections::HashMap<String, String> = named.into_iter().collect();
     Ok(Json(serde_json::json!({
         "id": r.id,
         "ts": r.ts,
@@ -973,6 +984,7 @@ async fn call_detail(
         "completion_tokens": r.completion_tokens,
         "validator_verdict": r.validator_verdict,
         "error": r.error,
+        "plan_names": names,
     })))
 }
 
