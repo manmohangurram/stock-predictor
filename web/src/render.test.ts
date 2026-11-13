@@ -983,7 +983,7 @@ describe("audit pager", () => {
 });
 
 describe("audit", () => {
-  test("a plan's reason is its own row, under the Holding column", async () => {
+  test("a plan is a docket: figures, cost, then one paragraph", async () => {
     const { renderExchangeDetail } = await import("./pages/calls");
     const content = JSON.stringify({
       action: "plan",
@@ -996,6 +996,7 @@ describe("audit", () => {
           price: 794.55,
           stop: 755,
           target: 880,
+          valid_until: "2026-11-17T15:30:00+05:30",
           why: "Q2FY27 results dated 2026-11-11",
         },
       ],
@@ -1018,12 +1019,61 @@ describe("audit", () => {
       instrument_name: null,
       instrument_symbol: null,
     });
-    // The empty leading cell puts the reason on the Holding column's text edge, not the table's;
-    // colspan 5 keeps it from sitting under the figures.
-    expect(html).toContain('<td></td><td colspan="5" class="answer-why">');
-    expect(html).toContain("Q2FY27 results dated 2026-11-11");
-    // Qty and Stop drop on a phone so four remaining columns fit 358px.
-    expect(html).toContain('class="num hide-sm"');
+    // The docket prints the four numbers a reader has to check, the expiry, the cost, and the
+    // plan's own paragraph — and none of the model's per-move justification, which buried them.
+    expect(html).toContain('class="docket"');
+    expect(html).toContain("Qty");
+    expect(html).toContain("Cost");
+    expect(html).toContain("pure entry slot");
+    expect(html).toContain("Till");
+    // The per-move justification is out of the card — it lives only in the raw exchange below it.
+    const card = html.slice(html.indexOf('<article class="answer"'), html.indexOf("</article>") + 10);
+    expect(card).not.toContain("Q2FY27 results dated 2026-11-11");
+  });
+
+  test("a swap shows what the sale frees and what the buy still needs", async () => {
+    const { renderExchangeDetail } = await import("./pages/calls");
+    const content = JSON.stringify({
+      action: "plan",
+      rationale: "replacement",
+      moves: [
+        { action: "SELL", symbol: "TATAMOTORS.NS", qty: 40, price: 780.5 },
+        {
+          action: "BUY",
+          symbol: "GABRIEL.NS",
+          qty: 27,
+          price: 1519,
+          stop: 1450,
+          target: 1700,
+          valid_until: "2026-11-16T15:30:00+05:30",
+        },
+      ],
+    });
+    const html = renderExchangeDetail({
+      id: 8,
+      ts: "2026-11-14T03:45:00Z",
+      endpoint: "chat",
+      purpose: "trade plan",
+      round: 1,
+      trigger: "clock",
+      decision_reason: null,
+      prompt_template: "plan_trade_v1",
+      request_json: null,
+      response_json: JSON.stringify({ choices: [{ message: { content } }] }),
+      prompt_tokens: 10,
+      completion_tokens: 2,
+      validator_verdict: "pass",
+      error: null,
+      instrument_name: null,
+      instrument_symbol: null,
+    });
+    expect(html).toContain("From the sale");
+    expect(html).toContain("To buy");
+    expect(html).toContain("31,220.00");
+    expect(html).toContain("41,013.00");
+    // The gap the purse has to cover, stated rather than left to be worked out.
+    expect(html).toContain("Also from the purse");
+    expect(html).toContain("9,793.00");
   });
 
   test("a refused plan is not a plan awaiting you", async () => {

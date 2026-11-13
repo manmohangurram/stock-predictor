@@ -1,5 +1,5 @@
 import type { CallRow, ScheduledPrompt } from "../api";
-import { dayTime, escapeHtml, humanLabel, money, titleCase, units } from "../format";
+import { day, dayTime, escapeHtml, humanLabel, money, titleCase, units } from "../format";
 import { renderMarkdown } from "../markdown";
 import { renderApp, renderHead } from "../components/shell";
 import { actionStamp, pill, stamp, toneOf } from "../components/stamp";
@@ -245,7 +245,7 @@ export function renderCalls(
   <td class="time" title="${escapeHtml(r.ts)}">${escapeHtml(dayTime(r.ts))}</td>
   <td class="hide-sm">${escapeHtml(promptType)}</td>
   <td class="hide-sm">${escapeHtml(titleCase(r.endpoint))}</td>
-  <td>${holding}</td>
+  <td class="holding">${holding}</td>
   <td class="review-td"><div class="review-cell">${reviewBadge(r)}</div></td>
   <td class="right">
     <button class="btn ghost view-call" type="button" data-id="${r.id}"
@@ -296,34 +296,63 @@ function decisionCard(reply: string, when: string): string {
       <span class="answer-when">${escapeHtml(when)}</span>
     </div>`;
 
-  // A plan: one stamped row per move, then why it was made.
+  // A plan: a docket of one line per move, the purse arithmetic, then the plan's own paragraph.
+  // The model's per-move justification is deliberately not shown — five citations under each leg
+  // buried the four numbers the reader actually has to check.
   if (r.moves.length) {
+    const figure = (label: string, value: string) =>
+      `<span class="docket-fig"><span class="lbl">${label}</span><b class="num">${value}</b></span>`;
     const legs = r.moves
       .map((m) => {
-        // The reason sits on its own row under the figures and starts at the Holding column, not
-        // at the table's edge: prose that begins under the stamp reads as part of the stamp.
-        const why = m.why
-          ? `<tr class="answer-why-row"><td></td><td colspan="5" class="answer-why">${escapeHtml(m.why)}</td></tr>`
-          : "";
-        return `<tr>
-          <td>${actionStamp(m.action)}</td>
-          <td class="answer-sym">${escapeHtml(m.symbol)}</td>
-          <td class="num hide-sm">${m.qty === null ? "—" : units(m.qty)}</td>
-          <td class="num">${m.price === null ? "—" : money(m.price)}</td>
-          <td class="num hide-sm">${m.stop === null ? "—" : money(m.stop)}</td>
-          <td class="num">${m.target === null ? "—" : money(m.target)}</td>
-        </tr>${why}`;
+        const buy = m.action === "BUY";
+        const value = m.qty !== null && m.price !== null ? m.qty * m.price : null;
+        const figs = [
+          m.qty === null ? "" : figure("Qty", units(m.qty)),
+          m.price === null ? "" : figure("At", money(m.price)),
+          // A sale has money coming in; a buy has a stop, a target and an expiry to honour.
+          buy ? "" : value === null ? "" : figure("Gives", money(value)),
+          buy && m.stop !== null ? figure("Stop", money(m.stop)) : "",
+          buy && m.target !== null ? figure("Target", money(m.target)) : "",
+          buy && m.validUntil ? figure("Till", day(m.validUntil)) : "",
+        ].join("");
+        return `<div class="docket-move">
+          ${actionStamp(m.action)}
+          <span class="docket-sym">${escapeHtml(m.symbol)}</span>
+          <span class="docket-figs">${figs}</span>
+        </div>`;
       })
       .join("");
+
+    // The purse: what the sale frees, what the buy takes, what is left. Only the rows that exist.
+    const total = (sell: boolean) =>
+      r.moves.reduce(
+        (n, m) =>
+          n + (m.qty !== null && m.price !== null && (m.action === "BUY") !== sell ? m.qty * m.price : 0),
+        0,
+      );
+    const freed = total(true);
+    const spent = total(false);
+    const row = (label: string, value: number, strong = false) =>
+      `<div class="docket-row${strong ? " total" : ""}"><span class="lbl">${label}</span>
+        <span class="num">${money(value)}</span></div>`;
+    const purse =
+      freed > 0 && spent > 0
+        ? `<div class="docket-purse">${row("From the sale", freed)}${row("To buy", spent)}
+            ${row(
+              spent >= freed ? "Also from the purse" : "Back to the purse",
+              Math.abs(spent - freed),
+              true,
+            )}</div>`
+        : spent > 0
+          ? `<div class="docket-purse">${row("Cost", spent, true)}</div>`
+          : freed > 0
+            ? `<div class="docket-purse">${row("Frees", freed, true)}</div>`
+            : "";
+
     return `<article class="answer" data-verdict="plan">
       ${head("PLAN", "estimate", `${r.moves.length} move${r.moves.length === 1 ? "" : "s"}`)}
       <div class="answer-body">
-        <table class="answer-moves">
-          <thead><tr><th></th><th>Holding</th><th class="num hide-sm">Qty</th>
-            <th class="num">Price</th><th class="num hide-sm">Stop</th>
-            <th class="num">Target</th></tr></thead>
-          <tbody>${legs}</tbody>
-        </table>
+        <div class="docket">${legs}${purse}</div>
         ${r.rationale ? `<p class="answer-prose">${escapeHtml(r.rationale)}</p>` : ""}
       </div>
     </article>`;

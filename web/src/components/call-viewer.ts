@@ -116,6 +116,8 @@ export interface ReplyMove {
   price: number | null;
   stop: number | null;
   target: number | null;
+  /** When the idea goes stale. A trade move carries one; the price moves do not. */
+  validUntil: string | null;
   why: string | null;
 }
 
@@ -193,6 +195,7 @@ export function parseReply(content: string): Reply {
             price: num(m.price),
             stop: num(m.stop),
             target: num(m.target),
+            validUntil: str(m.valid_until),
             why: str(m.why),
           }))
       : [],

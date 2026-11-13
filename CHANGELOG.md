@@ -1,3 +1,40 @@
+## v0.27.6
+
+### The plan card is a docket, not a table
+
+The moves table was six columns in a drawer: at 1,440 it was legible, at 390 it was a squeeze, and
+its per-move justification — five citations and a paragraph under every leg — buried the four
+numbers the reader actually has to check.
+
+It is now one line per move plus the purse:
+
+```
+SELL  TATAMOTORS.NS      Qty 40  At 780.50        Gives 31,220.00
+BUY   GABRIEL.NS         Qty 27  At 1,519.00  Stop 1,450.00  Target 1,700.00  Till 16 Nov
+                         ─────────────────────────────────────────────────
+                         From the sale     31,220.00
+                         To buy            41,013.00
+                         Also from the purse  9,793.00
+```
+
+- **The purse arithmetic is the point.** A sale that funds a buy now says what it frees, what the
+  buy still needs and which way the difference runs — the same running-balance idea as the book.
+  A buy-only plan prints `Cost`, a sell-only plan prints `Frees`.
+- **The expiry is shown.** Every trade move carries `valid_until` and the card never printed it.
+  A trade that goes stale at 15:30 has to say so.
+- **The model's per-move `why` is gone from the card.** It is still in the raw exchange below it;
+  the card keeps only the plan's own paragraph.
+
+### Hotfix: the audit's Holding cell never wrapped
+
+`v0.27.5` tightened the audit table for a phone and it still came up 16px short. The cause was not
+padding: the Holding cell had no `.holding` class, so it inherited the blotter's `nowrap` and the
+longest company name on the page — *Tata Consultancy Services* — set that column's floor. The ledger
+has always wrapped it; the audit never got the same class.
+
+With it, a 390px viewport measures table 358 in a 358 slot, no horizontal scroll, and the Show
+control inside the page instead of 7px past it.
+
 ## v0.27.5
 
 ### The plan card's figures sit on a grid, and its reason on the Holding column
