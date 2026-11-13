@@ -1,4 +1,10 @@
-## Unreleased
+## v0.28.0
+
+Funds became first-class: a NAV chart, a fill that asks for rupees instead of units, and a plan that
+can actually be approved. The audit and the headlines took on a three-month horizon instead of
+growing for ever. And a long-term holding now defends itself — its stop follows the price up — while
+the plan is asked when it runs past the pot's ceiling.
+
 
 ### A fund plan could not be approved
 

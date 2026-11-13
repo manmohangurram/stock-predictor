@@ -1,6 +1,6 @@
 [package]
 name = "stock-predictor"
-version = "0.27.11"
+version = "0.28.0"
 edition = "2021"
 
 [dependencies]
