@@ -1,3 +1,22 @@
+## v0.28.1
+
+News is now English and from today only, and the prompt reads a week back when a quiet week leaves
+nothing fresher. Two searches feed a prompt — the morning pass and the ceiling trigger — and both
+got this.
+
+### News is English and from today only
+
+Every search that feeds a prompt now carries `lang:en` and an `after:` bound of yesterday, and what
+comes back is filtered to articles dated **today** — an undated page is not an article, and a
+week-old one is not news. Applied to the morning pass and to the ceiling trigger's own search.
+
+### …and reads a week back
+
+Today-only means a holiday or a quiet weekend leaves the prompt with no headlines at all. The
+prompt now reads **the last seven days**, newest first — so today's search wins by being newest, and
+a quiet week falls back to whatever it did carry. Nine days old is not read: a stale catalyst read
+as current is worse than silence.
+
 ## v0.28.0
 
 Funds became first-class: a NAV chart, a fill that asks for rupees instead of units, and a plan that
@@ -34,19 +53,6 @@ The fund plan's fill was fixed to ask Amount and NAV; the fund *scan* row still 
 quantity the scan never proposed (`0 units`) and left you to work out the units yourself. It asks
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
-
-### …and reads a week back
-
-Today-only means a holiday or a quiet weekend leaves the prompt with no headlines at all. The
-prompt now reads **the last seven days**, newest first — so today's search wins by being newest, and
-a quiet week falls back to whatever it did carry. Nine days old is not read: a stale catalyst read
-as current is worse than silence.
-
-### News is English and from today only
-
-Every search that feeds a prompt now carries `lang:en` and an `after:` bound of yesterday, and what
-comes back is filtered to articles dated **today** — an undated page is not an article, and a
-week-old one is not news. Applied to the morning pass and to the ceiling trigger's own search.
 
 ### The ceiling trigger searches before it asks
 
