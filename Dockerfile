@@ -39,8 +39,7 @@ RUN if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ]; then \
         esac; \
     fi
 COPY --from=planner /app/recipe.json recipe.json
-# No cache mounts here: a mount keeps its contents out of the layer, so a cached cook
-# layer would replay empty and every dependency would rebuild.
+# No cache mounts here: a mount stays out of the layer, so a cached cook layer replays empty.
 RUN if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ] && [ "${TARGETARCH}" = "arm64" ]; then \
         CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
         CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \

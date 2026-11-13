@@ -956,8 +956,7 @@ async fn call_detail(
     let Some(r) = row else {
         return Err(ApiError::NotFound(format!("no call {id}")));
     };
-    // A reply names its moves by symbol; the scheme code says nothing, so the names come from
-    // the book. Only the symbols this call actually moved.
+    // A reply names its moves by symbol; the scheme code says nothing.
     let named: Vec<(String, String)> = sqlx::query_as(
         "SELECT i.symbol, i.name FROM signals s JOIN instruments i ON i.id = s.instrument_id
          WHERE s.conversation_id = (SELECT conversation_id FROM api_calls WHERE id = ?)
