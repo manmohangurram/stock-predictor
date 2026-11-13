@@ -17,8 +17,6 @@ export async function wireMarket(): Promise<void> {
     const m = await api.market();
     const open = m.state === "open";
     const label = open ? "Market open" : m.state === "holiday" ? "Market shut" : "Market closed";
-    // Status first, then the one date that matters: when it opens next, or closes.
-    // Browser time, like every other timestamp in the app: the reader's clock, not the server's.
     const when = open
       ? m.closes_at
         ? `Closes ${dayTime(m.closes_at)}`

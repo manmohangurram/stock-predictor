@@ -24,9 +24,6 @@ function reviewBadge(r: CallRow): string {
     return pill("failed", "failed", escapeHtml(r.error));
   }
   if (r.decision_action === "BLOCKED") {
-    // A refused plan is the model's answer, recorded with its reason in View. It is not a plan
-    // awaiting you: nothing there can be approved.
-    // The reason is long; it lives in View, so the row stays one line.
     const refusedPlan = (r.plan_legs ?? 0) > 0;
     return pill(
       "todo",
@@ -217,8 +214,6 @@ export function renderCalls(
   );
   const body = rows
     .map((r) => {
-      // What the call was: a prompt for a model, or a tool call. A search's purpose is the query,
-      // so its first word is not a prompt type — "MARUTI news today" is not a call named MARUTI.
       const tool = r.endpoint === "search" || r.endpoint === "fetch";
       const [kind, ...rest] = (r.purpose ?? "").split(/\s+/);
       const promptType = tool
@@ -498,8 +493,6 @@ export function renderExchangeDetail(d: CallDetail): string {
         .join("")
     : `<p class="call-empty">The request body is not a message list — see the raw JSON.</p>`;
 
-  // Only what the row above cannot say. The type, the channel, the holding and the verdict are
-  // already on the row; repeating them here was the duplication.
   const fact = (label: string, value: string) =>
     `<span class="call-fact"><span class="lbl">${label}</span><b>${value}</b></span>`;
 

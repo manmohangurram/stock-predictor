@@ -1,7 +1,6 @@
 import { api } from "../api";
 
-/// Approve posts the fill you typed; reject records a reason. Shared by the ledger and the
-/// instrument page, because both render the same markup.
+/// Approve posts the fill you typed; reject records a reason.
 export function wireDecisionActions(reload: () => Promise<void>): void {
   // Both the ledger and the instrument page render the same actions, so this works on either.
   const card = document.body;

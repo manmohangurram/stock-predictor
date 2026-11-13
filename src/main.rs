@@ -57,8 +57,6 @@ async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let flag = |name: &str| args.iter().any(|a| a == name);
 
-    // A developer's `.env`, if there is one. It can only fill variables that are not already set,
-    // and it never seeds a setting: the database stays the source of truth.
     for name in stock_predictor::config::load_dotenv() {
         tracing::debug!(%name, "loaded from .env");
     }
@@ -69,11 +67,7 @@ async fn main() -> Result<()> {
             "no longer read — set it in Settings instead (Cadence or Network)"
         );
     }
-    // Renaming the app changed the default database file. A database written under the old
-    // spelling is moved to the new one on boot — checkpointed first, so no WAL commit is lost.
     let db_path = cfg.db_path.clone();
-    // The old file lives beside the configured one, whatever DB_PATH says — the container sets
-    // DB_PATH=/data/stock-predictor.db, so keying this off "is DB_PATH set?" skipped the Docker case.
     let legacy = db::legacy_sibling(&db_path);
     if let Some(old) = legacy {
         if let Some(moved) = db::migrate_legacy_path(&old, &db_path).await? {
@@ -83,8 +77,6 @@ async fn main() -> Result<()> {
     tracing::info!(db = %db_path, "database");
     let pool = db::connect_and_migrate(&db_path).await?;
 
-    // Secrets at rest. `SECRET_KEY` wins; without it a key file sits beside the database, which
-    // protects a copied .db but not the whole data directory.
     let key = match cfg.secret_key.clone() {
         Some(k) => k,
         None => {
@@ -212,8 +204,6 @@ async fn main() -> Result<()> {
         }
         println!("poll: {report:#?}");
 
-        // A manual poll also runs both discovery passes, so `--poll-once` means "do everything
-        // once" rather than "everything except the new stuff".
         if let Ok(r) = stock_predictor::fundscan::run(&pool, &rt, Utc::now()).await {
             if r.examined > 0 {
                 println!("fund scan: {r:#?}");
@@ -242,14 +232,8 @@ async fn main() -> Result<()> {
         tokio::sync::mpsc::channel::<(i64, stock_predictor::runs::Manual)>(8);
     let mut state = api::AppState::new(pool.clone(), cfg.clone());
     state.manual = Some(manual_tx);
-    // Client-side routes must not 404 on a direct load or a refresh.
-    // Static files must revalidate. A rebuilt front end changes the hashed bundle *name*, so a
-    // cached index.html points at a script that no longer exists — the "hard refresh needed"
-    // report. The files themselves are small and locally served.
     let app = api::router(state)
         .fallback_service(
-            // No implicit index.html: the shell is served by `spa_index`, which sets the cache
-            // header. Everything else is a content-addressed file.
             ServeDir::new("web/dist")
                 .append_index_html_on_directories(false)
                 .fallback(axum::routing::get(spa_index)),
@@ -361,8 +345,6 @@ async fn main() -> Result<()> {
                 }
             }
 
-            // A manual run is the tick's work: the scheduled pass is skipped for this iteration,
-            // and the cadence resumes after it.
             if !handled_manual {
                 // The month boundary, once per purse: stocks, mutual funds, short-term.
                 let purses = [
@@ -411,10 +393,6 @@ async fn main() -> Result<()> {
                     rules: RuleConfig::default(),
                     force: false,
                 };
-                // A scheduled poll records no run row. At 15-minute ticks that would be ninety-six
-            // "nothing happened" rows a day, and the calls it made are already in `api_calls`. The
-            // three prompts that actually decide something — the two plans and the short-term
-            // pass — keep their rows, and so does a poll you start by hand.
             match engine::poll_once(&deps, now).await {
                 Ok(r) => tracing::info!(?r, "poll complete"),
                 Err(e) => tracing::error!(error = %e, "poll failed"),
@@ -427,8 +405,6 @@ async fn main() -> Result<()> {
                     Err(e) => tracing::warn!(error = %e, "fund scan failed"),
                 }
 
-                // The fund plan runs on the first tick of the day, whether or not the scan ran this
-                // tick — a restart at noon still asks, and arithmetic still came first that morning.
                 let fund_deps = stock_predictor::engine::EngineDeps {
                     pool: &poll_pool,
                     runtime: runtime.clone(),
@@ -444,9 +420,6 @@ async fn main() -> Result<()> {
                     Err(e) => tracing::warn!(error = %e, "fund plan failed"),
                 }
 
-                // The trade plan: every two hours in session, and only then. Its own gate
-                // (the slot marker) decides whether this tick is due; asking outside the session
-                // would judge a tape nobody can trade on.
                 match stock_predictor::engine::plan_trade(&deps, Utc::now(), None).await {
                     Ok(true) => tracing::info!("trade plan stored"),
                     Ok(false) => {}
@@ -454,8 +427,6 @@ async fn main() -> Result<()> {
                 }
             }
 
-            // Wait for the cadence, but wake early if someone pressed Run now. The request is
-            // carried to the top of the next iteration, so a manual run never doubles as a tick.
             let secs = if schedule::in_stock_window(Utc::now()) {
                 runtime.poll_secs
             } else {
@@ -471,9 +442,6 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(&cfg.bind).await?;
     tracing::info!(bind = %cfg.bind, "listening on http://{}", cfg.bind);
 
-    // Shut down cleanly so the WAL is folded back into the database. A killed process leaves
-    // recent commits in stock-predictor.db-wal, and copying only the .db file then looks like
-    // data loss.
     let shutdown_db = pool.clone();
     let shutdown = async move {
         let ctrl_c = tokio::signal::ctrl_c();

@@ -117,8 +117,6 @@ pub fn router(state: AppState) -> Router {
         .route("/api/positions", post(post_position))
         .route("/api/positions/{id}", patch(patch_position))
         .route("/api/ipo", post(post_ipo))
-        // Every answer must be revalidated: a stale 200 in the browser's cache is exactly the
-        // "nothing updates until I hard refresh" report.
         .layer(axum::middleware::map_response(no_store))
         .with_state(state)
 }
@@ -543,8 +541,6 @@ async fn archive_instrument(
         .bind(id)
         .execute(&mut *tx)
         .await?;
-    // Temporary data goes: it is re-fetchable, and keeping it would re-date it the next time the
-    // symbol is opened. History stays.
     for sql in [
         "DELETE FROM bars WHERE instrument_id = ?",
         "DELETE FROM news WHERE instrument_id = ?",
@@ -1063,8 +1059,6 @@ async fn market_state(State(st): State<AppState>) -> Result<Json<serde_json::Val
     let priced_today = latest_day == Some(today);
 
     let (state, reason) = market_state_for(weekday, minutes, priced_today);
-    // When it next opens, and when it closes if it is open now. A holiday is not a calendar this
-    // app has, so "next open" is the next weekday's 09:15 — the tooltip says as much.
     let to_utc = |d: chrono::NaiveDate, hour: u32, minute: u32| -> Option<chrono::DateTime<chrono::Utc>> {
         let naive = d.and_hms_opt(hour, minute, 0)?;
         Some(
@@ -1128,8 +1122,6 @@ async fn schedule_view(State(st): State<AppState>) -> Result<Json<serde_json::Va
         }
     };
 
-    // A daily prompt is due at the first tick after IST midnight; if it has not run today it is
-    // due now. A session prompt is due on the next tick inside 09:00–16:00 IST, Mon–Fri.
     let daily_next = |ran_today: bool| -> Option<String> {
         let ist = now + chrono::Duration::minutes(330);
         let next_midnight = (ist.date_naive() + chrono::Days::new(1))
@@ -1334,16 +1326,12 @@ async fn calls(
         .offset
         .unwrap_or_else(|| (q.page.unwrap_or(1).max(1) - 1).saturating_mul(limit));
 
-    // Filters are bound parameters and the clause text is fixed, so a request can narrow the
-    // record but never rewrite the statement.
     let given = |v: &Option<String>| -> Option<String> {
         v.as_deref()
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    // Each filter is a clause plus, sometimes, one bound value. QueryBuilder writes the
-    // placeholder itself, so the SQL text never contains a `?`.
     let mut filters: Vec<(&'static str, Option<String>)> = Vec::new();
     if let Some(v) = given(&q.prompt) {
         filters.push((
@@ -1372,8 +1360,7 @@ async fn calls(
              SELECT s.id FROM signals s WHERE s.conversation_id = a.conversation_id
              ORDER BY s.id DESC LIMIT 1)";
 
-    // The `WHERE 1 = 1` anchor matters: without it the first filter is appended to the JOIN's ON
-    // clause, where it silently stops filtering anything.
+    // The `WHERE 1 = 1` anchor is load-bearing: without it the first filter lands in the JOIN's ON.
     let mut count_q =
         sqlx::QueryBuilder::<sqlx::Sqlite>::new(format!("SELECT COUNT(*){JOINS} WHERE 1 = 1"));
     for (sql, bind) in &filters {
@@ -1656,8 +1643,6 @@ pub struct ModeQuery {
 }
 
 fn mode_of(q: &Option<String>) -> Result<crate::models::Mode, ApiError> {
-    // Tolerate a hand-written URL: `?mode=long?decisions=rejected` puts the rest of the query into
-    // the value. Take the part that is actually the mode, and ignore the leftovers.
     let raw = q
         .as_deref()
         .unwrap_or("")
@@ -1757,8 +1742,6 @@ async fn add_instrument(
         return Err(ApiError::BadRequest("code is required".into()));
     }
 
-    // The book is one currency and one exchange's rules. A foreign listing would be priced in its
-    // own money and read here as rupees, which is how a $2.17 ADR produced a +11,000% "return".
     let indian_listing = code.ends_with(".NS")
         || code.ends_with(".BO")
         || body.class.as_deref() == Some("mutual_fund");
@@ -1770,8 +1753,6 @@ async fn add_instrument(
 
     let (class, name) = match body.class.as_deref() {
         Some("mutual_fund") => {
-            // Two kinds of fund code exist: AMFI's (135762, with NAV in the scheme list) and
-            // Yahoo's (0P00012ALS.BO). Accept either; the AMFI list is not always reachable.
             let amfi_hit = match st.amfi_text().await {
                 Some(text) => crate::market::search::amfi_by_code(&text, code),
                 None => None,
@@ -1801,13 +1782,9 @@ async fn add_instrument(
         ),
     };
 
-    // `OR IGNORE` means an existing row wins — and the short-term scan creates rows for every name
-    // it notices, with `active = 0`. Adding one of those must promote it, or the instrument is
     // created and immediately looks archived. A genuinely archived name is not revived silently.
     let id = add_or_promote(&st.pool, code, class.as_str(), &name).await?;
 
-    // A newly added symbol should have a chart and headlines on first open, not tomorrow
-    // morning. AMFI scheme codes have no Yahoo series; a Yahoo-coded fund (0P…BO) does.
     if class == crate::models::AssetClass::Stock || code.contains('.') {
         if let Ok(market) =
             crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?)
@@ -1852,8 +1829,6 @@ async fn set_target_profit(
                 "target_profit_pct must be between 0 and 1000".into(),
             ));
         }
-        // The global band bounds what a single stock may ask for. Checked against the tighter
-        // of the two pots so the stored value is legal whichever book the stock is held in.
         let long = settings::limits(&st.pool, crate::models::Mode::Long).await?;
         let trade = settings::limits(&st.pool, crate::models::Mode::Trade).await?;
         let floor = long.min_profit_pct.max(trade.min_profit_pct);
@@ -2265,8 +2240,6 @@ async fn approve_signal(
     let when = crate::trades::parse_when(body.at.as_deref().unwrap_or(""), chrono::Utc::now())
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
-    // A rotation is approved as a pair, and only if both legs can actually post: the buy is paid
-    // for by the sell, so the affordability check has to happen before any money moves.
     let pair = if kind.as_deref() == Some("rotation") {
         let primary = pair_id.unwrap_or(id);
         let sell: Option<(i64, i64, f64, f64, String)> = sqlx::query_as(
@@ -2472,8 +2445,6 @@ async fn approve_plan(
     }
     let mode = crate::models::Mode::parse(&legs[0].mode)
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-    // The fills you are about to post, before any of them is posted: the balance is checked on
-    // what you actually got, not on what was proposed.
     let mut planned = Vec::new();
     for leg in &legs {
         let given = body.fills.iter().find(|f| f.id == leg.id);
@@ -2619,9 +2590,6 @@ async fn load_signals(
         // The instrument page's whole record, blocked proposals included: they are decisions too.
         "1 = 1"
     } else {
-        // The ledger is a to-do list: only proposals you can act on (BUY/SELL) belong in the box.
-        // A blocked or refused proposal is a record, not a decision to review — it stays on the
-        // instrument's page and in the audit.
         match status {
             "all" => "s.action <> 'BLOCKED'",
             "approved" => "s.action <> 'BLOCKED' AND s.status = 'approved'",

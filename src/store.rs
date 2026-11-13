@@ -20,9 +20,6 @@ const INSERT_HEADLINE: &str =
 /// One transaction per batch, and the same SQL string each time so sqlx's per-connection
 /// statement cache does the preparing. Measured: 68 ms row-at-a-time autocommit, a few ms now.
 pub async fn bars(pool: &SqlitePool, instrument_id: i64, bars: &[Bar]) -> Result<()> {
-    // A poll re-fetches the whole year but only the last bar is new. Writing all 250 measured
-    // 68 ms; writing the tail is a rounding error. The final stored bar is rewritten too,
-    // because today's close moves during the session.
     let last: Option<(String,)> =
         sqlx::query_as("SELECT ts FROM bars WHERE instrument_id = ? ORDER BY ts DESC LIMIT 1")
             .bind(instrument_id)

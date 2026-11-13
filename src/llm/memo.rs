@@ -52,8 +52,6 @@ pub async fn should_call(
     gate: CallGate,
     headlines_changed: bool,
 ) -> Result<bool> {
-    // New information always wins: a fresh headline is exactly when the model is worth asking,
-    // even at an unchanged price.
     if headlines_changed {
         return Ok(true);
     }
@@ -66,8 +64,6 @@ pub async fn should_call(
     let Some((last_price, last_call_at)) = row else {
         return Ok(true); // never asked: ask
     };
-    // Time alone is not a reason. Without a price move or a new headline there is nothing new to
-    // judge, and a call would be paid for to hear the same answer again.
     let _ = (last_call_at, now);
     Ok(match last_price {
         Some(p) => (price - p).abs() >= gate.min_move,

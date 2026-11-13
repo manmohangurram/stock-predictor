@@ -252,9 +252,6 @@ pub fn validate(
         }
         seen.push(&m.symbol);
 
-        // A short-term idea has a shelf life; the move says when it expires, and the book never
-        // holds an idea past three sessions. A SELL is an exit, not an idea — it has no shelf life,
-        // and demanding one refused a perfectly good "take the profit now".
         if scope.is_trade() && m.action == Action::Buy {
             let until = m
                 .valid_until
@@ -314,8 +311,6 @@ pub fn validate(
                         ));
                     }
                 }
-                // A fund is sized in rupees, so its sale is checked against what the holding is
-                // worth. A stock's units are checked above, and its price is the model's own.
                 if scope.is_fund() {
                     let held_value = held.qty * held.ltp.unwrap_or(held.avg_cost);
                     if value > held_value + 1e-6 {

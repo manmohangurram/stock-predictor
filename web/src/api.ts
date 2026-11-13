@@ -358,8 +358,6 @@ export const api = {
     filters: { prompt?: string; channel?: string; model?: string; review?: string } = {},
   ) => {
     const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-    // The record's own name for the exchange channel is `call`; the URL calls it `channel` so it
-    // cannot collide with `?call=<id>`, the deep link that opens one call.
     for (const [k, v] of Object.entries(filters)) {
       if (!v) continue;
       q.set(k === "channel" ? "call" : k, v);

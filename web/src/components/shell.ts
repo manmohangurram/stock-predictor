@@ -6,8 +6,7 @@
  */
 export type Section = "ledger" | "audit" | "settings" | "archived";
 
-/// Two groups: the daily work, then the things you configure or clean up. A new page joins a group
-/// instead of extending one long list.
+/// Two groups: the daily work, then what you configure. A page joins a group.
 const LINKS: { id: Section; label: string; href: string; group: "work" | "setup" }[] = [
   { id: "ledger", label: "Ledger", href: "/", group: "work" },
   { id: "audit", label: "Audit", href: "/calls", group: "work" },

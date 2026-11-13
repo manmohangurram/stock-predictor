@@ -155,8 +155,6 @@ pub async fn connect(path: &str) -> Result<SqlitePool> {
         .filename(path_of(path))
         .create_if_missing(true)
         .foreign_keys(true)
-        // One writer, reads on every page load: WAL plus relaxed sync is the right trade and
-        // takes a 250-row batch from 18 ms to a few.
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Normal);
 
@@ -197,8 +195,6 @@ pub async fn migrate(pool: &SqlitePool) -> Result<()> {
             .await?;
     }
 
-    // Cheap planner statistics for the indexes above; SQLite recommends this after schema or
-    // data changes and it is a no-op when there is nothing to do.
     let _ = sqlx::raw_sql("PRAGMA optimize").execute(pool).await;
     Ok(())
 }

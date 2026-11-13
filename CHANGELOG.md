@@ -16,6 +16,12 @@ The decisions box tagged every plan as a stock plan, so a `plan_mf_v1` result sa
 **Stocks** heading. Plans now carry their own scope, and the fund heading reads *Funds* when a
 plan and a scan row share it.
 
+### The commentary is gone
+
+255 lines of explanatory comments across `src/` and `web/src/`, reduced to the one-line whys the
+rule allows. `///` rustdoc and `//!` module docs stay: those are published documentation, not
+commentary beside code.
+
 ### Every control is 40px on a phone
 
 The audit toolbar, the settings fields and the limits table were 28–38px tall; the back link was

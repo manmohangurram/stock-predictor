@@ -76,8 +76,6 @@ pub async fn ensure_month(
     }
 
     let existing = budget::cash_in_bucket(pool, mode, bucket).await?;
-    // Only a month *boundary* expires what is left. Adjusting the allowance mid-month is a
-    // top-up (or a claw-back of the unspent part), never a reset.
     let expired = if !same_month && existing > 0.0 {
         existing
     } else {

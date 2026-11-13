@@ -32,8 +32,6 @@ export function renderMarkdown(src: string): string {
 
   const flushPara = () => {
     if (para.length) {
-      // A line break inside a paragraph is a soft break: the prompt is hard-wrapped for
-      // editing, and the browser should reflow it to the width it actually has.
       out.push(`<p>${para.map(inline).join(" ")}</p>`);
       para = [];
     }
@@ -99,15 +97,11 @@ export function renderMarkdown(src: string): string {
       continue;
     }
     if (!line.trim()) {
-      // A prompt numbers its rules 1. 1. 1. and leaves a blank line between them. That is one
-      // list written lazily, so it must not become seven lists each starting at one.
       const next = lines.slice(i + 1).find((l) => l.trim());
       flushPara();
       if (!(list && next && marker(next) === list.tag)) flush();
       continue;
     }
-    // A wrapped line under a bullet belongs to that bullet, not to a new paragraph — otherwise
-    // every number in the prompt's list closes the list and the next item starts again at one.
     if (list) {
       const last = list.items.length - 1;
       list.items[last] = `${list.items[last]} ${line.trim()}`;

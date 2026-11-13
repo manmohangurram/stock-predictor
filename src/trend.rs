@@ -216,8 +216,6 @@ pub async fn candidate_block(
         if crate::store::refresh(pool, id, &g.symbol, market).await.is_err() {
             continue;
         }
-        // The search engine tokenises: "ANTGRAPHIC news today" matched Anthropic's $ANT IPO posts.
-        // Ask with the company's own name — quoted — when the book knows it.
         let known_name: Option<String> = sqlx::query_as("SELECT name FROM instruments WHERE id = ?")
             .bind(id)
             .fetch_optional(pool)
@@ -279,8 +277,6 @@ async fn daily_list(
     }
 
     let mut out: Vec<Candidate> = Vec::new();
-    // The exchange first: its rows carry a price, so they win a duplicate. One request returns
-    // both lists — the whole market's gainers and the index's own movers.
     match crate::market::nse::fetch_today(client, TOP_N).await {
         Ok((gainers, index)) => {
             out.extend(gainers.iter().map(|g| Candidate::from_gainer(g, "gainers")));
@@ -299,8 +295,6 @@ async fn daily_list(
     for c in &out {
         store_candidate(pool, &today, c, now).await?;
     }
-    // Set even when the list came back empty: an empty day is an answer, and ninety-six ticks must
-    // not each pay for the same silence. A person asking again clears it (see `forget_today`).
     set_marker(pool, "trend_list_last", &today).await?;
     Ok(out)
 }
@@ -442,8 +436,6 @@ fn relevant(
     let needle = |haystack: &str| {
         let lower = haystack.to_lowercase();
         let ticker_hit = lower.contains(&ticker.to_lowercase());
-        // The first two words of a company name are the distinctive part ("Orchasp Limited" →
-        // "orchasp"), and the rest ("limited", "ltd", "industries") is shared by half the market.
         let name_hit = name.is_some_and(|n| {
             n.split_whitespace()
                 .take(2)

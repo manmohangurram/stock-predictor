@@ -39,9 +39,6 @@ export function renderRow(d: Dashboard, p: Dashboard["positions"][number]): stri
     ? `${sign(pnl)}${money(Math.abs(pnl))}<div class="sub">${sign(pnlPct)}${Math.abs(pnlPct).toFixed(1)}%</div>`
     : `<span class="muted">no price yet</span>`;
   const isFund = p.class !== "stock";
-  // A fund has no price exit: it is sold at NAV once the return you asked for is reached, so its
-  // exit plan is a NAV, derived from the profit expectation. Without one, say so rather than
-  // leaving a blank that looks like a rendering bug.
   const fundExit = p.target_profit_pct
     ? `<span class="num">${money(p.avg_cost * (1 + p.target_profit_pct / 100))} → +${p.target_profit_pct}%</span>`
     : `<span class="muted">no target set</span>`;
@@ -234,8 +231,6 @@ function decisionRow(s: Dashboard["signals"][number]): string {
       ? ""
       : statusPill(s.status);
   const actions = renderDecisionActions(s);
-  // A fund's scheme code (0P0000XV5C.BO) says nothing; its name does. The code stays underneath,
-  // small, because that is what you paste into the search box.
   const named = s.name && s.name !== s.symbol;
   return `<div class="feed-row decision-feed">
     <div class="decision-main">
@@ -251,8 +246,6 @@ function decisionRow(s: Dashboard["signals"][number]): string {
         ${status}
         <span class="sub">${histDate(s.created_at)}</span></div>
       ${
-        // The model's reasoning when there is one; the rules' reason when there is not — an exit at
-        // the stop or at the idea's expiry has no rationale, and the card must still say why.
         s.rationale
           ? `<p class="decision-prose">${escapeHtml(s.rationale)}</p>`
           : s.reasons.length
@@ -298,15 +291,11 @@ export function renderLedger(d: Dashboard): string {
       ? new URLSearchParams(location.search).get("decisions")
       : null;
   const filter: DecisionFilter = isDecisionFilter(raw) ? raw : "pending";
-  // A blocked proposal is not a decision to review: it is a record of something the app could not
-  // do. It stays on the instrument's page and in the audit, not in this box.
   const shown = [...d.signals].sort((a, b) => b.id - a.id);
   const plans = new Map<number, Dashboard["signals"]>();
   for (const s of shown) {
     if (s.plan_id) plans.set(s.plan_id, [...(plans.get(s.plan_id) ?? []), s]);
   }
-  // A plan is the stock book's business; the fund scan is its own arithmetic. Two channels,
-  // shown as two groups, so a fund decision never reads as part of a stock plan.
   const drawn: { html: string; fund: boolean }[] = [];
   const seen = new Set<number>();
   for (const s of shown.slice(0, 10)) {

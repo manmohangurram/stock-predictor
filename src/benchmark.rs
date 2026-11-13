@@ -67,8 +67,6 @@ pub fn return_over(closes: &[f64], sessions: usize) -> Option<f64> {
     }
     let last = *closes.last()?;
     let window = &closes[closes.len() - 1 - sessions..];
-    // A zero or a NaN anywhere in the window is bad data, not a crash to rank on: a suspended
-    // name's placeholder close would otherwise read as a −100% return.
     if !last.is_finite() || window.iter().any(|c| !c.is_finite() || *c <= 0.0) {
         return None;
     }

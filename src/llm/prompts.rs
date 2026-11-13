@@ -156,8 +156,6 @@ pub fn render_web_hits(hits: &[crate::llm::deepseek::SearchHit]) -> String {
     kept.iter()
         .enumerate()
         .map(|(i, h)| {
-            // Title, date, source and the short summary. No URL: the model cannot open it, and a
-            // page of them is prompt spent on a string nothing reads.
             let day = h.date.as_deref().map(|d| d.get(..10).unwrap_or(d));
             let when: String = [day.unwrap_or("undated").to_string(), h.site.clone()]
                 .iter()

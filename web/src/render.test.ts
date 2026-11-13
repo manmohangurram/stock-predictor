@@ -867,8 +867,6 @@ describe("the api client speaks JSON", () => {
   test("approve and reject send a JSON content-type", async () => {
     const calls: RequestInit[] = [];
     const original = globalThis.fetch;
-    // A stub, so this catches the 415 before it reaches a server: axum's Json extractor
-    // refuses a body without the header.
     globalThis.fetch = (async (_url: string, init?: RequestInit) => {
       calls.push(init ?? {});
       return new Response(JSON.stringify({ ok: true, id: 1, status: "approved" }), {
@@ -1235,8 +1233,6 @@ describe("audit", () => {
     );
     expect(list).toContain("Infosys");
     expect(list).toContain("blocked");
-    // The reason must not render in the row — as visible text it pushed the table off the page.
-    // A tooltip is fine.
     expect(list).not.toContain('<div class="sub">insufficient');
     expect(list).toContain('title="insufficient_cash');
 
@@ -1370,8 +1366,6 @@ describe("archived", () => {
     expect(html).toContain("+300.00");
     expect(html).toContain("300.00 out");
     expect(html).toContain("Realised");
-    // Restoring lives on the instrument's own page, and the row does not advertise it: the whole
-    // row is the link, so a trailing column repeating that was noise.
     expect(html).not.toContain("data-restore");
     expect(html).not.toContain("open to restore");
   });

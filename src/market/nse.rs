@@ -206,8 +206,6 @@ mod tests {
 
     #[test]
     fn the_index_group_is_ranked_by_change_and_both_lists_come_from_one_body() {
-        // The live payload has an `open_price`/`high_price` row shape and a `NIFTY` group beside
-        // `allSec`; this is that shape, trimmed.
         let payload = r#"{"allSec":{"data":[{"symbol":"ALEMBICLTD","ltp":113.21,"prev_price":99.15,"perChange":14.18}]},
           "NIFTY":{"data":[
             {"symbol":"SBIN","ltp":1042.0,"prev_price":1016.0,"perChange":2.56,"turnover":"2,497.44 Cr"},

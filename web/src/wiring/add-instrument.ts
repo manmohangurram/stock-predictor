@@ -1,8 +1,7 @@
 import { api, type Hit } from "../api";
 import { escapeHtml } from "../format";
 
-/// Adding an instrument: one dialog, opened from the header (or ⌘K / Ctrl-K), results grouped by
-/// class and chosen with ↑↓ ⏎.
+/// One dialog, opened from the header or ⌘K/Ctrl-K, chosen with ↑↓ ⏎.
 export function wireAddDialog(): void {
   const dialog = document.querySelector<HTMLDialogElement>("#add-dialog");
   const body = document.querySelector<HTMLElement>(".add-dialog-body");
@@ -17,8 +16,6 @@ export function wireAddDialog(): void {
   let local: Hit[] = [];
   let active = 0;
 
-  // Six is a chooser, not a directory: it keeps the list on one screen, so no scrollbar can
-  // push the rows out of line with the field above them.
   const SHOWN = 6;
   /**
    * Only Indian listings. The book is denominated in rupees and follows NSE/BSE rules (T+1,

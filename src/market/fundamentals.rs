@@ -118,8 +118,6 @@ impl Fundamentals {
 }
 
 pub async fn fetch(client: &reqwest::Client, symbol: &str, now_year: i32) -> Result<Fundamentals> {
-    // Epoch seconds, not "years × seconds in a year" — that product lands centuries away and the
-    // endpoint answers with empty series rather than an error.
     let year_start = |y: i32| {
         chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, y, 1, 1, 0, 0, 0)
             .single()
@@ -154,8 +152,7 @@ pub async fn fetch(client: &reqwest::Client, symbol: &str, now_year: i32) -> Res
 
 pub fn parse(body: &str) -> Result<Fundamentals> {
     let v: serde_json::Value = serde_json::from_str(body).context("fundamentals: payload shape")?;
-    // The endpoint answers one `result` per requested type, so every type is looked for across all
-    // of them — reading only result[0] silently returned an empty Fundamentals.
+    // Yahoo splits the series across result entries; result[0] alone is often empty.
     let results = v
         .get("timeseries")
         .and_then(|t| t.get("result"))

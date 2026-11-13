@@ -156,8 +156,6 @@ pub fn check(p: &Proposal, ctx: &ValidateCtx<'_>) -> Result<(), ValidationError>
         return Err(ValidationError::BadValidity);
     }
 
-    // Cite what you were given. An instrument with no headlines has nothing to cite, so
-    // demanding one would make any decision about it impossible — which is not the intent.
     if !ctx.sent_headline_ids.is_empty() && p.cites.is_empty() {
         return Err(ValidationError::MissingCitation);
     }

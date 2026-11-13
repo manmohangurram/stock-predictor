@@ -74,8 +74,6 @@ function select(
   value: string,
   options: [string, string][],
   help = "",
-  // A control that cannot be changed is disabled: an enabled select that the server refuses is
-  // a promise the page cannot keep.
   locked = false,
 ) {
   const current = draftOf(tab, name) ?? value;

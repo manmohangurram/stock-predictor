@@ -253,8 +253,6 @@ function wireDeleteInstrument(): void {
     button.disabled = true;
     return;
   }
-  // Two-step, like deleting a fill: the label carries the warning, and a native confirm() is a
-  // dialog the app cannot style, cannot test, and cannot undo.
   const original = button.textContent ?? "Archive";
   let armed = false;
   button.addEventListener("click", async () => {
@@ -329,8 +327,6 @@ window.setInterval(() => {
   const draftOpen = !!document.querySelector("form.approve-form:not([hidden]), form.reject-form:not([hidden])");
   if (typing || draftOpen) return;
   void route();
-  // A running job is the one thing worth watching closely: check again in a moment, so the page
-  // shows the result as it lands instead of up to a minute later.
   if (path === "/calls" && document.querySelector(".runs-strip .pill.running")) {
     window.setTimeout(() => {
       const el = document.activeElement;

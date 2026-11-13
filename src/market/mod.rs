@@ -80,8 +80,6 @@ impl MarketSource for YahooSource {
         &'a self,
     ) -> Pin<Box<dyn Future<Output = Result<Constituents>> + Send + 'a>> {
         Box::pin(async move {
-            // NSE refuses `equity-stockIndices` to a non-browser client, so the index comes from
-            // its archives CSV — the same list the exchange publishes.
             let body = self
                 .client
                 .get("https://nsearchives.nseindia.com/content/indices/ind_nifty100list.csv")

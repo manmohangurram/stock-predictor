@@ -152,8 +152,6 @@ pub async fn available_mf(pool: &SqlitePool) -> Result<f64> {
 }
 
 pub async fn available_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
-    // Cash, less money locked in pending IPO applications — those are not ledger rows, so they
-    // have to be subtracted explicitly.
     let ipo: (Option<f64>,) = match mode {
         Mode::Long => {
             sqlx::query_as("SELECT SUM(amount) FROM ipo_applications WHERE status = 'pending'")

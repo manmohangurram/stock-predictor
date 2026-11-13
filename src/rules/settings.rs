@@ -215,8 +215,6 @@ pub async fn set(pool: &SqlitePool, patch: SettingsPatch) -> Result<(), Settings
             .map_err(|_| SettingsError::InvalidAmount)?;
     }
 
-    // The monthly allowance. Changing it does not touch the ledger: the money appears when the
-    // month rolls over, which is the only thing that should ever add to a pot.
     if let Some(budget) = patch.budget {
         if !budget.is_finite() || budget < 0.0 {
             return Err(SettingsError::InvalidAmount);

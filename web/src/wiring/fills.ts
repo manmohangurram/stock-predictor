@@ -93,8 +93,6 @@ export function wireTradeForm(symbol: string, reload: () => Promise<void>): void
     (sideInputs.find((r) => r.checked)?.value as "buy" | "sell") ?? "buy";
   const qtyInput = form?.querySelector<HTMLInputElement>('input[name="qty"]');
 
-  // Cap the quantity only while selling. Applying it to a buy made the browser reject any
-  // purchase larger than the current holding before the request was ever sent.
   const syncLimit = () => {
     if (!qtyInput) return;
     const held = qtyInput.dataset.held ? Number(qtyInput.dataset.held) : null;

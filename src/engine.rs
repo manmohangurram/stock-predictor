@@ -72,8 +72,6 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
         }
     }
 
-    // The book call runs after the per-instrument passes, and only if one of them actually spent
-    // a call this tick — the same "something moved" gate the rest of the poll obeys.
     let calls_before = report.llm_calls;
     let calls_after = orchestrate::daily_chat_calls(deps.pool).await.unwrap_or(0);
     if calls_after > calls_before {
@@ -99,11 +97,6 @@ async fn plan_book(
     run: Option<i64>,
 ) -> Result<Option<()>> {
     let fund = scope.is_fund();
-    // A book decision, not an intraday one: asked once per IST day, on the first tick that can
-    // ask it. The trade plan is the exception — it lives for hours, so it is asked again every
-    // slot the session offers.
-    // A person asking is not the clock asking: a manual run skips both the slot and the session
-    // check, and writes no marker, so it cannot swallow the next scheduled question.
     let manual = run.is_some();
     let slot = if scope.is_trade() {
         match crate::schedule::trade_slot(now) {
@@ -129,8 +122,6 @@ async fn plan_book(
         }
     }
     let funds = fund_symbols(deps.pool).await?;
-    // Three books, three prompts: this call only ever sees its own half. A trade plan sees the
-    // trade purse's holdings — the stocks it is allowed to sell.
     let book: Vec<crate::llm::rotate::HoldingLine> =
         load_holdings(deps.pool, if scope.is_trade() {
             crate::models::Mode::Trade
@@ -141,14 +132,10 @@ async fn plan_book(
         .into_iter()
         .filter(|h| if scope.is_trade() { true } else { funds.contains(&h.symbol) == fund })
         .collect();
-    // A book plan needs a book. The trade plan does not: opening the first position is exactly
-    // what an empty trade purse is waiting for, and today's list is the reason to call.
     if book.is_empty() && !scope.is_trade() {
         return Ok(None);
     }
     let settings = crate::rules::settings::get(deps.pool).await?;
-    // A fund plan draws on the fund purse, a stock plan on the stock purse, a trade plan on the
-    // trade purse. Never two at once.
     let available = if fund {
         budget::available_mf(deps.pool).await?
     } else if scope.is_trade() {
@@ -161,9 +148,6 @@ async fn plan_book(
         return Ok(None);
     }
 
-    // The stock plan is offered the market, not itself: the book block already lists what is held,
-    // so today's list is the Nifty 100's best five-session performers. The fund plan keeps its own
-    // arithmetic list — funds are ranked by the scan, not by a benchmark.
     let candidates = if scope.is_trade() {
         crate::trend::candidate_block(deps.pool, deps.market, deps.transport, now).await
     } else if fund {
@@ -391,8 +375,6 @@ async fn plan_book(
         .fetch_optional(deps.pool)
         .await?;
         let Some((id,)) = id else {
-            // A move on a symbol that is not an instrument cannot be stored; the plan is refused
-            // whole rather than half-recorded.
             record_plan_refusal(
                 deps.pool,
                 &format!(
@@ -719,8 +701,6 @@ async fn gather(
     let limits = crate::rules::settings::limits(deps.pool, crate::models::Mode::Long).await?;
     let pot = budget::budget_total_in(deps.pool, crate::models::Mode::Long).await?;
     let instrument_exposure = load_exposure(deps.pool, instrument.id).await?;
-    // No per-stock value means "the pot's minimum"; a value above the ceiling is clamped, so a
-    // lowered max cannot make every trade on this stock impossible.
     let required_profit_pct = load_target_profit(deps.pool, instrument.id)
         .await?
         .unwrap_or(limits.min_profit_pct)
@@ -764,8 +744,6 @@ async fn poll_instrument(
     now: DateTime<Utc>,
     report: &mut PollReport,
 ) -> Result<()> {
-    // An AMFI scheme code (135762) has no price series anywhere: it can be held, but it cannot be
-    // charted, so polling it only produces a 404 every fifteen minutes. Say so once per poll.
     if instrument.class == crate::models::AssetClass::MutualFund && !instrument.symbol.contains('.')
     {
         report.notes.push(format!(
@@ -790,8 +768,6 @@ async fn poll_instrument(
         cfg: deps.rules,
     });
 
-    // The rules no longer decide whether the model is asked — they describe the setup. A held
-    // position with no fresh headlines still deserves a view on prices alone.
     let had_rules_candidate = rules_candidate.is_some();
     let candidate = match rules_candidate {
         Some(c) => c,
@@ -831,8 +807,6 @@ async fn poll_instrument(
             }
         }
     };
-    // Limits bind the rules too, not just the model: a 200k fill against a 50k ceiling is
-    // not acceptable because a rule suggested it.
     let candidate = match clamp_to_limits(candidate, g.limits, g.pot, g.instrument_exposure) {
         Some(c) => c,
         None => {
@@ -847,19 +821,13 @@ async fn poll_instrument(
         report.candidates += 1;
     }
 
-    // The model is paid for judgement about news, so news is what re-triggers it. Prices can
-    // move all day without another call; the rules refresh them.
     let headline_fp = crate::llm::memo::fingerprint(news);
     let headlines_changed = !crate::llm::memo::unchanged(deps.pool, instrument.id, &headline_fp)
         .await
         .unwrap_or(true);
 
-    // Reported financials, fetched only when a call is actually going to happen — this is one
-    // extra request per call, not per tick.
     let fundamentals = fetch_fundamentals(deps, &instrument.symbol, now).await;
 
-    // The short-horizon card exists for one reason: a trade that must finish inside a week needs the
-    // session clock, relative volume and the level it is trading against — numbered, not inferred.
     let short_context = short_card(deps, instrument, &g.tape, now).await;
 
     // Why this call is being made, in words a person can read later in the audit trail.
@@ -914,8 +882,6 @@ async fn poll_instrument(
         .await?
         .is_some();
     if !llm_available {
-        // A key that cannot be decrypted is a different problem from no key at all: the value is
-        // there, the SECRET_KEY is not the one it was written with.
         let broken = crate::secrets::unreadable(deps.pool, "deepseek_key")
             .await
             .unwrap_or(false);
@@ -956,8 +922,6 @@ async fn poll_instrument(
         .await;
     }
 
-    // A buy that the cash cannot fund is where a rotation belongs: one call that names what to
-    // sell to pay for it. If nothing is in profit, this returns immediately without a call.
     if !deps.force {
         match rotate_for_cash(deps, instrument, &candidate, now).await {
             Ok(Some((sell_id, buy_id))) => {
@@ -1017,9 +981,6 @@ async fn poll_instrument(
         .await?;
 
     report.asked += 1;
-    // A proposal the validator refused is still a decision the owner should be able to see: the
-    // model said "buy at X", and the answer was no, with a reason. Without this it vanished — the
-    // rules' fallback is usually a HOLD, and `finish` records nothing for a HOLD.
     let refused = match &decision.outcome {
         Outcome::Rejected { proposal, error }
             if !matches!(
@@ -1206,8 +1167,6 @@ async fn finish(
 
     let available = sizing.available;
 
-    // The budget gate is the last word, above the LLM: a proposal that does not fit is
-    // recorded as BLOCKED with the shortfall, and is never pushed.
     if resolved.action == Action::Buy {
         let cost = resolved.qty * resolved.entry;
         if !budget::fits(deps.pool, cost).await? {
@@ -1247,17 +1206,12 @@ async fn finish(
             .unwrap_or_else(|| "rules only".into()),
     ));
 
-    // A model-derived signal that is still valid and still inside its band survives a failed
-    // model call: the rules refresh the price but must not overwrite a view they did not form.
     if resolved.rationale.is_none()
         && reuse_model_signal(deps.pool, instrument.id, resolved.entry, sizing.atr, now).await?
     {
         return Ok(());
     }
 
-    // "Prices refresh freely" means the entry may drift without a new row or a push: the
-    // latest signal is updated in place. A different action, stop or target is new information
-    // and gets its own row.
     if !deps.force {
         if let Some(prev) = latest_signal(deps.pool, instrument.id).await? {
             let same_shape = prev.action == resolved.action.as_str()
@@ -1310,8 +1264,6 @@ async fn finish(
                 .notes
                 .push(format!("{}: no ntfy topic — recorded without a push", instrument.symbol)),
             Ok(false) => {}
-            // A push that fails must not lose the decision: the row is already written, and the
-            // notification is retried on the next tick because no dedupe row was kept.
             Err(e) => report
                 .errors
                 .push(format!("{}: push failed: {e}", instrument.symbol)),
@@ -1337,8 +1289,6 @@ fn resolve(candidate: &Candidate, outcome: Outcome, now: DateTime<Utc>) -> Optio
         }),
         Outcome::Llm(p) => {
             let mut resolved = from_proposal(candidate, &p, valid_until);
-            // A breached stop or a reached target is already decided. The model may explain it,
-            // not relitigate it — otherwise "HOLD" would swallow the exit signal and its push.
             if candidate.urgent {
                 resolved.action = candidate.action;
                 resolved.entry = candidate.entry;
@@ -1348,8 +1298,6 @@ fn resolve(candidate: &Candidate, outcome: Outcome, now: DateTime<Utc>) -> Optio
             }
             Some(resolved)
         }
-        // An over-budget proposal is NOT re-sized down to something that fits: it is carried
-        // through to the budget gate, which records it as BLOCKED with the shortfall.
         Outcome::Rejected {
             proposal,
             error: crate::llm::validate::ValidationError::InsufficientCash,

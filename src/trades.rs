@@ -134,8 +134,6 @@ pub async fn record_on(
         class.as_str()
     );
 
-    // A fund draws on its own monthly purse, so it can never consume the money meant for stocks.
-    // That is now structural: the purse is a different set of ledger rows, not a check.
 
     let when = at.unwrap_or_else(chrono::Utc::now);
     let now = when.to_rfc3339();
@@ -163,8 +161,6 @@ pub async fn record_on(
                 Some((id, held, cost, opened_at)) => {
                     let new_qty = held + qty;
                     let new_cost = (held * cost + value) / new_qty;
-                    // A backfilled buy moves the position's start date backwards, otherwise a
-                    // later-dated sale of it would be refused as "before the position opened".
                     let opened = chrono::DateTime::parse_from_rfc3339(&opened_at)
                         .map(|d| d.with_timezone(&chrono::Utc))
                         .unwrap_or(when);

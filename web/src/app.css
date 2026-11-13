@@ -271,8 +271,6 @@
 
 @layer components {
   /* ---------- app shell ---------- */
-  /* Wide by default: a ledger is a table, and tables want width. The side rail is fixed so the
-     blotter takes every spare pixel on a large screen instead of stranding them as margins. */
   .shell { max-width: 1440px; margin: 0 auto;
     padding: var(--space-4) clamp(var(--space-4), 2.5vw, var(--space-8)) var(--space-12); }
   @media (min-width: 1600px) {
@@ -479,8 +477,6 @@
   /* Audit: the stored exchange, opened under its row. */
   .call-detail td { padding: 0 !important; background: var(--paper-inset); }
   .call { padding: var(--space-4); display: grid; gap: var(--space-3); }
-  /* The blotter's cells are nowrap for their numbers; everything inside the drawer is prose and
-     must wrap, or a long answer runs off the row and looks truncated. */
   .call { white-space: normal; }
   
   
@@ -685,8 +681,6 @@
 }
 
 @layer components {
-  /* Grid children default to min-width:auto, so one wide child (a 560px chart, a nowrap table)
-     stretched the whole page on a phone. */
   .inst-grid > *, .inst-main > *, .inst-side > *, .card { min-width: 0; }
   .chart, .table-wrap { max-width: 100%; }
 }
@@ -741,8 +735,6 @@
 }
 
 @layer components {
-  /* One table rhythm: 12px side padding, 10px rows, hairline rules, tabular numbers.
-     Applied by the .blotter class, so every table in the app breathes the same way. */
   .row-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
   .row-actions .btn { height: 26px; padding: 0 10px; font-size: var(--text-xs); }
   @media (max-width: 1100px) {
@@ -772,9 +764,6 @@
 }
 
 @layer components {
-  /* ONE table rhythm, shared by every table in the app.
-     16px card padding lines up with 12px cell padding; headers sit on a hairline; rows are
-     padding-driven (no fixed heights, which fought the padding and caused the cramped look). */
   .blotter,
   .limits-table {
     width: 100%;
@@ -874,8 +863,6 @@
 }
 
 @layer components {
-  /* Beats `.blotter td .sub { white-space: nowrap }`, which was forcing the reason onto one line
-     and pushing the whole table wider than the page. */
   .blotter td .review-cell .sub { white-space: normal; }
 }
 
@@ -938,8 +925,6 @@
 
 @layer components {
   @media (max-width: 900px) {
-    /* The rail becomes a bar; its money figure is already in the page header, and inline it
-       collides with the links. */
     .rail .rail-foot { display: none; }
   }
 }
@@ -1010,8 +995,6 @@
 
   .kbd { font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-tertiary);
     border: 1px solid var(--rule); border-radius: 4px; padding: 2px 5px; }
-  /* Every line in the dialog shares one left edge: the search text, the group labels, the rows
-     and the empty hint. A leading icon inside the field broke that edge, so there isn't one. */
   .dlg-results { max-height: 46vh; overflow-y: auto; padding: var(--space-1) 0; }
   .dlg-results .empty { padding: var(--space-3) var(--space-4); margin: 0; }
   .dlg-more { padding: var(--space-2) var(--space-4) var(--space-3); margin: 0;
@@ -1030,14 +1013,10 @@
 }
 
 @layer components {
-  /* The decision list can be long; it scrolls inside its card instead of pushing the book off
-     the page. The card keeps its height, so the tables below never move as decisions arrive. */
   .decisions-feed { max-height: min(44vh, 520px); overflow-y: auto;
     overscroll-behavior: contain; padding-right: var(--space-2); }
   .decisions-feed:focus-within { outline: none; }
   /* The figures can carry a qualifier under the number. */
-  /* The qualifier rides beside the number, not under it: every figure keeps two rows, so the
-     numbers share one line and the action beside them keeps its place. */
   .figures .fig-line { display: flex; align-items: baseline; gap: var(--space-2); }
   .figures .fig-note { font-family: var(--font-ledger); font-size: var(--text-xs);
     color: var(--ink-tertiary); }
@@ -1047,8 +1026,6 @@
 }
 
 @layer components {
-  /* The drawer is a sheet: one left edge, one spacing scale, and a hairline between sections.
-     Nothing in it repeats a column from the row above. */
   .call { display: grid; gap: var(--space-6); padding: var(--space-4) var(--space-4) var(--space-3); }
 
   .call-bar { display: flex; flex-wrap: wrap; align-items: baseline;
@@ -1081,8 +1058,6 @@
 }
 
 @layer components {
-  /* The drawer sits on the inset paper, inset from the row's own padding, so it reads as one
-     sheet opened under the row rather than more table rows. */
   .call-detail > td { padding: 0; background: var(--paper-inset);
     border-bottom: 1px solid var(--rule);
     white-space: normal; }
@@ -1093,8 +1068,6 @@
 }
 
 @layer components {
-  /* The answer card: a verdict head, then its evidence, then its words — one shape for a plan,
-     a single decision and a pass. */
   .answer { background: var(--paper-raised); border: 1px solid var(--rule-subtle);
     border-radius: var(--radius); overflow: hidden; }
   .answer-head { display: flex; align-items: baseline; gap: var(--space-2);
@@ -1282,8 +1255,6 @@
 }
 
 @layer components {
-  /* Market state: a dot and a sentence under the page title. Quiet on purpose — it is context,
-     not a decision, so it must not wear the same pill as DONE or FAILED. */
   .head-market { display: flex; align-items: center; gap: var(--space-2); margin-top: 2px;
     font-size: var(--text-xs); color: var(--ink-tertiary); }
   .head-market:empty { display: none; }
@@ -1296,16 +1267,12 @@
 }
 
 @layer components {
-  /* The market line owns the top-right corner, above the figures: a status over the numbers,
-     not a third line crammed under the page title. */
   .page-head .head-right { display: grid; justify-items: end; gap: var(--space-2); }
   .page-head .head-row { display: flex; align-items: flex-end; gap: var(--space-6);
     flex-wrap: wrap; justify-content: flex-end; }
 }
 
 @layer components {
-  /* Market state at the foot of the rail: it is the frame's last line, so it is pinned there and
-     never scrolls. Dot for colour, words for meaning, hours for context. */
   .rail-market { margin-top: auto; padding: var(--space-3) var(--space-4);
     border-top: 1px solid var(--rule-subtle); display: grid; gap: 2px; }
   .rail-market .lbl { display: flex; align-items: center; gap: var(--space-2);
@@ -1329,8 +1296,6 @@
 }
 
 @layer components {
-  /* One status, two homes: the rail's foot when there is a rail, under the title when there is
-     not. Never both, and never a clipped chip in a bar. */
   .page-head .head-market { display: none; }
   @media (max-width: 900px) {
     .rail-market { display: none; }
@@ -1351,12 +1316,8 @@
 }
 
 @layer components {
-  /* The prompt is written as prose, so it is shown as prose — headings, lists, emphasis — with the
-     JSON examples in the one place they belong: a code block. */
   .call-md { font-size: var(--text-sm); line-height: 1.6; color: var(--ink-secondary);
     overflow-wrap: anywhere; white-space: normal; min-width: 0; }
-  /* The prompt is long by nature — twenty rules and a book block. It scrolls inside its own
-     column so the drawer stays the height of the answer, not the height of the question. */
   .call-block .call-md { max-height: min(60vh, 620px); overflow-y: auto; overscroll-behavior: contain;
     scrollbar-gutter: stable; padding-right: var(--space-3);
     border-left: 1px solid var(--rule-subtle); padding-left: var(--space-3); }
@@ -1390,8 +1351,6 @@
 
 @layer components {
   /* A search call is not a conversation: it is a question and a ranked list of what came back. */
-  /* One height, always: the drawer must not jump between a search with one hit and one with five.
-     Fixed and scrollable, so the sheet is the same size whether the day was busy or quiet. */
   .search-list { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none;
     height: min(48vh, 440px); overflow-y: auto; overscroll-behavior: contain;
     scrollbar-gutter: stable; padding-right: var(--space-2); align-content: start; }
@@ -1424,8 +1383,6 @@
 }
 
 @layer components {
-  /* A standing preference, not a button: it sits in the toolbar with the filters it updates, at the
-     same height and border, and it says what it does rather than showing a bare checkbox. */
   .tick { display: inline-flex; align-items: stretch; margin-left: auto; height: 29px;
     border: 1px solid var(--rule); border-radius: var(--radius);
     background: var(--paper-raised); overflow: hidden;
