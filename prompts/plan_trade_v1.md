@@ -52,9 +52,9 @@ For each name you hold, ask in this order:
 
 - **Every buy carries entry, stop, target and an expiry.** A target must clear costs plus the
   book's minimum profit for a trade this short.
-- **The expiry is when the idea goes stale** — a session close, tomorrow's close at the latest, and
-  never more than three sessions. Past it, the trade is closed by the book whether or not it made
-  money.
+- **The expiry is when the idea goes stale** — the close of one of the next three sessions
+  (trading days: weekends do not count), stamped as `YYYY-MM-DDT15:30:00+05:30`. Past it, the
+  trade is closed by the book whether or not it made money.
 - **No symbol twice.** A sell and a buy of the same name in one plan is not a trade, it is churn.
 - **One move is a plan.** Selling and holding the cash is a complete answer. Do not add a buy you
   would not place to fill the second slot: a zero quantity, a leg you label "placeholder", a leg

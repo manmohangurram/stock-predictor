@@ -21,6 +21,28 @@ pub const MAX_TRADE_MOVES: usize = 2;
 /// it is the long-term book's business.
 pub const TRADE_MAX_SESSIONS: i64 = 3;
 
+/// The close of the last session a trade idea may name: `sessions` trading days from `now`.
+///
+/// Counted in sessions, not calendar days. Friday evening plus three calendar days is Monday, so a
+/// Tuesday expiry was refused as "more than three sessions out" when it was the second — the
+/// weekend had been counted as two sessions that do not exist. Exchange holidays are not modelled,
+/// which only ever makes this stricter.
+pub fn session_deadline(now: DateTime<Utc>, sessions: i64) -> DateTime<Utc> {
+    use chrono::{Datelike, TimeZone, Weekday};
+    let mut day = now;
+    let mut left = sessions.max(0);
+    while left > 0 {
+        day += chrono::Duration::days(1);
+        if !matches!(day.weekday(), Weekday::Sat | Weekday::Sun) {
+            left -= 1;
+        }
+    }
+    // The close of that session: 15:30 IST == 10:00 UTC, and NSE has no DST.
+    Utc.with_ymd_and_hms(day.year(), day.month(), day.day(), 10, 0, 0)
+        .single()
+        .unwrap_or(day)
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Move {
     #[serde(deserialize_with = "action_of")]
@@ -249,7 +271,7 @@ pub fn validate(
             if parsed <= now {
                 return Err(anyhow!("{}: expiry {until} is already past", m.symbol));
             }
-            if parsed > now + chrono::Duration::days(TRADE_MAX_SESSIONS) {
+            if parsed > session_deadline(now, TRADE_MAX_SESSIONS) {
                 return Err(anyhow!(
                     "{}: expiry is more than {TRADE_MAX_SESSIONS} sessions out — that is not this book's trade",
                     m.symbol

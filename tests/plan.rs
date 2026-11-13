@@ -543,8 +543,9 @@ fn a_trade_move_needs_an_expiry_inside_three_sessions() {
     // No expiry: an idea with no shelf life is not this book's trade.
     let err = check(move_with(None, "IDEA.NS")).unwrap_err().to_string();
     assert!(err.contains("expiry"), "{err}");
-    // Too far out.
-    let far = (now + chrono::Duration::days(TRADE_MAX_SESSIONS + 1)).to_rfc3339();
+    // Too far out: the deadline is the close of the third *session*, not three calendar days.
+    let far = (plan::session_deadline(now, TRADE_MAX_SESSIONS) + chrono::Duration::hours(1))
+        .to_rfc3339();
     let err = check(move_with(Some(far), "IDEA.NS")).unwrap_err().to_string();
     assert!(err.contains("sessions"), "{err}");
     // Already past.
@@ -554,6 +555,49 @@ fn a_trade_move_needs_an_expiry_inside_three_sessions() {
 }
 
 /// A SELL is an exit, not an idea: demanding an expiry on it refused a good "take the profit now".
+#[test]
+fn a_friday_expiry_may_name_tuesday() {
+    // Reported from a live trade plan: Friday 13 Nov 2026, after the close, the model named
+    // Tuesday 17 Nov. That is the *second* session out, but three calendar days from Friday is
+    // Monday, so the weekend was counted as two sessions that do not exist and the plan was
+    // refused as "more than 3 sessions out".
+    use stock_predictor::llm::plan::{Move, Plan, Scope};
+    // Friday 13 Nov 2026, 19:00 IST — after the close.
+    let now = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 11, 13, 13, 30, 0).unwrap();
+    let tue_close = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 11, 17, 10, 0, 0)
+        .unwrap()
+        .to_rfc3339();
+    let plan = Plan {
+        moves: vec![Move {
+            action: Action::Buy,
+            symbol: "BONFIG.NS".into(),
+            qty: Some(12.0),
+            price: Some(794.55),
+            amount: None,
+            stop: Some(755.0),
+            target: Some(880.0),
+            why: "Q2FY27 results".into(),
+            valid_until: Some(tue_close),
+        }],
+        rationale: "one clean entry".into(),
+    };
+    let r = plan::validate(
+        &plan,
+        &[],
+        Cash {
+            stock: 0.0,
+            fund: 0.0,
+            trade: 10_000.0,
+        },
+        &at(50_000.0),
+        "INR",
+        now,
+        &[],
+        Scope::Trade,
+    );
+    assert!(r.is_ok(), "Tuesday is the second session out: {r:?}");
+}
+
 #[test]
 fn a_trade_sell_needs_no_expiry_but_a_buy_does() {
     let now = chrono::TimeZone::with_ymd_and_hms(&chrono::Utc, 2026, 11, 11, 6, 0, 0).unwrap();

@@ -1673,6 +1673,43 @@ async fn audit_says_when_a_decision_was_blocked_and_why() {
 }
 
 #[tokio::test]
+async fn audit_says_why_a_plan_was_refused_not_just_that_it_was() {
+    // A refused plan carries no `detail` and no money — its sentence is in `reasons`. The audit
+    // used to print the bare key "plan_refused", which explains nothing.
+    let (_d, router, pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO api_calls (ts, conversation_id, endpoint, purpose, trigger, http_status)
+         VALUES ('2026-11-13T13:30:00Z', 'conv-p', 'chat', 'trade plan', 'clock', 200)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json, created_at,
+            mode, kind, conversation_id)
+         SELECT id, 'BLOCKED', 0, 0, '2027-01-01T00:00:00Z',
+                '{\"blocked\":\"plan_refused\",\"reasons\":[\"BONFIG.NS: expiry is more than 3 sessions out\"]}',
+                '2026-11-13T13:30:01Z', 'trade', 'plan', 'conv-p'
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (s, v) = get(&router, "/api/calls").await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+    let reason = v.as_array().unwrap()[0]["decision_reason"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        reason.contains("expiry is more than 3 sessions out"),
+        "the refusal's own sentence, not its key: {reason}"
+    );
+    assert!(!reason.contains("plan_refused:"), "{reason}");
+}
+
+#[tokio::test]
 async fn a_plan_id_travels_with_the_decision_rows() {
     let (_d, router, pool) = setup().await;
     sqlx::query(

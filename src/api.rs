@@ -1461,6 +1461,16 @@ fn blocked_reason(raw: Option<&str>) -> Option<String> {
     if let Some(detail) = v.get("detail").and_then(|d| d.as_str()) {
         return Some(format!("{kind}: {detail}"));
     }
+    // A refused plan has no `detail` — its sentence is in `reasons`. Without this the audit
+    // printed the bare key, "plan_refused", which explains nothing.
+    if let Some(first) = v
+        .get("reasons")
+        .and_then(|r| r.as_array())
+        .and_then(|a| a.first())
+        .and_then(|s| s.as_str())
+    {
+        return Some(first.to_string());
+    }
     Some(match (cost, available) {
         (Some(c), Some(a)) => format!("{kind}: cost {c:.2}, available {a:.2}"),
         _ => kind.to_string(),
