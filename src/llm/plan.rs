@@ -21,12 +21,7 @@ pub const MAX_TRADE_MOVES: usize = 2;
 /// it is the long-term book's business.
 pub const TRADE_MAX_SESSIONS: i64 = 3;
 
-/// The close of the last session a trade idea may name: `sessions` trading days from `now`.
-///
-/// Counted in sessions, not calendar days. Friday evening plus three calendar days is Monday, so a
-/// Tuesday expiry was refused as "more than three sessions out" when it was the second — the
-/// weekend had been counted as two sessions that do not exist. Exchange holidays are not modelled,
-/// which only ever makes this stricter.
+/// The close of the last session a trade idea may name. Weekends are skipped.
 pub fn session_deadline(now: DateTime<Utc>, sessions: i64) -> DateTime<Utc> {
     use chrono::{Datelike, TimeZone, Weekday};
     let mut day = now;

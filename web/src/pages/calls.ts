@@ -296,23 +296,18 @@ function decisionCard(reply: string, when: string): string {
       <span class="answer-when">${escapeHtml(when)}</span>
     </div>`;
 
-  // A plan: a docket of one line per move, the purse arithmetic, then the plan's own paragraph.
-  // The model's per-move justification is deliberately not shown — five citations under each leg
-  // buried the four numbers the reader actually has to check.
   if (r.moves.length) {
     const figure = (label: string, value: string) =>
       `<span class="docket-fig"><span class="lbl">${label}</span><b class="num">${value}</b></span>`;
     const legs = r.moves
       .map((m) => {
         const buy = m.action === "BUY";
-        // A fund move is sized in rupees and has no percentage stop; a stock move in units.
         const value =
           m.amount ?? (m.qty !== null && m.price !== null ? m.qty * m.price : null);
         const figs = [
           m.amount !== null ? figure("Amount", money(m.amount)) : "",
           m.qty === null ? "" : figure("Qty", units(m.qty)),
           m.price === null ? "" : figure("At", money(m.price)),
-          // A sale has money coming in; a buy has a stop, a target and an expiry to honour.
           buy ? "" : value === null ? "" : figure("Gives", money(value)),
           buy && m.stop !== null ? figure("Stop", money(m.stop)) : "",
           buy && m.target !== null ? figure("Target", money(m.target)) : "",
@@ -326,7 +321,6 @@ function decisionCard(reply: string, when: string): string {
       })
       .join("");
 
-    // The purse: what the sale frees, what the buy takes, what is left. Only the rows that exist.
     const total = (sell: boolean) =>
       r.moves.reduce(
         (n, m) =>
@@ -345,7 +339,6 @@ function decisionCard(reply: string, when: string): string {
       freed > 0 && spent > 0
         ? `<div class="docket-purse">${row("From the sale", freed)}${row("To buy", spent)}
             ${
-              // An exact cover is not a figure worth a row of its own.
               Math.abs(spent - freed) < 0.005
                 ? ""
                 : row(
@@ -354,11 +347,13 @@ function decisionCard(reply: string, when: string): string {
                     true,
                   )
             }</div>`
-        : spent > 0
-          ? `<div class="docket-purse">${row("Cost", spent, true)}</div>`
-          : freed > 0
-            ? `<div class="docket-purse">${row("Frees", freed, true)}</div>`
-            : "";
+        : r.moves.length === 1 && r.moves[0].amount !== null
+          ? ""
+          : spent > 0
+            ? `<div class="docket-purse">${row("Cost", spent, true)}</div>`
+            : freed > 0
+              ? `<div class="docket-purse">${row("Frees", freed, true)}</div>`
+              : "";
 
     return `<article class="answer" data-verdict="plan">
       ${head("PLAN", "estimate", `${r.moves.length} move${r.moves.length === 1 ? "" : "s"}`)}

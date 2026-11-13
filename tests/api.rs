@@ -1728,6 +1728,25 @@ async fn a_plan_id_travels_with_the_decision_rows() {
     assert_eq!(v["signals"][0]["name"], "INFY Ltd");
 }
 
+#[tokio::test]
+async fn a_fund_move_keeps_the_rupee_amount_it_was_sized_with() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status, plan_id)
+         SELECT id, 'BUY', NULL, NULL, '2030-01-01T00:00:00Z',
+                '{\"plan\":true,\"scope\":\"fund\",\"amount\":2250.0}',
+                '2026-11-09T10:00:00Z', 'long', 'plan', 'pending', 42
+         FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (_, v) = get(&router, "/api/dashboard").await;
+    assert_eq!(v["signals"][0]["amount"], 2250.0);
+    assert_eq!(v["signals"][0]["plan_scope"], "fund");
+}
+
 /// A plan is one decision with several legs: approving any leg posts all of them, sells first.
 #[tokio::test]
 async fn approving_one_leg_of_a_plan_approves_the_whole_plan() {

@@ -116,9 +116,7 @@ export interface ReplyMove {
   price: number | null;
   stop: number | null;
   target: number | null;
-  /** When the idea goes stale. A trade move carries one; the price moves do not. */
   validUntil: string | null;
-  /** A fund move is sized in rupees, not units: units arrive at NAV. */
   amount: number | null;
   why: string | null;
 }

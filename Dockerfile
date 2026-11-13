@@ -39,10 +39,8 @@ RUN if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ]; then \
         esac; \
     fi
 COPY --from=planner /app/recipe.json recipe.json
-# No cache mounts on these two steps. A cache mount keeps its contents out of the layer, so a
-# cached `cook` layer would replay *empty* and the build step below would re-download and
-# recompile every dependency (measured: 114s instead of 27s). The layer is the cache here —
-# `cache-to: type=registry,mode=max` preserves it across builds, a mount does not.
+# No cache mounts here: a mount keeps its contents out of the layer, so a cached cook
+# layer would replay empty and every dependency would rebuild.
 RUN if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ] && [ "${TARGETARCH}" = "arm64" ]; then \
         CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
         CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \

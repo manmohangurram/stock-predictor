@@ -40,6 +40,7 @@ const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
   plan_id: null,
   plan_rationale: null,
   plan_scope: "stock",
+  amount: null,
   class: "stock",
   action: "SELL",
   status: "pending",
@@ -982,7 +983,6 @@ describe("audit pager", () => {
   });
 });
 
-/** The plan card as the drawer renders it, from a reply body the model could have sent. */
 async function planCard(content: unknown): Promise<string> {
   const { renderExchangeDetail } = await import("./pages/calls");
   return renderExchangeDetail({
@@ -1042,14 +1042,11 @@ describe("audit", () => {
       instrument_name: null,
       instrument_symbol: null,
     });
-    // The docket prints the four numbers a reader has to check, the expiry, the cost, and the
-    // plan's own paragraph — and none of the model's per-move justification, which buried them.
     expect(html).toContain('class="docket"');
     expect(html).toContain("Qty");
     expect(html).toContain("Cost");
     expect(html).toContain("pure entry slot");
     expect(html).toContain("Till");
-    // The per-move justification is out of the card — it lives only in the raw exchange below it.
     const card = html.slice(html.indexOf('<article class="answer"'), html.indexOf("</article>") + 10);
     expect(card).not.toContain("Q2FY27 results dated 2026-11-11");
   });
@@ -1094,7 +1091,6 @@ describe("audit", () => {
     expect(html).toContain("To buy");
     expect(html).toContain("31,220.00");
     expect(html).toContain("41,013.00");
-    // The gap the purse has to cover, stated rather than left to be worked out.
     expect(html).toContain("Also from the purse");
     expect(html).toContain("9,793.00");
   });
@@ -1119,16 +1115,14 @@ describe("audit", () => {
     });
     expect((html.match(/class="docket-move"/g) ?? []).length).toBe(3);
     expect(html).toContain("From the sale");
-    expect(html).toContain("30,700.00"); // 5×3900 + 8×1400
+    expect(html).toContain("30,700.00");
     expect(html).toContain("To buy");
-    expect(html).toContain("32,000.00"); // 20×1600
+    expect(html).toContain("32,000.00");
     expect(html).toContain("Also from the purse");
     expect(html).toContain("1,300.00");
   });
 
   test("a fund move is sized in rupees, not units", async () => {
-    // A fund arrives at NAV, so the reply carries `amount` and no qty/price. Reading only
-    // qty×price left the line blank and the cost at zero.
     const html = await planCard({
       action: "plan",
       rationale: "a NAV dip in a fund already held",
@@ -1255,9 +1249,7 @@ describe("a plan", () => {
     expect(html).toContain("2 moves");
     expect(html).toContain("Infosys");
     expect(html).toContain("HDFC Bank");
-    // The same docket the call viewer draws, not a second design for the same plan.
     expect((html.match(/class="docket-move"/g) ?? []).length).toBe(2);
-    // 24 × 1146.30 = 27,511.20; 15 × 793.65 = 11,904.75; a sale bigger than the buy.
     expect(html).toContain("From the sale");
     expect(html).toContain("27,511.20");
     expect(html).toContain("To buy");
@@ -1274,9 +1266,8 @@ describe("a plan", () => {
     expect(html).toContain("Post fills");
   });
 
-  test("a fund leg says it is sized on approval rather than printing an empty line", async () => {
+  test("a fund leg shows the rupees it was sized with, once", async () => {
     const { renderPlan } = await import("./pages/ledger");
-    // A fund plan's rupee amount is not stored on the signal, so there is no figure to print.
     const html = renderPlan([
       leg({
         id: 5,
@@ -1286,10 +1277,22 @@ describe("a plan", () => {
         plan_scope: "fund",
         qty: null,
         entry: null,
+        amount: 2250,
       }),
     ]);
     expect(html).toContain("FUND PLAN");
-    expect((html.match(/class="docket-move"/g) ?? []).length).toBe(1);
+    expect(html).toContain("Amount");
+    expect(html).toContain("2,250.00");
+    // The amount is already on the line; a Cost row would print the same figure twice.
+    expect(html).not.toContain("Cost");
+  });
+
+  test("a fund leg with no stored size says so instead of printing nothing", async () => {
+    const { renderPlan } = await import("./pages/ledger");
+    const html = renderPlan([
+      leg({ id: 6, action: "BUY", name: "Axis ELSS", class: "mutual_fund", plan_scope: "fund",
+        qty: null, entry: null }),
+    ]);
     expect(html).toContain("size on approval");
   });
 });

@@ -109,28 +109,27 @@ const subtotal = (label: string, invested: number, value: number): string => {
 export function renderPlan(legs: Dashboard["signals"]): string {
   const first = legs[0];
   const isFund = first.plan_scope === "fund";
-  const value = (l: Dashboard["signals"][number]) => (l.qty ?? 0) * (l.entry ?? 0);
+  const value = (l: Dashboard["signals"][number]) => l.amount ?? (l.qty ?? 0) * (l.entry ?? 0);
   const freed = legs.filter((l) => l.action === "SELL").reduce((n, l) => n + value(l), 0);
   const spent = legs.filter((l) => l.action === "BUY").reduce((n, l) => n + value(l), 0);
 
-  // The same docket the call viewer draws, so one plan looks like one plan wherever it is read.
   const figure = (label: string, v: string) =>
     `<span class="docket-fig"><span class="lbl">${label}</span><b class="num">${v}</b></span>`;
   const leg = (l: Dashboard["signals"][number]) => {
     const buy = l.action === "BUY";
-    // A fund move is sized in rupees and never stored with a quantity, so it has no price, no
-    // stop and no target to print — a fund exits at a NAV, not at a stop.
     const sized = l.qty !== null && l.qty > 0;
-    const figs = !sized
-      ? ""
-      : [
+    const figs = sized
+      ? [
           figure("Qty", units(l.qty!)),
           l.entry === null ? "" : figure("At", money(l.entry)),
           buy || l.entry === null ? "" : figure("Gives", money(value(l))),
           buy && l.stop !== null ? figure("Stop", money(l.stop)) : "",
           buy && l.target !== null ? figure("Target", money(l.target)) : "",
           buy && l.valid_until ? figure("Till", day(l.valid_until)) : "",
-        ].join("");
+        ].join("")
+      : l.amount !== null
+        ? figure("Amount", money(l.amount))
+        : "";
     return `<div class="docket-move">
       ${actionStamp(l.action)}
       <span class="docket-sym">${escapeHtml(l.name || l.symbol)}</span>
@@ -149,11 +148,13 @@ export function renderPlan(legs: Dashboard["signals"]): string {
   const purse =
     freed > 0 && spent > 0
       ? `<div class="docket-purse">${row("From the sale", freed)}${row("To buy", spent)}${spread}</div>`
-      : spent > 0
-        ? `<div class="docket-purse">${row("Cost", spent, true)}</div>`
-        : freed > 0
-          ? `<div class="docket-purse">${row("Frees", freed, true)}</div>`
-          : "";
+      : legs.length === 1 && first.amount !== null
+        ? ""
+        : spent > 0
+          ? `<div class="docket-purse">${row("Cost", spent, true)}</div>`
+          : freed > 0
+            ? `<div class="docket-purse">${row("Frees", freed, true)}</div>`
+            : "";
 
   const status = first.status === "pending" ? "" : statusPill(first.status);
   const actions = first.status === "pending" ? planActions(first, legs) : "";

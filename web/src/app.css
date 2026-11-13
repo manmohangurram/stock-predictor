@@ -679,8 +679,6 @@
     .decisions .conf-word { display: grid; gap: 0; }
   }
   .decisions .conf-word { white-space: nowrap; }
-  /* An empty state is a sentence, not a figure: it wraps instead of widening the table past
-     the page. The blotter's nowrap made "Nothing archived yet…" a 490px column on a phone. */
   .blotter .empty { padding: var(--space-4) var(--space-3); white-space: normal; }
 }
 
@@ -843,8 +841,6 @@
   .limits-table td input { width: 100%; text-align: right; height: 28px; font-size: var(--text-sm); }
 
   @media (max-width: 720px) {
-    /* A phone is 358px of content: the rows keep their figures and lose only the air between
-       them, because 12px of side padding per cell was pushing the table 28px past the page. */
     .blotter th, .blotter td,
     .limits-table th, .limits-table td { padding: 8px 6px; }
     .blotter th:first-child, .blotter td:first-child { padding-left: var(--space-2); }
@@ -935,8 +931,6 @@
 }
 
 @layer components {
-  /* The plan is a docket everywhere: one line per move, then the purse. The old leg row and its
-     per-move why are gone — the card keeps only the plan's own paragraph. */
   .plan-card { border-left: 2px solid var(--stamp-ink); padding-left: var(--space-3); }
 }
 
@@ -1073,11 +1067,8 @@
 
   .call-exchange { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--space-6); align-items: start; }
-  /* A phone has one column, not two half-columns: the answer was being clipped at the drawer's
-     right edge because the two-column grid never stacked. */
   @media (max-width: 900px) {
     .call-exchange { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
-    /* Stacked, the two headings run together — RECEIVED read as another line of the prompt. */
     .call-exchange > .call-col + .call-col {
       border-top: 1px solid var(--rule-subtle); padding-top: var(--space-4);
     }
@@ -1092,8 +1083,6 @@
      sheet opened under the row rather than more table rows. */
   .call-detail > td { padding: 0; background: var(--paper-inset);
     border-bottom: 1px solid var(--rule);
-    /* The drawer is its own sheet, not a table cell: it inherits the blotter's nowrap, which
-       pinned its width to its widest line and clipped the answer on a phone. */
     white-space: normal; }
   .call-detail > td .call { background: var(--paper-inset); }
   /* No double rule where the sheet meets the row it belongs to. */
@@ -1124,8 +1113,6 @@
   .answer-raw { margin: 0; font-family: var(--font-ledger); font-size: var(--text-xs);
     white-space: pre-wrap; word-break: break-word; color: var(--ink-secondary); }
 
-  /* The docket: one line per move, then the purse arithmetic. Replaces a six-column table,
-     which at this width had squeezed the figures until the target was clipped mid-digit. */
   .docket { display: grid; gap: 0; }
   .docket-move { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
     padding: var(--space-2) 0; border-bottom: 1px solid var(--rule-subtle); }
@@ -1136,16 +1123,13 @@
     justify-content: flex-end; margin-left: auto; }
   .docket-fig { display: inline-flex; align-items: baseline; gap: var(--space-1); }
   .docket-fig .lbl { font-size: var(--text-xs); }
-  /* A figure never wraps and every figure shares one right edge per group. */
   .docket-fig b, .docket-row .num { font-family: var(--font-ledger); font-weight: 500;
     font-variant-numeric: tabular-nums; white-space: nowrap; font-size: var(--text-sm); }
-  /* The last move's own bottom rule is this divider: a second one 8px below it read as a mistake. */
   .docket-purse { display: grid; gap: 2px; margin-top: var(--space-2); padding-top: var(--space-2); }
   .docket-row { display: flex; justify-content: space-between; align-items: baseline;
     gap: var(--space-4); }
   .docket-row.total { margin-top: 2px; padding-top: var(--space-1);
     border-top: 1px solid var(--rule-subtle); }
-  /* A lone Cost/Frees row is already under the purse's rule. */
   .docket-row:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
   .docket-row.total .num { font-weight: 600; }
   @media (max-width: 720px) {

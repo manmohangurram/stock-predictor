@@ -377,6 +377,7 @@ async fn plan_book(
                 "plan_rationale": plan.rationale,
                 "plan": true,
                 "scope": scope.purse_name(),
+                "amount": m.amount,
             })
             .to_string(),
         )

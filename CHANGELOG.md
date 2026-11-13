@@ -1,3 +1,25 @@
+## v0.27.9
+
+### A fund plan's rupee size was being thrown away
+
+`engine.rs` stores a plan's move in the `qty` and `entry` columns. A fund move has neither — it is
+sized in rupees and arrives at NAV — so `amount` was dropped on the way in and the card drew a line
+with nothing on it. The amount now travels in the move's JSON and reaches the card:
+
+```
+FUND PLAN · 1 move
+BUY  Axis ELSS Tax Saver                                    Amount 2,250.00
+```
+
+- A single fund move prints its amount once; the `Cost` row is suppressed when it would repeat the
+  same figure. Two fund moves still tot up into a `Cost`.
+- A fund leg with no stored size still says **size on approval** rather than printing nothing.
+
+### Comments
+
+Removed the commentary added across this run. What stays is a one-line why where the code cannot
+show it — the session deadline's weekend rule, and why the Dockerfile carries no cache mounts.
+
 ## v0.27.8
 
 ### One plan, one design

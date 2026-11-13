@@ -240,6 +240,7 @@ pub struct SignalRow {
     pub plan_rationale: Option<String>,
     /// "stock" or "fund" — the two plans are different arguments, and the card says which.
     pub plan_scope: Option<String>,
+    pub amount: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1408,9 +1409,6 @@ async fn calls(
                 id: r.id,
                 ts: r.ts,
                 endpoint: r.endpoint,
-                // A book call decided several things; the row says so instead of naming one leg.
-                // A refused plan keeps BLOCKED: it has no moves to approve, so calling it a plan
-                // awaiting you is the one thing it is not.
                 decision_action: if r.plan_legs > 0 && r.decision_action.as_deref() != Some("BLOCKED")
                 {
                     Some("PLAN".to_string())
@@ -1464,8 +1462,6 @@ fn blocked_reason(raw: Option<&str>) -> Option<String> {
     if let Some(detail) = v.get("detail").and_then(|d| d.as_str()) {
         return Some(format!("{kind}: {detail}"));
     }
-    // A refused plan has no `detail` — its sentence is in `reasons`. Without this the audit
-    // printed the bare key, "plan_refused", which explains nothing.
     if let Some(first) = v
         .get("reasons")
         .and_then(|r| r.as_array())
@@ -2690,6 +2686,7 @@ async fn load_signals(
                     .get("scope")
                     .and_then(|v| v.as_str())
                     .map(str::to_string),
+                amount: reason.get("amount").and_then(|v| v.as_f64()),
             }
         })
         .collect())

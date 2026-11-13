@@ -26,6 +26,8 @@ export interface SignalRow {
   plan_rationale: string | null;
   /** "stock" or "fund" — the two plans are different arguments. */
   plan_scope: string | null;
+  /** Rupees, for a fund move sized in money rather than units. */
+  amount: number | null;
 }
 
 export interface PositionRow {
