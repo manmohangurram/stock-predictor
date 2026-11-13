@@ -195,6 +195,23 @@ pub fn diagnose(input: &CandidateInput<'_>) -> Vec<Check> {
     checks
 }
 
+/// Why a holding has left its band, if it has. `None` means the rules already cover it or it is
+/// inside the band.
+pub fn band_reason(
+    stop: Option<f64>,
+    avg_cost: f64,
+    close: f64,
+    max_profit_pct: f64,
+) -> Option<&'static str> {
+    if avg_cost > 0.0 && close >= avg_cost * (1.0 + max_profit_pct / 100.0) {
+        return Some("ceiling");
+    }
+    if stop.is_some_and(|s| close <= s) {
+        return Some("broken");
+    }
+    None
+}
+
 /// Where a stop should sit given the price now, for a position already held.
 ///
 /// Two ATRs under the close, never under what was paid once the price is above it, never below the
@@ -216,7 +233,18 @@ pub fn trailed_stop(current: Option<f64>, avg_cost: f64, close: f64, atr: f64) -
 
 #[cfg(test)]
 mod trail_tests {
-    use super::trailed_stop;
+    use super::{band_reason, trailed_stop};
+
+    #[test]
+    fn the_band_speaks_only_when_an_edge_is_crossed() {
+        // Paid 100, ceiling 20%: 130 is past it, 110 is not.
+        assert_eq!(band_reason(Some(80.0), 100.0, 130.0, 20.0), Some("ceiling"));
+        assert_eq!(band_reason(Some(80.0), 100.0, 110.0, 20.0), None);
+        // Through the stop is the other edge.
+        assert_eq!(band_reason(Some(80.0), 100.0, 75.0, 20.0), Some("broken"));
+        // No stop, no ceiling reached: nothing to say.
+        assert_eq!(band_reason(None, 100.0, 90.0, 20.0), None);
+    }
 
     #[test]
     fn a_winner_never_trails_below_its_own_cost() {

@@ -29,6 +29,14 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### The ceiling trigger searches before it asks
+
+It was passing four numbers and the morning's headlines. It now runs its own dated search for that
+holding and hands the fresh hits to the plan — *"instead of the morning ones"*, which was the point.
+
+The band decision moved into `rules::evaluate::band_reason`, a pure function with its own test, so
+the edge logic is provable without driving a whole poll.
+
 ### News is a morning web search, not a per-tick feed
 
 Every instrument's news is now one dated `/v1/tools/search` per IST day, stored as headlines

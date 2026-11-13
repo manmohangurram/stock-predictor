@@ -975,19 +975,38 @@ async fn poll_instrument(
     if !had_rules_candidate {
         if let (Some(pos), Some(close)) = (position.as_ref(), bars.last().map(|b| b.close)) {
             let limits = crate::rules::settings::get(deps.pool).await?;
-            let ceiling = pos.avg_cost * (1.0 + limits.limits_long.max_profit_pct / 100.0);
-            if close >= ceiling && band_trigger_fires(deps.pool, instrument, "ceiling", now).await? {
+            let reason = evaluate::band_reason(
+                pos.stop,
+                pos.avg_cost,
+                close,
+                limits.limits_long.max_profit_pct,
+            );
+            if reason == Some("ceiling")
+                && band_trigger_fires(deps.pool, instrument, "ceiling", now).await?
+            {
+                // The morning's copy is what the answer should not rest on: search now.
+                let model = crate::rules::settings::model_config(deps.pool).await?;
+                let hits = crate::llm::deepseek::search_for(
+                    deps.pool,
+                    &model.base_url,
+                    deps.transport,
+                    &format!("\"{}\" share news after:{}", instrument.name, ist_day(now)),
+                    &format!("ceiling on {}", instrument.symbol),
+                )
+                .await
+                .unwrap_or_default();
                 report.notes.push(format!(
-                    "{}: past the {:.0}% ceiling with no exit from the rules — plan asked",
+                    "{}: past the {:.0}% ceiling with no exit from the rules — news pulled, plan asked",
                     instrument.symbol, limits.limits_long.max_profit_pct
                 ));
                 report.fresh.push_str(&format!(
-                    "## {} is past the pot's {:.0}% ceiling\nlast {:.2}, paid {:.2}, stop {}\n",
+                    "## {} is past the pot's {:.0}% ceiling\nlast {:.2}, paid {:.2}, stop {}\n{}\n",
                     instrument.symbol,
                     limits.limits_long.max_profit_pct,
                     close,
                     pos.avg_cost,
                     pos.stop.map(|s| format!("{s:.2}")).unwrap_or("none".into()),
+                    crate::llm::prompts::render_web_hits(&hits),
                 ));
             }
         }
