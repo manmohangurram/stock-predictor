@@ -369,7 +369,7 @@ describe("a fund's instrument page", () => {
     ];
     const analysis = {
       instrument: { ...fund.instrument, target_profit_pct: 12 },
-      bars, indicators: null, checks: [],
+      bars, indicators: null, checks: [], trailing_1y: 17.9,
       position: { id: 1, qty: 70, avg_cost: 53.3, ltp: 61.29, stop: null, target: null },
       headlines: [],
     };

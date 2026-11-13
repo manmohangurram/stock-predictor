@@ -595,6 +595,19 @@ pub struct HeadlineRow {
     pub url: String,
 }
 
+/// Percentage move over the trailing `days`, from the oldest bar inside that window. `None` when
+/// the series does not reach back that far — a fund added last month has no year to compare.
+fn trailing_return(bars: &[Bar], days: i64) -> Option<f64> {
+    let last = bars.last()?;
+    let since = chrono::DateTime::parse_from_rfc3339(&last.ts).ok()? - chrono::Duration::days(days);
+    let cutoff = since.with_timezone(&chrono::Utc).to_rfc3339();
+    let start = bars.iter().rev().find(|b| b.ts <= cutoff)?;
+    if start.close <= 0.0 {
+        return None;
+    }
+    Some((last.close - start.close) / start.close * 100.0)
+}
+
 async fn instrument_detail(
     State(st): State<AppState>,
     Path(symbol): Path<String>,
@@ -679,6 +692,8 @@ pub struct CheckRow {
 #[derive(Debug, Serialize)]
 pub struct Analysis {
     pub instrument: InstrumentRow,
+    /// The trailing year on the stored series; `None` when it does not reach back that far.
+    pub trailing_1y: Option<f64>,
     pub bars: Vec<BarPoint>,
     pub indicators: Option<serde_json::Value>,
     pub checks: Vec<CheckRow>,
@@ -825,6 +840,7 @@ async fn analysis(
             // The page asks "is there a way back?", which only an archive decision answers.
             active: !archived,
         },
+        trailing_1y: trailing_return(&bars, 365),
         bars: bars
             .iter()
             .rev()
@@ -1024,9 +1040,13 @@ pub fn market_state_for(
         );
     }
     if priced_today {
-        ("open", "Trading")
+        return ("open", "Trading");
+    }
+    // A daily candle is not published until the close, so the first price of a session never
+    // lands at 09:15. Only after the grace period is "nothing has priced" evidence of a holiday.
+    if minutes < 9 * 60 + 45 {
+        ("open", "Trading — the first price has not landed yet")
     } else {
-        // In session, a weekday, and nothing has priced today.
         (
             "holiday",
             "No prices recorded today — the exchange is probably closed for a holiday",
@@ -1048,9 +1068,13 @@ async fn market_state(State(st): State<AppState>) -> Result<Json<serde_json::Val
     // The exchange trades 09:15–15:30 IST; the poll window is the wider 09:00–16:00.
 
     // The freshest bar anyone has. If it is not from today, no trades were recorded today.
-    let latest: Option<String> = sqlx::query_scalar("SELECT MAX(ts) FROM bars")
-        .fetch_one(&st.pool)
-        .await?;
+    // Only a traded price says the exchange is working; a fund NAV is published after the close.
+    let latest: Option<String> = sqlx::query_scalar(
+        "SELECT MAX(b.ts) FROM bars b JOIN instruments i ON i.id = b.instrument_id
+         WHERE i.class = 'stock'",
+    )
+    .fetch_one(&st.pool)
+    .await?;
     let latest_day = latest
         .as_ref()
         .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
@@ -1785,18 +1809,22 @@ async fn add_instrument(
     // created and immediately looks archived. A genuinely archived name is not revived silently.
     let id = add_or_promote(&st.pool, code, class.as_str(), &name).await?;
 
-    if class == crate::models::AssetClass::Stock || code.contains('.') {
-        if let Ok(market) =
-            crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?)
-        {
-            let fetch = crate::store::refresh(&st.pool, id, code, &market);
-            match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
-                Ok(Ok((bars, news))) => {
-                    tracing::info!(symbol = code, bars, news, "prices and headlines stored")
-                }
-                Ok(Err(e)) => tracing::warn!(symbol = code, error = %e, "refresh failed"),
-                Err(_) => tracing::warn!(symbol = code, "refresh timed out"),
+    let rt = crate::rules::settings::runtime(&st.pool).await?;
+    if class == crate::models::AssetClass::MutualFund {
+        let fetch = refresh_fund(&st.pool, id, code, &rt);
+        match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
+            Ok(Ok(bars)) => tracing::info!(symbol = code, bars, "NAV history stored"),
+            Ok(Err(e)) => tracing::warn!(symbol = code, error = %e, "NAV fetch failed"),
+            Err(_) => tracing::warn!(symbol = code, "NAV fetch timed out"),
+        }
+    } else if let Ok(market) = crate::market::YahooSource::new(&rt) {
+        let fetch = crate::store::refresh(&st.pool, id, code, &market);
+        match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
+            Ok(Ok((bars, news))) => {
+                tracing::info!(symbol = code, bars, news, "prices and headlines stored")
             }
+            Ok(Err(e)) => tracing::warn!(symbol = code, error = %e, "refresh failed"),
+            Err(_) => tracing::warn!(symbol = code, "refresh timed out"),
         }
     }
 
@@ -1911,6 +1939,36 @@ async fn record_trade(
 
 /// Fetch prices and headlines for one instrument on demand — for instruments added before the
 /// add-time fetch existed, or simply to pull the latest without waiting for a poll tick.
+/// A fund's NAV history comes from AMFI's mirror, not the equity feed. The scheme code is the
+/// symbol when it was added by AMFI code, and otherwise whatever the scan recorded.
+async fn refresh_fund(
+    pool: &SqlitePool,
+    id: i64,
+    symbol: &str,
+    rt: &crate::rules::runtime::Runtime,
+) -> anyhow::Result<usize> {
+    let code = if !symbol.is_empty() && symbol.chars().all(|c| c.is_ascii_digit()) {
+        symbol.to_string()
+    } else {
+        sqlx::query_scalar::<_, String>(
+            "SELECT json_extract(reason_json, '$.scheme_code') FROM signals
+             WHERE instrument_id = ? AND json_extract(reason_json, '$.scheme_code') IS NOT NULL
+             ORDER BY id DESC LIMIT 1",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| {
+            anyhow::anyhow!("no AMFI scheme code — add this fund by its AMFI code instead")
+        })?
+    };
+    let client = crate::http::client_with(rt, 20, Some("Mozilla/5.0 stock-predictor"))?;
+    let history = crate::market::mfapi::fetch(&client, &code).await?;
+    let bars = crate::fundscan::nav_bars(&history);
+    crate::store::bars(pool, id, &bars).await?;
+    Ok(bars.len())
+}
+
 async fn refresh_instrument(
     State(st): State<AppState>,
     Path(symbol): Path<String>,
@@ -1921,9 +1979,16 @@ async fn refresh_instrument(
             .fetch_optional(&st.pool)
             .await?;
     let (id, class) = row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
+    let rt = crate::rules::settings::runtime(&st.pool).await?;
 
-    let market =
-        crate::market::YahooSource::new(&crate::rules::settings::runtime(&st.pool).await?)?;
+    if class == AssetClass::MutualFund.as_str() {
+        let bars = refresh_fund(&st.pool, id, &symbol, &rt)
+            .await
+            .map_err(|e| ApiError::BadRequest(format!("{symbol}: {e}")))?;
+        return Ok(Json(serde_json::json!({ "bars": bars, "headlines": 0 })));
+    }
+
+    let market = crate::market::YahooSource::new(&rt)?;
     let (bars, news) = crate::store::refresh(&st.pool, id, &symbol, &market)
         .await
         .map_err(|e| ApiError::BadRequest(format!("{symbol} ({class}): {e}")))?;
@@ -2680,4 +2745,33 @@ async fn load_signals(
             }
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bar(ts: &str, close: f64) -> Bar {
+        Bar {
+            ts: ts.to_string(),
+            open: close,
+            high: close,
+            low: close,
+            close,
+            volume: 0,
+        }
+    }
+
+    #[test]
+    fn a_trailing_year_is_measured_on_the_series() {
+        let bars = vec![
+            bar("2025-01-01T00:00:00Z", 40.0),
+            bar("2025-11-01T00:00:00Z", 50.0),
+            bar("2026-11-12T00:00:00Z", 60.0),
+        ];
+        assert_eq!(trailing_return(&bars, 365), Some(20.0));
+        let young = vec![bar("2026-06-01T00:00:00Z", 55.0), bar("2026-11-12T00:00:00Z", 60.0)];
+        assert_eq!(trailing_return(&young, 365), None);
+        assert_eq!(trailing_return(&[], 365), None);
+    }
 }

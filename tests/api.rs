@@ -2870,6 +2870,10 @@ fn the_market_state_is_read_from_the_clock_and_the_data() {
     let (state, reason) = market_state_for(true, 11 * 60, false);
     assert_eq!(state, "holiday");
     assert!(reason.contains("probably"), "{reason}");
+    // But a daily candle is only published at the close, so the first half hour of a session has
+    // no price of its own — the market is open, not shut.
+    let (state, reason) = market_state_for(true, 9 * 60 + 20, false);
+    assert_eq!(state, "open", "{reason}");
 }
 
 /// Discovery writes `active = 0` for a name the short-term scan noticed, exactly like archiving

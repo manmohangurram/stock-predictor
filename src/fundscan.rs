@@ -208,7 +208,7 @@ async fn save_nav_history(pool: &SqlitePool, instrument_id: i64, h: &FundHistory
     crate::store::bars(pool, instrument_id, &nav_bars(h)).await
 }
 
-fn nav_bars(h: &FundHistory) -> Vec<Bar> {
+pub fn nav_bars(h: &FundHistory) -> Vec<Bar> {
     h.navs
         .iter()
         .map(|(date, nav)| Bar {

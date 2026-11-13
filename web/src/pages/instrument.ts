@@ -32,10 +32,7 @@ function chart(a: Analysis): string {
     ? a.position.avg_cost * (1 + a.instrument.target_profit_pct / 100)
     : null;
   const target = fund ? priced : null;
-  const last = a.bars[a.bars.length - 1];
-  const yearAgo = new Date(Date.parse(last.ts) - 365 * 86_400_000).toISOString();
-  const start = fund ? [...a.bars].reverse().find((b) => b.ts <= yearAgo) : undefined;
-  const trail = start && start.close > 0 ? ((closes[closes.length - 1] - start.close) / start.close) * 100 : null;
+  const trail = fund ? a.trailing_1y : null;
   const refs = fund
     ? target === null ? [] : [target]
     : a.indicators ? [a.indicators.sma50, a.indicators.sma200] : [];

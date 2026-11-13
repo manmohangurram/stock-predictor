@@ -29,6 +29,23 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### A fund added by hand gets its chart
+
+Only the curated scan list ever fetched a NAV series, so a fund added by AMFI code had no chart
+and the Refresh button asked the equity feed about a scheme code. Refresh now calls AMFI's mirror
+and stores the series, and adding a fund by its AMFI code fetches it immediately. Verified live:
+`120503` → 3,419 NAV points, 2013 to today.
+
+### The market said "closed" while it was open
+
+`priced_today` asked whether any bar was from today. Bars are **daily candles**, and a daily
+candle is not published until the close — so between 09:15 and 15:30 the freshest price was
+yesterday's, every weekday session read as a public holiday, and the chip said closed. It also
+counted fund NAVs, which land after the close, as trading.
+
+The clock decides now: in session is open, and "nothing has priced" only downgrades to holiday
+after 09:45, when the absence is actually evidence.
+
 ### Funds get a NAV chart
 
 The fund scan fetched a scheme's whole NAV history and then threw it away: it read the last NAV

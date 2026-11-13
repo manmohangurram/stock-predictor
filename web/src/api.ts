@@ -248,6 +248,8 @@ export interface Analysis {
     /** False when archived: the page offers a way back instead of another archive. */
     active: boolean;
   };
+  /** The trailing year on the stored series; null when history does not reach back that far. */
+  trailing_1y: number | null;
   bars: BarPoint[];
   indicators: {
     sma50: number;
