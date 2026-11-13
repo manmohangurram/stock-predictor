@@ -5,7 +5,7 @@ use stock_predictor::engine::{self, EngineDeps, MarketSource, PollReport};
 use stock_predictor::llm::deepseek::FixtureTransport;
 use stock_predictor::rules::runtime::Runtime;
 mod common;
-use common::{headline, rising_bars as bars_n, FakeMarket};
+use common::{rising_bars as bars_n, FakeMarket};
 use stock_predictor::notify::FakeNotifier;
 use stock_predictor::rules::evaluate::RuleConfig;
 use stock_predictor::rules::settings;
@@ -25,14 +25,28 @@ async fn seed(pool: &sqlx::SqlitePool, symbols: &[&str]) {
 async fn seed_no_limits(pool: &sqlx::SqlitePool, symbols: &[&str]) {
     settings::seed(pool).await.unwrap();
     for s in symbols {
-        sqlx::query(
-            "INSERT INTO instruments (symbol, class, name, currency) VALUES (?, 'stock', ?, 'INR')",
+        let id: (i64,) = sqlx::query_as(
+            "INSERT INTO instruments (symbol, class, name, currency) VALUES (?, 'stock', ?, 'INR')
+             RETURNING id",
         )
         .bind(s)
         .bind(format!("{s} Ltd"))
-        .execute(pool)
+        .fetch_one(pool)
         .await
         .unwrap();
+        // A tick reads the headlines the morning search stored, so the book has them to read.
+        for (i, title) in ["guidance raised", "a broker note"].iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO news (instrument_id, published_at, title, publisher, url)
+                 VALUES (?, '2030-01-01T00:00:00Z', ?, 'Reuters', ?)",
+            )
+            .bind(id.0)
+            .bind(title)
+            .bind(format!("https://example.test/{s}-{i}"))
+            .execute(pool)
+            .await
+            .unwrap();
+        }
     }
 }
 
@@ -75,14 +89,28 @@ async fn seed_with_key(pool: &sqlx::SqlitePool, symbols: &[&str], key: &str) {
         .unwrap();
     }
     for s in symbols {
-        sqlx::query(
-            "INSERT INTO instruments (symbol, class, name, currency) VALUES (?, 'stock', ?, 'INR')",
+        let id: (i64,) = sqlx::query_as(
+            "INSERT INTO instruments (symbol, class, name, currency) VALUES (?, 'stock', ?, 'INR')
+             RETURNING id",
         )
         .bind(s)
         .bind(format!("{s} Ltd"))
-        .execute(pool)
+        .fetch_one(pool)
         .await
         .unwrap();
+        // A tick reads the headlines the morning search stored, so the book has them to read.
+        for (i, title) in ["guidance raised", "a broker note"].iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO news (instrument_id, published_at, title, publisher, url)
+                 VALUES (?, '2030-01-01T00:00:00Z', ?, 'Reuters', ?)",
+            )
+            .bind(id.0)
+            .bind(title)
+            .bind(format!("https://example.test/{s}-{i}"))
+            .execute(pool)
+            .await
+            .unwrap();
+        }
     }
 }
 
@@ -482,12 +510,17 @@ async fn new_headlines_earn_a_new_model_call() {
         .await
         .unwrap();
 
-    // One new headline is new information.
-    let moved = FakeMarket::ok(bars_n(250)).with_news(vec![headline(
-        "guidance raised 200bps",
-        "https://example.com/new",
-    )]);
-    let _ = poll(&pool, &moved, &notifier, c.clone(), now())
+    // One new headline is new information — it arrives as a stored row, which is where the
+    // morning search puts it.
+    sqlx::query(
+        "INSERT INTO news (instrument_id, published_at, title, publisher, url)
+         SELECT id, '2030-01-02T00:00:00Z', 'guidance raised 200bps', 'Reuters',
+                'https://example.com/new' FROM instruments WHERE symbol = 'INFY'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let _ = poll(&pool, &source, &notifier, c.clone(), now())
         .await
         .unwrap();
     let second: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_calls")

@@ -413,6 +413,13 @@ async fn main() -> Result<()> {
                 Err(e) => tracing::warn!(error = %e, "headline prune failed"),
             }
 
+            // The morning news pass: one dated web search per instrument, once an IST day.
+            match stock_predictor::engine::refresh_news(&deps, Utc::now()).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!(headlines = n, "morning news search stored"),
+                Err(e) => tracing::warn!(error = %e, "morning news search failed"),
+            }
+
             // Best-fund discovery: once a day, rank the curated list by trailing return.
                 match stock_predictor::fundscan::run(&poll_pool, &runtime, Utc::now()).await {
                     Ok(r) if r.examined > 0 => tracing::info!(?r, "fund scan"),

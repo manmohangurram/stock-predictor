@@ -29,6 +29,17 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### News is a morning web search, not a per-tick feed
+
+Every instrument's news is now one dated `/v1/tools/search` per IST day, stored as headlines
+(`engine::refresh_news`, guarded by `news_search_last`), instead of a Yahoo news request on every
+poll. A tick no longer fetches news at all — `gather` reads what the search stored — so a
+15-minute poll costs a bar fetch, not a bar fetch plus a news fetch.
+
+The e2e and engine fixtures had to change with it: a new headline now means a **new stored row**,
+not a different reply from the fake market. Three tests encoded the old contract and were updated
+rather than the code being bent to keep them.
+
 ### A winner's stop follows the price up
 
 Every open long-term holding now trails: `stop = max(stop, cost, close − 2×ATR)`, raised on each

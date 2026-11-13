@@ -96,6 +96,87 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
     Ok(report)
 }
 
+/// The stored headlines the model reads: the last three days, newest first.
+async fn stored_headlines(
+    pool: &SqlitePool,
+    instrument_id: i64,
+    now: DateTime<Utc>,
+) -> Result<Vec<Headline>> {
+    let since = (now - chrono::Duration::days(3)).to_rfc3339();
+    let rows: Vec<(i64, String, Option<String>, String, String)> = sqlx::query_as(
+        "SELECT id, title, publisher, published_at, url FROM news
+         WHERE instrument_id = ? AND published_at >= ?
+         ORDER BY published_at DESC LIMIT 8",
+    )
+    .bind(instrument_id)
+    .bind(since)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .enumerate()
+        .map(|(i, (_, title, publisher, published_at, url))| Headline {
+            id: i as i64 + 1,
+            title,
+            publisher: publisher.unwrap_or_default(),
+            published_at,
+            url,
+        })
+        .collect())
+}
+
+/// The morning news pass: one web search per active instrument, once an IST day, stored as
+/// headlines. Replaces the per-tick equity-feed fetch with one dated search.
+pub async fn refresh_news(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<usize> {
+    let day = ist_day(now);
+    let last: Option<(String,)> =
+        sqlx::query_as("SELECT value FROM settings WHERE key = 'news_search_last'")
+            .fetch_optional(deps.pool)
+            .await?;
+    if last.as_ref().map(|r| r.0.as_str()) == Some(day.as_str()) {
+        return Ok(0);
+    }
+    let model = crate::rules::settings::model_config(deps.pool).await?;
+    let instruments = load_instruments(deps.pool).await?;
+    let mut stored = 0;
+    for instrument in &instruments {
+        let query = format!("\"{}\" news after:{}", instrument.name, day);
+        let Ok(hits) = crate::llm::deepseek::search_for(
+            deps.pool,
+            &model.base_url,
+            deps.transport,
+            &query,
+            &format!("news {}", instrument.symbol),
+        )
+        .await
+        else {
+            continue;
+        };
+        let rows: Vec<Headline> = hits
+            .into_iter()
+            .enumerate()
+            .map(|(i, h)| Headline {
+                id: i as i64 + 1,
+                title: h.title,
+                publisher: h.site,
+                published_at: h.date.unwrap_or_else(|| day.clone()),
+                url: h.url,
+            })
+            .collect();
+        stored += rows.len();
+        crate::store::headlines(deps.pool, instrument.id, &rows).await?;
+    }
+    sqlx::query(
+        "INSERT INTO settings (key, value, updated_at) VALUES ('news_search_last', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+    .bind(&day)
+    .bind(now.to_rfc3339())
+    .execute(deps.pool)
+    .await?;
+    Ok(stored)
+}
+
 /// True once per IST day per reason: the same band edge must not buy ninety-six calls.
 async fn band_trigger_fires(
     pool: &SqlitePool,
@@ -745,13 +826,9 @@ async fn gather(
         tracing::debug!(symbol = %instrument.symbol, "not enough history for indicators");
         return Ok(None);
     };
-    let news = deps
-        .market
-        .news(&instrument.symbol)
-        .await
-        .unwrap_or_default();
     crate::store::bars(deps.pool, instrument.id, &bars).await?;
-    crate::store::headlines(deps.pool, instrument.id, &news).await?;
+    // The morning's search already stored what the web said; a tick reads it, it does not re-ask.
+    let news = stored_headlines(deps.pool, instrument.id, now).await?;
 
     let position = load_position(deps.pool, instrument.id).await?;
     let available = budget::available_in(deps.pool, crate::models::Mode::Long).await?;

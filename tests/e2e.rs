@@ -68,12 +68,26 @@ async fn setup() -> (tempfile::TempDir, sqlx::SqlitePool) {
     )
     .await
     .unwrap();
-    sqlx::query(
-        "INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY', 'stock', 'Infosys', 'INR')",
+    let id: (i64,) = sqlx::query_as(
+        "INSERT INTO instruments (symbol, class, name, currency) VALUES ('INFY', 'stock', 'Infosys', 'INR')
+         RETURNING id",
     )
-    .execute(&pool)
+    .fetch_one(&pool)
     .await
     .unwrap();
+    // A tick reads the headlines the morning search stored; it does not ask the feed again.
+    for (i, title) in ["Infosys wins a large deal", "Infosys guidance held"].iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO news (instrument_id, published_at, title, publisher, url)
+             VALUES (?, '2026-10-27T03:00:00Z', ?, 'Reuters', ?)",
+        )
+        .bind(id.0)
+        .bind(title)
+        .bind(format!("https://example.test/{i}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
     (dir, pool)
 }
 
