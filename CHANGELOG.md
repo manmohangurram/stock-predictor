@@ -1,3 +1,24 @@
+## Unreleased
+
+### Headlines come from Google News, not a general web search
+
+The DeepSeek search answered a company query with quote pages, prize ceremonies and tax columns —
+and it ignored `site:`, ignored `count`, and returned Chinese finance sites despite `lang:en`. Three
+live runs proved it: 15 asked for, 3 returned, none of them news.
+
+Headlines now come from **Google News RSS** (`market::googlenews`), English and the India edition,
+`when:2d`, with the company quoted. No API key, no model call, and every item carries a real
+publisher and a date. Two more passes narrow it:
+
+- the headline must **name the company** — "Perplexity" and "80C Plan for a Lakh Salary" are not
+  about Infosys;
+- a **market publisher wins** when the feed has one — Reuters, Business Standard, Economic Times,
+  Mint, Moneycontrol, CNBC, Hindu BusinessLine, Financial Express, MarketWatch — and when it has
+  none, the rest is kept rather than losing the day.
+
+Measured: 0 headlines stored before, **21** after, from MarketWatch, Business Standard, The Times
+of India and The Economic Times.
+
 ## v0.28.1
 
 News is now English and from today only, and the prompt reads a week back when a quiet week leaves

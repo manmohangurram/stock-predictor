@@ -126,23 +126,17 @@ async fn stored_headlines(
         .collect())
 }
 
-/// English only, and nothing older than today: `after:` is the operator the search API honours,
-/// and the exact day is then enforced on what comes back.
-fn news_query(name: &str, day: &str) -> String {
-    let from = chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
-        .map(|d| (d - chrono::Duration::days(1)).format("%Y-%m-%d").to_string())
-        .unwrap_or_else(|_| day.to_string());
-    format!("\"{name}\" news after:{from} lang:en")
+/// The headline must name the company, by name or by its first word.
+fn names_company(headline: &Headline, name: &str) -> bool {
+    let title = headline.title.to_lowercase();
+    let first = name.split_whitespace().next().unwrap_or(name).to_lowercase();
+    !first.is_empty() && title.contains(&first)
 }
 
-/// Articles from `day` itself. Undated pages go: a quote page has no date because it is not news.
-fn today_hits(
-    hits: Vec<crate::llm::deepseek::SearchHit>,
-    day: &str,
-) -> Vec<crate::llm::deepseek::SearchHit> {
-    hits.into_iter()
-        .filter(|h| h.date.as_deref().is_some_and(|d| d.starts_with(day)))
-        .collect()
+/// A CJK character: enough to say the headline is not in English.
+fn is_ideographic(c: char) -> bool {
+    matches!(c as u32,
+        0x3040..=0x30ff | 0x3400..=0x4dbf | 0x4e00..=0x9fff | 0xac00..=0xd7af | 0xf900..=0xfaff)
 }
 
 /// The morning news pass: one web search per active instrument, once an IST day, stored as
@@ -156,33 +150,19 @@ pub async fn refresh_news(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<u
     if last.as_ref().map(|r| r.0.as_str()) == Some(day.as_str()) {
         return Ok(0);
     }
-    let model = crate::rules::settings::model_config(deps.pool).await?;
+    let client = crate::http::client_with(&deps.runtime, 20, Some("Mozilla/5.0 stock-predictor"))?;
     let instruments = load_instruments(deps.pool).await?;
     let mut stored = 0;
     for instrument in &instruments {
-        let query = news_query(&instrument.name, &day);
-        let Ok(hits) = crate::llm::deepseek::search_for(
-            deps.pool,
-            &model.base_url,
-            deps.transport,
-            &query,
-            &format!("news {}", instrument.symbol),
-        )
-        .await
+        let Ok(mut rows) = crate::market::googlenews::fetch_news(&client, &instrument.name, 2).await
         else {
             continue;
         };
-        let rows: Vec<Headline> = today_hits(hits, &day)
-            .into_iter()
-            .enumerate()
-            .map(|(i, h)| Headline {
-                id: i as i64 + 1,
-                title: h.title,
-                publisher: h.site,
-                published_at: h.date.unwrap_or_else(|| day.clone()),
-                url: h.url,
-            })
-            .collect();
+        rows.retain(|h| !h.title.chars().any(is_ideographic) && names_company(h, &instrument.name));
+        let mut rows = crate::market::googlenews::prefer_market_sources(rows);
+        for (i, row) in rows.iter_mut().enumerate() {
+            row.id = i as i64 + 1;
+        }
         stored += rows.len();
         crate::store::headlines(deps.pool, instrument.id, &rows).await?;
     }
@@ -1004,17 +984,17 @@ async fn poll_instrument(
             if reason == Some("ceiling")
                 && band_trigger_fires(deps.pool, instrument, "ceiling", now).await?
             {
-                // The morning's copy is what the answer should not rest on: search now.
-                let model = crate::rules::settings::model_config(deps.pool).await?;
-                let hits = crate::llm::deepseek::search_for(
-                    deps.pool,
-                    &model.base_url,
-                    deps.transport,
-                    &news_query(&instrument.name, &ist_day(now)),
-                    &format!("ceiling on {}", instrument.symbol),
-                )
-                .await
-                .unwrap_or_default();
+                // The morning's copy is what the answer should not rest on: read the feed now.
+                let hits = match crate::http::client_with(
+                    &deps.runtime,
+                    20,
+                    Some("Mozilla/5.0 stock-predictor"),
+                ) {
+                    Ok(client) => crate::market::googlenews::fetch_news(&client, &instrument.name, 2)
+                        .await
+                        .unwrap_or_default(),
+                    Err(_) => Vec::new(),
+                };
                 report.notes.push(format!(
                     "{}: past the {:.0}% ceiling with no exit from the rules — news pulled, plan asked",
                     instrument.symbol, limits.limits_long.max_profit_pct
@@ -1026,7 +1006,18 @@ async fn poll_instrument(
                     close,
                     pos.avg_cost,
                     pos.stop.map(|s| format!("{s:.2}")).unwrap_or("none".into()),
-                    crate::llm::prompts::render_web_hits(&today_hits(hits, &ist_day(now))),
+                    crate::llm::prompts::render_web_hits(&hits
+                        .into_iter()
+                        .filter(|h| !h.title.chars().any(is_ideographic))
+                        .map(|h| crate::llm::deepseek::SearchHit {
+                            title: h.title,
+                            site: h.publisher,
+                            url: h.url,
+                            snippet: String::new(),
+                            summary: String::new(),
+                            date: Some(h.published_at),
+                        })
+                        .collect::<Vec<_>>()),
                 ));
             }
         }
@@ -2267,37 +2258,6 @@ mod band_tests {
         .unwrap();
         let kept = stored_headlines(&pool, 1, now).await.unwrap();
         assert_eq!(kept.len(), 1, "nine days old is beyond the window");
-    }
-
-    #[test]
-    fn the_query_asks_english_and_nothing_older_than_today() {
-        assert_eq!(
-            news_query("Infosys", "2026-11-13"),
-            "\"Infosys\" news after:2026-11-12 lang:en"
-        );
-    }
-
-    #[test]
-    fn only_articles_from_the_day_itself_survive() {
-        let hit = |date: Option<&str>, title: &str| crate::llm::deepseek::SearchHit {
-            title: title.into(),
-            site: "Reuters".into(),
-            url: format!("https://example.test/{title}"),
-            snippet: String::new(),
-            summary: String::new(),
-            date: date.map(str::to_string),
-        };
-        let kept = today_hits(
-            vec![
-                hit(Some("2026-11-13"), "today"),
-                hit(Some("2026-11-12"), "yesterday"),
-                hit(Some("2026-11-06"), "a week ago"),
-                hit(None, "a quote page"),
-            ],
-            "2026-11-13",
-        );
-        assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].title, "today");
     }
 
     #[tokio::test]

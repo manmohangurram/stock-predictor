@@ -1,5 +1,6 @@
 pub mod amfi;
 pub mod fundamentals;
+pub mod googlenews;
 pub mod mfapi;
 pub mod nse;
 pub mod search;
