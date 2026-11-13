@@ -29,6 +29,20 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### Funds get a NAV chart
+
+The fund scan fetched a scheme's whole NAV history and then threw it away: it read the last NAV
+and the trailing return and dropped the series. So a fund had no chart, ever. The series is stored
+as daily bars now (every price is the NAV, volume 0), for any curated fund already in the book —
+proposed today or held for a year.
+
+The chart draws the **target NAV** — what the owner asked for on what they paid, `avg cost ×
+(1 + expected %)` — as the dashed rule, and the caption carries the trailing year:
+
+```
+91 NAV points · 1y +17.9% · target NAV 59.69 · last 61.29
+```
+
 ### A fund's page is a fund's page
 
 The instrument page was built for a stock: the NAV chart was headed **Price**, the sidebar carried

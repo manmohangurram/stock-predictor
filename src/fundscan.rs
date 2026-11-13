@@ -9,7 +9,8 @@ use anyhow::Result;
 use chrono::{DateTime, Datelike, Utc};
 use sqlx::SqlitePool;
 
-use crate::models::Mode;
+use crate::market::mfapi::FundHistory;
+use crate::models::{Bar, Mode};
 
 /// Curated large-cap / flexi / ELSS equity funds, by AMFI scheme code. Extend this list to widen
 /// the universe; nothing else needs to change.
@@ -81,6 +82,13 @@ pub async fn run(
 
     // Highest return first; the score is a blend of 1y and 3y so a one-year wonder is not picked.
     histories.sort_by(|a, b| b.2.total_cmp(&a.2));
+
+    // Any curated fund already in the book gets its chart, whether or not it is proposed today.
+    for (code, _, _, history) in &histories {
+        if let Some(id) = instrument_in_book(pool, code).await? {
+            save_nav_history(pool, id, history).await?;
+        }
+    }
     report.ranked = histories.len();
 
     let earmark = crate::rules::settings::mf_allowance(pool).await?;
@@ -144,6 +152,8 @@ pub async fn run(
             continue;
         }
         let id = ensure_instrument(pool, &code, &name).await?;
+        // The scan already holds the whole NAV series; storing it gives the fund a chart.
+        save_nav_history(pool, id, &history).await?;
         store(pool, id, &name, &code, *nav, score, now).await?;
         report.proposed += 1;
         report.notes.push(format!(
@@ -184,6 +194,34 @@ async fn ensure_instrument(pool: &SqlitePool, code: &str, name: &str) -> Result<
     Ok(row.0)
 }
 
+async fn instrument_in_book(pool: &SqlitePool, code: &str) -> Result<Option<i64>> {
+    let row: Option<(i64,)> =
+        sqlx::query_as("SELECT id FROM instruments WHERE symbol = ? AND active = 1")
+            .bind(code)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.map(|r| r.0))
+}
+
+/// The NAV series as daily bars. A fund has no OHLC, so every price is the NAV and volume is 0.
+async fn save_nav_history(pool: &SqlitePool, instrument_id: i64, h: &FundHistory) -> Result<()> {
+    crate::store::bars(pool, instrument_id, &nav_bars(h)).await
+}
+
+fn nav_bars(h: &FundHistory) -> Vec<Bar> {
+    h.navs
+        .iter()
+        .map(|(date, nav)| Bar {
+            ts: format!("{date}T00:00:00Z"),
+            open: *nav,
+            high: *nav,
+            low: *nav,
+            close: *nav,
+            volume: 0,
+        })
+        .collect()
+}
+
 async fn store(
     pool: &SqlitePool,
     instrument_id: i64,
@@ -220,6 +258,23 @@ async fn store(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_nav_series_becomes_daily_bars() {
+        let h = FundHistory {
+            code: "120503".into(),
+            name: "Axis ELSS".into(),
+            fund_house: "Axis".into(),
+            category: "ELSS".into(),
+            navs: vec![("2026-11-12".into(), 74.05), ("2026-11-13".into(), 74.62)],
+        };
+        let bars = nav_bars(&h);
+        assert_eq!(bars.len(), 2);
+        assert_eq!(bars[1].ts, "2026-11-13T00:00:00Z");
+        assert_eq!(bars[1].close, 74.62);
+        assert_eq!(bars[1].open, bars[1].high);
+        assert_eq!(bars[1].volume, 0);
+    }
 
     #[test]
     fn the_day_is_ist() {

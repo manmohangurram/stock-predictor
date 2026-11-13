@@ -26,7 +26,19 @@ function chart(a: Analysis): string {
   const top = 12;
   const bottom = 26;
   const closes = a.bars.map((b) => b.close);
-  const refs = a.indicators ? [a.indicators.sma50, a.indicators.sma200] : [];
+  const fund = a.instrument.class === "mutual_fund";
+  // A fund's exit is a NAV: the return the owner asked for, on what they paid.
+  const priced = a.position && a.instrument.target_profit_pct !== null
+    ? a.position.avg_cost * (1 + a.instrument.target_profit_pct / 100)
+    : null;
+  const target = fund ? priced : null;
+  const last = a.bars[a.bars.length - 1];
+  const yearAgo = new Date(Date.parse(last.ts) - 365 * 86_400_000).toISOString();
+  const start = fund ? [...a.bars].reverse().find((b) => b.ts <= yearAgo) : undefined;
+  const trail = start && start.close > 0 ? ((closes[closes.length - 1] - start.close) / start.close) * 100 : null;
+  const refs = fund
+    ? target === null ? [] : [target]
+    : a.indicators ? [a.indicators.sma50, a.indicators.sma200] : [];
   const rawLo = Math.min(...closes, ...refs);
   const rawHi = Math.max(...closes, ...refs);
   const air = (rawHi - rawLo || rawLo * 0.02) * 0.08;
@@ -73,11 +85,21 @@ function chart(a: Analysis): string {
       <path d="${path} L${x(closes.length - 1).toFixed(1)},${h - bottom} L${left},${h - bottom} Z"
             fill="var(--stamp-ink)" opacity=".06" />
       <path d="${path}" fill="none" stroke="var(--stamp-ink)" stroke-width="1.75" />
-      ${a.indicators ? ref(a.indicators.sma50, "SMA50", "var(--ink-tertiary)") : ""}
-      ${a.indicators ? ref(a.indicators.sma200, "SMA200", "var(--stamp-oxide)") : ""}
+      ${fund
+        ? target === null
+          ? ""
+          : ref(target, "TARGET", "var(--stamp-oxide)")
+        : `${a.indicators ? ref(a.indicators.sma50, "SMA50", "var(--ink-tertiary)") : ""}
+           ${a.indicators ? ref(a.indicators.sma200, "SMA200", "var(--stamp-oxide)") : ""}`}
       ${dates}
     </svg>
-    <figcaption>${closes.length} sessions · daily close · last ${money(closes[closes.length - 1])}</figcaption>
+    <figcaption>${
+      fund
+        ? `${closes.length} NAV points${
+            trail === null ? "" : ` · 1y ${trail >= 0 ? "+" : "−"}${Math.abs(trail).toFixed(1)}%`
+          }${target === null ? "" : ` · target NAV ${money(target)}`}`
+        : `${closes.length} sessions · daily close`
+    } · last ${money(closes[closes.length - 1])}</figcaption>
   </figure>`;
 }
 
@@ -350,8 +372,8 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
       <div class="inst-main">
         <section class="card chart-card">
           <div class="card-head"><h2>${klass === "mutual_fund" ? "NAV" : "Price"}</h2>
-            <span class="sub">${a.bars.length} sessions · daily close${
-              klass === "mutual_fund" ? " · units are allotted at NAV" : ""
+            <span class="sub">${a.bars.length} ${klass === "mutual_fund" ? "NAV points" : "sessions"}${
+              klass === "mutual_fund" ? " · units are allotted at NAV" : " · daily close"
             }</span></div>
           ${chart(a)}
         </section>

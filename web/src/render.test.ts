@@ -360,6 +360,27 @@ describe("a fund's instrument page", () => {
     expect(html).toContain("A fund has no intraday exit");
   });
 
+  test("charts the NAV against the target the owner asked for", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const bars = [
+      { ts: "2025-11-03T00:00:00Z", close: 52, open: 52, high: 52, low: 52, volume: 0 },
+      { ts: "2026-06-01T00:00:00Z", close: 58, open: 58, high: 58, low: 58, volume: 0 },
+      { ts: "2026-11-13T00:00:00Z", close: 61.29, open: 61.29, high: 61.29, low: 61.29, volume: 0 },
+    ];
+    const analysis = {
+      instrument: { ...fund.instrument, target_profit_pct: 12 },
+      bars, indicators: null, checks: [],
+      position: { id: 1, qty: 70, avg_cost: 53.3, ltp: 61.29, stop: null, target: null },
+      headlines: [],
+    };
+    const html = renderInstrument(analysis as never, detail as never, []);
+    expect(html).toContain("NAV points");
+    expect(html).toContain("target NAV 59.70");
+    expect(html).toContain("TARGET");
+    expect(html).toContain("1y +17.9%");
+    expect(html).not.toContain("SMA200");
+  });
+
   test("records a fill in units at a NAV, long-term only", async () => {
     const { renderTradeForm } = await import("./pages/instrument");
     const html = renderTradeForm("AXISELSS", null, new Date(), "mutual_fund");
