@@ -29,6 +29,21 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### The audit keeps three months
+
+`api_calls` was append-only and never pruned — every outbound model call since the first day, with
+its full request and response. It now keeps **90 days** and the poll loop sweeps the rest
+(`audit::prune`); the rows newer than the cutoff are untouched.
+
+### The fund scan stored NAV history for funds you never added
+
+Storing a scheme's 3,400-point series was done for every curated fund that happened to be an
+instrument — including the ones the scan itself had created as proposals — and again for each new
+proposal. So a month of scanning left hundreds of thousands of bars for funds nobody bought.
+
+It now stores only for a fund you **hold**. A fund you add by hand, or Refresh on its page, still
+fetches its own series, so the chart arrives when there is something to chart.
+
 ### Two money writes were not transactions
 
 `POST /api/positions` and `PATCH /api/positions/{id}` moved the units and the cash as separate

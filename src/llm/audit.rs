@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::Serialize;
 use sqlx::SqlitePool;
 
-/// One row per outbound DeepSeek call, success or failure. Append-only, never pruned.
+/// One row per outbound DeepSeek call, success or failure.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct ApiCallRow {
     pub conversation_id: Option<String>,
@@ -49,4 +49,15 @@ pub async fn record(pool: &SqlitePool, row: ApiCallRow) -> Result<()> {
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Delete calls older than `days`. The audit keeps three months; older rows are the bulk of the
+/// file and nothing reads them.
+pub async fn prune(pool: &SqlitePool, days: i64) -> Result<u64> {
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+    let done = sqlx::query("DELETE FROM api_calls WHERE ts < ?")
+        .bind(cutoff)
+        .execute(pool)
+        .await?;
+    Ok(done.rows_affected())
 }

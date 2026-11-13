@@ -1616,6 +1616,32 @@ async fn the_three_monthly_purses_do_not_share_money() {
     );
 }
 
+/// The audit keeps three months. Everything older goes, and nothing newer does.
+#[tokio::test]
+async fn the_audit_is_pruned_at_three_months() {
+    let (_d, _router, pool) = setup().await;
+    let old = (chrono::Utc::now() - chrono::Duration::days(120)).to_rfc3339();
+    let recent = (chrono::Utc::now() - chrono::Duration::days(10)).to_rfc3339();
+    for ts in [&old, &recent] {
+        sqlx::query(
+            "INSERT INTO api_calls (ts, conversation_id, endpoint, purpose)
+             VALUES (?, 'c', 'chat', 'decide INFY')",
+        )
+        .bind(ts)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let deleted = stock_predictor::llm::audit::prune(&pool, 90).await.unwrap();
+    assert_eq!(deleted, 1);
+    let left: Vec<(String,)> = sqlx::query_as("SELECT ts FROM api_calls")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].0, recent);
+}
+
 /// A fund scan proposes a fund, not a size: it is stored with qty 0 and the NAV. Approving it
 /// must post whatever the owner actually got, out of the fund purse.
 #[tokio::test]

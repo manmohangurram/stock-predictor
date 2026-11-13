@@ -83,10 +83,18 @@ pub async fn run(
     // Highest return first; the score is a blend of 1y and 3y so a one-year wonder is not picked.
     histories.sort_by(|a, b| b.2.total_cmp(&a.2));
 
-    // Any curated fund already in the book gets its chart, whether or not it is proposed today.
+    // Only a fund you hold gets a chart: a proposal is not in the book, and storing 3,400 points
+    // for one is history nobody asked for.
+    let held: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT DISTINCT i.id, i.symbol FROM positions p
+         JOIN instruments i ON i.id = p.instrument_id
+         WHERE i.class = 'mutual_fund'",
+    )
+    .fetch_all(pool)
+    .await?;
     for (code, _, _, history) in &histories {
-        if let Some(id) = instrument_in_book(pool, code).await? {
-            save_nav_history(pool, id, history).await?;
+        if let Some((id, _)) = held.iter().find(|(_, s)| s == code) {
+            save_nav_history(pool, *id, history).await?;
         }
     }
     report.ranked = histories.len();
@@ -152,8 +160,6 @@ pub async fn run(
             continue;
         }
         let id = ensure_instrument(pool, &code, &name).await?;
-        // The scan already holds the whole NAV series; storing it gives the fund a chart.
-        save_nav_history(pool, id, &history).await?;
         store(pool, id, &name, &code, *nav, score, now).await?;
         report.proposed += 1;
         report.notes.push(format!(
@@ -192,15 +198,6 @@ async fn ensure_instrument(pool: &SqlitePool, code: &str, name: &str) -> Result<
     .fetch_one(pool)
     .await?;
     Ok(row.0)
-}
-
-async fn instrument_in_book(pool: &SqlitePool, code: &str) -> Result<Option<i64>> {
-    let row: Option<(i64,)> =
-        sqlx::query_as("SELECT id FROM instruments WHERE symbol = ? AND active = 1")
-            .bind(code)
-            .fetch_optional(pool)
-            .await?;
-    Ok(row.map(|r| r.0))
 }
 
 /// The NAV series as daily bars. A fund has no OHLC, so every price is the NAV and volume is 0.

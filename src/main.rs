@@ -7,6 +7,9 @@ use stock_predictor::llm::deepseek::ReqwestTransport;
 use stock_predictor::notify::Ntfy;
 use stock_predictor::rules::evaluate::RuleConfig;
 use stock_predictor::rules::settings;
+
+/// The audit of outbound model calls is kept this long; older rows are the bulk of the file.
+const AUDIT_KEEP_DAYS: i64 = 90;
 use stock_predictor::{api, config::Config, db, schedule};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
@@ -396,6 +399,13 @@ async fn main() -> Result<()> {
             match engine::poll_once(&deps, now).await {
                 Ok(r) => tracing::info!(?r, "poll complete"),
                 Err(e) => tracing::error!(error = %e, "poll failed"),
+            }
+
+            // The audit keeps three months; the sweep is idempotent, so it runs with the poll.
+            match stock_predictor::llm::audit::prune(&poll_pool, AUDIT_KEEP_DAYS).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!(deleted = n, "audit rows older than {AUDIT_KEEP_DAYS} days"),
+                Err(e) => tracing::warn!(error = %e, "audit prune failed"),
             }
 
             // Best-fund discovery: once a day, rank the curated list by trailing return.
