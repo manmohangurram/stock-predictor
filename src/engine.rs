@@ -42,6 +42,8 @@ pub struct PollReport {
     pub asked: usize,
     /// Instruments the gate left alone this tick: no price move, no new headline.
     pub not_asked: Vec<String>,
+    /// Fresh news pulled this tick because a holding left its band, for the plan to read.
+    pub fresh: String,
     /// Plan calls that produced a plan. Zero is the normal answer.
     pub plans: usize,
     pub errors: Vec<String>,
@@ -72,6 +74,15 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
         }
     }
 
+    let fresh = std::mem::take(&mut report.fresh);
+    if !fresh.is_empty() {
+        match plan_book_with(deps, now, crate::llm::plan::Scope::Stock, None, &fresh, true).await {
+            Ok(Some(())) => report.plans += 1,
+            Ok(None) => {}
+            Err(e) => report.errors.push(format!("band plan: {e:#}")),
+        }
+    }
+
     let calls_before = report.llm_calls;
     let calls_after = orchestrate::daily_chat_calls(deps.pool).await.unwrap_or(0);
     if calls_after > calls_before {
@@ -85,6 +96,34 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
     Ok(report)
 }
 
+/// True once per IST day per reason: the same band edge must not buy ninety-six calls.
+async fn band_trigger_fires(
+    pool: &SqlitePool,
+    instrument: &Instrument,
+    reason: &str,
+    now: DateTime<Utc>,
+) -> Result<bool> {
+    let marker = format!("{}-{reason}", ist_day(now));
+    let key = format!("stock_band_trigger_{}", instrument.id);
+    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+        .bind(&key)
+        .fetch_optional(pool)
+        .await?;
+    if row.as_ref().map(|r| r.0.as_str()) == Some(marker.as_str()) {
+        return Ok(false);
+    }
+    sqlx::query(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+    .bind(&key)
+    .bind(&marker)
+    .bind(now.to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(true)
+}
+
 /// Everything one instrument's decision needs, gathered once. \`poll_instrument\` and \`advise\`
 /// shared this logic by copy before, and had already drifted apart.
 /// One book call: the model sees every holding, the cash and today's list, and may answer with up
@@ -95,6 +134,19 @@ async fn plan_book(
     scope: crate::llm::plan::Scope,
     // A manual run already has its row; a scheduled one opens its own.
     run: Option<i64>,
+) -> Result<Option<()>> {
+    plan_book_with(deps, now, scope, run, "", false).await
+}
+
+/// `extra` is fresh context for this one call — news pulled because a holding left its band.
+async fn plan_book_with(
+    deps: &EngineDeps<'_>,
+    now: DateTime<Utc>,
+    scope: crate::llm::plan::Scope,
+    run: Option<i64>,
+    extra: &str,
+    // A band trigger may ask out of turn; the day's plan still runs when its turn comes.
+    force: bool,
 ) -> Result<Option<()>> {
     let fund = scope.is_fund();
     let manual = run.is_some();
@@ -112,7 +164,7 @@ async fn plan_book(
         crate::llm::plan::Scope::Trade => "trade_plan_last_slot",
         crate::llm::plan::Scope::Stock => "stock_plan_last",
     };
-    if !manual {
+    if !manual && !force {
         let last: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
             .bind(marker)
             .fetch_optional(deps.pool)
@@ -168,6 +220,11 @@ async fn plan_book(
     if scope.is_trade() && book.is_empty() && candidates.trim().is_empty() {
         return Ok(None); // nothing held, nothing offered: no call worth paying for
     }
+    let candidates = if extra.trim().is_empty() {
+        candidates
+    } else {
+        format!("{candidates}\n{extra}\n")
+    };
     let limits = if fund {
         format!(
             "the whole plan may spend at most {:.2} {currency}, which is everything the fund purse holds; there is no per-trade ceiling for funds",
@@ -255,7 +312,7 @@ async fn plan_book(
         }
     };
 
-    if !manual {
+    if !manual && !force {
         sqlx::query(
             "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
@@ -752,10 +809,29 @@ async fn poll_instrument(
         ));
         return Ok(());
     }
-    let Some(g) = gather(deps, instrument, now).await? else {
+    let Some(mut g) = gather(deps, instrument, now).await? else {
         return Ok(());
     };
     report.polled += 1;
+
+    // A winner's stop follows the price up, and the book in memory moves with it: the rules below
+    // must judge the stop that is now recorded, not the one this tick began with.
+    if let Some(pos) = g.position.as_mut() {
+        if let Some(close) = g.bars.last().map(|b| b.close) {
+            let next = evaluate::trailed_stop(pos.stop, pos.avg_cost, close, g.ind.atr14);
+            if next != pos.stop {
+                if let Some(stop) = next {
+                    sqlx::query("UPDATE positions SET stop = ? WHERE id = ?")
+                        .bind(stop)
+                        .bind(pos.id)
+                        .execute(deps.pool)
+                        .await?;
+                }
+                pos.stop = next;
+            }
+        }
+    }
+
     let (bars, news, ind) = (&g.bars, &g.news, &g.ind);
     let (position, available) = (&g.position, g.available);
 
@@ -817,6 +893,29 @@ async fn poll_instrument(
             return Ok(());
         }
     };
+    // The rules already act on a breached stop or a reached target. This fires where they do not:
+    // a holding that has run past the pot's ceiling without touching its own recorded target.
+    if !had_rules_candidate {
+        if let (Some(pos), Some(close)) = (position.as_ref(), bars.last().map(|b| b.close)) {
+            let limits = crate::rules::settings::get(deps.pool).await?;
+            let ceiling = pos.avg_cost * (1.0 + limits.limits_long.max_profit_pct / 100.0);
+            if close >= ceiling && band_trigger_fires(deps.pool, instrument, "ceiling", now).await? {
+                report.notes.push(format!(
+                    "{}: past the {:.0}% ceiling with no exit from the rules — plan asked",
+                    instrument.symbol, limits.limits_long.max_profit_pct
+                ));
+                report.fresh.push_str(&format!(
+                    "## {} is past the pot's {:.0}% ceiling\nlast {:.2}, paid {:.2}, stop {}\n",
+                    instrument.symbol,
+                    limits.limits_long.max_profit_pct,
+                    close,
+                    pos.avg_cost,
+                    pos.stop.map(|s| format!("{s:.2}")).unwrap_or("none".into()),
+                ));
+            }
+        }
+    }
+
     if had_rules_candidate {
         report.candidates += 1;
     }
@@ -2001,4 +2100,43 @@ async fn rotate_for_cash(
     .await?;
 
     Ok(Some((sell_id.0, buy_id.0)))
+}
+
+#[cfg(test)]
+mod band_tests {
+    use super::*;
+
+    fn instrument() -> Instrument {
+        Instrument {
+            id: 7,
+            symbol: "X.NS".into(),
+            class: crate::models::AssetClass::Stock,
+            name: "X".into(),
+            currency: "INR".into(),
+            active: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn the_band_trigger_fires_once_a_day_per_reason() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let now = Utc::now();
+        assert!(band_trigger_fires(&pool, &instrument(), "ceiling", now)
+            .await
+            .unwrap());
+        // Same reason, same day: no second call.
+        assert!(!band_trigger_fires(&pool, &instrument(), "ceiling", now)
+            .await
+            .unwrap());
+        // A different reason is a different event.
+        assert!(band_trigger_fires(&pool, &instrument(), "broken", now)
+            .await
+            .unwrap());
+    }
 }

@@ -194,3 +194,53 @@ pub fn diagnose(input: &CandidateInput<'_>) -> Vec<Check> {
 
     checks
 }
+
+/// Where a stop should sit given the price now, for a position already held.
+///
+/// Two ATRs under the close, never under what was paid once the price is above it, never below the
+/// stop already recorded. Raise only.
+pub fn trailed_stop(current: Option<f64>, avg_cost: f64, close: f64, atr: f64) -> Option<f64> {
+    if close <= 0.0 || avg_cost <= 0.0 || !atr.is_finite() || atr <= 0.0 {
+        return current;
+    }
+    // Below what was paid there is nothing to protect: the stop is the owner's own.
+    if close <= avg_cost {
+        return current;
+    }
+    let mut next = (close - 2.0 * atr).max(avg_cost);
+    if let Some(held) = current {
+        next = next.max(held);
+    }
+    Some(next)
+}
+
+#[cfg(test)]
+mod trail_tests {
+    use super::trailed_stop;
+
+    #[test]
+    fn a_winner_never_trails_below_its_own_cost() {
+        // Up 30%: two ATRs back is above cost, so the stop follows the price.
+        assert_eq!(trailed_stop(Some(90.0), 100.0, 130.0, 5.0), Some(120.0));
+        // Up only 3%: two ATRs back is below cost, so the stop goes to break-even.
+        assert_eq!(trailed_stop(Some(90.0), 100.0, 103.0, 5.0), Some(100.0));
+    }
+
+    #[test]
+    fn a_loser_keeps_the_stop_the_owner_set() {
+        assert_eq!(trailed_stop(Some(90.0), 100.0, 96.0, 5.0), Some(90.0));
+        assert_eq!(trailed_stop(None, 100.0, 96.0, 5.0), None);
+    }
+
+    #[test]
+    fn a_stop_is_never_pulled_back_down() {
+        // The owner placed it at 125; the trail would compute 118.
+        assert_eq!(trailed_stop(Some(125.0), 100.0, 130.0, 6.0), Some(125.0));
+    }
+
+    #[test]
+    fn nonsense_inputs_change_nothing() {
+        assert_eq!(trailed_stop(Some(90.0), 100.0, 130.0, 0.0), Some(90.0));
+        assert_eq!(trailed_stop(Some(90.0), 0.0, 130.0, 5.0), Some(90.0));
+    }
+}

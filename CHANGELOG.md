@@ -29,6 +29,24 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### A winner's stop follows the price up
+
+Every open long-term holding now trails: `stop = max(stop, cost, close − 2×ATR)`, raised on each
+poll and never pulled back down. Once the price is above what you paid the stop moves to at least
+break-even, so a profit cannot quietly become a loss. Deterministic — no model, no tokens — because
+the plan format has no "raise the stop" move: a stop only reaches the book through a BUY.
+
+### The plan is asked when a holding passes the ceiling
+
+The rules already act on a breached stop or a reached target. The gap is a holding that runs **past
+the pot's `max_profit_pct`** without touching its own recorded target: nothing asked. That now pulls
+the plan, once per IST day per holding, with the ceiling and the stop written into its context. It
+fires only when the rules found nothing this tick, so it never duplicates an exit the rules already
+made.
+
+The first draft of this fired on the stop too — the engine tests caught it doing exactly that on
+positions the rules had already decided, so the trigger was narrowed to the case they miss.
+
 ### Headlines keep three months too
 
 `news` had the same shape as the audit: `INSERT OR IGNORE` by url, never pruned. It is swept with
