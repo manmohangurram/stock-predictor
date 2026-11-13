@@ -1,4 +1,9 @@
-## Unreleased
+## v0.29.0
+
+Headlines moved off the model and onto Google News' own feed: English, India edition, dated, from
+real publishers, and free — no API key, no search call. The short-term scan keeps its two searches,
+which is where the web is actually doing work.
+
 
 ### Headlines come from Google News, not a general web search
 
