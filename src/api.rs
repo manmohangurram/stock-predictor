@@ -1206,9 +1206,9 @@ async fn schedule_view(State(st): State<AppState>) -> Result<Json<serde_json::Va
 
 /// The next trade slot, from the same function the scheduler uses, so the card cannot promise a
 /// cadence the loop does not keep.
-fn trade_next(now: chrono::DateTime<chrono::Utc>) -> Option<String> {
-    // Walk forward in minutes until a slot appears: at most a day and a half of ticks.
-    for step in 0..(60 * 40) {
+pub fn trade_next(now: chrono::DateTime<chrono::Utc>) -> Option<String> {
+    // Four days, so a Friday evening still reaches Monday's open.
+    for step in 0..(60 * 24 * 4) {
         let at = now + chrono::Duration::minutes(step);
         if crate::schedule::trade_slot(at).is_some() && step > 0 {
             return Some(at.to_rfc3339());
@@ -2750,6 +2750,7 @@ async fn load_signals(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Datelike, TimeZone, Timelike};
 
     fn bar(ts: &str, close: f64) -> Bar {
         Bar {
@@ -2760,6 +2761,18 @@ mod tests {
             close,
             volume: 0,
         }
+    }
+
+    #[test]
+    fn the_next_trade_slot_is_found_across_a_weekend() {
+        use chrono::TimeZone;
+        // Friday 18:00 IST — after the close — must find Monday's 09:15, not nothing.
+        let fri = chrono::Utc.with_ymd_and_hms(2026, 11, 13, 12, 30, 0).unwrap();
+        let next = trade_next(fri).expect("a slot exists on Monday");
+        let ist = chrono::DateTime::parse_from_rfc3339(&next).unwrap()
+            + chrono::Duration::minutes(330);
+        assert_eq!(ist.weekday(), chrono::Weekday::Mon);
+        assert_eq!((ist.hour(), ist.minute()), (9, 15));
     }
 
     #[test]
