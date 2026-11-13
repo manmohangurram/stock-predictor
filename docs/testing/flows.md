@@ -105,7 +105,9 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 | Correct fill (pencil) | Editor opens; Save rewrites the price; *vs close* recomputes |
 | Delete fill | Arms on the first click (*Delete? Click again*), deletes on the second |
 | Expected profit % | Saves; the value survives a reload |
-| Refresh | Status becomes *Stored N bars and M headlines*, the button re-enables |
+| Refresh (in the book) | Status becomes *Stored N bars and M headlines*, the button re-enables |
+| Refresh (archived) | Fetches from the source but says *archived, so nothing was stored*; the bar count stays 0 — archiving cleared it and a read must not rebuild it |
+| Refresh (a fund) | Goes to AMFI by scheme code, not the equity feed; a fund with only a Yahoo symbol falls back to Yahoo |
 | Archive (not held) | Arms on the first click with the warning, archives on the second, returns to the ledger |
 | Archive (held) | Disabled, with *cannot be archived — sell it first* |
 | Decision tabs | `href` carries `?decisions=pending|approved|rejected|all` |

@@ -216,7 +216,11 @@ function wireRefreshInstrument(): void {
     if (status) status.textContent = "Fetching…";
     try {
       const r = await api.refreshInstrument(symbol);
-      if (status) status.textContent = `Stored ${r.bars} bars and ${r.headlines} headlines.`;
+      if (status) {
+        status.textContent = r.cached
+          ? `Stored ${r.bars} bars and ${r.headlines} headlines.`
+          : `Fetched ${r.bars} bars — archived, so nothing was stored.`;
+      }
       await route();
     } catch (e) {
       if (status) status.textContent = String(e);

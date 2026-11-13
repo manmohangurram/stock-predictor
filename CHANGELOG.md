@@ -29,6 +29,14 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### Refresh reads; it does not rebuild an archived book
+
+Refresh always fetched **and stored**, so pressing it on an archived instrument re-created the
+bars archiving had deliberately cleared — the archive was undone by a button that promised to
+price nothing. It now fetches and stores only when the instrument is in the book (`cached: true`);
+on an archived one it reads the source and reports *archived, so nothing was stored*, leaving the
+bar count at zero. Restoring puts it back in the book and caching resumes.
+
 ### The audit keeps three months
 
 `api_calls` was append-only and never pruned — every outbound model call since the first day, with

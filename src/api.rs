@@ -1839,7 +1839,7 @@ async fn add_instrument(
     let id = add_or_promote(&st.pool, code, class.as_str(), &name).await?;
 
     let rt = crate::rules::settings::runtime(&st.pool).await?;
-    let fetch = refresh_any(&st.pool, id, code, class.as_str(), &rt);
+    let fetch = refresh_any(&st.pool, id, code, class.as_str(), &rt, true);
     match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
         Ok(Ok((bars, news))) => {
             tracing::info!(symbol = code, bars, news, "prices and headlines stored")
@@ -1961,23 +1961,28 @@ async fn record_trade(
 /// add-time fetch existed, or simply to pull the latest without waiting for a poll tick.
 /// A fund's NAV history comes from AMFI's mirror, not the equity feed. The scheme code is the
 /// symbol when it was added by AMFI code, and otherwise whatever the scan recorded.
-/// Bars and headlines for any instrument. A fund is read from AMFI by its scheme code; a fund
-/// added by a Yahoo symbol has no code, so it falls back to the equity feed that priced it.
+/// Bars and headlines for an instrument. `cache` false reads the source and stores nothing — the
+/// archived book is not priced, and a read must not rebuild what archiving cleared.
 async fn refresh_any(
     pool: &SqlitePool,
     id: i64,
     symbol: &str,
     class: &str,
     rt: &crate::rules::runtime::Runtime,
+    cache: bool,
 ) -> anyhow::Result<(usize, usize)> {
     if class == AssetClass::MutualFund.as_str() {
-        match refresh_fund(pool, id, symbol, rt).await {
+        match refresh_fund(pool, id, symbol, rt, cache).await {
             Ok(bars) => return Ok((bars, 0)),
             Err(e) if !symbol.contains('.') => return Err(e),
             Err(_) => {}
         }
     }
     let market = crate::market::YahooSource::new(rt)?;
+    if !cache {
+        let fetched = crate::market::MarketSource::bars(&market, symbol).await?;
+        return Ok((fetched.len(), 0));
+    }
     crate::store::refresh(pool, id, symbol, &market).await
 }
 
@@ -1986,6 +1991,7 @@ async fn refresh_fund(
     id: i64,
     symbol: &str,
     rt: &crate::rules::runtime::Runtime,
+    cache: bool,
 ) -> anyhow::Result<usize> {
     let code = if !symbol.is_empty() && symbol.chars().all(|c| c.is_ascii_digit()) {
         symbol.to_string()
@@ -2005,7 +2011,9 @@ async fn refresh_fund(
     let client = crate::http::client_with(rt, 20, Some("Mozilla/5.0 stock-predictor"))?;
     let history = crate::market::mfapi::fetch(&client, &code).await?;
     let bars = crate::fundscan::nav_bars(&history);
-    crate::store::bars(pool, id, &bars).await?;
+    if cache {
+        crate::store::bars(pool, id, &bars).await?;
+    }
     Ok(bars.len())
 }
 
@@ -2021,10 +2029,14 @@ async fn refresh_instrument(
     let (id, class) = row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
     let rt = crate::rules::settings::runtime(&st.pool).await?;
 
-    let (bars, news) = refresh_any(&st.pool, id, &symbol, &class, &rt)
+    let active: (i64,) = sqlx::query_as("SELECT active FROM instruments WHERE id = ?")
+        .bind(id)
+        .fetch_one(&st.pool)
+        .await?;
+    let (bars, news) = refresh_any(&st.pool, id, &symbol, &class, &rt, active.0 != 0)
         .await
         .map_err(|e| ApiError::BadRequest(format!("{symbol} ({class}): {e}")))?;
-    Ok(Json(serde_json::json!({ "bars": bars, "headlines": news })))
+    Ok(Json(serde_json::json!({ "bars": bars, "headlines": news, "cached": active.0 != 0 })))
 }
 
 async fn instrument_trades(
