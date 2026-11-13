@@ -55,9 +55,13 @@ export function wireDecisionActions(reload: () => Promise<void>): void {
               return { id: Number(leg), qty: units, price };
             })
           : undefined;
+        const price = Number(field(String(id), "price")?.value);
+        const amount = Number(field(String(id), "amount")?.value);
+        const qty =
+          amount > 0 && price > 0 ? amount / price : Number(field(String(id), "qty")?.value);
         await api.approveSignal(id, {
-          qty: fills ? undefined : Number(field(String(id), "qty")?.value),
-          price: fills ? undefined : Number(field(String(id), "price")?.value),
+          qty: fills ? undefined : qty,
+          price: fills ? undefined : price,
           at: field(String(id), "at")?.value || undefined,
           fills,
         });

@@ -11,6 +11,7 @@ import { today } from "../pages/instrument";
  */
 export function renderDecisionActions(s: SignalRow): string {
   if (s.status !== "pending" || !["BUY", "SELL"].includes(s.action)) return "";
+  const fund = s.class === "mutual_fund";
   return `<div class="decision-actions">
     <button class="btn icon-btn" type="button" data-approve="${s.id}" aria-expanded="false"
             title="Approve — record the fill you actually got" aria-label="Approve">
@@ -27,14 +28,19 @@ export function renderDecisionActions(s: SignalRow): string {
   </div>
   <form class="approve-form" data-approve-form="${s.id}" hidden>
     <div class="fill-grid">
-      <label class="field"><span class="lbl">Quantity</span>
-        <input name="qty" type="number" min="0" step="any" value="${s.qty ?? ""}" /></label>
-      <label class="field"><span class="lbl">Price</span>
+      <label class="field"><span class="lbl">${fund ? "Amount ₹" : "Quantity"}</span>
+        <input name="${fund ? "amount" : "qty"}" type="number" min="0" step="any"
+               value="${fund ? "" : (s.qty ?? "")}" /></label>
+      <label class="field"><span class="lbl">${fund ? "NAV" : "Price"}</span>
         <input name="price" type="number" min="0" step="any" value="${s.entry ?? ""}" /></label>
       <label class="field"><span class="lbl">Date</span>
         <input name="at" type="date" value="${today()}" max="${today()}" /></label>
       <label class="field"><span class="lbl">Proposed</span>
-        <span class="static">${s.qty === null ? "—" : units(s.qty)} @ ${s.entry === null ? "—" : money(s.entry)}</span></label>
+        <span class="static">${
+          fund
+            ? `size on approval · NAV ${s.entry === null ? "—" : money(s.entry)}`
+            : `${s.qty === null ? "—" : units(s.qty)} @ ${s.entry === null ? "—" : money(s.entry)}`
+        }</span></label>
     </div>
     <div class="row">
       <button class="btn primary" type="submit">Post fill</button>

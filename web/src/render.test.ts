@@ -1264,6 +1264,23 @@ describe("audit", () => {
   });
 });
 
+describe("a fund decision's fill", () => {
+  test("asks for rupees and a NAV, and says the size is not proposed", async () => {
+    const { renderDecisionActions } = await import("./components/decision-actions");
+    const html = renderDecisionActions(signal({
+      class: "mutual_fund",
+      action: "BUY",
+      qty: 0,
+      entry: 74.05,
+    }));
+    expect(html).toContain("Amount ₹");
+    expect(html).toContain("NAV");
+    expect(html).toContain('name="amount"');
+    expect(html).toContain("size on approval · NAV 74.05");
+    expect(html).not.toContain("0 units");
+  });
+});
+
 describe("a plan", () => {
   const leg = (over: Partial<SignalRow>): SignalRow => ({ ...signal(), ...over });
   test("reads as one docket with the purse arithmetic that makes it legal", async () => {

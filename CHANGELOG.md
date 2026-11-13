@@ -22,6 +22,13 @@ plan and a scan row share it.
 rule allows. `///` rustdoc and `//!` module docs stay: those are published documentation, not
 commentary beside code.
 
+### A fund decision asks for rupees too
+
+The fund plan's fill was fixed to ask Amount and NAV; the fund *scan* row still asked for a
+quantity the scan never proposed (`0 units`) and left you to work out the units yourself. It asks
+Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
+divided on submit.
+
 ### Every control is 40px on a phone
 
 The audit toolbar, the settings fields and the limits table were 28–38px tall; the back link was
