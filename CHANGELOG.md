@@ -35,6 +35,12 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### News is English and from today only
+
+Every search that feeds a prompt now carries `lang:en` and an `after:` bound of yesterday, and what
+comes back is filtered to articles dated **today** — an undated page is not an article, and a
+week-old one is not news. Applied to the morning pass and to the ceiling trigger's own search.
+
 ### The ceiling trigger searches before it asks
 
 It was passing four numbers and the morning's headlines. It now runs its own dated search for that

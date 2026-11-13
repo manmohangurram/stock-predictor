@@ -125,6 +125,25 @@ async fn stored_headlines(
         .collect())
 }
 
+/// English only, and nothing older than today: `after:` is the operator the search API honours,
+/// and the exact day is then enforced on what comes back.
+fn news_query(name: &str, day: &str) -> String {
+    let from = chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+        .map(|d| (d - chrono::Duration::days(1)).format("%Y-%m-%d").to_string())
+        .unwrap_or_else(|_| day.to_string());
+    format!("\"{name}\" news after:{from} lang:en")
+}
+
+/// Articles from `day` itself. Undated pages go: a quote page has no date because it is not news.
+fn today_hits(
+    hits: Vec<crate::llm::deepseek::SearchHit>,
+    day: &str,
+) -> Vec<crate::llm::deepseek::SearchHit> {
+    hits.into_iter()
+        .filter(|h| h.date.as_deref().is_some_and(|d| d.starts_with(day)))
+        .collect()
+}
+
 /// The morning news pass: one web search per active instrument, once an IST day, stored as
 /// headlines. Replaces the per-tick equity-feed fetch with one dated search.
 pub async fn refresh_news(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<usize> {
@@ -140,7 +159,7 @@ pub async fn refresh_news(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<u
     let instruments = load_instruments(deps.pool).await?;
     let mut stored = 0;
     for instrument in &instruments {
-        let query = format!("\"{}\" news after:{}", instrument.name, day);
+        let query = news_query(&instrument.name, &day);
         let Ok(hits) = crate::llm::deepseek::search_for(
             deps.pool,
             &model.base_url,
@@ -152,7 +171,7 @@ pub async fn refresh_news(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<u
         else {
             continue;
         };
-        let rows: Vec<Headline> = hits
+        let rows: Vec<Headline> = today_hits(hits, &day)
             .into_iter()
             .enumerate()
             .map(|(i, h)| Headline {
@@ -990,7 +1009,7 @@ async fn poll_instrument(
                     deps.pool,
                     &model.base_url,
                     deps.transport,
-                    &format!("\"{}\" share news after:{}", instrument.name, ist_day(now)),
+                    &news_query(&instrument.name, &ist_day(now)),
                     &format!("ceiling on {}", instrument.symbol),
                 )
                 .await
@@ -1006,7 +1025,7 @@ async fn poll_instrument(
                     close,
                     pos.avg_cost,
                     pos.stop.map(|s| format!("{s:.2}")).unwrap_or("none".into()),
-                    crate::llm::prompts::render_web_hits(&hits),
+                    crate::llm::prompts::render_web_hits(&today_hits(hits, &ist_day(now))),
                 ));
             }
         }
@@ -2211,6 +2230,37 @@ mod band_tests {
             currency: "INR".into(),
             active: true,
         }
+    }
+
+    #[test]
+    fn the_query_asks_english_and_nothing_older_than_today() {
+        assert_eq!(
+            news_query("Infosys", "2026-11-13"),
+            "\"Infosys\" news after:2026-11-12 lang:en"
+        );
+    }
+
+    #[test]
+    fn only_articles_from_the_day_itself_survive() {
+        let hit = |date: Option<&str>, title: &str| crate::llm::deepseek::SearchHit {
+            title: title.into(),
+            site: "Reuters".into(),
+            url: format!("https://example.test/{title}"),
+            snippet: String::new(),
+            summary: String::new(),
+            date: date.map(str::to_string),
+        };
+        let kept = today_hits(
+            vec![
+                hit(Some("2026-11-13"), "today"),
+                hit(Some("2026-11-12"), "yesterday"),
+                hit(Some("2026-11-06"), "a week ago"),
+                hit(None, "a quote page"),
+            ],
+            "2026-11-13",
+        );
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].title, "today");
     }
 
     #[tokio::test]
