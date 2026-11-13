@@ -14,8 +14,7 @@ COPY web/ ./
 RUN npm run build
 
 FROM --platform=$BUILDPLATFORM rust:1.98 AS chef
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo install --locked cargo-chef
+RUN cargo install --locked cargo-chef
 WORKDIR /app
 
 FROM chef AS planner
@@ -40,9 +39,11 @@ RUN if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ]; then \
         esac; \
     fi
 COPY --from=planner /app/recipe.json recipe.json
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/target \
-    if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ] && [ "${TARGETARCH}" = "arm64" ]; then \
+# No cache mounts on these two steps. A cache mount keeps its contents out of the layer, so a
+# cached `cook` layer would replay *empty* and the build step below would re-download and
+# recompile every dependency (measured: 114s instead of 27s). The layer is the cache here —
+# `cache-to: type=registry,mode=max` preserves it across builds, a mount does not.
+RUN if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ] && [ "${TARGETARCH}" = "arm64" ]; then \
         CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
         CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
         cargo chef cook --release --locked --target aarch64-unknown-linux-gnu --recipe-path recipe.json; \
@@ -50,9 +51,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         cargo chef cook --release --locked --recipe-path recipe.json; \
     fi
 COPY . .
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/app/target \
-    if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ] && [ "${TARGETARCH}" = "arm64" ]; then \
+RUN if [ "${BUILDPLATFORM}" != "${TARGETPLATFORM}" ] && [ "${TARGETARCH}" = "arm64" ]; then \
         CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
         CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
         cargo build --release --locked --target aarch64-unknown-linux-gnu && \

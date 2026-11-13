@@ -1,3 +1,17 @@
+## v0.27.4
+
+### Hotfix: the build cache was making the build slower
+
+`v0.27.3` added `--mount=type=cache` to the two cargo steps. A cache mount keeps its contents
+**out of the layer**, so when the `cargo chef cook` layer hit — which is every release, since a
+version bump does not change `recipe.json` — it replayed with an empty `target/`, and the build
+step then re-downloaded and recompiled every dependency. Measured on the v0.27.3 run: `cook`
+0.1s, `build` **114.4s**. The same pair on v0.27.1, without the mounts, was 88s and 26.5s.
+
+The layer *is* the cache here — `cache-to: type=registry,mode=max` preserves it across builds and
+a mount does not. The mounts are gone; a dependency rebuild now happens only when `Cargo.toml` or
+`Cargo.lock` actually changes.
+
 ## v0.27.3
 
 ### Hotfix: a Friday trade plan was refused for naming Tuesday
