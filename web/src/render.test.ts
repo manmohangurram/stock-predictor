@@ -982,6 +982,29 @@ describe("audit pager", () => {
   });
 });
 
+/** The plan card as the drawer renders it, from a reply body the model could have sent. */
+async function planCard(content: unknown): Promise<string> {
+  const { renderExchangeDetail } = await import("./pages/calls");
+  return renderExchangeDetail({
+    id: 9,
+    ts: "2026-11-13T03:30:00Z",
+    endpoint: "chat",
+    purpose: "plan",
+    round: 1,
+    trigger: "clock",
+    decision_reason: null,
+    prompt_template: "plan_stock_v1",
+    request_json: null,
+    response_json: JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }),
+    prompt_tokens: 10,
+    completion_tokens: 2,
+    validator_verdict: "pass",
+    error: null,
+    instrument_name: null,
+    instrument_symbol: null,
+  });
+}
+
 describe("audit", () => {
   test("a plan is a docket: figures, cost, then one paragraph", async () => {
     const { renderExchangeDetail } = await import("./pages/calls");
@@ -1074,6 +1097,52 @@ describe("audit", () => {
     // The gap the purse has to cover, stated rather than left to be worked out.
     expect(html).toContain("Also from the purse");
     expect(html).toContain("9,793.00");
+  });
+
+  test("a three-move plan stays one line per move, and the purse adds up", async () => {
+    const html = await planCard({
+      action: "plan",
+      rationale: "two stale names out, one live name in",
+      moves: [
+        { action: "SELL", symbol: "TCS.NS", qty: 5, price: 3900 },
+        { action: "SELL", symbol: "RELIANCE.NS", qty: 8, price: 1400 },
+        {
+          action: "BUY",
+          symbol: "INFY.NS",
+          qty: 20,
+          price: 1600,
+          stop: 1520,
+          target: 1760,
+          valid_until: "2026-11-20T15:30:00+05:30",
+        },
+      ],
+    });
+    expect((html.match(/class="docket-move"/g) ?? []).length).toBe(3);
+    expect(html).toContain("From the sale");
+    expect(html).toContain("30,700.00"); // 5×3900 + 8×1400
+    expect(html).toContain("To buy");
+    expect(html).toContain("32,000.00"); // 20×1600
+    expect(html).toContain("Also from the purse");
+    expect(html).toContain("1,300.00");
+  });
+
+  test("a fund move is sized in rupees, not units", async () => {
+    // A fund arrives at NAV, so the reply carries `amount` and no qty/price. Reading only
+    // qty×price left the line blank and the cost at zero.
+    const html = await planCard({
+      action: "plan",
+      rationale: "a NAV dip in a fund already held",
+      moves: [
+        { action: "BUY", symbol: "AXISELSS", amount: 2250 },
+        { action: "BUY", symbol: "0P0000XV5C.BO", amount: 1500 },
+      ],
+    });
+    expect(html).toContain("Amount");
+    expect(html).toContain("2,250.00");
+    expect(html).toContain("1,500.00");
+    expect(html).toContain("Cost");
+    expect(html).toContain("3,750.00");
+    expect(html).not.toContain("Qty");
   });
 
   test("a refused plan is not a plan awaiting you", async () => {

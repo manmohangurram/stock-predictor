@@ -118,6 +118,8 @@ export interface ReplyMove {
   target: number | null;
   /** When the idea goes stale. A trade move carries one; the price moves do not. */
   validUntil: string | null;
+  /** A fund move is sized in rupees, not units: units arrive at NAV. */
+  amount: number | null;
   why: string | null;
 }
 
@@ -196,6 +198,7 @@ export function parseReply(content: string): Reply {
             stop: num(m.stop),
             target: num(m.target),
             validUntil: str(m.valid_until),
+            amount: num(m.amount),
             why: str(m.why),
           }))
       : [],

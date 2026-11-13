@@ -305,8 +305,11 @@ function decisionCard(reply: string, when: string): string {
     const legs = r.moves
       .map((m) => {
         const buy = m.action === "BUY";
-        const value = m.qty !== null && m.price !== null ? m.qty * m.price : null;
+        // A fund move is sized in rupees and has no percentage stop; a stock move in units.
+        const value =
+          m.amount ?? (m.qty !== null && m.price !== null ? m.qty * m.price : null);
         const figs = [
+          m.amount !== null ? figure("Amount", money(m.amount)) : "",
           m.qty === null ? "" : figure("Qty", units(m.qty)),
           m.price === null ? "" : figure("At", money(m.price)),
           // A sale has money coming in; a buy has a stop, a target and an expiry to honour.
@@ -327,7 +330,10 @@ function decisionCard(reply: string, when: string): string {
     const total = (sell: boolean) =>
       r.moves.reduce(
         (n, m) =>
-          n + (m.qty !== null && m.price !== null && (m.action === "BUY") !== sell ? m.qty * m.price : 0),
+          n +
+          ((m.action === "BUY") !== sell
+            ? (m.amount ?? (m.qty !== null && m.price !== null ? m.qty * m.price : 0))
+            : 0),
         0,
       );
     const freed = total(true);

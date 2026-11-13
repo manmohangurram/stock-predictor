@@ -1,3 +1,20 @@
+## v0.27.7
+
+### The docket covers the two shapes it was missing
+
+`v0.27.6` read a move as `qty × price`, which is how a **stock** move is sized. A **fund** move is
+sized in rupees — `amount`, no units and no price, because units arrive at NAV — so the card drew a
+blank line and a cost of zero.
+
+- A fund move now prints `Amount 2,250.00`, and the purse totals by amount.
+- A three-move stock plan was checked, not assumed: three lines, then
+  `From the sale 30,700.00 · To buy 32,000.00 · Also from the purse 1,300.00`.
+
+### Stacked, the two columns ran together
+
+Below 900px `SENT TO THE MODEL` and `RECEIVED` stacked with nothing between them, so the heading
+read as another line of the prompt above it. A hairline now separates them.
+
 ## v0.27.6
 
 ### The plan card is a docket, not a table

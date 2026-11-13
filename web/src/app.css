@@ -1083,6 +1083,10 @@
      right edge because the two-column grid never stacked. */
   @media (max-width: 900px) {
     .call-exchange { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
+    /* Stacked, the two headings run together — RECEIVED read as another line of the prompt. */
+    .call-exchange > .call-col + .call-col {
+      border-top: 1px solid var(--rule-subtle); padding-top: var(--space-4);
+    }
   }
   
   .call-empty { margin: 0; color: var(--ink-tertiary); font-size: var(--text-sm); }
