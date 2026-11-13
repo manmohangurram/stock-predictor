@@ -46,11 +46,15 @@ export function wireDecisionActions(reload: () => Promise<void>): void {
         // A plan posts one fill per leg; a single decision posts its own.
         const plan = form.dataset.plan;
         const fills = plan
-          ? plan.split(",").map((leg) => ({
-              id: Number(leg),
-              qty: Number(form.querySelector<HTMLInputElement>(`[name="qty-${leg}"]`)?.value),
-              price: Number(form.querySelector<HTMLInputElement>(`[name="price-${leg}"]`)?.value),
-            }))
+          ? plan.split(",").map((leg) => {
+              const read = (n: string) =>
+                Number(form.querySelector<HTMLInputElement>(`[name="${n}-${leg}"]`)?.value);
+              // A fund is bought with rupees at a NAV; the book stores units, so divide.
+              const amount = read("amount");
+              const price = read("price");
+              const units = Number.isFinite(amount) && amount > 0 && price > 0 ? amount / price : read("qty");
+              return { id: Number(leg), qty: units, price };
+            })
           : undefined;
         await api.approveSignal(id, {
           qty: fills ? undefined : Number(field(String(id), "qty")?.value),

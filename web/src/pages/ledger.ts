@@ -176,19 +176,22 @@ function planActions(
   first: Dashboard["signals"][number],
   legs: Dashboard["signals"],
 ): string {
-  // One header, then one aligned row per leg: a stamp column, the holding, then the two numbers.
+  const fundPlan = first.plan_scope === "fund";
   const fills = `<div class="plan-fill plan-fill-head" aria-hidden="true">
-      <span></span><span>Holding</span><span>Quantity</span><span>Price</span>
+      <span></span><span>Holding</span><span>${fundPlan ? "Amount ₹" : "Quantity"}</span>
+      <span>${fundPlan ? "NAV" : "Price"}</span>
     </div>${legs
       .map(
         (l) => `<div class="plan-fill">
         ${actionStamp(l.action)}
         <span class="plan-fill-name">${escapeHtml(l.name || l.symbol)}
           <span class="sub">${escapeHtml(l.symbol)}</span></span>
-        <input name="qty-${l.id}" type="number" min="0" step="any" value="${l.qty ?? ""}"
-               aria-label="Quantity for ${escapeHtml(l.name || l.symbol)}" />
+        <input name="${fundPlan ? "amount" : "qty"}-${l.id}" type="number" min="0" step="any"
+               value="${fundPlan ? (l.amount ?? "") : (l.qty ?? "")}"
+               aria-label="${fundPlan ? "Amount" : "Quantity"} for ${escapeHtml(l.name || l.symbol)}" />
         <input name="price-${l.id}" type="number" min="0" step="any" value="${l.entry ?? ""}"
-               aria-label="Price for ${escapeHtml(l.name || l.symbol)}" />
+               aria-label="${fundPlan ? "NAV" : "Price"} for ${escapeHtml(l.name || l.symbol)}" />
+        ${fundPlan ? `<input type="hidden" name="qty-${l.id}" value="${l.qty ?? ""}" />` : ""}
       </div>`,
       )
       .join("")}`;

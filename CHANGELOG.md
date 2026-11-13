@@ -1,3 +1,20 @@
+## Unreleased
+
+### A fund plan could not be approved
+
+`approve_plan` checked the balance against `budget::available_in`, which reads the pot's **main**
+purse. A fund plan spends the fund purse, so on a book whose stock purse was empty the approval
+was refused with *"cash is 0.00"* however much the fund purse held. It now reads the purse that
+belongs to the plan's own asset class.
+
+Found while making the fill form honest: a fund is bought with rupees at a NAV, so the form now
+asks for **Amount ₹** and **NAV** and divides, instead of asking for units the model never named.
+
+### Every control is 40px on a phone
+
+The audit toolbar, the settings fields and the limits table were 28–38px tall; the back link was
+17px. All of them reach 40 below 900px. Every route now measures zero controls under 40 at 390.
+
 ## v0.27.11
 
 ### The add dialog put the wrong instrument in the book

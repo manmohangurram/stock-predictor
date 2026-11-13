@@ -1616,6 +1616,56 @@ async fn the_three_monthly_purses_do_not_share_money() {
     );
 }
 
+/// A fund plan spends the fund purse, and an approval must look there — the stock purse being
+/// empty is not the fund's business.
+#[tokio::test]
+async fn a_fund_plan_is_approved_against_the_fund_purse() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency)
+                 VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"budget": 0.0, "mf_budget": 5_000.0}),
+    )
+    .await;
+
+    let leg: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status, plan_id)
+         SELECT id, 'BUY', NULL, NULL, '2030-01-01T00:00:00Z',
+                '{\"plan\":true,\"scope\":\"fund\",\"amount\":2250.0}',
+                '2026-11-13T04:00:00Z', 'long', 'plan', 'pending', 91
+         FROM instruments WHERE symbol = 'AXISELSS' RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // 2,250 rupees at a NAV of 45 is 50 units.
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", leg.0),
+        json!({"fills": [{"id": leg.0, "qty": 50.0, "price": 45.0}]}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let held: (f64, f64) = sqlx::query_as(
+        "SELECT p.qty, p.avg_cost FROM positions p JOIN instruments i ON i.id = p.instrument_id
+         WHERE i.symbol = 'AXISELSS'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(held, (50.0, 45.0));
+}
+
 #[tokio::test]
 async fn a_blocked_proposal_is_visible_in_the_record_with_its_shortfall() {
     // Regression: a proposal refused for cash was stored as BLOCKED and filtered out of the stock

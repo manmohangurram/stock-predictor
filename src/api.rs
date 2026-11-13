@@ -2497,7 +2497,18 @@ async fn approve_plan(
             .sum()
     };
     let (proceeds, cost) = (money("SELL"), money("BUY"));
-    let cash = crate::rules::budget::available_in(&st.pool, mode).await?;
+    // A plan draws on the purse its own class belongs to: a fund spends the fund purse.
+    let class: Option<(String,)> = sqlx::query_as("SELECT class FROM instruments WHERE id = ?")
+        .bind(legs[0].instrument_id)
+        .fetch_optional(&st.pool)
+        .await?;
+    let bucket = class
+        .and_then(|(c,)| AssetClass::parse(&c).ok())
+        .and_then(crate::rules::budget::bucket_for);
+    let cash = match bucket {
+        Some(b) => crate::rules::budget::cash_in_bucket(&st.pool, mode, Some(b)).await?,
+        None => crate::rules::budget::available_in(&st.pool, mode).await?,
+    };
     if cost > proceeds + cash + 1e-9 {
         return Err(ApiError::BadRequest(format!(
             "the plan does not balance: buys cost {cost:.2}, its sells free {proceeds:.2}, cash is {cash:.2}"

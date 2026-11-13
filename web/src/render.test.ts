@@ -1318,6 +1318,27 @@ describe("a plan", () => {
     expect(html).not.toContain("Cost");
   });
 
+  test("a fund plan's fill asks for rupees and a NAV, not units", async () => {
+    const { renderPlan } = await import("./pages/ledger");
+    const html = renderPlan([
+      leg({
+        id: 7,
+        action: "BUY",
+        name: "Axis ELSS",
+        class: "mutual_fund",
+        plan_scope: "fund",
+        qty: null,
+        entry: null,
+        amount: 2250,
+      }),
+    ]);
+    expect(html).toContain("Amount ₹");
+    expect(html).toContain("NAV");
+    expect(html).toContain('name="amount-7"');
+    expect(html).toContain('value="2250"');
+    expect(html).toContain('name="price-7"');
+  });
+
   test("a fund leg with no stored size says so instead of printing nothing", async () => {
     const { renderPlan } = await import("./pages/ledger");
     const html = renderPlan([
