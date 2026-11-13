@@ -319,11 +319,18 @@ export function renderLedger(d: Dashboard): string {
         .get(plan)!
         .slice()
         .sort((a, b) => (a.action === "SELL" ? -1 : 1) - (b.action === "SELL" ? -1 : 1));
-      drawn.push({ html: renderPlan(legs), fund: false });
+      drawn.push({ html: renderPlan(legs), fund: legs[0].plan_scope === "fund" });
       continue;
     }
     drawn.push({ html: decisionRow(s), fund: s.class === "mutual_fund" });
   }
+  const fundPlans = [...plans.values()].filter((legs) => legs[0].plan_scope === "fund").length;
+  const fundRows = drawn.filter((d) => d.fund).length;
+  const fundLabel = !fundPlans
+    ? "Fund scan · arithmetic, no model call"
+    : fundRows > fundPlans
+      ? "Funds"
+      : "FUND PLAN";
   const group = (fund: boolean) => drawn.filter((d) => d.fund === fund).map((d) => d.html).join("");
   const both = drawn.some((d) => d.fund) && drawn.some((d) => !d.fund);
   const advice = shown.length
@@ -332,7 +339,9 @@ export function renderLedger(d: Dashboard): string {
           ? `${both ? `<div class="decision-group"><span class="lbl">Stocks</span></div>` : ""}${group(false)}`
           : "",
         drawn.some((d) => d.fund)
-          ? `<div class="decision-group"><span class="lbl">Fund scan · arithmetic, no model call</span></div>${group(true)}`
+          ? `<div class="decision-group"><span class="lbl">${
+              fundLabel
+            }</span></div>${group(true)}`
           : "",
       ].join("")
     : `<p class="empty">${

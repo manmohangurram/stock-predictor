@@ -10,6 +10,12 @@ belongs to the plan's own asset class.
 Found while making the fill form honest: a fund is bought with rupees at a NAV, so the form now
 asks for **Amount ₹** and **NAV** and divides, instead of asking for units the model never named.
 
+### A fund plan was filed under Stocks
+
+The decisions box tagged every plan as a stock plan, so a `plan_mf_v1` result sat under the
+**Stocks** heading. Plans now carry their own scope, and the fund heading reads *Funds* when a
+plan and a scan row share it.
+
 ### Every control is 40px on a phone
 
 The audit toolbar, the settings fields and the limits table were 28–38px tall; the back link was
