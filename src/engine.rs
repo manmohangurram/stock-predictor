@@ -96,31 +96,23 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
     Ok(report)
 }
 
-/// The headlines the model reads: the last three days, and when a holiday or a quiet weekend
-/// leaves nothing that recent, the newest day that does have articles — never nothing at all.
+/// The headlines the model reads: the last week, newest first. So today's search is preferred
+/// simply by being newest, and a holiday week falls back to whatever that week did carry.
 async fn stored_headlines(
     pool: &SqlitePool,
     instrument_id: i64,
     now: DateTime<Utc>,
 ) -> Result<Vec<Headline>> {
-    const SELECT: &str =
+    let since = (now - chrono::Duration::days(7)).to_rfc3339();
+    let rows: Vec<(i64, String, Option<String>, String, String)> = sqlx::query_as(
         "SELECT id, title, publisher, published_at, url FROM news
          WHERE instrument_id = ? AND published_at >= ?
-         ORDER BY published_at DESC LIMIT 8";
-    let since = (now - chrono::Duration::days(3)).to_rfc3339();
-    let mut rows: Vec<(i64, String, Option<String>, String, String)> =
-        sqlx::query_as(SELECT)
-            .bind(instrument_id)
-            .bind(&since)
-            .fetch_all(pool)
-            .await?;
-    if rows.is_empty() {
-        rows = sqlx::query_as(SELECT)
-            .bind(instrument_id)
-            .bind("")
-            .fetch_all(pool)
-            .await?;
-    }
+         ORDER BY published_at DESC LIMIT 8",
+    )
+    .bind(instrument_id)
+    .bind(&since)
+    .fetch_all(pool)
+    .await?;
     Ok(rows
         .into_iter()
         .enumerate()
@@ -2242,7 +2234,7 @@ mod band_tests {
     }
 
     #[tokio::test]
-    async fn a_quiet_weekend_falls_back_to_the_newest_day_with_news() {
+    async fn the_read_window_is_a_week_and_no_more() {
         let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
         sqlx::query(
             "CREATE TABLE news (id INTEGER PRIMARY KEY, instrument_id INTEGER, published_at TEXT NOT NULL,
@@ -2253,17 +2245,28 @@ mod band_tests {
         .unwrap();
         sqlx::query(
             "INSERT INTO news (instrument_id, published_at, title, publisher, url)
-             VALUES (1, '2026-11-06T00:00:00Z', 'a week ago', 'Reuters', 'https://example.test/old')",
+             VALUES (1, '2026-11-08T00:00:00Z', 'five days ago', 'Reuters', 'https://example.test/old')",
         )
         .execute(&pool)
         .await
         .unwrap();
         let now = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 11, 13, 5, 0, 0).unwrap();
 
-        // Nothing inside three days, so the newest day that has news stands in.
+        // Five days old still reads: that is the fallback a quiet week falls back to.
         let kept = stored_headlines(&pool, 1, now).await.unwrap();
         assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].title, "a week ago");
+        assert_eq!(kept[0].title, "five days ago");
+
+        sqlx::query(
+            "INSERT INTO news (instrument_id, published_at, title, publisher, url)
+             VALUES (1, '2026-11-04T00:00:00Z', 'nine days ago', 'Reuters',
+                     'https://example.test/older')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let kept = stored_headlines(&pool, 1, now).await.unwrap();
+        assert_eq!(kept.len(), 1, "nine days old is beyond the window");
     }
 
     #[test]
