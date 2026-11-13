@@ -1,3 +1,18 @@
+## v0.27.11
+
+### The add dialog put the wrong instrument in the book
+
+Found by the flow gate. The dialog filtered foreign listings — a NYSE ADR would be priced in
+dollars and read as rupees — but it did so **after** slicing to six and numbering the rows. So:
+
+- clicking the second result added the **first**;
+- if the first six hits were all foreign, the dialog said *Nothing matches that* while Indian
+  listings sat just past the slice;
+- the *"N more"* hint counted the foreign ones you cannot pick.
+
+The filter now runs first, and the slice, the row numbers and the selection all index the same
+list. Typing `wipro` offers WIPRO.NS and WIPRO.BO, and picking the second adds `.BO`.
+
 ## v0.27.10
 
 ### A fund shows its name, not its AMFI code

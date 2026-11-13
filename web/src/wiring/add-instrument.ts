@@ -14,6 +14,7 @@ export function wireAddDialog(): void {
   const box = dialog.querySelector<HTMLDivElement>("#results")!;
   let timer: number | undefined;
   let hits: Hit[] = [];
+  let local: Hit[] = [];
   let active = 0;
 
   // Six is a chooser, not a directory: it keeps the list on one screen, so no scrollbar can
@@ -28,9 +29,9 @@ export function wireAddDialog(): void {
     h.class === "mutual_fund" || h.venue === "NSE" || h.venue === "Bombay" || /\.(NS|BO)$/.test(h.code);
 
   const groups = (list: Hit[]) => {
-    const local = list.filter(indian);
-    const stock = local.filter((h) => h.class !== "mutual_fund");
-    const fund = local.filter((h) => h.class === "mutual_fund");
+    const kept = list.filter(indian);
+    const stock = kept.filter((h) => h.class !== "mutual_fund");
+    const fund = kept.filter((h) => h.class === "mutual_fund");
     return [
       { label: "Stocks", items: stock },
       { label: "Mutual funds", items: fund },
@@ -40,7 +41,9 @@ export function wireAddDialog(): void {
   const draw = () => {
     const parts: string[] = [];
     let index = 0;
-    for (const g of groups(hits.slice(0, SHOWN))) {
+    local = hits.filter(indian);
+    const offered = local.slice(0, SHOWN);
+    for (const g of groups(offered)) {
       parts.push(`<div class="dlg-group">${g.label}</div>`);
       for (const h of g.items) {
         const i = index++;
@@ -53,8 +56,8 @@ export function wireAddDialog(): void {
     }
     box.innerHTML = parts.length
       ? `${parts.join("")}${
-          hits.length > SHOWN
-            ? `<p class="dlg-more">${hits.length - SHOWN} more — keep typing to narrow it</p>`
+          local.length > SHOWN
+            ? `<p class="dlg-more">${local.length - SHOWN} more — keep typing to narrow it</p>`
             : ""
         }`
       : input.value.trim().length >= 2
@@ -70,7 +73,7 @@ export function wireAddDialog(): void {
   };
 
   const add = async () => {
-    const hit = hits[active];
+    const hit = local[active];
     if (!hit) return;
     const row = box.querySelector<HTMLElement>(`.dlg-opt[data-i="${active}"]`);
     if (row) row.textContent = `Adding ${hit.code}…`;
