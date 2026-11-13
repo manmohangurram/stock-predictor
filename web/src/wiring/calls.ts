@@ -10,6 +10,11 @@ async function openCall(id: number): Promise<void> {
   if (!cell || !row) return;
   row.hidden = false;
   button?.setAttribute("aria-expanded", "true");
+  // The control says what the next click does, not what it did: Show, then Hide.
+  if (button) {
+    button.textContent = "Hide";
+    button.setAttribute("aria-label", "Hide the call");
+  }
   cell.innerHTML = `<p class="empty">Reading the stored exchange…</p>`;
   try {
     cell.innerHTML = renderExchangeDetail(await api.callDetail(id));
@@ -115,6 +120,8 @@ export function wireCallRows(reload: () => void = () => window.location.reload()
       if (!row.hidden) {
         row.hidden = true;
         button.setAttribute("aria-expanded", "false");
+        button.textContent = "Show";
+        button.setAttribute("aria-label", "Show the call");
         openCalls.delete(id);
         return;
       }

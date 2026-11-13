@@ -1,3 +1,36 @@
+## v0.27.3
+
+### Hotfix: a Friday trade plan was refused for naming Tuesday
+
+A live `plan_trade_v1` call was refused whole — `plan_refused` — on a name with a clean, dated
+catalyst. The expiry it named, Tuesday 17 Nov's close, is the **second** session after that Friday.
+The validator added three *calendar* days to the clock instead, and three days from Friday evening
+is Monday, so Tuesday read as "more than 3 sessions out".
+
+- The deadline is now the close of the third **trading** day, weekends skipped. Exchange holidays
+  are not modelled, which only ever makes it stricter, never looser.
+- `plan_trade_v1` carried two expiry rules that could not both hold — *"tomorrow's close at the
+  latest"* and *"never more than three sessions"* — so the model was guessing which one the app
+  meant. It is one rule now, spelled with the stamp format.
+
+### Hotfix: the audit printed `plan_refused` instead of the reason
+
+A refused plan keeps its sentence in `reasons`, not `detail`, and `blocked_reason` only looked for
+`detail` — so the call viewer printed the bare key. It reads *"BONFIG.NS: expiry is more than 3
+sessions out — that is not this book's trade"* now.
+
+### Hotfix: a refused plan said "awaiting you"
+
+The audit row forced every call that touched a plan to `PLAN`, so a plan refused whole wore the
+badge **plan · awaiting you** — the one thing it was not. It says **plan · refused**, and the
+reason is behind View.
+
+### The call viewer says what the next click does
+
+The audit's last column was **Open**, with a button that read "Open" whether the exchange was
+showing or not. It reads **Show** until you open it and **Hide** once it is open, so the control
+says what it will do rather than what it did.
+
 ## v0.27.2
 
 ### Hotfix: a refused proposal was offered as a decision

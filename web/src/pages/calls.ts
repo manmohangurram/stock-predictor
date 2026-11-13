@@ -24,9 +24,15 @@ function reviewBadge(r: CallRow): string {
     return pill("failed", "failed", escapeHtml(r.error));
   }
   if (r.decision_action === "BLOCKED") {
-    // A refused plan is the model's answer, recorded with its reason in View.
+    // A refused plan is the model's answer, recorded with its reason in View. It is not a plan
+    // awaiting you: nothing there can be approved.
     // The reason is long; it lives in View, so the row stays one line.
-    return pill("todo", "blocked", escapeHtml(r.decision_reason ?? ""));
+    const refusedPlan = (r.plan_legs ?? 0) > 0;
+    return pill(
+      "todo",
+      refusedPlan ? "plan · refused" : "blocked",
+      escapeHtml(r.decision_reason ?? ""),
+    );
   }
   if (r.decision_action === "PLAN") {
     const state = r.decision_status ?? "pending";
@@ -243,7 +249,7 @@ export function renderCalls(
   <td class="review-td"><div class="review-cell">${reviewBadge(r)}</div></td>
   <td class="right">
     <button class="btn ghost view-call" type="button" data-id="${r.id}"
-            aria-expanded="false" aria-controls="call-${r.id}" aria-label="Open the call">Open</button>
+            aria-expanded="false" aria-controls="call-${r.id}" aria-label="Show the call">Show</button>
   </td>
 </tr>
 <tr class="call-detail" id="call-${r.id}" hidden><td colspan="6"></td></tr>`;
@@ -263,7 +269,7 @@ export function renderCalls(
         <th scope="col">Time</th><th scope="col" class="hide-sm">Prompt type</th>
         <th scope="col" class="hide-sm">Call</th>
         <th scope="col">Holding</th><th scope="col">Review</th>
-        <th scope="col" class="right"><span class="hide-sm">Open</span></th>
+        <th scope="col" class="right"><span class="hide-sm">View</span></th>
       </tr></thead>
       <tbody>${
         body ||

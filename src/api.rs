@@ -1409,7 +1409,10 @@ async fn calls(
                 ts: r.ts,
                 endpoint: r.endpoint,
                 // A book call decided several things; the row says so instead of naming one leg.
-                decision_action: if r.plan_legs > 0 {
+                // A refused plan keeps BLOCKED: it has no moves to approve, so calling it a plan
+                // awaiting you is the one thing it is not.
+                decision_action: if r.plan_legs > 0 && r.decision_action.as_deref() != Some("BLOCKED")
+                {
                     Some("PLAN".to_string())
                 } else {
                     r.decision_action.clone()

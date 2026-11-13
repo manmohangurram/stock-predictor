@@ -983,6 +983,40 @@ describe("audit pager", () => {
 });
 
 describe("audit", () => {
+  test("a refused plan is not a plan awaiting you", async () => {
+    const { renderCalls } = await import("./pages/calls");
+    const row: CallRow = {
+      id: 8,
+      ts: "2026-11-13T13:30:00Z",
+      endpoint: "chat",
+      purpose: "trade plan",
+      round: 1,
+      prompt_tokens: 3076,
+      completion_tokens: 311,
+      validator_verdict: "refused",
+      error: null,
+      trigger: "clock",
+      decision_id: 9,
+      decision_status: "pending",
+      decision_action: "BLOCKED",
+      decision_reason: "BONFIG.NS: expiry is more than 3 sessions out",
+      instrument_name: null,
+      instrument_symbol: null,
+      // It is a plan row, but it was refused whole: there are no legs to approve.
+      plan_legs: 1,
+      model: "plan_trade_v1",
+    };
+    const list = renderCalls(
+      { prompts: [], now: "2026-11-13T14:00:00Z" },
+      0,
+      [row],
+      { prompts: [], calls: [], models: [] },
+      {},
+    );
+    expect(list).toContain("plan · refused");
+    expect(list).not.toContain("awaiting you");
+  });
+
   test("a blocked call keeps the row short and explains itself inside View", async () => {
     const { renderCalls, renderExchangeDetail } = await import("./pages/calls");
     const row: CallRow = {
