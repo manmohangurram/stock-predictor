@@ -1245,18 +1245,25 @@ describe("audit", () => {
 
 describe("a plan", () => {
   const leg = (over: Partial<SignalRow>): SignalRow => ({ ...signal(), ...over });
-  test("reads as one decision with its legs and the arithmetic that makes it legal", async () => {
+  test("reads as one docket with the purse arithmetic that makes it legal", async () => {
     const { renderPlan } = await import("./pages/ledger");
     const html = renderPlan([
-      leg({ id: 2, action: "SELL", name: "Infosys", qty: 24, entry: 1146.3, rationale: "target reached" }),
+      leg({ id: 2, action: "SELL", name: "Infosys", qty: 24, entry: 1146.3 }),
       leg({ id: 3, action: "BUY", name: "HDFC Bank", symbol: "HDFCBANK.NS", qty: 15, entry: 793.65 }),
     ]);
     expect(html).toContain("STOCK PLAN");
     expect(html).toContain("2 moves");
     expect(html).toContain("Infosys");
     expect(html).toContain("HDFC Bank");
-    // 24 × 1146.30 = 27,511.20; 15 × 793.65 = 11,904.75; 15,606.45 left.
-    expect(html).toContain("15,606.45 is left in the purse");
+    // The same docket the call viewer draws, not a second design for the same plan.
+    expect((html.match(/class="docket-move"/g) ?? []).length).toBe(2);
+    // 24 × 1146.30 = 27,511.20; 15 × 793.65 = 11,904.75; a sale bigger than the buy.
+    expect(html).toContain("From the sale");
+    expect(html).toContain("27,511.20");
+    expect(html).toContain("To buy");
+    expect(html).toContain("11,904.75");
+    expect(html).toContain("Back to the purse");
+    expect(html).toContain("15,606.45");
     // One approve control for the whole plan, keyed to the first leg.
     expect((html.match(/data-approve=/g) ?? []).length).toBe(1);
     expect(html).toContain('data-approve="2"');
@@ -1265,6 +1272,25 @@ describe("a plan", () => {
     expect(html).toContain('name="qty-3"');
     expect(html).toContain('name="price-3"');
     expect(html).toContain("Post fills");
+  });
+
+  test("a fund leg says it is sized on approval rather than printing an empty line", async () => {
+    const { renderPlan } = await import("./pages/ledger");
+    // A fund plan's rupee amount is not stored on the signal, so there is no figure to print.
+    const html = renderPlan([
+      leg({
+        id: 5,
+        action: "BUY",
+        name: "Axis ELSS",
+        class: "mutual_fund",
+        plan_scope: "fund",
+        qty: null,
+        entry: null,
+      }),
+    ]);
+    expect(html).toContain("FUND PLAN");
+    expect((html.match(/class="docket-move"/g) ?? []).length).toBe(1);
+    expect(html).toContain("size on approval");
   });
 });
 

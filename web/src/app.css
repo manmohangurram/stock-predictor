@@ -679,7 +679,9 @@
     .decisions .conf-word { display: grid; gap: 0; }
   }
   .decisions .conf-word { white-space: nowrap; }
-  .blotter .empty { padding: var(--space-4) var(--space-3); }
+  /* An empty state is a sentence, not a figure: it wraps instead of widening the table past
+     the page. The blotter's nowrap made "Nothing archived yet…" a 490px column on a phone. */
+  .blotter .empty { padding: var(--space-4) var(--space-3); white-space: normal; }
 }
 
 @layer components {
@@ -933,12 +935,8 @@
 }
 
 @layer components {
-  .plan-leg { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap;
-    padding: 3px 0; font-size: var(--text-sm); }
-  .plan-leg b { font-family: var(--font-form); font-weight: 500; }
-  .plan-leg .sub { color: var(--ink-muted); }
-  .plan-why { margin: 0 0 var(--space-1) calc(46px + var(--space-2)); font-size: var(--text-xs);
-    color: var(--ink-muted); }
+  /* The plan is a docket everywhere: one line per move, then the purse. The old leg row and its
+     per-move why are gone — the card keeps only the plan's own paragraph. */
   .plan-card { border-left: 2px solid var(--stamp-ink); padding-left: var(--space-3); }
 }
 
@@ -1050,10 +1048,6 @@
 }
 
 @layer components {
-  
-  .plan-legs .plan-leg { border-top: 1px solid var(--rule-subtle); }
-  .plan-legs .plan-leg:first-child { border-top: 0; }
-  .plan-legs .plan-leg .sub { margin-left: auto; }
 }
 
 @layer components {

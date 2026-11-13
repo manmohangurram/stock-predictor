@@ -2,7 +2,7 @@ import type { Dashboard, Mode } from "../api";
 import { renderApp, renderHead } from "../components/shell";
 import { renderDecisionActions } from "../components/decision-actions";
 import { decisionFilterTabs, isDecisionFilter, type DecisionFilter } from "../components/decision-filter";
-import { escapeHtml, histDate, money, units } from "../format";
+import { day, escapeHtml, histDate, money, units } from "../format";
 import { renderConfidence } from "../components/confidence";
 import { actionStamp, stamp, statusPill, toneOf } from "../components/stamp";
 
@@ -108,35 +108,62 @@ const subtotal = (label: string, invested: number, value: number): string => {
  */
 export function renderPlan(legs: Dashboard["signals"]): string {
   const first = legs[0];
-  const sells = legs.filter((l) => l.action === "SELL");
-  const buys = legs.filter((l) => l.action === "BUY");
-  const proceeds = sells.reduce((n, l) => n + (l.qty ?? 0) * (l.entry ?? 0), 0);
-  const cost = buys.reduce((n, l) => n + (l.qty ?? 0) * (l.entry ?? 0), 0);
-  const left = proceeds - cost;
-  const leg = (l: Dashboard["signals"][number]) => `<div class="plan-leg">
-    ${actionStamp(l.action)}
-    <b>${escapeHtml(l.name || l.symbol)}</b>
-    <span class="sub">${escapeHtml(l.symbol)}</span>
-    <span class="num">${l.entry === null ? "" : money(l.entry)}</span>
-    <span class="lbl">${l.qty === null || l.qty === 0 ? "size on approval" : `${units(l.qty)} units`}</span>
-  </div>${l.rationale ? `<p class="plan-why">${escapeHtml(l.rationale)}</p>` : ""}`;
-  const arithmetic =
-    sells.length && buys.length
-      ? `<p class="decision-note">${money(proceeds)} from the sale${sells.length > 1 ? "s" : ""} covers ${money(cost)}, and ${money(Math.abs(left))} is ${left >= 0 ? "left in" : "short of"} the purse.</p>`
-      : "";
-  const status =
-    first.status === "pending"
+  const isFund = first.plan_scope === "fund";
+  const value = (l: Dashboard["signals"][number]) => (l.qty ?? 0) * (l.entry ?? 0);
+  const freed = legs.filter((l) => l.action === "SELL").reduce((n, l) => n + value(l), 0);
+  const spent = legs.filter((l) => l.action === "BUY").reduce((n, l) => n + value(l), 0);
+
+  // The same docket the call viewer draws, so one plan looks like one plan wherever it is read.
+  const figure = (label: string, v: string) =>
+    `<span class="docket-fig"><span class="lbl">${label}</span><b class="num">${v}</b></span>`;
+  const leg = (l: Dashboard["signals"][number]) => {
+    const buy = l.action === "BUY";
+    // A fund move is sized in rupees and never stored with a quantity, so it has no price, no
+    // stop and no target to print — a fund exits at a NAV, not at a stop.
+    const sized = l.qty !== null && l.qty > 0;
+    const figs = !sized
       ? ""
-      : statusPill(first.status);
+      : [
+          figure("Qty", units(l.qty!)),
+          l.entry === null ? "" : figure("At", money(l.entry)),
+          buy || l.entry === null ? "" : figure("Gives", money(value(l))),
+          buy && l.stop !== null ? figure("Stop", money(l.stop)) : "",
+          buy && l.target !== null ? figure("Target", money(l.target)) : "",
+          buy && l.valid_until ? figure("Till", day(l.valid_until)) : "",
+        ].join("");
+    return `<div class="docket-move">
+      ${actionStamp(l.action)}
+      <span class="docket-sym">${escapeHtml(l.name || l.symbol)}</span>
+      <span class="docket-figs">${
+        figs || `<span class="lbl">size on approval</span>`
+      }</span>
+    </div>`;
+  };
+
+  const row = (label: string, v: number, strong = false) =>
+    `<div class="docket-row${strong ? " total" : ""}"><span class="lbl">${label}</span>
+      <span class="num">${money(v)}</span></div>`;
+  const spread = Math.abs(spent - freed) < 0.005 ? "" : spent > freed
+    ? row("Also from the purse", spent - freed, true)
+    : row("Back to the purse", freed - spent, true);
+  const purse =
+    freed > 0 && spent > 0
+      ? `<div class="docket-purse">${row("From the sale", freed)}${row("To buy", spent)}${spread}</div>`
+      : spent > 0
+        ? `<div class="docket-purse">${row("Cost", spent, true)}</div>`
+        : freed > 0
+          ? `<div class="docket-purse">${row("Frees", freed, true)}</div>`
+          : "";
+
+  const status = first.status === "pending" ? "" : statusPill(first.status);
   const actions = first.status === "pending" ? planActions(first, legs) : "";
   return `<div class="feed-row decision-feed plan-card">
     <div class="decision-main">
-      <div>${stamp("estimate", first.plan_scope === "fund" ? "FUND PLAN" : "STOCK PLAN")}
-        <b>${legs.length} moves</b>
+      <div>${stamp("estimate", isFund ? "FUND PLAN" : "STOCK PLAN")}
+        <b>${legs.length} move${legs.length === 1 ? "" : "s"}</b>
         ${status}
         <span class="sub">${histDate(first.created_at)}</span></div>
-      ${legs.map(leg).join("")}
-      ${arithmetic}
+      <div class="docket">${legs.map(leg).join("")}${purse}</div>
       ${first.plan_rationale ? `<p class="decision-prose">${escapeHtml(first.plan_rationale)}</p>` : ""}
       ${actions}
     </div>

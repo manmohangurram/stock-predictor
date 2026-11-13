@@ -1,3 +1,25 @@
+## v0.27.8
+
+### One plan, one design
+
+The audit drawer had the docket; the **ledger's** decisions box — where you actually approve the
+thing — still drew the old plan card. Same plan, two looks. The ledger now draws the same docket:
+a line per move, then the purse, then one paragraph, then the approve and reject controls.
+
+- A fund leg, which carries no stored quantity, says **size on approval** rather than printing a
+  quantity it does not have, and no longer shows a price stop a fund cannot have.
+- A sale that exactly covers the buy no longer prints **"Also from the purse 0.00"**: an exact
+  cover is not a figure worth a row.
+
+### The Archived page's empty state was 490px wide
+
+`.blotter td` is `nowrap`, so the sentence *"Nothing archived yet…"* set that column's floor and
+the table ran off a 390px page. An empty state is prose, not a figure; it wraps now.
+
+Swept at a real 390px viewport — Holdings, Short-term, Archived, Audit, a call drawer, and both
+Settings tabs: no page overflow, no element past the edge, no table scrolling sideways. Settings'
+tab rail scrolls by design.
+
 ## v0.27.7
 
 ### The docket covers the two shapes it was missing

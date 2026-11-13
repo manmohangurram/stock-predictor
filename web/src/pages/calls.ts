@@ -344,11 +344,16 @@ function decisionCard(reply: string, when: string): string {
     const purse =
       freed > 0 && spent > 0
         ? `<div class="docket-purse">${row("From the sale", freed)}${row("To buy", spent)}
-            ${row(
-              spent >= freed ? "Also from the purse" : "Back to the purse",
-              Math.abs(spent - freed),
-              true,
-            )}</div>`
+            ${
+              // An exact cover is not a figure worth a row of its own.
+              Math.abs(spent - freed) < 0.005
+                ? ""
+                : row(
+                    spent > freed ? "Also from the purse" : "Back to the purse",
+                    Math.abs(spent - freed),
+                    true,
+                  )
+            }</div>`
         : spent > 0
           ? `<div class="docket-purse">${row("Cost", spent, true)}</div>`
           : freed > 0
