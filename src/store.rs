@@ -48,6 +48,16 @@ pub async fn bars(pool: &SqlitePool, instrument_id: i64, bars: &[Bar]) -> Result
     Ok(())
 }
 
+/// Headlines older than `days`. The prompt reads a recent window; the rest is dead weight.
+pub async fn prune_news(pool: &SqlitePool, days: i64) -> Result<u64> {
+    let cutoff = (chrono::Utc::now() - chrono::Duration::days(days)).to_rfc3339();
+    let done = sqlx::query("DELETE FROM news WHERE published_at < ?")
+        .bind(cutoff)
+        .execute(pool)
+        .await?;
+    Ok(done.rows_affected())
+}
+
 /// Headlines are stored once per url. The body is never fetched here — only on escalation.
 pub async fn headlines(pool: &SqlitePool, instrument_id: i64, news: &[Headline]) -> Result<()> {
     let mut tx = pool.begin().await?;

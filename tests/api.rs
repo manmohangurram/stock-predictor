@@ -1642,6 +1642,32 @@ async fn the_audit_is_pruned_at_three_months() {
     assert_eq!(left[0].0, recent);
 }
 
+/// Headlines keep the same three months as the audit of the calls that read them.
+#[tokio::test]
+async fn headlines_older_than_three_months_are_pruned() {
+    let (_d, _router, pool) = setup().await;
+    let old = (chrono::Utc::now() - chrono::Duration::days(200)).to_rfc3339();
+    let recent = (chrono::Utc::now() - chrono::Duration::days(5)).to_rfc3339();
+    for (i, at) in [&old, &recent].iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO news (instrument_id, published_at, title, url)
+             SELECT id, ?, 'a headline', ? FROM instruments WHERE symbol = 'INFY' LIMIT 1",
+        )
+        .bind(at)
+        .bind(format!("https://example.test/{i}"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let deleted = stock_predictor::store::prune_news(&pool, 90).await.unwrap();
+    assert_eq!(deleted, 1);
+    let left: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM news")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(left.0, 1);
+}
+
 /// A fund scan proposes a fund, not a size: it is stored with qty 0 and the NAV. Approving it
 /// must post whatever the owner actually got, out of the fund purse.
 #[tokio::test]

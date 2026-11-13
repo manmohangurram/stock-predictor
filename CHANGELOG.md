@@ -29,6 +29,16 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### Headlines keep three months too
+
+`news` had the same shape as the audit: `INSERT OR IGNORE` by url, never pruned. It is swept with
+the same 90-day cutoff, in the same tick as `api_calls`.
+
+Worth knowing what that sweep is *not* bounding: every active instrument's news is fetched on every
+poll tick — held or merely watched, ~28 requests per name per session day at the default cadence. A
+scheme-code fund is skipped entirely; a fund added by a Yahoo symbol goes through the stock path,
+news included, because that is the "add the Yahoo code to get advice" case.
+
 ### Refresh reads; it does not rebuild an archived book
 
 Refresh always fetched **and stored**, so pressing it on an archived instrument re-created the

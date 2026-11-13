@@ -407,6 +407,11 @@ async fn main() -> Result<()> {
                 Ok(n) => tracing::info!(deleted = n, "audit rows older than {AUDIT_KEEP_DAYS} days"),
                 Err(e) => tracing::warn!(error = %e, "audit prune failed"),
             }
+            match stock_predictor::store::prune_news(&poll_pool, AUDIT_KEEP_DAYS).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!(deleted = n, "headlines older than {AUDIT_KEEP_DAYS} days"),
+                Err(e) => tracing::warn!(error = %e, "headline prune failed"),
+            }
 
             // Best-fund discovery: once a day, rank the curated list by trailing return.
                 match stock_predictor::fundscan::run(&poll_pool, &runtime, Utc::now()).await {
