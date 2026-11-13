@@ -96,22 +96,31 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
     Ok(report)
 }
 
-/// The stored headlines the model reads: the last three days, newest first.
+/// The headlines the model reads: the last three days, and when a holiday or a quiet weekend
+/// leaves nothing that recent, the newest day that does have articles — never nothing at all.
 async fn stored_headlines(
     pool: &SqlitePool,
     instrument_id: i64,
     now: DateTime<Utc>,
 ) -> Result<Vec<Headline>> {
-    let since = (now - chrono::Duration::days(3)).to_rfc3339();
-    let rows: Vec<(i64, String, Option<String>, String, String)> = sqlx::query_as(
+    const SELECT: &str =
         "SELECT id, title, publisher, published_at, url FROM news
          WHERE instrument_id = ? AND published_at >= ?
-         ORDER BY published_at DESC LIMIT 8",
-    )
-    .bind(instrument_id)
-    .bind(since)
-    .fetch_all(pool)
-    .await?;
+         ORDER BY published_at DESC LIMIT 8";
+    let since = (now - chrono::Duration::days(3)).to_rfc3339();
+    let mut rows: Vec<(i64, String, Option<String>, String, String)> =
+        sqlx::query_as(SELECT)
+            .bind(instrument_id)
+            .bind(&since)
+            .fetch_all(pool)
+            .await?;
+    if rows.is_empty() {
+        rows = sqlx::query_as(SELECT)
+            .bind(instrument_id)
+            .bind("")
+            .fetch_all(pool)
+            .await?;
+    }
     Ok(rows
         .into_iter()
         .enumerate()
@@ -2230,6 +2239,31 @@ mod band_tests {
             currency: "INR".into(),
             active: true,
         }
+    }
+
+    #[tokio::test]
+    async fn a_quiet_weekend_falls_back_to_the_newest_day_with_news() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::query(
+            "CREATE TABLE news (id INTEGER PRIMARY KEY, instrument_id INTEGER, published_at TEXT NOT NULL,
+                title TEXT NOT NULL, publisher TEXT, url TEXT NOT NULL UNIQUE, body TEXT, score REAL)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO news (instrument_id, published_at, title, publisher, url)
+             VALUES (1, '2026-11-06T00:00:00Z', 'a week ago', 'Reuters', 'https://example.test/old')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let now = chrono::TimeZone::with_ymd_and_hms(&Utc, 2026, 11, 13, 5, 0, 0).unwrap();
+
+        // Nothing inside three days, so the newest day that has news stands in.
+        let kept = stored_headlines(&pool, 1, now).await.unwrap();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].title, "a week ago");
     }
 
     #[test]

@@ -35,6 +35,12 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### …and falls back rather than saying nothing
+
+Today-only means a holiday or a quiet weekend leaves the prompt with no headlines at all. When
+nothing is inside the three-day window, the newest day that *does* have articles stands in — the
+plan reads Friday's news on a Monday morning instead of nothing.
+
 ### News is English and from today only
 
 Every search that feeds a prompt now carries `lang:en` and an `after:` bound of yesterday, and what
