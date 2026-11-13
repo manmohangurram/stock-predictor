@@ -81,11 +81,22 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 | ⌘K / Ctrl-K, or **Add instrument…** | Dialog opens, search field focused |
 | Type `wipro` | Results appear; grouped **Stocks** / **Mutual funds** |
 | Result list | **Only NSE/BSE and funds** — a NYSE ADR must not appear (it would be priced in dollars and read as rupees) |
+| Pick the second of two results | It adds the code you clicked, not the first — the list is filtered before it is sliced and numbered |
 | Click a result | Navigates to `/i/CODE`; chart, *Record fill* form, archive button |
 | Escape (`press_key`) | Closes the dialog |
 | Server: `POST /api/instruments {"code":"WIT"}` | **400** *not an Indian listing — add an NSE (.NS) or BSE (.BO) symbol…* |
 
-## 5. Instrument page (`/i/INFY.NS`)
+## 5. Fund decisions (`kind=fundscan`, `plan_mf_v1`)
+
+| Control | Must do |
+|---|---|
+| Ledger decisions box | A fund plan sits under **Funds**, never **Stocks** |
+| Plan docket | `Amount 2,250.00` per move, never `Qty`/`Stop`/`Target` — a fund exits at a NAV |
+| Approve a fund scan row | Fields are **Amount ₹** and **NAV** (NAV prefilled), *Proposed* reads *size on approval · NAV …* |
+| Post the fill | Units are `amount ÷ NAV`, floored to 3 decimals, and the money leaves the **fund** purse |
+| Approve a fund plan with an empty stock purse | It posts — the check reads the fund purse, not the main one |
+
+## 6. Instrument page (`/i/INFY.NS`)
 
 | Control | Must do |
 |---|---|
@@ -100,7 +111,7 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 | Decision tabs | `href` carries `?decisions=pending|approved|rejected|all` |
 | Headline links | Open the publisher in a new tab |
 
-## 6. Archived (`/archived`)
+## 7. Archived (`/archived`)
 
 | Control | Must do |
 |---|---|
@@ -110,7 +121,7 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 | Restore | Buttons become **Archive** again; the instrument is back in the book |
 | Empty state | *Nothing archived yet. Archive an instrument from its page…* |
 
-## 7. Audit (`/calls`)
+## 8. Audit (`/calls`)
 
 | Control | Must do |
 |---|---|
@@ -125,7 +136,7 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 | Copy button | One per raw block, top-right; copies the stored JSON byte for byte |
 | Page size | 25 / 50 / 100 per page, reflected in the URL |
 
-## 8. Settings (`/settings/{money,risk,model,notifications,cadence,network}`)
+## 9. Settings (`/settings/{money,risk,model,notifications,cadence,network}`)
 
 | Control | Must do |
 |---|---|
@@ -140,7 +151,7 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 | Save | Writes, says *Saved*, and the value survives a reload |
 | Discard | Reverts the field to the stored value without writing |
 
-## 9. Mobile (390 × 844)
+## 10. Mobile (390 × 844)
 
 | Page | Must do |
 |---|---|

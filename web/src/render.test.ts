@@ -342,6 +342,33 @@ describe("fills against the market", () => {
   });
 });
 
+describe("a fund's instrument page", () => {
+  const fund = {
+    instrument: { id: 5, symbol: "AXISELSS", class: "mutual_fund", name: "Axis ELSS Tax Saver",
+      currency: "INR", timing_note: "NAV at today's cutoff", target_profit_pct: null },
+    bars: [], indicators: null, checks: [], position: null, headlines: [],
+  };
+  const detail = { instrument: fund.instrument, headlines: [], signals: [] };
+
+  test("reads NAV, and keeps the stock machinery off the page", async () => {
+    const { renderInstrument } = await import("./pages/instrument");
+    const html = renderInstrument(fund as never, detail as never, []);
+    expect(html).toContain(">NAV<");
+    expect(html).not.toContain(">Price<");
+    expect(html).not.toContain("What the rules see");
+    expect(html).not.toContain(">Indicators<");
+    expect(html).toContain("A fund has no intraday exit");
+  });
+
+  test("records a fill in units at a NAV, long-term only", async () => {
+    const { renderTradeForm } = await import("./pages/instrument");
+    const html = renderTradeForm("AXISELSS", null, new Date(), "mutual_fund");
+    expect(html).toContain("Units");
+    expect(html).toContain(">NAV<");
+    expect(html).not.toContain("Short-term</option>");
+  });
+});
+
 describe("two pots in the UI", () => {
   test("mode tabs mark the current pot and link to the other", () => {
     const html = renderModeTabs("trade");

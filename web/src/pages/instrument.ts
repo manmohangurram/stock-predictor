@@ -109,12 +109,13 @@ export function renderTradeForm(
     ${option("buy", "Buy", true)}${option("sell", "Sell", false)}
   </div>
   <div class="fill-grid">
-    <label class="field"><span class="lbl">Quantity</span>
+    <label class="field"><span class="lbl">${klass === "mutual_fund" ? "Units" : "Quantity"}</span>
       <input name="qty" type="number" min="0" step="any" required
-             placeholder="${held === null ? "Qty" : `held ${units(held)}`}"
+             placeholder="${held === null ? (klass === "mutual_fund" ? "Units" : "Qty") : `held ${units(held)}`}"
              data-held="${held ?? ""}" /></label>
-    <label class="field"><span class="lbl">Price</span>
-      <input name="price" type="number" min="0" step="any" required placeholder="Price" /></label>
+    <label class="field"><span class="lbl">${klass === "mutual_fund" ? "NAV" : "Price"}</span>
+      <input name="price" type="number" min="0" step="any" required
+             placeholder="${klass === "mutual_fund" ? "NAV" : "Price"}" /></label>
     <label class="field"><span class="lbl">Date</span>
       <input name="at" type="date" value="${today(now)}" max="${today(now)}" /></label>
     <label class="field"><span class="lbl">Pot</span>
@@ -348,7 +349,10 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
     <div class="inst-grid">
       <div class="inst-main">
         <section class="card chart-card">
-          <div class="card-head"><h2>Price</h2><span class="sub">${a.bars.length} sessions · daily close</span></div>
+          <div class="card-head"><h2>${klass === "mutual_fund" ? "NAV" : "Price"}</h2>
+            <span class="sub">${a.bars.length} sessions · daily close${
+              klass === "mutual_fund" ? " · units are allotted at NAV" : ""
+            }</span></div>
           ${chart(a)}
         </section>
         <section class="card">
@@ -401,10 +405,14 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
           </form>
           <p class="help">Blank uses the pot's minimum; the band's maximum always wins.</p>
         </section>
-        <section class="card">
+        ${
+          klass === "mutual_fund"
+            ? ""
+            : `<section class="card">
           <div class="card-head"><h2>What the rules see</h2></div>
           ${rules}
-        </section>
+        </section>`
+        }
         <section class="card">
           <div class="card-head"><h2>Manage</h2></div>
           <button class="btn ghost" type="button" id="refresh-instrument"
@@ -430,10 +438,14 @@ export function renderInstrument(a: Analysis, d: InstrumentDetail, list: Trade[]
           </p>`
           }
         </section>
-        <section class="card">
+        ${
+          facts.length && klass !== "mutual_fund"
+            ? `<section class="card">
           <div class="card-head"><h2>Indicators</h2></div>
           <div class="facts">${facts.map(([k, v]) => `<div class="pair"><span>${k}</span><span class="num">${v}</span></div>`).join("")}</div>
-        </section>
+        </section>`
+            : ""
+        }
       </aside>
     </div>`,
   );

@@ -1616,6 +1616,54 @@ async fn the_three_monthly_purses_do_not_share_money() {
     );
 }
 
+/// A fund scan proposes a fund, not a size: it is stored with qty 0 and the NAV. Approving it
+/// must post whatever the owner actually got, out of the fund purse.
+#[tokio::test]
+async fn a_fund_scan_row_is_approved_with_units_and_nav() {
+    let (_d, router, pool) = setup().await;
+    sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency)
+                 VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    send(
+        &router,
+        "PUT",
+        "/api/settings",
+        json!({"budget": 0.0, "mf_budget": 5_000.0}),
+    )
+    .await;
+    let row: (i64,) = sqlx::query_as(
+        "INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status)
+         SELECT id, 'BUY', 0.0, 74.05, '2030-01-01T00:00:00Z', '{\"source\":\"mfapi\"}',
+                '2026-11-13T04:40:00Z', 'long', 'fundscan', 'pending'
+         FROM instruments WHERE symbol = 'AXISELSS' RETURNING id",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // 1,480.93 rupees at 74.05 is 20 units.
+    let (s, v) = send(
+        &router,
+        "POST",
+        &format!("/api/signals/{}/approve", row.0),
+        json!({"qty": 20.0, "price": 74.05}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{v}");
+
+    let held: (f64,) = sqlx::query_as(
+        "SELECT p.qty FROM positions p JOIN instruments i ON i.id = p.instrument_id
+         WHERE i.symbol = 'AXISELSS'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(held.0, 20.0);
+}
+
 /// A fund plan spends the fund purse, and an approval must look there — the stock purse being
 /// empty is not the fund's business.
 #[tokio::test]

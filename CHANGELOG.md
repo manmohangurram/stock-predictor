@@ -29,6 +29,14 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### A fund's page is a fund's page
+
+The instrument page was built for a stock: the NAV chart was headed **Price**, the sidebar carried
+*What the rules see* (RSI, SMA200, ATR — computed on a NAV series that no fund decision consults)
+and *Indicators*, and the fill form asked for a **Price**. A fund now shows **NAV**, keeps the
+stock rule-check and indicators off the page, and records a fill in **units at a NAV**, long-term
+only.
+
 ### Every control is 40px on a phone
 
 The audit toolbar, the settings fields and the limits table were 28–38px tall; the back link was

@@ -1,5 +1,8 @@
 import { api } from "../api";
 
+/** Units round down to 3 decimals, the same floor the ledger applies when it costs a buy. */
+const floorUnits = (n: number): number => Math.floor(n * 1000) / 1000;
+
 /// Approve posts the fill you typed; reject records a reason.
 export function wireDecisionActions(reload: () => Promise<void>): void {
   // Both the ledger and the instrument page render the same actions, so this works on either.
@@ -51,14 +54,14 @@ export function wireDecisionActions(reload: () => Promise<void>): void {
               // A fund is bought with rupees at a NAV; the book stores units, so divide.
               const amount = read("amount");
               const price = read("price");
-              const units = Number.isFinite(amount) && amount > 0 && price > 0 ? amount / price : read("qty");
+              const units = amount > 0 && price > 0 ? floorUnits(amount / price) : read("qty");
               return { id: Number(leg), qty: units, price };
             })
           : undefined;
         const price = Number(field(String(id), "price")?.value);
         const amount = Number(field(String(id), "amount")?.value);
         const qty =
-          amount > 0 && price > 0 ? amount / price : Number(field(String(id), "qty")?.value);
+          amount > 0 && price > 0 ? floorUnits(amount / price) : Number(field(String(id), "qty")?.value);
         await api.approveSignal(id, {
           qty: fills ? undefined : qty,
           price: fills ? undefined : price,
