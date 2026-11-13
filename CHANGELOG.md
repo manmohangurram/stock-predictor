@@ -29,6 +29,13 @@ quantity the scan never proposed (`0 units`) and left you to work out the units 
 Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
 divided on submit.
 
+### Two money writes were not transactions
+
+`POST /api/positions` and `PATCH /api/positions/{id}` moved the units and the cash as separate
+statements. A process killed between them left a holding with money that never left the purse —
+against the app's own rule that every money write is one transaction. Both run in one now, and the
+sale posts to the purse its own instrument class belongs to instead of always the stock purse.
+
 ### A fund added by hand gets its chart
 
 Only the curated scan list ever fetched a NAV series, so a fund added by AMFI code had no chart

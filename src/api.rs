@@ -1526,6 +1526,8 @@ async fn post_position(
         return Err(ApiError::BadRequest("does not fit the budget".into()));
     }
 
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut tx = st.pool.begin().await?;
     sqlx::query(
         "INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, stop, target, state)
          VALUES (?, ?, ?, ?, ?, ?, 'open')",
@@ -1533,21 +1535,24 @@ async fn post_position(
     .bind(id)
     .bind(body.qty)
     .bind(body.avg_cost)
-    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(&now)
     .bind(body.stop)
     .bind(body.target)
-    .execute(&st.pool)
+    .execute(&mut *tx)
     .await?;
-    budget::record(
-        &st.pool,
+    budget::record_on(
+        &mut tx,
         NewCashEntry {
             kind: CashKind::Buy,
             amount: -cost,
             reference: format!("buy {} @ {}", body.symbol, body.avg_cost),
             bucket: None,
         },
+        &now,
+        crate::models::Mode::Long,
     )
     .await?;
+    tx.commit().await?;
     let row = load_positions(&st.pool, crate::models::Mode::Long)
         .await?
         .into_iter()
@@ -1564,6 +1569,24 @@ pub struct PatchPosition {
     pub state: Option<String>,
 }
 
+/// The purse a position's money belongs to, read from its instrument's class.
+async fn instrument_bucket(
+    conn: &mut sqlx::SqliteConnection,
+    position_id: i64,
+) -> Result<Option<String>, ApiError> {
+    let class: Option<(String,)> = sqlx::query_as(
+        "SELECT i.class FROM positions p JOIN instruments i ON i.id = p.instrument_id
+         WHERE p.id = ?",
+    )
+    .bind(position_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    Ok(class
+        .and_then(|(c,)| AssetClass::parse(&c).ok())
+        .and_then(crate::rules::budget::bucket_for)
+        .map(str::to_string))
+}
+
 async fn patch_position(
     State(st): State<AppState>,
     Path(id): Path<i64>,
@@ -1576,22 +1599,27 @@ async fn patch_position(
             .await?;
     let (old_qty, avg_cost) = existing.ok_or_else(|| ApiError::NotFound("no position".into()))?;
 
+    // The units and the money move together or not at all.
+    let mut tx = st.pool.begin().await?;
     if let Some(qty) = body.qty {
         sqlx::query("UPDATE positions SET qty = ? WHERE id = ?")
             .bind(qty)
             .bind(id)
-            .execute(&st.pool)
+            .execute(&mut *tx)
             .await?;
         let sold = old_qty - qty;
         if sold > 0.0 {
-            budget::record(
-                &st.pool,
+            let bucket = instrument_bucket(&mut tx, id).await?;
+            budget::record_on(
+                &mut tx,
                 NewCashEntry {
                     kind: CashKind::Sell,
                     amount: sold * avg_cost,
                     reference: format!("sell position {id}"),
-                    bucket: None,
+                    bucket,
                 },
+                &chrono::Utc::now().to_rfc3339(),
+                crate::models::Mode::Long,
             )
             .await?;
         }
@@ -1600,23 +1628,24 @@ async fn patch_position(
         sqlx::query("UPDATE positions SET stop = ? WHERE id = ?")
             .bind(stop)
             .bind(id)
-            .execute(&st.pool)
+            .execute(&mut *tx)
             .await?;
     }
     if let Some(target) = body.target {
         sqlx::query("UPDATE positions SET target = ? WHERE id = ?")
             .bind(target)
             .bind(id)
-            .execute(&st.pool)
+            .execute(&mut *tx)
             .await?;
     }
     if let Some(state) = body.state {
         sqlx::query("UPDATE positions SET state = ? WHERE id = ?")
             .bind(&state)
             .bind(id)
-            .execute(&st.pool)
+            .execute(&mut *tx)
             .await?;
     }
+    tx.commit().await?;
 
     load_positions(&st.pool, crate::models::Mode::Long)
         .await?
@@ -1810,22 +1839,13 @@ async fn add_instrument(
     let id = add_or_promote(&st.pool, code, class.as_str(), &name).await?;
 
     let rt = crate::rules::settings::runtime(&st.pool).await?;
-    if class == crate::models::AssetClass::MutualFund {
-        let fetch = refresh_fund(&st.pool, id, code, &rt);
-        match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
-            Ok(Ok(bars)) => tracing::info!(symbol = code, bars, "NAV history stored"),
-            Ok(Err(e)) => tracing::warn!(symbol = code, error = %e, "NAV fetch failed"),
-            Err(_) => tracing::warn!(symbol = code, "NAV fetch timed out"),
+    let fetch = refresh_any(&st.pool, id, code, class.as_str(), &rt);
+    match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
+        Ok(Ok((bars, news))) => {
+            tracing::info!(symbol = code, bars, news, "prices and headlines stored")
         }
-    } else if let Ok(market) = crate::market::YahooSource::new(&rt) {
-        let fetch = crate::store::refresh(&st.pool, id, code, &market);
-        match tokio::time::timeout(std::time::Duration::from_secs(20), fetch).await {
-            Ok(Ok((bars, news))) => {
-                tracing::info!(symbol = code, bars, news, "prices and headlines stored")
-            }
-            Ok(Err(e)) => tracing::warn!(symbol = code, error = %e, "refresh failed"),
-            Err(_) => tracing::warn!(symbol = code, "refresh timed out"),
-        }
+        Ok(Err(e)) => tracing::warn!(symbol = code, error = %e, "refresh failed"),
+        Err(_) => tracing::warn!(symbol = code, "refresh timed out"),
     }
 
     Ok(Json(InstrumentRow {
@@ -1941,6 +1961,26 @@ async fn record_trade(
 /// add-time fetch existed, or simply to pull the latest without waiting for a poll tick.
 /// A fund's NAV history comes from AMFI's mirror, not the equity feed. The scheme code is the
 /// symbol when it was added by AMFI code, and otherwise whatever the scan recorded.
+/// Bars and headlines for any instrument. A fund is read from AMFI by its scheme code; a fund
+/// added by a Yahoo symbol has no code, so it falls back to the equity feed that priced it.
+async fn refresh_any(
+    pool: &SqlitePool,
+    id: i64,
+    symbol: &str,
+    class: &str,
+    rt: &crate::rules::runtime::Runtime,
+) -> anyhow::Result<(usize, usize)> {
+    if class == AssetClass::MutualFund.as_str() {
+        match refresh_fund(pool, id, symbol, rt).await {
+            Ok(bars) => return Ok((bars, 0)),
+            Err(e) if !symbol.contains('.') => return Err(e),
+            Err(_) => {}
+        }
+    }
+    let market = crate::market::YahooSource::new(rt)?;
+    crate::store::refresh(pool, id, symbol, &market).await
+}
+
 async fn refresh_fund(
     pool: &SqlitePool,
     id: i64,
@@ -1981,15 +2021,7 @@ async fn refresh_instrument(
     let (id, class) = row.ok_or_else(|| ApiError::NotFound(format!("no instrument {symbol}")))?;
     let rt = crate::rules::settings::runtime(&st.pool).await?;
 
-    if class == AssetClass::MutualFund.as_str() {
-        let bars = refresh_fund(&st.pool, id, &symbol, &rt)
-            .await
-            .map_err(|e| ApiError::BadRequest(format!("{symbol}: {e}")))?;
-        return Ok(Json(serde_json::json!({ "bars": bars, "headlines": 0 })));
-    }
-
-    let market = crate::market::YahooSource::new(&rt)?;
-    let (bars, news) = crate::store::refresh(&st.pool, id, &symbol, &market)
+    let (bars, news) = refresh_any(&st.pool, id, &symbol, &class, &rt)
         .await
         .map_err(|e| ApiError::BadRequest(format!("{symbol} ({class}): {e}")))?;
     Ok(Json(serde_json::json!({ "bars": bars, "headlines": news })))
@@ -2750,7 +2782,7 @@ async fn load_signals(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Datelike, TimeZone, Timelike};
+    use chrono::{Datelike, Timelike};
 
     fn bar(ts: &str, close: f64) -> Bar {
         Bar {
