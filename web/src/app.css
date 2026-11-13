@@ -841,9 +841,12 @@
   .limits-table td input { width: 100%; text-align: right; height: 28px; font-size: var(--text-sm); }
 
   @media (max-width: 720px) {
+    /* A phone is 358px of content: the rows keep their figures and lose only the air between
+       them, because 12px of side padding per cell was pushing the table 28px past the page. */
     .blotter th, .blotter td,
-    .limits-table th, .limits-table td { padding: 8px 9px; }
-    .blotter th:first-child, .blotter td:first-child { padding-left: var(--space-3); }
+    .limits-table th, .limits-table td { padding: 8px 6px; }
+    .blotter th:first-child, .blotter td:first-child { padding-left: var(--space-2); }
+    .blotter th:last-child, .blotter td:last-child { padding-right: var(--space-2); }
     .blotter caption { padding-bottom: var(--space-2); }
   }
 }
@@ -1076,6 +1079,11 @@
 
   .call-exchange { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--space-6); align-items: start; }
+  /* A phone has one column, not two half-columns: the answer was being clipped at the drawer's
+     right edge because the two-column grid never stacked. */
+  @media (max-width: 900px) {
+    .call-exchange { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); }
+  }
   
   .call-empty { margin: 0; color: var(--ink-tertiary); font-size: var(--text-sm); }
   .call .raw { border-top: 1px solid var(--rule-subtle); padding-top: var(--space-3); }
@@ -1085,7 +1093,10 @@
   /* The drawer sits on the inset paper, inset from the row's own padding, so it reads as one
      sheet opened under the row rather than more table rows. */
   .call-detail > td { padding: 0; background: var(--paper-inset);
-    border-bottom: 1px solid var(--rule); }
+    border-bottom: 1px solid var(--rule);
+    /* The drawer is its own sheet, not a table cell: it inherits the blotter's nowrap, which
+       pinned its width to its widest line and clipped the answer on a phone. */
+    white-space: normal; }
   .call-detail > td .call { background: var(--paper-inset); }
   /* No double rule where the sheet meets the row it belongs to. */
   .blotter tbody tr:has(+ tr.call-detail:not([hidden])) > td { border-bottom: 0; }
@@ -1115,21 +1126,38 @@
   .answer-raw { margin: 0; font-family: var(--font-ledger); font-size: var(--text-xs);
     white-space: pre-wrap; word-break: break-word; color: var(--ink-secondary); }
 
-  .answer-moves { width: 100%; border-collapse: collapse; }
+  .answer-moves { width: 100%; border-collapse: collapse; table-layout: auto; }
   .answer-moves th { text-align: left; font-family: var(--font-form); font-size: var(--text-xs);
     font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-tertiary);
     padding: 0 var(--space-2) var(--space-2); border-bottom: 1px solid var(--rule-subtle); }
   .answer-moves th.num, .answer-moves td.num { text-align: right; }
   /* Explicit, because these cells sit inside the audit blotter and would otherwise inherit
-     its right-aligned number rules. */
+     its right-aligned number rules — and its nowrap, which pushed the figures off the edge. */
   .answer-moves td { padding: 8px var(--space-2); border-bottom: 1px solid var(--rule-subtle);
-    vertical-align: top; font-size: var(--text-sm); text-align: left; }
+    vertical-align: top; font-size: var(--text-sm); text-align: left; white-space: normal; }
   .answer-moves td:first-child { width: 54px; }
+  /* A figure never wraps: half a price on the next line is not a price. */
+  .answer-moves td.num { white-space: nowrap; }
   .answer-moves tr:last-child td { border-bottom: 0; }
-  .answer-moves td.num { font-family: var(--font-ledger); }
+  .answer-moves td.num { font-family: var(--font-ledger); font-variant-numeric: tabular-nums; }
+  /* The table spans the card's content box exactly: no cell padding at the two outer edges, so
+     the stamp starts on the body's left margin and the last figure ends on its right one. */
+  .answer-moves th:first-child, .answer-moves td:first-child { padding-inline-start: 0; }
+  .answer-moves th:last-child, .answer-moves td:last-child { padding-inline-end: 0; }
   .answer-sym { font-family: var(--font-form); font-weight: 500; }
+  /* The move's reason: on its own row under the figures, starting at the Holding column so it
+     shares that column's text edge, and wrapping in the card's width rather than widening one. */
   .answer-why { font-family: var(--font-form); font-weight: 400; font-size: var(--text-xs);
-    color: var(--ink-tertiary); max-width: 56ch; margin-top: 2px; }
+    color: var(--ink-tertiary); padding-top: 0; padding-bottom: var(--space-3);
+    overflow-wrap: anywhere; }
+  .answer-why-row:last-child td { border-bottom: 0; }
+  /* The card is inside a table cell, so its min-content width is the drawer's floor — and on a
+     phone the drawer was 16px wider than the page. The stamp column and the padding give it back. */
+  @media (max-width: 720px) {
+    .answer-moves th:first-child, .answer-moves td:first-child { width: 46px; }
+    .answer-body { padding: var(--space-3); }
+    .answer-head { padding: var(--space-2) var(--space-3); }
+  }
 
   /* The prompt block's label sits over its own text, not at the card's edge. */
   .call-block .lbl { padding-left: var(--space-3); }

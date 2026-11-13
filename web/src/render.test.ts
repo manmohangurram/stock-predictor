@@ -983,6 +983,49 @@ describe("audit pager", () => {
 });
 
 describe("audit", () => {
+  test("a plan's reason is its own row, under the Holding column", async () => {
+    const { renderExchangeDetail } = await import("./pages/calls");
+    const content = JSON.stringify({
+      action: "plan",
+      rationale: "pure entry slot",
+      moves: [
+        {
+          action: "BUY",
+          symbol: "BONFIG.NS",
+          qty: 12,
+          price: 794.55,
+          stop: 755,
+          target: 880,
+          why: "Q2FY27 results dated 2026-11-11",
+        },
+      ],
+    });
+    const html = renderExchangeDetail({
+      id: 7,
+      ts: "2026-11-13T13:30:00Z",
+      endpoint: "chat",
+      purpose: "trade plan",
+      round: 1,
+      trigger: "clock",
+      decision_reason: null,
+      prompt_template: "plan_trade_v1",
+      request_json: null,
+      response_json: JSON.stringify({ choices: [{ message: { content } }] }),
+      prompt_tokens: 10,
+      completion_tokens: 2,
+      validator_verdict: "pass",
+      error: null,
+      instrument_name: null,
+      instrument_symbol: null,
+    });
+    // The empty leading cell puts the reason on the Holding column's text edge, not the table's;
+    // colspan 5 keeps it from sitting under the figures.
+    expect(html).toContain('<td></td><td colspan="5" class="answer-why">');
+    expect(html).toContain("Q2FY27 results dated 2026-11-11");
+    // Qty and Stop drop on a phone so four remaining columns fit 358px.
+    expect(html).toContain('class="num hide-sm"');
+  });
+
   test("a refused plan is not a plan awaiting you", async () => {
     const { renderCalls } = await import("./pages/calls");
     const row: CallRow = {

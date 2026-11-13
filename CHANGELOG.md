@@ -1,3 +1,25 @@
+## v0.27.5
+
+### The plan card's figures sit on a grid, and its reason on the Holding column
+
+The moves table inherited the audit blotter's `white-space: nowrap`, so the sentence under each
+move could not wrap: it widened the Holding column until the figures were pushed off the card and
+`880.00` was clipped mid-digit.
+
+- The reason is its own row now, starting on the Holding column's text edge — prose that begins
+  under the BUY stamp reads as part of the stamp.
+- The table spans the card's content box exactly: the stamp starts on the body's left margin, the
+  Target figure ends on its right one, and every header shares its figure's right edge. Measured,
+  not eyeballed: 850/850, 1359/1359, 904/904.
+- Figures are `tabular-nums`, and never wrap — half a price on the next line is not a price.
+
+### The drawer had no phone layout
+
+`SENT TO THE MODEL | RECEIVED` stayed two columns at every width, so on a phone the answer was
+clipped at the drawer's right edge. It stacks below 900px. The audit table itself was 28px wider
+than a 358px page; cell padding and the plan card's fixed stamp column give that back, and Qty and
+Stop drop on a phone so the four remaining columns fit.
+
 ## v0.27.4
 
 ### Hotfix: the build cache was making the build slower

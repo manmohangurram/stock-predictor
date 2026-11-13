@@ -300,25 +300,28 @@ function decisionCard(reply: string, when: string): string {
   if (r.moves.length) {
     const legs = r.moves
       .map((m) => {
-        const buy = m.action === "BUY";
+        // The reason sits on its own row under the figures and starts at the Holding column, not
+        // at the table's edge: prose that begins under the stamp reads as part of the stamp.
+        const why = m.why
+          ? `<tr class="answer-why-row"><td></td><td colspan="5" class="answer-why">${escapeHtml(m.why)}</td></tr>`
+          : "";
         return `<tr>
           <td>${actionStamp(m.action)}</td>
-          <td class="answer-sym">${escapeHtml(m.symbol)}${
-            m.why ? `<div class="answer-why">${escapeHtml(m.why)}</div>` : ""
-          }</td>
-          <td class="num">${m.qty === null ? "—" : units(m.qty)}</td>
+          <td class="answer-sym">${escapeHtml(m.symbol)}</td>
+          <td class="num hide-sm">${m.qty === null ? "—" : units(m.qty)}</td>
           <td class="num">${m.price === null ? "—" : money(m.price)}</td>
-          <td class="num">${m.stop === null ? "—" : money(m.stop)}</td>
+          <td class="num hide-sm">${m.stop === null ? "—" : money(m.stop)}</td>
           <td class="num">${m.target === null ? "—" : money(m.target)}</td>
-        </tr>`;
+        </tr>${why}`;
       })
       .join("");
     return `<article class="answer" data-verdict="plan">
       ${head("PLAN", "estimate", `${r.moves.length} move${r.moves.length === 1 ? "" : "s"}`)}
       <div class="answer-body">
         <table class="answer-moves">
-          <thead><tr><th></th><th>Holding</th><th class="num">Qty</th><th class="num">Price</th>
-            <th class="num">Stop</th><th class="num">Target</th></tr></thead>
+          <thead><tr><th></th><th>Holding</th><th class="num hide-sm">Qty</th>
+            <th class="num">Price</th><th class="num hide-sm">Stop</th>
+            <th class="num">Target</th></tr></thead>
           <tbody>${legs}</tbody>
         </table>
         ${r.rationale ? `<p class="answer-prose">${escapeHtml(r.rationale)}</p>` : ""}
