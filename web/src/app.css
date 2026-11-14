@@ -1418,3 +1418,9 @@
     min-width: 0; flex-wrap: wrap; }
   .card-head .head-title h2 { margin: 0; }
 }
+
+@layer components {
+  /* The run control is an action inside a stacked form; a full-width banner would read as the
+     card's subject instead of its last line. */
+  .rcard-add .run-now-btn { justify-self: start; }
+}

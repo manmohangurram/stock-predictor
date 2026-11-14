@@ -1,10 +1,7 @@
 import { api, dashboardCached, type Settings } from "./api";
-import { renderCalls } from "./pages/calls";
 import { renderArchived } from "./pages/archived";
 import { isTab, renderSettings, type Tab } from "./pages/settings";
 import { wireSettings } from "./wiring/settings";
-import { wireRuns } from "./wiring/runs";
-import { wireCallRows } from "./wiring/calls";
 
 let host: HTMLElement | null = null;
 let lastPath = "/";
@@ -42,51 +39,6 @@ export async function draw(into: HTMLElement, pathWithQuery: string): Promise<vo
     } else if (path === "/archived") {
       into.innerHTML = renderArchived(await api.archived());
       wireArchivedRows();
-    } else if (path === "/calls") {
-      const params = new URLSearchParams(location.search);
-      const limit = [25, 50, 100].includes(Number(params.get("limit")))
-        ? Number(params.get("limit"))
-        : 25;
-      const offset = Math.max(0, Number(params.get("offset") ?? 0) || 0);
-      const filters = {
-        prompt: params.get("prompt") ?? undefined,
-        channel: params.get("channel") ?? undefined,
-        model: params.get("model") ?? undefined,
-        review: params.get("review") ?? undefined,
-      };
-      const [schedule, facets, list] = await Promise.all([
-        api.schedule(),
-        api.callFacets(),
-        api.calls(offset, limit, filters),
-      ]);
-      into.innerHTML = renderCalls(
-        schedule,
-        0,
-        list.rows,
-        facets,
-        filters,
-        list.offset,
-        list.limit,
-        list.total,
-      );
-      wireRuns(refresh);
-      // A filter starts the record over: page 2 of the old filter is not page 2 of the new one.
-      document.querySelectorAll<HTMLSelectElement>("[data-filter]").forEach((select) => {
-        select.addEventListener("change", () => {
-          const next = new URLSearchParams(location.search);
-          const name = select.dataset.filter!;
-          if (select.value) next.set(name, select.value);
-          else next.delete(name);
-          next.delete("offset");
-          window.location.href = `/calls?${next}`;
-        });
-      });
-      // A different page size is the same view, re-cut from the top.
-      document.querySelector<HTMLSelectElement>("[data-page-size]")?.addEventListener("change", (ev) => {
-        const size = (ev.target as HTMLSelectElement).value;
-        window.location.href = `/calls?offset=0&limit=${size}`;
-      });
-      wireCallRows(refresh);
     }
   } catch (e) {
     into.innerHTML = failure(e);
