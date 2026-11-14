@@ -105,9 +105,8 @@ left edge of every line that is supposed to share one, and on the right edge of 
 ## Front end: Vue, one page at a time
 
 The stack is **Vue 3 + vue-router** (design: `docs/superpowers/specs/2026-11-14-vue-migration-design.md`).
-The migration is staged: `web/src/renderer.ts` is the seam that still holds the plain renderers, and
-`views/LegacyView.vue` hands it the markup. Each stage replaces one page with a real view; when the
-last one is ported, `renderer.ts`, `pages/` and `wiring/` are deleted together.
+The migration is **finished**: every page is a view (`views/`), the renderers (`pages/`, `wiring/`,
+`renderer.ts`, `LegacyView.vue`) are deleted, and `main.ts` is a router and nothing else.
 
 **daisyUI is installed with the `d-` prefix** (`web/src/styles/tailwind.css`): a ported page writes
 `d-btn`, `d-input`, `d-modal`; an unported page keeps its own classes, so neither can restyle the
@@ -120,7 +119,10 @@ primitive we actually reuse. A page never hand-writes a `.btn` or a `.stamp`.
 The design system did **not** change: `.interface-design/system.md` is still binding, paper and ink
 are still the material, and Tailwind/daisyUI were deliberately not adopted.
 
-While a page is still legacy, its layers stay apart as before:
+The layers that mattered are still separate — a view holds state and behaviour, `components/ui/` and
+the named components hold markup, `api.ts`/`format.ts` are the contract, and `call-detail.ts` is the
+one module that still produces HTML strings (its bodies are pure and escaped). The old layering notes
+follow for reference:
 
 - `pages/*.ts` — render only: a payload in, markup out, no DOM access, no event listeners. This is
   why they can be unit-tested with `vitest` and why `renderLedger(d)` keeps its signature.

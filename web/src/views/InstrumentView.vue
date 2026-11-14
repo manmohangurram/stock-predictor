@@ -9,8 +9,6 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { api, type Analysis, type InstrumentDetail, type SignalRow, type Trade } from "../api";
 import { clock, day, money, units } from "../format";
-import { confidenceLabel, renderConfidence } from "../components/confidence";
-import { renderRisk } from "../components/risk";
 import { pill, statusPill } from "../components/stamp";
 import { ITEMS, isDecisionFilter, type DecisionFilter } from "../components/decision-filter";
 import DecisionItem from "../components/DecisionItem.vue";

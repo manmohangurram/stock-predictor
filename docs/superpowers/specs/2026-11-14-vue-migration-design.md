@@ -37,9 +37,9 @@ Each stage ships on its own and is verified against `docs/testing/flows.md`.
 | 2 | **Ledger** (long and short) as a real view | ✅ decisions, tables and figures are reactive; `pages/ledger.ts`, `wiring/add-instrument.ts` and `wiring/market.ts` are gone |
 | 3 | **Instrument page** | ✅ chart, fills with edit and armed delete, target profit, refresh, archive/restore; `pages/instrument.ts` and `wiring/fills.ts` are gone |
 | 4 | **Audit** | ✅ schedule strip, server-side filters in the URL, pager, auto-refresh tick with its interval, run now; the drawer is a component wrapping `call-detail.ts`, whose bodies are pure functions |
-| 5 | Archived | rows, restore link (still a renderer) |
-| 6 | Settings | six routed tabs, save/discard |
-| 7 | Delete `pages/*.ts` and `wiring/*.ts` | nothing imports them; gates and flows green |
+| 5 | **Archived** | ✅ rows, restore link, realised from the fills |
+| 6 | **Settings** | ✅ six routed tabs, draft per tab, save/discard, currency lock, proxy and ntfy tests |
+| 7 | **Delete the legacy layer** | ✅ `pages/`, `wiring/`, `renderer.ts`, `modules/shell.ts`, `LegacyView.vue` gone; `main.ts` is a router |
 
 ## Rules for the port
 

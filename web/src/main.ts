@@ -4,8 +4,9 @@ import App from "./App.vue";
 import LedgerView from "./views/LedgerView.vue";
 import InstrumentView from "./views/InstrumentView.vue";
 import CallsView from "./views/CallsView.vue";
-import LegacyView from "./views/LegacyView.vue";
-import { startAutoRefresh } from "./renderer";
+import ArchivedView from "./views/ArchivedView.vue";
+import SettingsView from "./views/SettingsView.vue";
+
 
 /**
  * Vue owns the app element and the URL. Until the last page is ported, every route renders through
@@ -17,10 +18,12 @@ const router = createRouter({
     { path: "/", component: LedgerView },
     { path: "/i/:symbol", component: InstrumentView },
     { path: "/calls", component: CallsView },
-    // Everything not yet ported goes through the seam.
-    { path: "/:pathMatch(.*)*", component: LegacyView },
+    { path: "/archived", component: ArchivedView },
+    { path: "/settings", component: SettingsView },
+    { path: "/settings/:tab", component: SettingsView },
+    // Anything else is the ledger: an unknown URL lands somewhere useful.
+    { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
 });
 
 createApp(App).use(router).mount("#app");
-startAutoRefresh();
