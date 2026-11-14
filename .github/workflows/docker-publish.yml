@@ -1,8 +1,11 @@
 name: Docker
 
-# Builds and pushes a multi-arch image to GHCR on a version tag (v1.0.0) or by hand.
-# Each architecture builds on its own runner (no QEMU) and the per-arch digests are
-# merged into one manifest.
+# One job, one image: build on the architecture the image is for and push it. No matrix, no
+# per-arch digest export, no manifest merge — with a single platform there is nothing to merge, and
+# the merge job only existed to assemble a multi-arch index.
+#
+# arm64 only, on a native runner: no QEMU, no cross-compile in the build. The deployment is arm64;
+# a second architecture would double every image version (manifest, attestations, layers).
 on:
   push:
     tags:
@@ -14,18 +17,8 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      # One platform, deliberately. The deployment is arm64, and a second architecture doubles
-      # every image version: its manifest, its attestations, its layers. To publish amd64 again,
-      # add it here — nothing else needs to change.
-      matrix:
-        arch:
-          - name: arm64
-            platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.arch.runner }}
+  publish:
+    runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
@@ -43,75 +36,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build (${{ matrix.arch.name }}) and push by digest
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: ${{ matrix.arch.platform }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          # Registry cache, not the Actions cache: `type=gha` has a hard 10 GB
-          # repo-wide limit shared with Swatinem/rust-cache, and the arm64 release
-          # dependency layer is large enough to get evicted — every build then
-          # re-downloaded and recompiled the world. A registry cache has no size
-          # limit and no eviction; its only cost is storage, pruned weekly.
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch.name }}
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch.name }},mode=max
-
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-${{ matrix.arch.name }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
-  merge:
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v4
-        with:
-          path: /tmp/digests
-          pattern: digests-*
-          merge-multiple: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Extract image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            # The image version is the git tag (v0.27.0).
+            type=ref,event=tag
+            # Always-tag latest from the newest release.
             type=raw,value=latest
 
-      - name: Create manifest
-        working-directory: /tmp/digests
-        run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Registry cache, not `type=gha`: the Actions cache has a hard 10 GB repo-wide limit
+          # shared with Swatinem/rust-cache, and the arm64 release dependency layer is big enough to
+          # be evicted — every build then recompiles the world. A registry cache has no size limit;
+          # its cost is storage, and `prune-packages.yml` keeps that in hand.
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
       - name: Inspect
         run: docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}

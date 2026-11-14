@@ -129,7 +129,7 @@ open http://localhost:8080
 ```
 
 First run: set the budget on **Settings → Money**, add instruments from the ledger's search box, and
-record what you already hold. The image is multi-arch (`linux/amd64`, `linux/arm64`) and is published
+record what you already hold. The image is built for `linux/arm64` and is published
 only from a `v*` tag.
 
 Docker, Compose, a systemd unit, backups and the container's `/data` uid edge case:
