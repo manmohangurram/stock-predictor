@@ -35,7 +35,7 @@ Each stage ships on its own and is verified against `docs/testing/flows.md`.
 |---|---|---|
 | 1 | Vue + router + kit + shell; every route mounted with its current renderer | the app is unchanged on screen, and the stack is in place |
 | 2 | **Ledger** (long and short) as a real view | ✅ decisions, tables and figures are reactive; `pages/ledger.ts`, `wiring/add-instrument.ts` and `wiring/market.ts` are gone |
-| 3 | Instrument page | chart, fills, edit/delete, archive |
+| 3 | **Instrument page** | ✅ chart, fills with edit and armed delete, target profit, refresh, archive/restore; `pages/instrument.ts` and `wiring/fills.ts` are gone |
 | 4 | Audit | filters, drawer with the markdown prompt, copy, auto-refresh |
 | 5 | Archived | rows, restore link |
 | 6 | Settings | six routed tabs, save/discard |

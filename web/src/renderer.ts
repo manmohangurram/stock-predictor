@@ -1,12 +1,9 @@
 import { api, dashboardCached, type Settings } from "./api";
 import { renderCalls } from "./pages/calls";
 import { renderArchived } from "./pages/archived";
-import { renderInstrument } from "./pages/instrument";
 import { isTab, renderSettings, type Tab } from "./pages/settings";
 import { wireSettings } from "./wiring/settings";
 import { wireRuns } from "./wiring/runs";
-import { wireFillEdits, wireTradeForm } from "./wiring/fills";
-import { wireDecisionActions } from "./wiring/decisions";
 import { wireCallRows } from "./wiring/calls";
 
 let host: HTMLElement | null = null;
@@ -90,19 +87,6 @@ export async function draw(into: HTMLElement, pathWithQuery: string): Promise<vo
         window.location.href = `/calls?offset=0&limit=${size}`;
       });
       wireCallRows(refresh);
-    } else if (path.startsWith("/i/")) {
-      const symbol = decodeURIComponent(path.slice(3));
-      // One request: the analysis payload carries the instrument, its signals and its fills.
-      const analysis = await api.analysis(symbol);
-      into.innerHTML = renderInstrument(analysis, analysis, analysis.trades);
-      wireTradeForm(symbol, refresh);
-      wireFillEdits(refresh);
-      wireDecisions();
-      wireDecisionActions(refresh);
-      wireDeleteInstrument();
-      wireRestoreInstrument();
-      wireRefreshInstrument();
-      wireTargetProfit(symbol);
     }
   } catch (e) {
     into.innerHTML = failure(e);
@@ -110,50 +94,6 @@ export async function draw(into: HTMLElement, pathWithQuery: string): Promise<vo
 }
 
 
-
-/** The instrument page's decision table: open a row's detail, then act on it. */
-function wireDecisions(): void {
-  document.querySelectorAll<HTMLTableRowElement>(".decision-row").forEach((row) => {
-    const id = row.dataset.decision;
-    const detail = () => document.querySelector<HTMLTableRowElement>(`#decision-${id}`);
-    const toggle = () => {
-      const el = detail();
-      if (!el) return;
-      const open = !el.hidden;
-      el.hidden = open;
-      row.setAttribute("aria-expanded", String(!open));
-      const label = row.querySelector("td.right button[data-open]");
-      if (label) label.textContent = open ? "Open" : "Close";
-    };
-    row.querySelector<HTMLButtonElement>("[data-open]")?.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      toggle();
-    });
-    row.querySelector<HTMLButtonElement>("[data-approve-row]")?.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      const el = detail();
-      if (el?.hidden) toggle();
-      const signal = row.dataset.signal;
-      if (!signal) return;
-      const form = document.querySelector<HTMLFormElement>(`[data-approve-form="${signal}"]`);
-      if (form) {
-        form.hidden = false;
-        form.querySelector<HTMLInputElement>('input[name="qty"]')?.focus();
-      }
-    });
-    // Clicking the row itself (but not a button) toggles it.
-    row.addEventListener("click", (ev) => {
-      if ((ev.target as HTMLElement).closest("button")) return;
-      toggle();
-    });
-    row.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") {
-        ev.preventDefault();
-        toggle();
-      }
-    });
-  });
-}
 
 /** An archived row opens the instrument: its record is there, its price history is not. */
 function wireArchivedRows(): void {
@@ -170,111 +110,6 @@ function wireArchivedRows(): void {
         go();
       }
     });
-  });
-}
-
-/** Fetch this symbol now; then re-render so the chart and decisions match. */
-function wireRefreshInstrument(): void {
-  const button = document.querySelector<HTMLButtonElement>("#refresh-instrument");
-  if (!button) return;
-  const status = document.querySelector<HTMLElement>("#refresh-status");
-  const symbol = button.dataset.symbol ?? "";
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    if (status) status.textContent = "Fetching…";
-    try {
-      const r = await api.refreshInstrument(symbol);
-      if (status) {
-        status.textContent = r.cached
-          ? `Stored ${r.bars} bars and ${r.headlines} headlines.`
-          : `Fetched ${r.bars} bars — archived, so nothing was stored.`;
-      }
-      refresh();
-    } catch (e) {
-      if (status) status.textContent = String(e);
-      button.disabled = false;
-    }
-  });
-}
-
-/** Delete or archive, whichever the server decides — and say which it did. */
-/** Restore an archived instrument from its own page: it goes back in the book, prices return. */
-function wireRestoreInstrument(): void {
-  const button = document.querySelector<HTMLButtonElement>("#restore-instrument");
-  if (!button) return;
-  const status = document.querySelector<HTMLElement>("#delete-status");
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    if (status) status.textContent = "Restoring…";
-    try {
-      await api.restoreInstrument(button.dataset.symbol ?? "");
-      refresh();
-    } catch (e) {
-      button.disabled = false;
-      if (status) status.textContent = String(e);
-    }
-  });
-}
-
-function wireDeleteInstrument(): void {
-  const button = document.querySelector<HTMLButtonElement>("#archive-instrument");
-  if (!button) return;
-  const status = document.querySelector<HTMLElement>("#delete-status");
-  const symbol = button.dataset.symbol ?? "";
-  if (button.dataset.held && Number(button.dataset.held) > 0) {
-    button.disabled = true;
-    return;
-  }
-  const original = button.textContent ?? "Archive";
-  let armed = false;
-  button.addEventListener("click", async () => {
-    if (!armed) {
-      armed = true;
-      button.textContent = "Archive? Click again — prices cleared, fills kept";
-      if (status) status.textContent = "Archiving clears prices and headlines; fills and decisions stay.";
-      window.setTimeout(() => {
-        if (armed) {
-          armed = false;
-          button.textContent = original;
-        }
-      }, 5000);
-      return;
-    }
-    button.disabled = true;
-    if (status) status.textContent = "Removing…";
-    try {
-      const r = await api.archiveInstrument(symbol);
-      if (status) {
-        status.textContent = r.archived
-          ? "Archived. Its record is on the Archived page; its prices were cleared."
-          : "Could not archive.";
-      }
-      window.setTimeout(() => {
-        location.href = "/";
-      }, 900);
-    } catch (e) {
-      if (status) status.textContent = String(e);
-      button.disabled = false;
-    }
-  });
-}
-
-function wireTargetProfit(symbol: string): void {
-  const form = document.querySelector<HTMLFormElement>(".target-form");
-  form?.addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    const raw = String(new FormData(form).get("pct") ?? "").trim();
-    const pct = raw === "" ? null : Number(raw);
-    if (pct !== null && (!Number.isFinite(pct) || pct <= 0)) {
-      window.alert("Enter a positive percentage, or leave it blank.");
-      return;
-    }
-    try {
-      await api.setTargetProfit(symbol, pct);
-      refresh();
-    } catch (e) {
-      window.alert(String(e));
-    }
   });
 }
 

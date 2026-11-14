@@ -1,5 +1,5 @@
 import { api } from "../api";
-import { qtyLimit } from "../pages/instrument";
+import { qtyLimit } from "../format";
 
 export function wireFillEdits(reload: () => Promise<void>): void {
   const panel = document.querySelector<HTMLElement>("#record-panel");

@@ -1,6 +1,6 @@
 import type { SignalRow } from "../api";
 import { escapeHtml, money, units } from "../format";
-import { today } from "../pages/instrument";
+import { today } from "../format";
 
 /**
  * Approve and reject, wherever a pending decision is shown — the ledger and the instrument page

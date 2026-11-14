@@ -403,7 +403,7 @@
   .warn-pill { color: var(--stamp-oxide); background: var(--stamp-oxide-bg); padding: 1px 6px;
     border-radius: var(--radius-stamp); font-size: var(--text-xs); font-weight: 600; }
   .target-form { display: flex; gap: var(--space-2); margin-top: var(--space-1); }
-  .target-form input { width: 90px; padding: var(--space-1) var(--space-2);
+  .target-form input { flex: 1 1 auto; min-width: 0; padding: var(--space-1) var(--space-2);
     font-family: var(--font-ledger); background: var(--paper-inset); color: var(--ink);
     border: 1px solid var(--rule); border-radius: var(--radius); }
 }
@@ -1409,4 +1409,12 @@
     .tick { height: 40px; margin-left: 0; }
     .tick select { font-size: var(--text-sm); padding-right: var(--space-2); }
   }
+}
+
+@layer components {
+  /* A card head is a title block and its controls: the count sits beside the heading, and the
+     control stays on the same line until the width genuinely runs out. */
+  .card-head .head-title { display: flex; align-items: baseline; gap: var(--space-2);
+    min-width: 0; flex-wrap: wrap; }
+  .card-head .head-title h2 { margin: 0; }
 }

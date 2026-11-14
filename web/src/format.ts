@@ -59,3 +59,21 @@ export const titleCase = (s: string): string =>
 
 export const escapeHtml = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/** Today as a date input wants it: `YYYY-MM-DD`, local. */
+export function today(): string {
+  const d = new Date();
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Floored to three decimals, the same rule the ledger applies when it costs a buy. */
+export function floorUnits(n: number): number {
+  return Math.floor(n * 1000) / 1000;
+}
+
+/** The most a sell may offer: what is held (floored), and never more than the field asked for. */
+export function qtyLimit(side: "buy" | "sell", held: number | null): number | null {
+  if (side !== "sell" || held === null) return null;
+  return floorUnits(held);
+}
