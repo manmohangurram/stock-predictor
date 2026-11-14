@@ -1,3 +1,53 @@
+## v0.30.0
+
+The front end is Vue, every page is a view, and the renderers are gone. Design:
+`docs/superpowers/specs/2026-11-14-vue-migration-design.md`. Standards: `web/UI_STANDARDS.md`.
+
+### The migration, in seven stages
+
+The stack moved first and the pages followed one at a time, so the app worked at every step and each
+stage was verifiable against `docs/testing/flows.md`.
+
+- **Vue 3 + vue-router** own the app element and the URL; `main.ts` is five routes and a redirect.
+- **Every page is a view**: ledger (long and short), instrument, audit, archived, settings ×6 tabs.
+- **daisyUI 5 + Tailwind 4 arrive prefixed** (`d-btn`, `d-input`, `d-modal`) with a theme built from
+  this app's paper and ink. The prefix is the migration: a ported page took daisyUI's controls while
+  the pages still drawn by renderers kept their own classes, so neither could restyle the other.
+  Preflight is off for the same reason.
+- **Deleted with the renderers**: `pages/`, `wiring/`, `renderer.ts`, `shell.ts`, `LegacyView.vue`,
+  and the two components only they called. 1,688 lines removed for 641 added in the last commit
+  alone; `humanDuration` and `today()` moved to modules that outlive a page.
+- **The kit** is `components/` — `AppButton`, `AppStamp`, `AppEmpty`, `SettingField`, `AppShell`,
+  `HoldingRow`, `DecisionItem`, `CallDrawer`, `ScheduleStrip`, `PriceChart`, `AddInstrument`.
+
+### What the port fixed on the way
+
+- The pager had four children in `space-between` — two buttons, a count and a size smeared across the
+  row. Two groups now.
+- The run button stretched full-width in its stacked form, reading as the card's subject.
+- A card head is a title block **and** its controls: the count hugs the heading instead of floating
+  between it and the button.
+- The decisions status filter floated inside a fold body; it sits in the card head, beside the title.
+- Chart reference labels sat on the line they named: nudged left and haloed in paper.
+- The expected-profit field fills its card; a 90px box beside a button was a guess.
+- Alignment is measured, not eyeballed: card titles inset 17px from their edge, every table number
+  `text-align: end` with its own right edge, `scrollWidth === clientWidth`.
+
+### `web/UI_STANDARDS.md`
+
+The written form of the design system: the paper and ink tokens with their `oklch` values, four ink
+levels and no more, the two type families and what each is for, the spacing scale, the stamp palette
+where colour never means anything alone, the alignment rules, the component table, every state, the
+copy rules (Indian digit grouping, U+2212 for a minus), and an eight-point review checklist.
+
+### Also
+
+- **One Docker job**, like financer's: the matrix and the digest/merge pair only existed to assemble a
+  multi-arch index, and with a single platform there is nothing to merge.
+- **`cargo fmt` applied** across 22 files, and `AGENTS.md` now says what every push runs: build,
+  `fmt --check`, audit, tests, clippy — with audit findings fixed by updating dependencies and an
+  ignore carrying its reason and its end condition.
+
 ## v0.29.0
 
 Headlines moved off the model and onto Google News' own feed: English, India edition, dated, from
