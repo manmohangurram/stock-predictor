@@ -102,9 +102,20 @@ A UI change is done when a headless screenshot shows it, at 1440 and 390, not wh
 written — and when the alignment is measured, not eyeballed: `getBoundingClientRect()` on the
 left edge of every line that is supposed to share one, and on the right edge of every number.
 
-## Front end: three layers, no framework
+## Front end: Vue, one page at a time
 
-`web/src` is plain TypeScript that renders HTML strings. Keep the layers apart:
+The stack is **Vue 3 + vue-router** (design: `docs/superpowers/specs/2026-11-14-vue-migration-design.md`).
+The migration is staged: `web/src/renderer.ts` is the seam that still holds the plain renderers, and
+`views/LegacyView.vue` hands it the markup. Each stage replaces one page with a real view; when the
+last one is ported, `renderer.ts`, `pages/` and `wiring/` are deleted together.
+
+The kit lives in `web/src/components/ui/` — `AppButton`, `AppStamp`, `AppEmpty` today, one per
+primitive we actually reuse. A page never hand-writes a `.btn` or a `.stamp`.
+
+The design system did **not** change: `.interface-design/system.md` is still binding, paper and ink
+are still the material, and Tailwind/daisyUI were deliberately not adopted.
+
+While a page is still legacy, its layers stay apart as before:
 
 - `pages/*.ts` — render only: a payload in, markup out, no DOM access, no event listeners. This is
   why they can be unit-tested with `vitest` and why `renderLedger(d)` keeps its signature.
