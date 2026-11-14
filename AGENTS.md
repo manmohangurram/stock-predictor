@@ -113,6 +113,10 @@ The migration is **finished**: every page is a view (`views/`), the renderers (`
 other. The theme is this app's paper and ink, not a daisyUI preset. Preflight is off on purpose —
 it would reset every page still drawn by a renderer.
 
+**`web/UI_STANDARDS.md` is binding** — tokens, type scale, alignment rules, component rules, states,
+copy, and the review checklist. It is the written form of this file's UI rules; when they disagree,
+the standards document wins on presentation and this one wins on behaviour.
+
 The kit lives in `web/src/components/ui/` — `AppButton`, `AppStamp`, `AppEmpty` today, one per
 primitive we actually reuse. A page never hand-writes a `.btn` or a `.stamp`.
 
