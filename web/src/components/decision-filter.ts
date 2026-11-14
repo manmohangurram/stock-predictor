@@ -7,7 +7,7 @@
  */
 export type DecisionFilter = "pending" | "approved" | "rejected" | "all";
 
-const ITEMS: { id: DecisionFilter; label: string; hint: string; icon: string }[] = [
+export const ITEMS: { id: DecisionFilter; label: string; hint: string; icon: string }[] = [
   {
     id: "pending",
     label: "Pending",

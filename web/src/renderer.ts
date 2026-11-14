@@ -2,15 +2,12 @@ import { api, dashboardCached, type Settings } from "./api";
 import { renderCalls } from "./pages/calls";
 import { renderArchived } from "./pages/archived";
 import { renderInstrument } from "./pages/instrument";
-import { renderLedger } from "./pages/ledger";
 import { isTab, renderSettings, type Tab } from "./pages/settings";
 import { wireSettings } from "./wiring/settings";
-import { wireAddDialog } from "./wiring/add-instrument";
 import { wireRuns } from "./wiring/runs";
 import { wireFillEdits, wireTradeForm } from "./wiring/fills";
-import { wireCallRows } from "./wiring/calls";
 import { wireDecisionActions } from "./wiring/decisions";
-import { wireMarket } from "./wiring/market";
+import { wireCallRows } from "./wiring/calls";
 
 let host: HTMLElement | null = null;
 let lastPath = "/";
@@ -106,57 +103,15 @@ export async function draw(into: HTMLElement, pathWithQuery: string): Promise<vo
       wireRestoreInstrument();
       wireRefreshInstrument();
       wireTargetProfit(symbol);
-    } else {
-      const mode = (new URLSearchParams(location.search).get("mode") as
-        | "long"
-        | "trade"
-        | null) ?? "long";
-      // One request: the dashboard payload carries the rail's recent fills.
-      const decisions = (new URLSearchParams(location.search).get("decisions") as
-        | "pending"
-        | "approved"
-        | "rejected"
-        | "all"
-        | null) ?? "pending";
-      const res = await dashboardCached(mode, dashboardEtag, decisions);
-      if (res.notModified) return; // nothing changed: keep the DOM, and the user's open rows
-      dashboardEtag = res.etag ?? null;
-      const d = res.data!;
-      into.innerHTML = renderLedger(d);
-      // The nav belongs inside the content column, not floating in the page margin.
-      wireRows();
-      wireAddDialog();
-      wireDecisionActions(refresh);
     }
   } catch (e) {
     into.innerHTML = failure(e);
   }
-  // The rail's market chip is filled after the draw: no page waits on it.
-  void wireMarket();
 }
 
 
-function wireRows(): void {
-  document.querySelectorAll<HTMLElement>("[data-symbol]").forEach((row) => {
-    const go = () => {
-      const symbol = row.dataset.symbol;
-      if (symbol) window.location.href = `/i/${encodeURIComponent(symbol)}`;
-    };
-    row.addEventListener("click", go);
-    row.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter" || ev.key === " ") {
-        ev.preventDefault();
-        go();
-      }
-    });
-  });
-}
 
-/**
- * Adding an instrument: one dialog, opened from the header (or ⌘K / Ctrl-K), results grouped by
- * class and chosen with ↑↓ ⏎. The dialog is the only place a search happens, so there is never a
- * bare input sitting at the bottom of a page.
- */
+/** The instrument page's decision table: open a row's detail, then act on it. */
 function wireDecisions(): void {
   document.querySelectorAll<HTMLTableRowElement>(".decision-row").forEach((row) => {
     const id = row.dataset.decision;

@@ -1,0 +1,61 @@
+/*
+ * daisyUI, prefixed.
+ *
+ * The prefix is the migration: a ported page uses `d-btn`, `d-input`, `d-modal` — daisyUI's
+ * behaviour and accessibility — while the pages still drawn by the old renderers keep the classes
+ * they were written against. No collision, no half-restyled screen, and when the last page is ported
+ * the prefix comes off and `app.css` goes with it.
+ *
+ * Preflight is deliberately not imported: it would reset every page at once, including the ones not
+ * yet ported. daisyUI components are self-contained without it.
+ */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@plugin "daisyui" {
+  prefix: "d-";
+  themes: false;
+}
+
+/* The theme is the app's own paper and ink, not a daisyUI preset. */
+@plugin "daisyui/theme" {
+  name: "paper";
+  default: true;
+  color-scheme: "light";
+
+  --color-base-100: var(--paper-raised);
+  --color-base-200: var(--paper);
+  --color-base-300: var(--paper-inset);
+  --color-base-content: var(--ink);
+
+  --color-primary: var(--stamp-ink);
+  --color-primary-content: var(--paper-raised);
+  --color-secondary: var(--ink-secondary);
+  --color-secondary-content: var(--paper-raised);
+  --color-accent: var(--stamp-ink);
+  --color-accent-content: var(--paper-raised);
+  --color-neutral: var(--ink);
+  --color-neutral-content: var(--paper-raised);
+
+  --color-info: var(--stamp-ink);
+  --color-info-content: var(--paper-raised);
+  --color-success: var(--green);
+  --color-success-content: var(--paper-raised);
+  --color-warning: var(--stamp-amber);
+  --color-warning-content: var(--paper-raised);
+  --color-error: var(--stamp-oxide);
+  --color-error-content: var(--paper-raised);
+
+  --radius-selector: 4px;
+  --radius-field: 4px;
+  --radius-box: 6px;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* daisyUI's defaults assume a looser page; these keep it in the app's rhythm. */
+@layer components {
+  .d-btn { font-family: var(--font-form); text-transform: none; letter-spacing: 0; }
+  .d-btn.d-btn-xs { height: 28px; min-height: 28px; }
+}

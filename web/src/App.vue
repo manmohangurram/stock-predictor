@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import LegacyView from "./views/LegacyView.vue";
+import { RouterView } from "vue-router";
+import AppShell from "./components/AppShell.vue";
 </script>
 
 <template>
-  <LegacyView />
+  <AppShell>
+    <RouterView />
+  </AppShell>
 </template>

@@ -321,6 +321,19 @@ export async function dashboardCached(
   };
 }
 
+/** What the exchange is doing, and when that changes. */
+export interface Market {
+  state: "open" | "closed" | "holiday";
+  reason: string;
+  as_of: string;
+  session: string;
+  last_bar_at: string | null;
+  /** When the exchange next opens; when it closes, if it is open now. */
+  next_open_at: string | null;
+  closes_at: string | null;
+  holiday_calendar: boolean;
+}
+
 export const api = {
   dashboard: (mode: Mode = "long") => req<Dashboard>(`/api/dashboard?mode=${mode}`),
   settings: () => req<Settings>("/api/settings"),
@@ -333,18 +346,7 @@ export const api = {
   runs: (limit = 25) =>
     req<{ runs: RunRow[]; running: number }>(`/api/runs?limit=${limit}`),
   /** Whether the exchange is trading right now, and why. */
-  market: () =>
-    req<{
-      state: "open" | "closed" | "holiday";
-      reason: string;
-      as_of: string;
-      session: string;
-      last_bar_at: string | null;
-      /** When the exchange next opens; when it closes, if it is open now. */
-      next_open_at: string | null;
-      closes_at: string | null;
-      holiday_calendar: boolean;
-    }>("/api/market"),
+  market: () => req<Market>("/api/market"),
   /** The schedule: each prompt's last run and when it is next due, computed by the server. */
   schedule: () =>
     req<{ now: string; prompts: ScheduledPrompt[] }>("/api/schedule"),

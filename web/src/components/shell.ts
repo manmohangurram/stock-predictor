@@ -1,48 +1,12 @@
 /**
- * One chrome for every page: a narrow rail on the left, content on the right.
- *
- * The rail exists so the money is always visible and the page never wastes its left margin on a
- * nav that floats there. Below 900px it collapses into a top strip.
+ * Pages render their content; the chrome (rail, market state, the scrolling column) belongs to
+ * `AppShell.vue`. Anything still drawn by a plain renderer returns the inner part only.
  */
 export type Section = "ledger" | "audit" | "settings" | "archived";
 
-/// Two groups: the daily work, then what you configure. A page joins a group.
-const LINKS: { id: Section; label: string; href: string; group: "work" | "setup" }[] = [
-  { id: "ledger", label: "Ledger", href: "/", group: "work" },
-  { id: "audit", label: "Audit", href: "/calls", group: "work" },
-  { id: "settings", label: "Settings", href: "/settings", group: "setup" },
-  { id: "archived", label: "Archived", href: "/archived", group: "setup" },
-];
-
-export function renderRail(
-  active: Section,
-  badges: Partial<Record<Section, string>> = {},
-): string {
-  const link = (l: (typeof LINKS)[number]) =>
-    `<a href="${l.href}" ${l.id === active ? 'aria-current="page" class="on"' : ""}>
-      <span>${l.label}</span>${badges[l.id] ? `<span class="rail-badge">${badges[l.id]}</span>` : ""}
-    </a>`;
-  const group = (g: "work" | "setup") =>
-    LINKS.filter((l) => l.group === g).map(link).join("");
-  // A sibling rule, not a wrapper: the rail lays its children out as a column.
-  const items = `${group("work")}<div class="rail-sep" role="presentation"></div>${group("setup")}`;
-  return `<nav class="rail" aria-label="Sections">
-    <div class="rail-brand">
-      <img src="/favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
-      <b>Stock Predictor</b>
-      <span>${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
-    </div>
-    ${items}
-    <div class="rail-market" data-market role="status" aria-live="polite"></div>
-  </nav>`;
-}
-
-export function renderApp(
-  active: Section,
-  main: string,
-  badges?: Partial<Record<Section, string>>,
-): string {
-  return `<div class="app">${renderRail(active, badges)}<main class="main">${main}</main></div>`;
+/** Kept for the pages not yet ported: they wrap their content in this and nothing else. */
+export function renderApp(_active: Section, main: string, _badges?: Partial<Record<Section, string>>): string {
+  return main;
 }
 
 /** Page title plus the whole-book figures that sit beside it. */
@@ -63,7 +27,6 @@ export function renderHead(
     <div>
       <h1>${title}</h1>
       <div class="page-sub">${subtitle}</div>
-      <div class="head-market" data-market role="status" aria-live="polite"></div>
     </div>
     <div class="head-right">
     <div class="head-row">

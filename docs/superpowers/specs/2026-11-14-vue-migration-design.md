@@ -14,9 +14,11 @@ ink, same stamps, same rules. Financer's `UI_STANDARDS.md` is *the same material
 page, a margin column, ticks) with a different job, so its **document shape** is copied and its
 fiction is not.
 
-**Deliberately not adopted:** Tailwind and daisyUI. They are financer's styling engine; this app
-already has tokens and a written system, and swapping the engine would silently redesign every
-screen — which is the second job, not this one.
+**daisyUI, prefixed.** Tailwind v4 + daisyUI 5 are installed, with `prefix: "d-"` and a theme built
+from this app's paper and ink. A ported page uses `d-btn`, `d-input`, `d-modal` — daisyUI's
+behaviour and accessibility — while pages still drawn by the old renderers keep the classes they
+were written against. The prefix comes off, and `app.css` goes, when the last page is ported.
+Preflight is not imported: it would reset every unported page at once.
 
 ## The kit
 
@@ -32,7 +34,7 @@ Each stage ships on its own and is verified against `docs/testing/flows.md`.
 | # | Stage | Ends when |
 |---|---|---|
 | 1 | Vue + router + kit + shell; every route mounted with its current renderer | the app is unchanged on screen, and the stack is in place |
-| 2 | **Ledger** (long and short) as a real view | decisions, tables and figures are reactive; no `innerHTML` |
+| 2 | **Ledger** (long and short) as a real view | ✅ decisions, tables and figures are reactive; `pages/ledger.ts`, `wiring/add-instrument.ts` and `wiring/market.ts` are gone |
 | 3 | Instrument page | chart, fills, edit/delete, archive |
 | 4 | Audit | filters, drawer with the markdown prompt, copy, auto-refresh |
 | 5 | Archived | rows, restore link |

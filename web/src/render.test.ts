@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import type { CallRow, Dashboard, PositionRow, ScheduledPrompt, Settings, SignalRow } from "./api";
-import { renderLedger, renderModeTabs, renderRow } from "./pages/ledger";
 import { renderSettings, shouldDisableSave } from "./pages/settings";
 import type { Limits } from "./api";
 import { renderMarkdown } from "./markdown";
@@ -76,56 +75,7 @@ const dashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
 
 
 
-describe("blotter row", () => {
-  test("carries the symbol for navigation, the numbers, and the signal stamp", () => {
-    const html = renderRow(dashboard({ positions: [position()], signals: [signal()] }), position());
-    expect(html).toContain('data-symbol="INFY.NS"');
-    expect(html).toContain("1,163.00"); // avg
-    expect(html).toContain("1,200.00"); // ltp
-    expect(html).toContain("20,400"); // value
-    expect(html).toContain('data-stamp="sell"');
-    expect(html).toContain('role="link"');
-  });
 
-  test("a fund row shows a NAV exit from its profit expectation, not an intraday price", () => {
-    const mf = position({
-      symbol: "AXISELSS",
-      class: "mutual_fund",
-      stop: null,
-      ltp: 105.36,
-      value: 25_000,
-      avg_cost: 100,
-      target_profit_pct: 25,
-    });
-    const html = renderRow(dashboard({ positions: [mf] }), mf);
-    // 100 cost × 1.25 = a 125 NAV exit.
-    expect(html).toContain("125.00 → +25%");
-    // No MF badge any more: funds have their own table, so the label is redundant.
-    expect(html).not.toContain('data-stamp="estimate"');
-  });
-
-  test("no signal renders an em dash, not an empty cell", () => {
-    const html = renderRow(dashboard(), position());
-    expect(html).toContain("—");
-    expect(html).not.toContain('data-stamp="buy"');
-  });
-});
-
-describe("ledger", () => {
-  test("empty portfolio explains what to do next", () => {
-    const html = renderLedger(dashboard());
-    expect(html).toContain("No stocks yet");
-    expect(html).not.toContain("spinner");
-  });
-
-  test("free to deploy sits with the figures, not in the rail", () => {
-    const html = renderLedger(dashboard({ available: 96_389, budget: 100_000 }));
-    expect(html).toContain("Free to deploy");
-    expect(html).toContain("of 1,00,000");
-    // Nothing left of the removed recent-fills card.
-    expect(html).not.toContain("Recent fills");
-  });
-});
 
 describe("settings", () => {
   const settings = (over: Partial<Settings> = {}): Settings => ({
@@ -390,15 +340,6 @@ describe("a fund's instrument page", () => {
   });
 });
 
-describe("two pots in the UI", () => {
-  test("mode tabs mark the current pot and link to the other", () => {
-    const html = renderModeTabs("trade");
-    expect(html).toContain('href="/?mode=long"');
-    expect(html).toContain('href="/?mode=trade"');
-    expect(html).toContain('aria-current="page">Short-term');
-  });
-
-});
 
 describe("settings, second pot", () => {
   test("offers a trading budget and says the pots are separate", async () => {
@@ -473,21 +414,6 @@ describe("confidence", () => {
     expect(html).toContain("rules-derived, no model score");
   });
 
-  test("the blotter row shows it only when the model gave a score", async () => {
-    const { renderRow } = await import("./pages/ledger");
-    const withScore = renderRow(
-      dashboard({ positions: [position()], signals: [signal({ confidence: "high" })] }),
-      position(),
-    );
-    expect(withScore).toContain('aria-label="Confidence: high"');
-
-    const without = renderRow(
-      dashboard({ positions: [position()], signals: [signal({ confidence: null })] }),
-      position(),
-    );
-    expect(without).not.toContain('class="conf"');
-    expect(without).toContain('data-stamp="sell"');
-  });
 });
 
 describe("risk and profit expectation", () => {
@@ -979,32 +905,6 @@ describe("decisions filter on the overview", () => {
   });
 });
 
-describe("decision rows", () => {
-  test("a blocked proposal stays out of the decisions box", async () => {
-    const { renderLedger } = await import("./pages/ledger");
-    const blocked = signal({ id: 9, action: "BLOCKED", qty: 1000, entry: 1148.7 });
-    const html = renderLedger(dashboard({ signals: [] }));
-    expect(html).not.toContain("BLOCKED");
-    // It is still a record elsewhere; this box is for decisions under review.
-    expect(html).toContain("Nothing under review");
-  });
-
-  test("a fund decision leads with the scheme name, not its code", async () => {
-    const { renderLedger } = await import("./pages/ledger");
-    const fund = signal({
-      symbol: "0P0000XV5C.BO",
-      name: "HDFC Balanced Advantage Direct Growth",
-      class: "mutual_fund",
-      action: "BUY",
-      qty: 80,
-      entry: 124.96,
-    });
-    const html = renderLedger(dashboard({ signals: [fund] }));
-    expect(html).toContain("HDFC Balanced Advantage Direct Growth");
-    // The code is still there, small, because that is what you paste into search.
-    expect(html).toContain("0P0000XV5C.BO");
-  });
-});
 
 describe("audit pager", () => {
   test("says where you are, links only where you can go, and offers a page size", async () => {
@@ -1329,86 +1229,6 @@ describe("a fund decision's fill", () => {
   });
 });
 
-describe("a plan", () => {
-  const leg = (over: Partial<SignalRow>): SignalRow => ({ ...signal(), ...over });
-  test("reads as one docket with the purse arithmetic that makes it legal", async () => {
-    const { renderPlan } = await import("./pages/ledger");
-    const html = renderPlan([
-      leg({ id: 2, action: "SELL", name: "Infosys", qty: 24, entry: 1146.3 }),
-      leg({ id: 3, action: "BUY", name: "HDFC Bank", symbol: "HDFCBANK.NS", qty: 15, entry: 793.65 }),
-    ]);
-    expect(html).toContain("STOCK PLAN");
-    expect(html).toContain("2 moves");
-    expect(html).toContain("Infosys");
-    expect(html).toContain("HDFC Bank");
-    expect((html.match(/class="docket-move"/g) ?? []).length).toBe(2);
-    expect(html).toContain("From the sale");
-    expect(html).toContain("27,511.20");
-    expect(html).toContain("To buy");
-    expect(html).toContain("11,904.75");
-    expect(html).toContain("Back to the purse");
-    expect(html).toContain("15,606.45");
-    // One approve control for the whole plan, keyed to the first leg.
-    expect((html.match(/data-approve=/g) ?? []).length).toBe(1);
-    expect(html).toContain('data-approve="2"');
-    // Each leg carries its own editable fill: a plan is not approved one stock at a time.
-    expect(html).toContain('name="qty-2"');
-    expect(html).toContain('name="qty-3"');
-    expect(html).toContain('name="price-3"');
-    expect(html).toContain("Post fills");
-  });
-
-  test("a fund leg shows the rupees it was sized with, once", async () => {
-    const { renderPlan } = await import("./pages/ledger");
-    const html = renderPlan([
-      leg({
-        id: 5,
-        action: "BUY",
-        name: "Axis ELSS",
-        class: "mutual_fund",
-        plan_scope: "fund",
-        qty: null,
-        entry: null,
-        amount: 2250,
-      }),
-    ]);
-    expect(html).toContain("FUND PLAN");
-    expect(html).toContain("Amount");
-    expect(html).toContain("2,250.00");
-    // The amount is already on the line; a Cost row would print the same figure twice.
-    expect(html).not.toContain("Cost");
-  });
-
-  test("a fund plan's fill asks for rupees and a NAV, not units", async () => {
-    const { renderPlan } = await import("./pages/ledger");
-    const html = renderPlan([
-      leg({
-        id: 7,
-        action: "BUY",
-        name: "Axis ELSS",
-        class: "mutual_fund",
-        plan_scope: "fund",
-        qty: null,
-        entry: null,
-        amount: 2250,
-      }),
-    ]);
-    expect(html).toContain("Amount ₹");
-    expect(html).toContain("NAV");
-    expect(html).toContain('name="amount-7"');
-    expect(html).toContain('value="2250"');
-    expect(html).toContain('name="price-7"');
-  });
-
-  test("a fund leg with no stored size says so instead of printing nothing", async () => {
-    const { renderPlan } = await import("./pages/ledger");
-    const html = renderPlan([
-      leg({ id: 6, action: "BUY", name: "Axis ELSS", class: "mutual_fund", plan_scope: "fund",
-        qty: null, entry: null }),
-    ]);
-    expect(html).toContain("size on approval");
-  });
-});
 
 describe("archived", () => {
   test("shows what the fills made, and where to restore it", async () => {
@@ -1783,5 +1603,13 @@ describe("the turnover field takes whole crore", () => {
     );
     expect(html).toMatch(/id="scan_min_turnover"[^>]*step="1"/);
     expect(html).toMatch(/id="scan_min_turnover"[^>]*value="1"/);
+  });
+});
+
+describe("the ledger is a view now", () => {
+  test("the status filter keeps its icons — on a phone the word is hidden, the icon is not", async () => {
+    const { ITEMS } = await import("./components/decision-filter");
+    expect(ITEMS.map((i) => i.id)).toEqual(["pending", "approved", "rejected", "all"]);
+    for (const item of ITEMS) expect(item.icon.length).toBeGreaterThan(10);
   });
 });

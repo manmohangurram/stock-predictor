@@ -1,6 +1,7 @@
 import { createApp } from "vue";
 import { createRouter, createWebHistory } from "vue-router";
 import App from "./App.vue";
+import LedgerView from "./views/LedgerView.vue";
 import LegacyView from "./views/LegacyView.vue";
 import { startAutoRefresh } from "./renderer";
 
@@ -10,7 +11,11 @@ import { startAutoRefresh } from "./renderer";
  */
 const router = createRouter({
   history: createWebHistory(),
-  routes: [{ path: "/:pathMatch(.*)*", component: LegacyView }],
+  routes: [
+    { path: "/", component: LedgerView },
+    // Everything not yet ported goes through the seam.
+    { path: "/:pathMatch(.*)*", component: LegacyView },
+  ],
 });
 
 createApp(App).use(router).mount("#app");

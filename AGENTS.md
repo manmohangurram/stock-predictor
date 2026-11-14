@@ -109,6 +109,11 @@ The migration is staged: `web/src/renderer.ts` is the seam that still holds the 
 `views/LegacyView.vue` hands it the markup. Each stage replaces one page with a real view; when the
 last one is ported, `renderer.ts`, `pages/` and `wiring/` are deleted together.
 
+**daisyUI is installed with the `d-` prefix** (`web/src/styles/tailwind.css`): a ported page writes
+`d-btn`, `d-input`, `d-modal`; an unported page keeps its own classes, so neither can restyle the
+other. The theme is this app's paper and ink, not a daisyUI preset. Preflight is off on purpose —
+it would reset every page still drawn by a renderer.
+
 The kit lives in `web/src/components/ui/` — `AppButton`, `AppStamp`, `AppEmpty` today, one per
 primitive we actually reuse. A page never hand-writes a `.btn` or a `.stamp`.
 
