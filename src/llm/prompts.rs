@@ -130,9 +130,7 @@ pub fn render_trending(date: &str, web: &str) -> Result<RenderedPrompt> {
     Ok(RenderedPrompt {
         template: "trending_v1".into(),
         hash: template_hash("trending_v1")?,
-        text: template
-            .replace("{{date}}", date)
-            .replace("{{web}}", web),
+        text: template.replace("{{date}}", date).replace("{{web}}", web),
     })
 }
 

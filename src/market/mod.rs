@@ -39,7 +39,9 @@ pub trait MarketSource: Send + Sync {
 
     /// The constituents of the long-term benchmark, as (yahoo symbol, name). Behind the trait so a
     /// test can answer with a list instead of reaching NSE.
-    fn constituents<'a>(&'a self) -> Pin<Box<dyn Future<Output = Result<Constituents>> + Send + 'a>>;
+    fn constituents<'a>(
+        &'a self,
+    ) -> Pin<Box<dyn Future<Output = Result<Constituents>> + Send + 'a>>;
 }
 
 /// Search across both sources. Yahoo for exchange-listed instruments, AMFI for Indian funds.

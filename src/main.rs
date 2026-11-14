@@ -43,7 +43,12 @@ fn poll_summary(r: &stock_predictor::engine::PollReport) -> String {
     if !r.not_asked.is_empty() {
         line.push_str(&format!(
             " · left alone: {}",
-            r.not_asked.iter().take(3).cloned().collect::<Vec<_>>().join(", ")
+            r.not_asked
+                .iter()
+                .take(3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     line
@@ -235,12 +240,11 @@ async fn main() -> Result<()> {
         tokio::sync::mpsc::channel::<(i64, stock_predictor::runs::Manual)>(8);
     let mut state = api::AppState::new(pool.clone(), cfg.clone());
     state.manual = Some(manual_tx);
-    let app = api::router(state)
-        .fallback_service(
-            ServeDir::new("web/dist")
-                .append_index_html_on_directories(false)
-                .fallback(axum::routing::get(spa_index)),
-        );
+    let app = api::router(state).fallback_service(
+        ServeDir::new("web/dist")
+            .append_index_html_on_directories(false)
+            .fallback(axum::routing::get(spa_index)),
+    );
 
     let poll_pool = pool.clone();
     tokio::spawn(async move {
@@ -396,31 +400,35 @@ async fn main() -> Result<()> {
                     rules: RuleConfig::default(),
                     force: false,
                 };
-            match engine::poll_once(&deps, now).await {
-                Ok(r) => tracing::info!(?r, "poll complete"),
-                Err(e) => tracing::error!(error = %e, "poll failed"),
-            }
+                match engine::poll_once(&deps, now).await {
+                    Ok(r) => tracing::info!(?r, "poll complete"),
+                    Err(e) => tracing::error!(error = %e, "poll failed"),
+                }
 
-            // The audit keeps three months; the sweep is idempotent, so it runs with the poll.
-            match stock_predictor::llm::audit::prune(&poll_pool, AUDIT_KEEP_DAYS).await {
-                Ok(0) => {}
-                Ok(n) => tracing::info!(deleted = n, "audit rows older than {AUDIT_KEEP_DAYS} days"),
-                Err(e) => tracing::warn!(error = %e, "audit prune failed"),
-            }
-            match stock_predictor::store::prune_news(&poll_pool, AUDIT_KEEP_DAYS).await {
-                Ok(0) => {}
-                Ok(n) => tracing::info!(deleted = n, "headlines older than {AUDIT_KEEP_DAYS} days"),
-                Err(e) => tracing::warn!(error = %e, "headline prune failed"),
-            }
+                // The audit keeps three months; the sweep is idempotent, so it runs with the poll.
+                match stock_predictor::llm::audit::prune(&poll_pool, AUDIT_KEEP_DAYS).await {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        tracing::info!(deleted = n, "audit rows older than {AUDIT_KEEP_DAYS} days")
+                    }
+                    Err(e) => tracing::warn!(error = %e, "audit prune failed"),
+                }
+                match stock_predictor::store::prune_news(&poll_pool, AUDIT_KEEP_DAYS).await {
+                    Ok(0) => {}
+                    Ok(n) => {
+                        tracing::info!(deleted = n, "headlines older than {AUDIT_KEEP_DAYS} days")
+                    }
+                    Err(e) => tracing::warn!(error = %e, "headline prune failed"),
+                }
 
-            // The morning news pass: one dated web search per instrument, once an IST day.
-            match stock_predictor::engine::refresh_news(&deps, Utc::now()).await {
-                Ok(0) => {}
-                Ok(n) => tracing::info!(headlines = n, "morning news search stored"),
-                Err(e) => tracing::warn!(error = %e, "morning news search failed"),
-            }
+                // The morning news pass: one dated web search per instrument, once an IST day.
+                match stock_predictor::engine::refresh_news(&deps, Utc::now()).await {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(headlines = n, "morning news search stored"),
+                    Err(e) => tracing::warn!(error = %e, "morning news search failed"),
+                }
 
-            // Best-fund discovery: once a day, rank the curated list by trailing return.
+                // Best-fund discovery: once a day, rank the curated list by trailing return.
                 match stock_predictor::fundscan::run(&poll_pool, &runtime, Utc::now()).await {
                     Ok(r) if r.examined > 0 => tracing::info!(?r, "fund scan"),
                     Ok(_) => {}

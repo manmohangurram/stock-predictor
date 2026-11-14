@@ -57,7 +57,11 @@ pub fn init(key: Vec<u8>) {
 /// Never absent: an uninitialised process (a unit test) gets a random key for its lifetime, so a
 /// secret is never written in the clear by accident.
 fn key() -> &'static [u8] {
-    KEY.get_or_init(|| random_key().map(|k| k.to_vec()).unwrap_or_else(|_| vec![0u8; 32]))
+    KEY.get_or_init(|| {
+        random_key()
+            .map(|k| k.to_vec())
+            .unwrap_or_else(|_| vec![0u8; 32])
+    })
 }
 
 pub fn key_path(db_path: &str) -> PathBuf {

@@ -19,7 +19,8 @@ struct FakeMarket {
 impl stock_predictor::market::MarketSource for FakeMarket {
     fn constituents<'a>(
         &'a self,
-    ) -> Pin<Box<dyn Future<Output = Result<stock_predictor::market::Constituents>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<stock_predictor::market::Constituents>> + Send + 'a>>
+    {
         Box::pin(async { Ok(Vec::new()) })
     }
 

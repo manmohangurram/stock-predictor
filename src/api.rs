@@ -652,12 +652,11 @@ async fn instrument_detail(
         })
         .collect();
 
-    let signals: Vec<SignalRow> =
-        load_signals(&st.pool, crate::models::Mode::Long, "everything")
-            .await?
-            .into_iter()
-            .filter(|s| s.symbol == symbol)
-            .collect();
+    let signals: Vec<SignalRow> = load_signals(&st.pool, crate::models::Mode::Long, "everything")
+        .await?
+        .into_iter()
+        .filter(|s| s.symbol == symbol)
+        .collect();
 
     Ok(Json(InstrumentDetail {
         instrument: InstrumentRow {
@@ -820,12 +819,11 @@ async fn analysis(
         })
         .collect();
 
-    let signals: Vec<SignalRow> =
-        load_signals(&st.pool, crate::models::Mode::Long, "everything")
-            .await?
-            .into_iter()
-            .filter(|s| s.symbol == symbol)
-            .collect();
+    let signals: Vec<SignalRow> = load_signals(&st.pool, crate::models::Mode::Long, "everything")
+        .await?
+        .into_iter()
+        .filter(|s| s.symbol == symbol)
+        .collect();
     let trades = crate::trades::history(&st.pool, Some(id), 200).await?;
 
     Ok(Json(Analysis {
@@ -1083,18 +1081,22 @@ async fn market_state(State(st): State<AppState>) -> Result<Json<serde_json::Val
     let priced_today = latest_day == Some(today);
 
     let (state, reason) = market_state_for(weekday, minutes, priced_today);
-    let to_utc = |d: chrono::NaiveDate, hour: u32, minute: u32| -> Option<chrono::DateTime<chrono::Utc>> {
-        let naive = d.and_hms_opt(hour, minute, 0)?;
-        Some(
-            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc)
-                - chrono::Duration::minutes(330),
-        )
-    };
+    let to_utc =
+        |d: chrono::NaiveDate, hour: u32, minute: u32| -> Option<chrono::DateTime<chrono::Utc>> {
+            let naive = d.and_hms_opt(hour, minute, 0)?;
+            Some(
+                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc)
+                    - chrono::Duration::minutes(330),
+            )
+        };
     let next_open_at = {
         let mut day = ist.date_naive();
         let mut found = None;
         for _ in 0..9 {
-            let weekday = !matches!(chrono::Datelike::weekday(&day), chrono::Weekday::Sat | chrono::Weekday::Sun);
+            let weekday = !matches!(
+                chrono::Datelike::weekday(&day),
+                chrono::Weekday::Sat | chrono::Weekday::Sun
+            );
             if weekday {
                 if let Some(at) = to_utc(day, 9, 15) {
                     if at > now {
@@ -1135,13 +1137,12 @@ async fn schedule_view(State(st): State<AppState>) -> Result<Json<serde_json::Va
     let marker = |key: &'static str| {
         let pool = st.pool.clone();
         async move {
-            let row: Option<(String,)> =
-                sqlx::query_as("SELECT value FROM settings WHERE key = ?")
-                    .bind(key)
-                    .fetch_optional(&pool)
-                    .await
-                    .ok()
-                    .flatten();
+            let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?")
+                .bind(key)
+                .fetch_optional(&pool)
+                .await
+                .ok()
+                .flatten();
             row.map(|r| r.0)
         }
     };
@@ -1161,23 +1162,24 @@ async fn schedule_view(State(st): State<AppState>) -> Result<Json<serde_json::Va
     let stock_ran = marker("stock_plan_last").await.as_deref() == Some(today.as_str());
     let fund_ran = marker("mf_plan_last").await.as_deref() == Some(today.as_str());
 
-    let entry = |prompt: &'static str, label: &'static str, rule: &'static str, next: Option<String>| {
-        let last = latest(prompt);
-        serde_json::json!({
-            "prompt": prompt,
-            "label": label,
-            "rule": rule,
-            "next_due_at": next,
-            "last": last.map(|r| serde_json::json!({
-                "status": r.status,
-                "trigger": r.trigger,
-                "at": r.started_at,
-                "finished_at": r.finished_at,
-                "summary": r.summary,
-                "error": r.error,
-            })),
-        })
-    };
+    let entry =
+        |prompt: &'static str, label: &'static str, rule: &'static str, next: Option<String>| {
+            let last = latest(prompt);
+            serde_json::json!({
+                "prompt": prompt,
+                "label": label,
+                "rule": rule,
+                "next_due_at": next,
+                "last": last.map(|r| serde_json::json!({
+                    "status": r.status,
+                    "trigger": r.trigger,
+                    "at": r.started_at,
+                    "finished_at": r.finished_at,
+                    "summary": r.summary,
+                    "error": r.error,
+                })),
+            })
+        };
 
     Ok(Json(serde_json::json!({
         "now": now.to_rfc3339(),
@@ -1431,7 +1433,8 @@ async fn calls(
                 id: r.id,
                 ts: r.ts,
                 endpoint: r.endpoint,
-                decision_action: if r.plan_legs > 0 && r.decision_action.as_deref() != Some("BLOCKED")
+                decision_action: if r.plan_legs > 0
+                    && r.decision_action.as_deref() != Some("BLOCKED")
                 {
                     Some("PLAN".to_string())
                 } else {
@@ -2036,7 +2039,9 @@ async fn refresh_instrument(
     let (bars, news) = refresh_any(&st.pool, id, &symbol, &class, &rt, active.0 != 0)
         .await
         .map_err(|e| ApiError::BadRequest(format!("{symbol} ({class}): {e}")))?;
-    Ok(Json(serde_json::json!({ "bars": bars, "headlines": news, "cached": active.0 != 0 })))
+    Ok(Json(
+        serde_json::json!({ "bars": bars, "headlines": news, "cached": active.0 != 0 }),
+    ))
 }
 
 async fn instrument_trades(
@@ -2066,7 +2071,9 @@ async fn restore_instrument(
             "{symbol} is not archived — there is nothing to restore"
         )));
     }
-    Ok(Json(serde_json::json!({ "symbol": symbol, "restored": true })))
+    Ok(Json(
+        serde_json::json!({ "symbol": symbol, "restored": true }),
+    ))
 }
 
 /// Remove a fill: the position and the ledger move back, and the decision it satisfied reopens.
@@ -2811,10 +2818,12 @@ mod tests {
     fn the_next_trade_slot_is_found_across_a_weekend() {
         use chrono::TimeZone;
         // Friday 18:00 IST — after the close — must find Monday's 09:15, not nothing.
-        let fri = chrono::Utc.with_ymd_and_hms(2026, 11, 13, 12, 30, 0).unwrap();
+        let fri = chrono::Utc
+            .with_ymd_and_hms(2026, 11, 13, 12, 30, 0)
+            .unwrap();
         let next = trade_next(fri).expect("a slot exists on Monday");
-        let ist = chrono::DateTime::parse_from_rfc3339(&next).unwrap()
-            + chrono::Duration::minutes(330);
+        let ist =
+            chrono::DateTime::parse_from_rfc3339(&next).unwrap() + chrono::Duration::minutes(330);
         assert_eq!(ist.weekday(), chrono::Weekday::Mon);
         assert_eq!((ist.hour(), ist.minute()), (9, 15));
     }
@@ -2827,7 +2836,10 @@ mod tests {
             bar("2026-11-12T00:00:00Z", 60.0),
         ];
         assert_eq!(trailing_return(&bars, 365), Some(20.0));
-        let young = vec![bar("2026-06-01T00:00:00Z", 55.0), bar("2026-11-12T00:00:00Z", 60.0)];
+        let young = vec![
+            bar("2026-06-01T00:00:00Z", 55.0),
+            bar("2026-11-12T00:00:00Z", 60.0),
+        ];
         assert_eq!(trailing_return(&young, 365), None);
         assert_eq!(trailing_return(&[], 365), None);
     }

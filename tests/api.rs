@@ -1673,11 +1673,13 @@ async fn headlines_older_than_three_months_are_pruned() {
 #[tokio::test]
 async fn a_fund_scan_row_is_approved_with_units_and_nav() {
     let (_d, router, pool) = setup().await;
-    sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency)
-                 VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT OR IGNORE INTO instruments (symbol, class, name, currency)
+                 VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
     send(
         &router,
         "PUT",
@@ -1721,11 +1723,13 @@ async fn a_fund_scan_row_is_approved_with_units_and_nav() {
 #[tokio::test]
 async fn a_fund_plan_is_approved_against_the_fund_purse() {
     let (_d, router, pool) = setup().await;
-    sqlx::query("INSERT OR IGNORE INTO instruments (symbol, class, name, currency)
-                 VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT OR IGNORE INTO instruments (symbol, class, name, currency)
+                 VALUES ('AXISELSS','mutual_fund','Axis ELSS','INR')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
     send(
         &router,
         "PUT",
@@ -1782,7 +1786,10 @@ async fn a_blocked_proposal_is_visible_in_the_record_with_its_shortfall() {
 
     // The dashboard is decisions only: a refusal is not a decision to review.
     let (_, v) = get(&router, "/api/dashboard").await;
-    assert!(v.get("blocked").is_none(), "the ledger no longer carries a blocked list");
+    assert!(
+        v.get("blocked").is_none(),
+        "the ledger no longer carries a blocked list"
+    );
 
     // …and the stock overview shows it as part of the record.
     let (s, v) = get(&router, "/api/instruments/INFY/analysis").await;
@@ -2663,7 +2670,13 @@ async fn deleting_a_fill_reverses_it_and_reopens_its_decision() {
         .await
         .unwrap();
 
-    let (s, v) = send(&router, "DELETE", &format!("/api/trades/{}", trade.0), json!({})).await;
+    let (s, v) = send(
+        &router,
+        "DELETE",
+        &format!("/api/trades/{}", trade.0),
+        json!({}),
+    )
+    .await;
     assert_eq!(s, StatusCode::OK, "{v}");
 
     let trades: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM trades")
@@ -2676,13 +2689,15 @@ async fn deleting_a_fill_reverses_it_and_reopens_its_decision() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert!((after.0 - before.0 - 1000.0).abs() < 1e-6, "the money came back: {after:?}");
+    assert!(
+        (after.0 - before.0 - 1000.0).abs() < 1e-6,
+        "the money came back: {after:?}"
+    );
 
-    let adjust: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM cash_ledger WHERE kind = 'adjust'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let adjust: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cash_ledger WHERE kind = 'adjust'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(adjust.0, 1, "as its own entry, not by rewriting history");
 
     let held: (i64,) = sqlx::query_as(
@@ -2725,9 +2740,25 @@ async fn deleting_a_fill_that_would_go_negative_is_refused() {
         .await
         .unwrap();
 
-    let (s, v) = send(&router, "DELETE", &format!("/api/trades/{}", first.0), json!({})).await;
+    let (s, v) = send(
+        &router,
+        "DELETE",
+        &format!("/api/trades/{}", first.0),
+        json!({}),
+    )
+    .await;
     assert_eq!(s, StatusCode::BAD_REQUEST, "{v}");
-    assert!(v["error"].as_str().unwrap_or_default().contains("less than nothing") || v["error"].as_str().unwrap_or_default().contains("sell or correct"), "{v}");
+    assert!(
+        v["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("less than nothing")
+            || v["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("sell or correct"),
+        "{v}"
+    );
 
     let held: (f64,) = sqlx::query_as(
         "SELECT qty FROM positions WHERE instrument_id =
@@ -2778,11 +2809,10 @@ async fn an_archived_instrument_shows_what_its_fills_made() {
 async fn an_archived_instrument_can_be_restored() {
     let (_d, router, pool) = setup().await;
     send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;
-    let archived: (i64,) =
-        sqlx::query_as("SELECT active FROM instruments WHERE symbol = 'TCS'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let archived: (i64,) = sqlx::query_as("SELECT active FROM instruments WHERE symbol = 'TCS'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(archived.0, 0);
 
     let (s, v) = send(&router, "POST", "/api/instruments/TCS/restore", json!({})).await;
@@ -2880,7 +2910,11 @@ async fn the_audit_list_can_be_narrowed() {
 
     let (s, v) = get(&router, "/api/calls?review=none").await;
     assert_eq!(s, StatusCode::OK);
-    assert_eq!(v.as_array().unwrap().len(), 2, "two calls produced no decision");
+    assert_eq!(
+        v.as_array().unwrap().len(),
+        2,
+        "two calls produced no decision"
+    );
 
     // The total is the filtered total, not the table's.
     use tower::ServiceExt;
@@ -2895,7 +2929,11 @@ async fn the_audit_list_can_be_narrowed() {
         .await
         .unwrap();
     assert_eq!(
-        resp.headers().get("x-total-count").unwrap().to_str().unwrap(),
+        resp.headers()
+            .get("x-total-count")
+            .unwrap()
+            .to_str()
+            .unwrap(),
         "1"
     );
 
@@ -2912,10 +2950,19 @@ async fn the_audit_list_can_be_narrowed() {
 fn the_market_state_is_read_from_the_clock_and_the_data() {
     use stock_predictor::api::market_state_for;
     // Sat/Sun, whatever the hour.
-    assert_eq!(market_state_for(false, 10 * 60, true), ("closed", "Weekend"));
+    assert_eq!(
+        market_state_for(false, 10 * 60, true),
+        ("closed", "Weekend")
+    );
     // A weekday, before 09:15 and after 15:30.
-    assert_eq!(market_state_for(true, 8 * 60, false), ("closed", "Before the open"));
-    assert_eq!(market_state_for(true, 16 * 60, true), ("closed", "After the close"));
+    assert_eq!(
+        market_state_for(true, 8 * 60, false),
+        ("closed", "Before the open")
+    );
+    assert_eq!(
+        market_state_for(true, 16 * 60, true),
+        ("closed", "After the close")
+    );
     // In session, with prices: trading.
     assert_eq!(market_state_for(true, 11 * 60, true), ("open", "Trading"));
     // In session, with nothing priced: the honest guess is a holiday, and it says so.
@@ -2944,7 +2991,10 @@ async fn a_discovered_name_is_not_archived() {
 
     let (s, v) = get(&router, "/api/archived").await;
     assert_eq!(s, StatusCode::OK, "{v}");
-    assert!(v.as_array().unwrap().is_empty(), "nothing was archived yet: {v}");
+    assert!(
+        v.as_array().unwrap().is_empty(),
+        "nothing was archived yet: {v}"
+    );
 
     // Archiving the same name by hand does put it there.
     send(&router, "DELETE", "/api/instruments/TCS", json!({})).await;

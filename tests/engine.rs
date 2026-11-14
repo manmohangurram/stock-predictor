@@ -1282,10 +1282,7 @@ async fn a_poll_reports_what_the_gate_left_alone() {
         "{report:?}"
     );
     assert!(
-        report
-            .notes
-            .iter()
-            .any(|n| n.contains("model not asked")),
+        report.notes.iter().any(|n| n.contains("model not asked")),
         "{report:?}"
     );
     // The run summary says "0 of 1 instruments asked", which needs both halves counted.
@@ -1329,7 +1326,10 @@ async fn a_refused_proposal_is_recorded_so_it_is_not_only_in_the_audit() {
         &notifier,
         cfg(),
         now(),
-        vec![stock_predictor::llm::deepseek::HttpReply { status: 200, body: refused }],
+        vec![stock_predictor::llm::deepseek::HttpReply {
+            status: 200,
+            body: refused,
+        }],
     )
     .await
     .unwrap();

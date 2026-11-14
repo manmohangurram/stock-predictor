@@ -85,7 +85,8 @@ impl MarketSource for FakeMarket {
 
     fn constituents<'a>(
         &'a self,
-    ) -> Pin<Box<dyn Future<Output = Result<stock_predictor::market::Constituents>> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<stock_predictor::market::Constituents>> + Send + 'a>>
+    {
         // Two names with a rising tape, so the plan has a candidate without touching NSE.
         let out = Ok(vec![
             ("INFY.NS".to_string(), "Infosys".to_string()),

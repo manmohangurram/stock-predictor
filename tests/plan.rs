@@ -89,7 +89,7 @@ fn a_plan_that_buys_more_than_it_frees_is_refused() {
                 stop: None,
                 target: None,
                 why: "token sale".into(),
-            valid_until: None,
+                valid_until: None,
             },
             Move {
                 action: Action::Buy,
@@ -100,7 +100,7 @@ fn a_plan_that_buys_more_than_it_frees_is_refused() {
                 stop: Some(90.0),
                 target: Some(120.0),
                 why: "big".into(),
-            valid_until: None,
+                valid_until: None,
             },
         ],
         rationale: "unbalanced".into(),
@@ -202,7 +202,7 @@ fn a_symbol_may_not_appear_twice() {
                 stop: None,
                 target: None,
                 why: "a".into(),
-            valid_until: None,
+                valid_until: None,
             },
             Move {
                 action: Action::Buy,
@@ -213,7 +213,7 @@ fn a_symbol_may_not_appear_twice() {
                 stop: Some(1000.0),
                 target: Some(1300.0),
                 why: "b".into(),
-            valid_until: None,
+                valid_until: None,
             },
         ],
         rationale: String::new(),
@@ -256,7 +256,7 @@ fn a_plan_may_list_its_moves_in_any_order() {
         Cash {
             stock: 5_000.0,
             fund: 0.0,
-        trade: 0.0,
+            trade: 0.0,
         },
         &at(1_000_000.0),
         "INR",
@@ -320,7 +320,7 @@ fn selling_stocks_never_funds_a_mutual_fund() {
                 stop: None,
                 target: None,
                 why: "dead money".into(),
-            valid_until: None,
+                valid_until: None,
             },
             Move {
                 action: Action::Buy,
@@ -331,7 +331,7 @@ fn selling_stocks_never_funds_a_mutual_fund() {
                 stop: Some(240.0),
                 target: Some(320.0),
                 why: "park the proceeds in an index fund".into(),
-            valid_until: None,
+                valid_until: None,
             },
         ],
         rationale: "consolidate".into(),
@@ -383,7 +383,7 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
                 stop: None,
                 target: None,
                 why: "duplicates the large-cap holding".into(),
-            valid_until: None,
+                valid_until: None,
             },
             Move {
                 action: Action::Buy,
@@ -394,7 +394,7 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
                 stop: None,
                 target: None,
                 why: "re-cut the same money".into(),
-            valid_until: None,
+                valid_until: None,
             },
         ],
         rationale: String::new(),
@@ -406,7 +406,7 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
         Cash {
             stock: 0.0,
             fund: 5_000.0,
-        trade: 0.0,
+            trade: 0.0,
         },
         &at(1_000_000.0),
         "INR",
@@ -437,7 +437,7 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
         Cash {
             stock: 100_000.0,
             fund: 5_000.0,
-        trade: 0.0,
+            trade: 0.0,
         },
         &at(1_000_000.0),
         "INR",
@@ -454,7 +454,7 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
         Cash {
             stock: 100_000.0,
             fund: 0.0,
-        trade: 0.0,
+            trade: 0.0,
         },
         &at(1_000_000.0),
         "INR",
@@ -486,7 +486,7 @@ fn a_fund_plan_is_sized_in_rupees_and_only_touches_funds() {
         Cash {
             stock: 0.0,
             fund: 9_999.0,
-        trade: 0.0,
+            trade: 0.0,
         },
         &at(1_000_000.0),
         "INR",
@@ -544,13 +544,17 @@ fn a_trade_move_needs_an_expiry_inside_three_sessions() {
     let err = check(move_with(None, "IDEA.NS")).unwrap_err().to_string();
     assert!(err.contains("expiry"), "{err}");
     // Too far out: the deadline is the close of the third *session*, not three calendar days.
-    let far = (plan::session_deadline(now, TRADE_MAX_SESSIONS) + chrono::Duration::hours(1))
-        .to_rfc3339();
-    let err = check(move_with(Some(far), "IDEA.NS")).unwrap_err().to_string();
+    let far =
+        (plan::session_deadline(now, TRADE_MAX_SESSIONS) + chrono::Duration::hours(1)).to_rfc3339();
+    let err = check(move_with(Some(far), "IDEA.NS"))
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("sessions"), "{err}");
     // Already past.
     let past = (now - chrono::Duration::hours(1)).to_rfc3339();
-    let err = check(move_with(Some(past), "IDEA.NS")).unwrap_err().to_string();
+    let err = check(move_with(Some(past), "IDEA.NS"))
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("already past"), "{err}");
 }
 
@@ -630,6 +634,15 @@ fn a_trade_sell_needs_no_expiry_but_a_buy_does() {
         moves: vec![sell],
         rationale: "take the profit".into(),
     };
-    let ctx_ok = plan::validate(&plan, &held, cash, &at(100_000.0), "INR", now, &[], Scope::Trade);
+    let ctx_ok = plan::validate(
+        &plan,
+        &held,
+        cash,
+        &at(100_000.0),
+        "INR",
+        now,
+        &[],
+        Scope::Trade,
+    );
     assert!(ctx_ok.is_ok(), "a sell needs no expiry: {ctx_ok:?}");
 }

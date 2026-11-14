@@ -261,7 +261,12 @@ BROKEN_LINE_WITHOUT_EQUALS
 BAD KEY=value
 "#;
     let pairs = stock_predictor::config::parse_dotenv(raw);
-    let get = |k: &str| pairs.iter().find(|(key, _)| key == k).map(|(_, v)| v.as_str());
+    let get = |k: &str| {
+        pairs
+            .iter()
+            .find(|(key, _)| key == k)
+            .map(|(_, v)| v.as_str())
+    };
     assert_eq!(get("DEEPSEEK_API_KEY"), Some("sk-abc123"));
     assert_eq!(get("QUOTED"), Some("a value with spaces"));
     assert_eq!(get("SINGLE"), Some("single quoted"));

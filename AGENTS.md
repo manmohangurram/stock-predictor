@@ -128,12 +128,24 @@ Before a release, **the browser flows must pass**: `docs/testing/flows.md` is th
 page, every control, what it must do — and it is walked with the Chrome DevTools MCP against a
 throwaway database. CI does not run it (it needs a browser); a release is not cut until it is green.
 
+**Every push runs build, fmt and audit** — not only a release. They are cheap, and a red one is
+always cheaper to fix now than after it lands.
+
 ```sh
-cargo test                                   # 261 tests, no network
+cargo build                                  # must compile
+cargo fmt --check                            # formatting is not a matter of taste here
+cargo audit                                  # no findings, no new ignores
+cargo test                                   # no network
 cargo clippy --all-targets                   # must be warning-free
-cargo bench --bench hot_paths                # indicators, prompt render, bar upsert
+cargo bench --bench hot_paths                # indicators, prompt render, bar upsert (release)
 cd web && npx vitest run && npm run build
 ```
+
+**Audit findings are fixed by updating dependencies**, not by ignoring them: bump the crate
+(`cargo update -p <crate>`), and if a pin blocks the fix, say which pin and when it lifts. An entry in
+`.cargo/audit.toml` is a decision with a reason and an **end condition** — the one there now is
+`RUSTSEC-2026-0459`, blocked by `sqlx-sqlite 0.9.0` pinning `libsqlite3-sys 0.37`; when sqlx allows
+0.39, upgrade and delete the entry rather than renewing it.
 
 Indexes answer a query that exists. Every one was checked with `EXPLAIN QUERY PLAN` against the
 real statements; three were dead (`runs_by_started`, `idx_api_calls_conversation`,

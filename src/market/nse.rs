@@ -90,7 +90,10 @@ fn from_text(raw: &str) -> Option<f64> {
 /// Both lists from one request: the whole market's top gainers (`allSec`), and the Nifty 50's own
 /// (`NIFTY`, which the exchange already ranks). The short-term scan needs both, and the second list
 /// is free once the first is fetched.
-pub async fn fetch_today(client: &reqwest::Client, top: usize) -> Result<(Vec<Gainer>, Vec<Gainer>)> {
+pub async fn fetch_today(
+    client: &reqwest::Client,
+    top: usize,
+) -> Result<(Vec<Gainer>, Vec<Gainer>)> {
     let body = client
         .get(GAINERS_URL)
         .header(reqwest::header::USER_AGENT, UA)
@@ -215,7 +218,10 @@ mod tests {
         let g = parse_benchmark_movers(payload, 2).unwrap();
         assert_eq!(g.len(), 2);
         assert_eq!(g[0].symbol, "SBIN");
-        assert_eq!(g[1].symbol, "TRENT", "ranked by change, not by payload order");
+        assert_eq!(
+            g[1].symbol, "TRENT",
+            "ranked by change, not by payload order"
+        );
         assert_eq!(parse_gainers(payload, 5).unwrap()[0].symbol, "ALEMBICLTD");
     }
 

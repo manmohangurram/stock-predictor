@@ -11,7 +11,6 @@ pub fn in_stock_window(now: DateTime<Utc>) -> bool {
     (9 * 60..=16 * 60).contains(&mins)
 }
 
-
 /// The trade plan's slots: every two hours inside the session, at 09:15, 11:15 and 13:15 IST.
 ///
 /// The slot id is what the marker stores — `2026-11-11T11` — so a retry inside the same slot is
@@ -48,11 +47,27 @@ mod slot_tests {
 
     #[test]
     fn the_session_has_three_slots_and_nothing_outside_it() {
-        assert_eq!(trade_slot(ist(2026, 11, 11, 9, 15)).as_deref(), Some("2026-11-11T09"));
-        assert_eq!(trade_slot(ist(2026, 11, 11, 10, 59)).as_deref(), Some("2026-11-11T09"));
-        assert_eq!(trade_slot(ist(2026, 11, 11, 11, 15)).as_deref(), Some("2026-11-11T11"));
-        assert_eq!(trade_slot(ist(2026, 11, 11, 13, 20)).as_deref(), Some("2026-11-11T13"));
-        assert_eq!(trade_slot(ist(2026, 11, 11, 15, 30)), None, "too late to enter");
+        assert_eq!(
+            trade_slot(ist(2026, 11, 11, 9, 15)).as_deref(),
+            Some("2026-11-11T09")
+        );
+        assert_eq!(
+            trade_slot(ist(2026, 11, 11, 10, 59)).as_deref(),
+            Some("2026-11-11T09")
+        );
+        assert_eq!(
+            trade_slot(ist(2026, 11, 11, 11, 15)).as_deref(),
+            Some("2026-11-11T11")
+        );
+        assert_eq!(
+            trade_slot(ist(2026, 11, 11, 13, 20)).as_deref(),
+            Some("2026-11-11T13")
+        );
+        assert_eq!(
+            trade_slot(ist(2026, 11, 11, 15, 30)),
+            None,
+            "too late to enter"
+        );
         assert_eq!(trade_slot(ist(2026, 11, 11, 9, 0)), None, "before the open");
         assert_eq!(trade_slot(ist(2026, 11, 7, 11, 0)), None, "Saturday");
     }

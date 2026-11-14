@@ -257,7 +257,7 @@ async fn live_a_push_lands_on_the_service() {
 /// No topic in settings is "off", not "POST to the root and fail the decision".
 #[tokio::test]
 async fn an_unconfigured_notifier_sends_nothing_and_records_nothing() {
-    use stock_predictor::notify::{Ntfy, Notifier as _};
+    use stock_predictor::notify::{Notifier as _, Ntfy};
 
     let (_d, pool) = pool().await;
     let rt = stock_predictor::rules::runtime::Runtime::default();
@@ -285,12 +285,15 @@ async fn an_unconfigured_notifier_sends_nothing_and_records_nothing() {
 /// never written to, so the pass recorded a decision and told nobody.
 #[test]
 fn a_short_term_idea_becomes_the_line_that_is_pushed() {
-    let (sym, qty, entry, target, stop, conf) =
-        ("MAKERSL", 12.0_f64, 268.34_f64, 300.00_f64, 250.00_f64, "high");
-    let line = format!(
-        "{sym} · {qty:.0} at {entry:.2}, target {target:.2}, stop {stop:.2} · {conf}"
+    let (sym, qty, entry, target, stop, conf) = (
+        "MAKERSL", 12.0_f64, 268.34_f64, 300.00_f64, 250.00_f64, "high",
     );
-    assert_eq!(line, "MAKERSL · 12 at 268.34, target 300.00, stop 250.00 · high");
+    let line =
+        format!("{sym} · {qty:.0} at {entry:.2}, target {target:.2}, stop {stop:.2} · {conf}");
+    assert_eq!(
+        line,
+        "MAKERSL · 12 at 268.34, target 300.00, stop 250.00 · high"
+    );
     let n = Notification {
         title: format!("Short-term · {} idea{}", 1, ""),
         body: line.clone(),

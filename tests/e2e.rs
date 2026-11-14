@@ -76,7 +76,10 @@ async fn setup() -> (tempfile::TempDir, sqlx::SqlitePool) {
     .await
     .unwrap();
     // A tick reads the headlines the morning search stored; it does not ask the feed again.
-    for (i, title) in ["Infosys wins a large deal", "Infosys guidance held"].iter().enumerate() {
+    for (i, title) in ["Infosys wins a large deal", "Infosys guidance held"]
+        .iter()
+        .enumerate()
+    {
         sqlx::query(
             "INSERT INTO news (instrument_id, published_at, title, publisher, url)
              VALUES (?, '2026-10-27T03:00:00Z', ?, 'Reuters', ?)",

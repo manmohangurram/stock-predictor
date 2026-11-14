@@ -201,7 +201,10 @@ mod tests {
         let closes = [100.0, 101.0, 102.0, 103.0, 104.0, 110.0];
         let r = return_over(&closes, 5).unwrap();
         assert!((r - 0.10).abs() < 1e-9, "{r}");
-        assert!(return_over(&closes[..5], 5).is_none(), "five closes is not enough");
+        assert!(
+            return_over(&closes[..5], 5).is_none(),
+            "five closes is not enough"
+        );
         assert!(return_over(&[100.0, 0.0, 1.0, 2.0, 3.0, 4.0], 5).is_none());
     }
 

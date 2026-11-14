@@ -61,7 +61,6 @@ pub fn cost(qty: f64, price: f64, class: AssetClass) -> f64 {
     }
 }
 
-
 pub async fn budget_total_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
     let row: (Option<f64>,) =
         sqlx::query_as("SELECT SUM(amount) FROM cash_ledger WHERE kind = 'budget' AND mode = ?")
@@ -111,11 +110,7 @@ pub async fn cash_in(pool: &SqlitePool, mode: Mode) -> Result<f64> {
 }
 
 /// Cash in one purse. `None` is the pot's main purse; `Some("mf")` is the mutual-fund purse.
-pub async fn cash_in_bucket(
-    pool: &SqlitePool,
-    mode: Mode,
-    bucket: Option<&str>,
-) -> Result<f64> {
+pub async fn cash_in_bucket(pool: &SqlitePool, mode: Mode, bucket: Option<&str>) -> Result<f64> {
     let row: (Option<f64>,) = sqlx::query_as(
         "SELECT SUM(amount) FROM cash_ledger
          WHERE mode = ? AND COALESCE(bucket, '') = ?",

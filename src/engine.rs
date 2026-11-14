@@ -76,7 +76,16 @@ pub async fn poll_once(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<Poll
 
     let fresh = std::mem::take(&mut report.fresh);
     if !fresh.is_empty() {
-        match plan_book_with(deps, now, crate::llm::plan::Scope::Stock, None, &fresh, true).await {
+        match plan_book_with(
+            deps,
+            now,
+            crate::llm::plan::Scope::Stock,
+            None,
+            &fresh,
+            true,
+        )
+        .await
+        {
             Ok(Some(())) => report.plans += 1,
             Ok(None) => {}
             Err(e) => report.errors.push(format!("band plan: {e:#}")),
@@ -129,7 +138,11 @@ async fn stored_headlines(
 /// The headline must name the company, by name or by its first word.
 fn names_company(headline: &Headline, name: &str) -> bool {
     let title = headline.title.to_lowercase();
-    let first = name.split_whitespace().next().unwrap_or(name).to_lowercase();
+    let first = name
+        .split_whitespace()
+        .next()
+        .unwrap_or(name)
+        .to_lowercase();
     !first.is_empty() && title.contains(&first)
 }
 
@@ -154,7 +167,8 @@ pub async fn refresh_news(deps: &EngineDeps<'_>, now: DateTime<Utc>) -> Result<u
     let instruments = load_instruments(deps.pool).await?;
     let mut stored = 0;
     for instrument in &instruments {
-        let Ok(mut rows) = crate::market::googlenews::fetch_news(&client, &instrument.name, 2).await
+        let Ok(mut rows) =
+            crate::market::googlenews::fetch_news(&client, &instrument.name, 2).await
         else {
             continue;
         };
@@ -255,16 +269,24 @@ async fn plan_book_with(
         }
     }
     let funds = fund_symbols(deps.pool).await?;
-    let book: Vec<crate::llm::rotate::HoldingLine> =
-        load_holdings(deps.pool, if scope.is_trade() {
+    let book: Vec<crate::llm::rotate::HoldingLine> = load_holdings(
+        deps.pool,
+        if scope.is_trade() {
             crate::models::Mode::Trade
         } else {
             crate::models::Mode::Long
-        })
-        .await?
-        .into_iter()
-        .filter(|h| if scope.is_trade() { true } else { funds.contains(&h.symbol) == fund })
-        .collect();
+        },
+    )
+    .await?
+    .into_iter()
+    .filter(|h| {
+        if scope.is_trade() {
+            true
+        } else {
+            funds.contains(&h.symbol) == fund
+        }
+    })
+    .collect();
     if book.is_empty() && !scope.is_trade() {
         return Ok(None);
     }
@@ -990,9 +1012,11 @@ async fn poll_instrument(
                     20,
                     Some("Mozilla/5.0 stock-predictor"),
                 ) {
-                    Ok(client) => crate::market::googlenews::fetch_news(&client, &instrument.name, 2)
-                        .await
-                        .unwrap_or_default(),
+                    Ok(client) => {
+                        crate::market::googlenews::fetch_news(&client, &instrument.name, 2)
+                            .await
+                            .unwrap_or_default()
+                    }
                     Err(_) => Vec::new(),
                 };
                 report.notes.push(format!(
@@ -1006,18 +1030,20 @@ async fn poll_instrument(
                     close,
                     pos.avg_cost,
                     pos.stop.map(|s| format!("{s:.2}")).unwrap_or("none".into()),
-                    crate::llm::prompts::render_web_hits(&hits
-                        .into_iter()
-                        .filter(|h| !h.title.chars().any(is_ideographic))
-                        .map(|h| crate::llm::deepseek::SearchHit {
-                            title: h.title,
-                            site: h.publisher,
-                            url: h.url,
-                            snippet: String::new(),
-                            summary: String::new(),
-                            date: Some(h.published_at),
-                        })
-                        .collect::<Vec<_>>()),
+                    crate::llm::prompts::render_web_hits(
+                        &hits
+                            .into_iter()
+                            .filter(|h| !h.title.chars().any(is_ideographic))
+                            .map(|h| crate::llm::deepseek::SearchHit {
+                                title: h.title,
+                                site: h.publisher,
+                                url: h.url,
+                                snippet: String::new(),
+                                summary: String::new(),
+                                date: Some(h.published_at),
+                            })
+                            .collect::<Vec<_>>()
+                    ),
                 ));
             }
         }
@@ -1466,9 +1492,10 @@ async fn finish(
         n.signal_id = Some(signal_id);
         match notify::dispatch(deps.pool, deps.notifier, &n).await {
             Ok(true) => report.notifications += 1,
-            Ok(false) if !deps.notifier.configured() => report
-                .notes
-                .push(format!("{}: no ntfy topic — recorded without a push", instrument.symbol)),
+            Ok(false) if !deps.notifier.configured() => report.notes.push(format!(
+                "{}: no ntfy topic — recorded without a push",
+                instrument.symbol
+            )),
             Ok(false) => {}
             Err(e) => report
                 .errors

@@ -159,7 +159,9 @@ pub async fn candidate_block(
 ) -> String {
     const EVIDENCE: usize = 4;
     let Ok(client) = crate::http::client_with(
-        &crate::rules::settings::runtime(pool).await.unwrap_or_default(),
+        &crate::rules::settings::runtime(pool)
+            .await
+            .unwrap_or_default(),
         20,
         Some("Mozilla/5.0 stock-predictor"),
     ) else {
@@ -213,17 +215,21 @@ pub async fn candidate_block(
         let Ok(Some((id, _))) = ensure_instrument(pool, &g.symbol, g.short_name()).await else {
             continue;
         };
-        if crate::store::refresh(pool, id, &g.symbol, market).await.is_err() {
+        if crate::store::refresh(pool, id, &g.symbol, market)
+            .await
+            .is_err()
+        {
             continue;
         }
-        let known_name: Option<String> = sqlx::query_as("SELECT name FROM instruments WHERE id = ?")
-            .bind(id)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten()
-            .map(|(n,): (String,)| n)
-            .filter(|n| !n.trim().is_empty() && !g.short_name().eq_ignore_ascii_case(n.trim()));
+        let known_name: Option<String> =
+            sqlx::query_as("SELECT name FROM instruments WHERE id = ?")
+                .bind(id)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten()
+                .map(|(n,): (String,)| n)
+                .filter(|n| !n.trim().is_empty() && !g.short_name().eq_ignore_ascii_case(n.trim()));
         let Ok(bars) = load_bars(pool, id).await else {
             continue;
         };
@@ -233,7 +239,10 @@ pub async fn candidate_block(
         }
         let news = recent_headlines(pool, id).await.unwrap_or_default();
         if !news.is_empty() {
-            out.push_str(&format!("   headlines: {}\n", render_headlines(&news).replace('\n', " | ")));
+            out.push_str(&format!(
+                "   headlines: {}\n",
+                render_headlines(&news).replace('\n', " | ")
+            ));
         }
         if let Ok(model) = crate::rules::settings::model_config(pool).await {
             if let Ok(hits) = crate::llm::deepseek::search_for(
@@ -245,9 +254,16 @@ pub async fn candidate_block(
             )
             .await
             {
-                let recent = relevant(recent_hits(hits, now), g.short_name(), known_name.as_deref());
+                let recent = relevant(
+                    recent_hits(hits, now),
+                    g.short_name(),
+                    known_name.as_deref(),
+                );
                 if !recent.is_empty() {
-                    out.push_str(&format!("   web: {}\n", crate::llm::prompts::render_web_hits(&recent).replace('\n', " ")));
+                    out.push_str(&format!(
+                        "   web: {}\n",
+                        crate::llm::prompts::render_web_hits(&recent).replace('\n', " ")
+                    ));
                 }
             }
         }
@@ -307,7 +323,11 @@ fn dedupe(rows: Vec<Candidate>) -> Vec<Candidate> {
         .into_iter()
         .filter(|c| seen.insert(c.symbol.clone()))
         .collect();
-    out.sort_by(|a, b| b.change_pct.unwrap_or(-999.0).total_cmp(&a.change_pct.unwrap_or(-999.0)));
+    out.sort_by(|a, b| {
+        b.change_pct
+            .unwrap_or(-999.0)
+            .total_cmp(&a.change_pct.unwrap_or(-999.0))
+    });
     out.truncate(TOP_N * 3);
     out
 }
@@ -330,8 +350,10 @@ async fn searched_candidates(
         .await?,
         now,
     );
-    let prompt =
-        crate::llm::prompts::render_trending(&ist_day(now), &crate::llm::prompts::render_web_hits(&hits))?;
+    let prompt = crate::llm::prompts::render_trending(
+        &ist_day(now),
+        &crate::llm::prompts::render_web_hits(&hits),
+    )?;
     let reply = crate::llm::deepseek::chat(
         pool,
         &model,
@@ -373,12 +395,19 @@ pub fn parse_trending(content: &str) -> Vec<(String, String)> {
     for row in list {
         let raw = match row {
             serde_json::Value::String(s) => s.clone(),
-            other => other.get("symbol").and_then(|s| s.as_str()).unwrap_or("").to_string(),
+            other => other
+                .get("symbol")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string(),
         };
         let symbol = raw.trim().to_uppercase();
-        if symbol.len() < 2 || symbol.len() > 20 || !symbol
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '&' | '-' | '.')) {
+        if symbol.len() < 2
+            || symbol.len() > 20
+            || !symbol
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '&' | '-' | '.'))
+        {
             continue;
         }
         let why = row
@@ -388,7 +417,11 @@ pub fn parse_trending(content: &str) -> Vec<(String, String)> {
             .trim()
             .to_string();
         // `TATAMOTORS` on its own is what the prompt asks for; `.NS` is accepted, not required.
-        let yahoo = if symbol.contains('.') { symbol } else { format!("{symbol}.NS") };
+        let yahoo = if symbol.contains('.') {
+            symbol
+        } else {
+            format!("{symbol}.NS")
+        };
         if !out.iter().any(|(s, _)| s == &yahoo) {
             out.push((yahoo, why));
         }
@@ -472,29 +505,38 @@ fn scan_note(why: &str) -> String {
 }
 
 /// One stored row: symbol, source, why, ltp, change, previous close, turnover.
-type CandidateRow = (String, String, String, Option<f64>, Option<f64>, Option<f64>, Option<f64>);
+type CandidateRow = (
+    String,
+    String,
+    String,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+    Option<f64>,
+);
 
 async fn load_candidates(pool: &SqlitePool, day: &str) -> Result<Vec<Candidate>> {
-    let rows: Vec<CandidateRow> =
-        sqlx::query_as(
-            "SELECT symbol, source, why, ltp, change_pct, previous_close, turnover
+    let rows: Vec<CandidateRow> = sqlx::query_as(
+        "SELECT symbol, source, why, ltp, change_pct, previous_close, turnover
              FROM trend_candidates WHERE day = ?
              ORDER BY COALESCE(change_pct, -999) DESC, symbol",
-        )
-        .bind(day)
-        .fetch_all(pool)
-        .await?;
+    )
+    .bind(day)
+    .fetch_all(pool)
+    .await?;
     Ok(rows
         .into_iter()
-        .map(|(symbol, source, why, ltp, change_pct, previous_close, turnover)| Candidate {
-            symbol,
-            source,
-            why,
-            ltp,
-            change_pct,
-            previous_close,
-            turnover,
-        })
+        .map(
+            |(symbol, source, why, ltp, change_pct, previous_close, turnover)| Candidate {
+                symbol,
+                source,
+                why,
+                ltp,
+                change_pct,
+                previous_close,
+                turnover,
+            },
+        )
         .collect())
 }
 
@@ -555,7 +597,6 @@ fn ist_day(now: DateTime<Utc>) -> String {
         .to_string()
 }
 
-
 /// The instrument for a discovered symbol: found, or created **for this tick only**. The second
 /// element says the row is new, so the tick can take it back if nothing came of it.
 async fn ensure_instrument(
@@ -576,7 +617,11 @@ async fn ensure_instrument(
         .bind(id)
         .fetch_one(pool)
         .await?;
-        return Ok(if held.0 > 0.0 { None } else { Some((id, false)) });
+        return Ok(if held.0 > 0.0 {
+            None
+        } else {
+            Some((id, false))
+        });
     }
     let row: (i64,) = sqlx::query_as(
         "INSERT INTO instruments (symbol, class, name, currency, active)
@@ -697,7 +742,10 @@ mod list_tests {
         assert_eq!(out.len(), 2);
         let tata = out.iter().find(|c| c.symbol == "TATAMOTORS.NS").unwrap();
         assert_eq!(tata.source, "gainers", "the row with a price wins");
-        assert!(out[0].symbol == "TATAMOTORS.NS", "ranked by change, unpriced last");
+        assert!(
+            out[0].symbol == "TATAMOTORS.NS",
+            "ranked by change, unpriced last"
+        );
     }
 
     #[test]
@@ -885,10 +933,11 @@ mod row_hygiene_tests {
 
         let dropped = sweep_glances(&pool).await.unwrap();
         assert_eq!(dropped, 1);
-        let left: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM instruments WHERE symbol = 'MAKERSL.NS'")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let left: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM instruments WHERE symbol = 'MAKERSL.NS'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(left.0, 0, "no row, and no orphan bars");
         let bars: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM bars")
             .fetch_one(&pool)
@@ -959,8 +1008,14 @@ mod relevance_tests {
     fn a_hit_about_a_different_company_is_dropped() {
         let kept = relevant(
             vec![
-                hit("Anthropic retracts its $70–80bn IPO range", "$ANT listing expected next week"),
-                hit("Antarctica Ltd jumps 19.67% on the BSE", "Antarctica Ltd closed at Rs 0.73"),
+                hit(
+                    "Anthropic retracts its $70–80bn IPO range",
+                    "$ANT listing expected next week",
+                ),
+                hit(
+                    "Antarctica Ltd jumps 19.67% on the BSE",
+                    "Antarctica Ltd closed at Rs 0.73",
+                ),
             ],
             "ANTGRAPHIC",
             Some("Antarctica"),
@@ -972,7 +1027,10 @@ mod relevance_tests {
     #[test]
     fn the_name_is_what_makes_a_hit_relevant() {
         let kept = relevant(
-            vec![hit("Prozone Realty Q2 profit jumps to ₹555 cr", "revenue rises 7%")],
+            vec![hit(
+                "Prozone Realty Q2 profit jumps to ₹555 cr",
+                "revenue rises 7%",
+            )],
             "PROZONER",
             Some("Prozone Realty Limited"),
         );
@@ -1018,13 +1076,33 @@ mod filter_tests {
     fn the_micro_caps_at_the_band_are_not_offered() {
         let (price, turnover, locked) = (10.0, 10_000_000.0, 19.5);
         // ORCHASP 1.38, 51.9 lakh, +20.00
-        assert!(!worth_offering(&c(Some(1.38), Some(5_195_000.0), Some(20.0)), price, turnover, locked));
+        assert!(!worth_offering(
+            &c(Some(1.38), Some(5_195_000.0), Some(20.0)),
+            price,
+            turnover,
+            locked
+        ));
         // ANTGRAPHIC 0.73, 27.7 lakh, +19.67
-        assert!(!worth_offering(&c(Some(0.73), Some(2_773_000.0), Some(19.67)), price, turnover, locked));
+        assert!(!worth_offering(
+            &c(Some(0.73), Some(2_773_000.0), Some(19.67)),
+            price,
+            turnover,
+            locked
+        ));
         // FLEXITUFF 3.85, 10.6 lakh, +19.94
-        assert!(!worth_offering(&c(Some(3.85), Some(1_056_000.0), Some(19.94)), price, turnover, locked));
+        assert!(!worth_offering(
+            &c(Some(3.85), Some(1_056_000.0), Some(19.94)),
+            price,
+            turnover,
+            locked
+        ));
         // PROZONER 63.76, 13.5 Cr, +19.98 — liquid and dear enough, but locked at the ceiling.
-        assert!(!worth_offering(&c(Some(63.76), Some(135_500_000.0), Some(19.98)), price, turnover, locked));
+        assert!(!worth_offering(
+            &c(Some(63.76), Some(135_500_000.0), Some(19.98)),
+            price,
+            turnover,
+            locked
+        ));
     }
 
     /// A real mover that is not locked survives, which is the point of a floor.
@@ -1032,15 +1110,30 @@ mod filter_tests {
     fn a_liquid_mover_is_still_offered() {
         let (price, turnover, locked) = (10.0, 10_000_000.0, 19.5);
         // GABRIEL 1619, 1289 Cr, +14.95
-        assert!(worth_offering(&c(Some(1619.0), Some(12_897_300_000.0), Some(14.95)), price, turnover, locked));
+        assert!(worth_offering(
+            &c(Some(1619.0), Some(12_897_300_000.0), Some(14.95)),
+            price,
+            turnover,
+            locked
+        ));
         // JARO 404, 361 Cr, +16.65
-        assert!(worth_offering(&c(Some(404.0), Some(361_040_000.0), Some(16.65)), price, turnover, locked));
+        assert!(worth_offering(
+            &c(Some(404.0), Some(361_040_000.0), Some(16.65)),
+            price,
+            turnover,
+            locked
+        ));
     }
 
     /// A name the search found has no exchange numbers yet — the model judges it, not this filter.
     #[test]
     fn a_name_without_numbers_is_left_to_the_model() {
-        assert!(worth_offering(&c(None, None, None), 10.0, 10_000_000.0, 19.5));
+        assert!(worth_offering(
+            &c(None, None, None),
+            10.0,
+            10_000_000.0,
+            19.5
+        ));
     }
 
     /// The thresholds are settings: a looser floor lets the same name through.
@@ -1048,6 +1141,9 @@ mod filter_tests {
     fn the_floors_are_what_settings_say_they_are() {
         let flexituff = c(Some(3.85), Some(1_056_000.0), Some(19.94));
         assert!(!worth_offering(&flexituff, 10.0, 10_000_000.0, 19.5));
-        assert!(worth_offering(&flexituff, 1.0, 100_000.0, 20.5), "a looser set of numbers keeps it");
+        assert!(
+            worth_offering(&flexituff, 1.0, 100_000.0, 20.5),
+            "a looser set of numbers keeps it"
+        );
     }
 }

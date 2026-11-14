@@ -65,7 +65,10 @@ fn is_trusted(publisher: &str) -> bool {
 /// Keep the market publishers when the feed has any, and everything when it has none.
 pub fn prefer_market_sources(items: Vec<Headline>) -> Vec<Headline> {
     if items.iter().any(|h| is_trusted(&h.publisher)) {
-        items.into_iter().filter(|h| is_trusted(&h.publisher)).collect()
+        items
+            .into_iter()
+            .filter(|h| is_trusted(&h.publisher))
+            .collect()
     } else {
         items
     }
@@ -84,7 +87,9 @@ pub fn parse(body: &str) -> Vec<Headline> {
         let item = &after[..end];
         rest = &after[end + "</item>".len()..];
 
-        let Some(link) = tag(item, "link") else { continue };
+        let Some(link) = tag(item, "link") else {
+            continue;
+        };
         let Some(raw_title) = tag(item, "title") else {
             continue;
         };
@@ -167,7 +172,10 @@ mod tests {
     fn a_feed_becomes_dated_headlines_from_real_publishers() {
         let hits = parse(FEED);
         assert_eq!(hits.len(), 2, "an item without a date is not an article");
-        assert_eq!(hits[0].title, "Infosys raises FY27 guidance after strong Q2");
+        assert_eq!(
+            hits[0].title,
+            "Infosys raises FY27 guidance after strong Q2"
+        );
         assert_eq!(hits[0].publisher, "Reuters");
         assert!(hits[0].published_at.starts_with("2026-11-13"));
         // CDATA and entities survive, and the publisher suffix is stripped.

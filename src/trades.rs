@@ -93,17 +93,7 @@ pub async fn record(
 ) -> Result<()> {
     // The position, the trade row and the money move together or not at all.
     let mut tx = pool.begin().await?;
-    record_on(
-        &mut tx,
-        instrument_id,
-        side,
-        qty,
-        price,
-        note,
-        at,
-        mode,
-    )
-    .await?;
+    record_on(&mut tx, instrument_id, side, qty, price, note, at, mode).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -133,7 +123,6 @@ pub async fn record_on(
         "{} cannot be held in the trading pot — mutual funds are long-term only",
         class.as_str()
     );
-
 
     let when = at.unwrap_or_else(chrono::Utc::now);
     let now = when.to_rfc3339();

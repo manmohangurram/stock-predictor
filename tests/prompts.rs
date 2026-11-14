@@ -274,7 +274,6 @@ fn the_prompt_carries_financials_or_says_unavailable() {
     );
 }
 
-
 #[test]
 fn the_long_book_says_its_horizon_is_months() {
     let t = stock_predictor::llm::prompts::template("decide_v1").unwrap();
@@ -477,21 +476,19 @@ fn the_stock_plan_prompt_demands_exits_and_forbids_funds() {
 #[test]
 fn no_web_results_is_a_sentence_not_an_empty_block() {
     let web = prompts::render_web_hits(&[]);
-    assert!(web.contains("nothing dated in the last three days"), "{web}");
+    assert!(
+        web.contains("nothing dated in the last three days"),
+        "{web}"
+    );
 }
 
 /// The daily scan asks for NSE tickers, not Yahoo symbols, and allows "nothing today".
 #[test]
 fn the_daily_scan_prompt_asks_for_bare_tickers_and_allows_an_empty_day() {
-    let rendered =
-        prompts::render_trending("2026-11-10", &prompts::render_web_hits(&[])).unwrap();
+    let rendered = prompts::render_trending("2026-11-10", &prompts::render_web_hits(&[])).unwrap();
     assert_eq!(rendered.template, "trending_v1");
     assert!(rendered.text.contains("2026-11-10"), "{}", rendered.text);
-    assert!(
-        rendered.text.contains("NSE ticker"),
-        "{}",
-        rendered.text
-    );
+    assert!(rendered.text.contains("NSE ticker"), "{}", rendered.text);
     assert!(
         rendered.text.contains(r#"{"symbols":[]"#),
         "an empty day must be answerable: {}",
