@@ -18,12 +18,15 @@ layer's diff, and each layer merges independently, bottom-up.
 
 ```sh
 gh stack init                  # creates the tracking entry and the first branch
+gh stack init a b c            # adopt existing branches (bottom to top)
 # work, git add, git commit
 gh stack add BRANCH-NAME       # next layer on top
 # work, git add, git commit
 gh stack add -Am "message"     # stage + commit + next branch in one step
 gh stack push                  # push every branch
 gh stack submit                # open the PRs, bases chained automatically
+gh stack link a b c            # existing branches/PRs -> a stack on GitHub
+gh stack checkout <stack#>     # import a remote stack for local tracking
 gh stack view                  # branches, PR links, statuses, latest commits
 ```
 
