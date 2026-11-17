@@ -1,3 +1,11 @@
+## v0.31.1
+
+### Fixes
+
+- **A holdings row opens its instrument.** The row declared `role="link"` and an aria-label but had
+  no click or keyboard handler, so no holding opened from the ledger — the short-term book included.
+  Click, Enter and Space now route to `/i/<symbol>`.
+
 ## v0.31.0 — the Go rewrite
 
 The backend is Go. Same database, same JSON, same prompts, same four environment variables; the
