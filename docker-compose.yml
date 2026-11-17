@@ -19,7 +19,6 @@ services:
       # BIND (0.0.0.0:8080) and DB_PATH (/data/stock-predictor.db) are set by the image.
       PUBLIC_URL: ${PUBLIC_URL:-}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — openssl rand -hex 32}
-      RUST_LOG: ${RUST_LOG:-info}
       # Container clock: the market window and the timestamps are Indian.
       TZ: ${TZ:-Asia/Kolkata}
     volumes:
