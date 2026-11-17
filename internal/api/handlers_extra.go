@@ -225,7 +225,12 @@ func refreshAny(pool *sql.DB, id int64, symbol, class string, rt *rules.Runtime,
 		}
 		return len(fetched), 0, nil
 	}
-	return store.Refresh(pool, id, symbol, source)
+	bars, news, err := store.Refresh(pool, id, symbol, source)
+	if err == nil {
+		// A forced read must not leave the day-long cache holding the old history.
+		market.DropDailyCache(symbol)
+	}
+	return bars, news, err
 }
 
 func refreshFund(pool *sql.DB, id int64, symbol string, rt *rules.Runtime, cache bool) (int, error) {

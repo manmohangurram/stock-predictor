@@ -755,10 +755,20 @@ func (g gathered) lastClose() float64 {
 }
 
 func gather(deps *EngineDeps, instrument models.Instrument, now time.Time) (*gathered, error) {
-	bars, err := deps.Market.Bars(instrument.Symbol)
+	bars, err := loadDaily(deps, instrument.Symbol)
 	if err != nil {
 		return nil, err
 	}
+	priceWindow := "(intraday tape unavailable)"
+	tape := []models.Bar{}
+	if t, err := deps.Market.Intraday(instrument.Symbol, "15m", "5d"); err == nil {
+		tape = t
+		priceWindow = formatWindow(tape, deps.Runtime.PromptWindowHours, now)
+	} else {
+		slog.Debug("no intraday tape", "symbol", instrument.Symbol, "error", err)
+	}
+	// The daily series is fetched once a day; today's candle is what the tape says it is.
+	bars = mergeTape(bars, tape, now)
 	ind, err := rules.ComputeIndicators(bars)
 	if err != nil {
 		slog.Debug("not enough history for indicators", "symbol", instrument.Symbol)
@@ -800,14 +810,6 @@ func gather(deps *EngineDeps, instrument models.Instrument, now time.Time) (*gat
 	if targetProfit != nil {
 		required = math.Min(math.Max(*targetProfit, limits.MinProfitPct), limits.MaxProfitPct)
 	}
-	priceWindow := "(intraday tape unavailable)"
-	tape := []models.Bar{}
-	if t, err := deps.Market.Intraday(instrument.Symbol, "15m", "5d"); err == nil {
-		tape = t
-		priceWindow = formatWindow(tape, deps.Runtime.PromptWindowHours, now)
-	} else {
-		slog.Debug("no intraday tape", "symbol", instrument.Symbol, "error", err)
-	}
 	holdings, err := loadHoldings(deps.Pool, models.ModeLong)
 	if err != nil {
 		return nil, err
@@ -827,6 +829,58 @@ func gather(deps *EngineDeps, instrument models.Instrument, now time.Time) (*gat
 		dailySummary: formatDaily(bars, 10), positionsText: FormatBook(holdings, instrument.Symbol),
 		recentTrades: recent, lastDecision: lastDecision,
 	}, nil
+}
+
+// loadDaily uses the day-long cache when the source has one, so a poll does not re-download a year
+// of history for every instrument.
+func loadDaily(deps *EngineDeps, symbol string) ([]models.Bar, error) {
+	if cached, ok := deps.Market.(interface {
+		CachedBars(string) ([]models.Bar, error)
+	}); ok {
+		return cached.CachedBars(symbol)
+	}
+	return deps.Market.Bars(symbol)
+}
+
+// mergeTape folds today's tape into the daily series: replace today's candle when the daily fetch
+// already carried one, append it otherwise. After this, indicators and the prompt see the price
+// the tape shows without a second daily request.
+func mergeTape(daily, tape []models.Bar, now time.Time) []models.Bar {
+	if len(tape) == 0 {
+		return daily
+	}
+	today := schedule.ISTDay(now)
+	var today_ []models.Bar
+	for _, b := range tape {
+		if len(b.Ts) >= 10 && b.Ts[:10] == today {
+			today_ = append(today_, b)
+		}
+	}
+	if len(today_) == 0 {
+		return daily
+	}
+	synthetic := models.Bar{
+		Ts: today + "T00:00:00.000000000+00:00", Open: today_[0].Open,
+		High: today_[0].High, Low: today_[0].Low, Close: today_[0].Close,
+	}
+	for _, b := range today_[1:] {
+		if b.High > synthetic.High {
+			synthetic.High = b.High
+		}
+		if b.Low < synthetic.Low {
+			synthetic.Low = b.Low
+		}
+		synthetic.Close = b.Close
+		synthetic.Volume += b.Volume
+	}
+	merged := make([]models.Bar, len(daily), len(daily)+1)
+	copy(merged, daily)
+	if len(daily) > 0 && len(daily[len(daily)-1].Ts) >= 10 &&
+		daily[len(daily)-1].Ts[:10] == today {
+		merged[len(merged)-1] = synthetic
+		return merged
+	}
+	return append(merged, synthetic)
 }
 
 func pollInstrument(deps *EngineDeps, instrument models.Instrument, now time.Time, report *PollReport) error {
@@ -963,13 +1017,6 @@ func pollInstrument(deps *EngineDeps, instrument models.Instrument, now time.Tim
 		"candidate", candidate.Action, "entry", candidate.Entry, "qty", candidate.Qty,
 		"headlines_changed", headlinesChanged)
 
-	fundamentals := ""
-	if deps.Fundamentals != nil {
-		fundamentals = deps.Fundamentals(deps, instrument.Symbol, now.Year())
-	} else {
-		fundamentals = "unavailable"
-	}
-
 	shortContext := shortCard(instrument, g.bars, g.tape, now)
 
 	// Why this call is being made, in words a person can read later in the audit trail.
@@ -1045,6 +1092,12 @@ func pollInstrument(deps *EngineDeps, instrument models.Instrument, now time.Tim
 				instrument.Symbol, pair[0], pair[1]))
 			return nil
 		}
+	}
+
+	// Only a call that will actually happen pays for financials; they change quarterly, not per tick.
+	fundamentals := "unavailable"
+	if deps.Fundamentals != nil {
+		fundamentals = deps.Fundamentals(deps, instrument.Symbol, now.Year())
 	}
 
 	llmDeps := llm.LlmDeps{Pool: deps.Pool, Runtime: deps.Runtime, Transport: deps.Transport, Market: deps.Market}

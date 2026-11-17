@@ -364,7 +364,7 @@ func buildDeps(pool *sql.DB, cfg *config.Config) (*engine.EngineDeps, error) {
 		if err != nil {
 			return "unavailable"
 		}
-		f, err := market.FetchFundamentals(client, symbol, year)
+		f, err := market.FetchFundamentalsCached(client, symbol, year)
 		if err != nil {
 			return "unavailable"
 		}
