@@ -1,8 +1,8 @@
 name: CI
 
 # Merge gate. Runs on every pull request and on pushes to main, and mirrors what
-# AGENTS.md calls the quality gates: Rust build, clippy with warnings denied, tests
-# (no network), benches compiling, and the front end's tests and production build.
+# AGENTS.md calls the quality gates: the Go backend builds, vets, is gofmt-clean and passes
+# its tests (no network), and the front end's tests and production build run.
 on:
   pull_request:
   push:
@@ -15,32 +15,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          components: clippy
+          go-version-file: go.mod
+          cache: true
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      # --locked everywhere: the committed Cargo.lock is the one that ships.
-      - name: Check
-        run: cargo check --locked --all-targets
-
-      - name: Clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
-
-      # No test touches the network; a test that needs DeepSeek is #[ignore]d behind a key.
-      - name: Test
-        run: cargo test --locked
-
-      - name: Benches compile
-        run: cargo bench --locked --no-run
-
-      - name: Audit
+      # The build must not depend on a tidy being run afterwards.
+      - name: Modules are tidy
         run: |
-          cargo install cargo-audit --locked
-          cargo audit
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Formatting
+        run: test -z "$(gofmt -l cmd internal)"
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # No test touches the network; every source is a fixture.
+      - name: Test
+        run: go test ./... -count=1
+
+      # The three budgeted hot paths, run so a regression fails the gate rather than a release.
+      - name: Benchmarks
+        run: |
+          go test ./internal/rules/ -bench . -run XXX
+          go test ./internal/llm/ -bench . -run XXX
+          go test ./internal/store/ -bench . -run XXX
 
   frontend:
     runs-on: ubuntu-latest

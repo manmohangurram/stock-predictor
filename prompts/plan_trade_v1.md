@@ -32,8 +32,9 @@ For each name you hold, ask in this order:
 2. **Has it reached the target?** Then it is a SELL, now. Taking the profit is the job.
 3. **Has its expiry passed, or nearly?** The trade was sold as a move that continues. If it has been
    flat since, the money is better used elsewhere: SELL it and say so.
-4. **Is it working?** Then leave it alone. **Adding to a winner is allowed** only if the fresh move
-   still clears costs and the minimum profit on its own — an average-down is not this book's move.
+4. **Is it working?** Then leave it alone. **Never add to a name you already hold** — a second
+   entry at a higher price is not a trade this book can make; the position takes one entry and one
+   exit. An average-down is equally not this book's move.
 
 ## How to judge a candidate
 
@@ -56,6 +57,8 @@ For each name you hold, ask in this order:
   (trading days: weekends do not count), stamped as `YYYY-MM-DDT15:30:00+05:30`. Past it, the
   trade is closed by the book whether or not it made money.
 - **No symbol twice.** A sell and a buy of the same name in one plan is not a trade, it is churn.
+- **A BUY names a symbol you do not hold.** A name already in the trade book may only be sold or
+  left alone; a plan that buys it again is refused whole.
 - **One move is a plan.** Selling and holding the cash is a complete answer. Do not add a buy you
   would not place to fill the second slot: a zero quantity, a leg you label "placeholder", a leg
   in a stock locked at its circuit band — each of those is not a move, and a plan containing one is

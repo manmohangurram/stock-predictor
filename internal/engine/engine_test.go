@@ -1,0 +1,165 @@
+package engine
+
+import (
+	"database/sql"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"stock-predictor/internal/db"
+	"stock-predictor/internal/llm"
+	"stock-predictor/internal/models"
+	"stock-predictor/internal/rules"
+)
+
+func pool(t *testing.T) *sql.DB {
+	t.Helper()
+	p, err := db.ConnectAndMigrate(t.Context(), filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { p.Close() })
+	return p
+}
+
+func TestTheReadWindowIsAWeekAndNoMore(t *testing.T) {
+	p := pool(t)
+	now := time.Date(2026, 11, 13, 5, 0, 0, 0, time.UTC)
+	mustExec(t, p,
+		`INSERT INTO instruments (id, symbol, class, name, currency, active)
+         VALUES (1, 'X.NS', 'stock', 'X', 'INR', 1)`)
+	mustExec(t, p,
+		`INSERT INTO news (instrument_id, published_at, title, publisher, url)
+         VALUES (1, '2026-11-08T00:00:00Z', 'five days ago', 'Reuters', 'https://example.test/old')`)
+	kept, err := storedHeadlines(p, 1, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) != 1 || kept[0].Title != "five days ago" {
+		t.Fatalf("%+v", kept)
+	}
+	mustExec(t, p,
+		`INSERT INTO news (instrument_id, published_at, title, publisher, url)
+         VALUES (1, '2026-11-04T00:00:00Z', 'nine days ago', 'Reuters', 'https://example.test/older')`)
+	kept, _ = storedHeadlines(p, 1, now)
+	if len(kept) != 1 {
+		t.Fatalf("nine days old is beyond the window: %+v", kept)
+	}
+}
+
+func mustExec(t *testing.T, p *sql.DB, q string, args ...any) {
+	t.Helper()
+	if _, err := p.Exec(q, args...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTheBandTriggerFiresOnceADayPerReason(t *testing.T) {
+	p := pool(t)
+	inst := models.Instrument{ID: 7, Symbol: "X.NS", Class: models.ClassStock}
+	now := time.Date(2026, 11, 13, 6, 0, 0, 0, time.UTC)
+	if ok, err := bandTriggerFires(p, inst, "ceiling", now); err != nil || !ok {
+		t.Fatalf("%v %v", ok, err)
+	}
+	// Same reason, same day: no second call.
+	if ok, _ := bandTriggerFires(p, inst, "ceiling", now); ok {
+		t.Fatal("a second call for the same edge")
+	}
+	// A different reason is a different event.
+	if ok, _ := bandTriggerFires(p, inst, "broken", now); !ok {
+		t.Fatal("a different reason must fire")
+	}
+}
+
+func f64(v float64) *float64 { return &v }
+
+func TestACandidateIsClampedToThePotLimits(t *testing.T) {
+	limits := rulesLimits()
+	c := models.Candidate{Action: models.ActionBuy, Entry: 100, Qty: 1000}
+	clamped, ok := clampToLimits(c, limits, 50_000, 0)
+	if !ok {
+		t.Fatal("dropped")
+	}
+	// 25% of 50k = 12,500 max fill = 125 units; the rules had 1000.
+	if clamped.Qty != 125 {
+		t.Fatalf("qty %v", clamped.Qty)
+	}
+	if _, ok := clampToLimits(c, limits, 50_000, 12_500); ok {
+		t.Fatal("no room left must drop it")
+	}
+	small := models.Candidate{Action: models.ActionBuy, Entry: 100, Qty: 1}
+	if _, ok := clampToLimits(small, limits, 50_000, 0); ok {
+		t.Fatal("a buy below the minimum is not worth its fees")
+	}
+	// A sell of a tiny remainder still goes through.
+	sell := models.Candidate{Action: models.ActionSell, Entry: 100, Qty: 1}
+	if _, ok := clampToLimits(sell, limits, 50_000, 0); !ok {
+		t.Fatal("a tiny sell is still a sale")
+	}
+}
+
+func rulesLimits() rules.Limits {
+	return rules.Limits{
+		MinProfitPct: 5, MaxProfitPct: 50, MinTradeAmount: 500,
+		MaxTradeAmount: 50_000, MaxInstrumentPct: 25,
+	}
+}
+
+func TestResolveKeepsRulesAsTheSpineForAPass(t *testing.T) {
+	now := time.Date(2026, 11, 13, 6, 0, 0, 0, time.UTC)
+	c := models.Candidate{Action: models.ActionBuy, Entry: 100, Qty: 10}
+	if _, ok := resolve(c, llm.Outcome{Kind: llm.OutcomePass}, now); ok {
+		t.Fatal("a pass records nothing")
+	}
+	res, ok := resolve(c, llm.Outcome{Kind: llm.OutcomeLlm, Proposal: &llm.Proposal{
+		Action: models.ActionBuy, Entry: 101, ValidUntil: "2026-11-14T00:00:00Z", Rationale: "x",
+	}}, now)
+	if !ok || res.entry != 101 || res.qty != 10 {
+		t.Fatalf("%+v", res)
+	}
+	// An urgent rules sell overrides what the model said.
+	c.Urgent = true
+	res, _ = resolve(c, llm.Outcome{Kind: llm.OutcomeLlm, Proposal: &llm.Proposal{
+		Action: models.ActionHold, Entry: 90, Qty: f64(3), ValidUntil: "2026-11-14T00:00:00Z",
+	}}, now)
+	if res.action != models.ActionBuy || res.qty != 10 {
+		t.Fatalf("urgent rules must win: %+v", res)
+	}
+}
+
+func TestFormatBookSortsByValueAndMarksTheOne(t *testing.T) {
+	rows := []llm.HoldingLine{
+		{Symbol: "A", Name: "A", Qty: 1, AvgCost: 10, LTP: f64(10)},
+		{Symbol: "B", Name: "B", Qty: 1, AvgCost: 100, LTP: f64(100)},
+	}
+	out := FormatBook(rows, "A")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if !strings.HasPrefix(lines[0], "B ") {
+		t.Fatalf("richest first: %q", out)
+	}
+	if !strings.Contains(out, "← this one") {
+		t.Fatalf("the instrument under review is marked: %q", out)
+	}
+	if empty := FormatBook(nil, "A"); !strings.Contains(empty, "nothing is held") {
+		t.Fatalf("%q", empty)
+	}
+}
+
+func TestTheWindowIsClampedToTheRequestedHours(t *testing.T) {
+	now := time.Date(2026, 11, 13, 10, 0, 0, 0, time.UTC)
+	bars := []models.Bar{
+		{Ts: "2026-11-13T04:00:00Z", Close: 1},
+		{Ts: "2026-11-13T08:00:00Z", Close: 2},
+	}
+	out := formatWindow(bars, 4, now)
+	if strings.Contains(out, "1.00") {
+		t.Fatalf("an old bar leaked in: %q", out)
+	}
+	if !strings.Contains(out, "2.00") {
+		t.Fatalf("the recent bar is missing: %q", out)
+	}
+	if none := formatWindow(nil, 4, now); none != "(no bars in the last window)" {
+		t.Fatalf("%q", none)
+	}
+}
