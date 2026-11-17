@@ -163,3 +163,29 @@ func TestTheWindowIsClampedToTheRequestedHours(t *testing.T) {
 		t.Fatalf("%q", none)
 	}
 }
+
+func TestMergeTapeAppendsTodaysCandleOnce(t *testing.T) {
+	now := time.Date(2026, 11, 17, 6, 0, 0, 0, time.UTC)
+	daily := []models.Bar{
+		{Ts: "2026-11-15T00:00:00.000000000+00:00", Close: 100},
+		{Ts: "2026-11-16T00:00:00.000000000+00:00", Close: 101},
+	}
+	tape := []models.Bar{
+		{Ts: "2026-11-17T03:45:00.000000000+00:00", Open: 101, High: 103, Low: 100, Close: 102, Volume: 10},
+		{Ts: "2026-11-17T04:00:00.000000000+00:00", Open: 102, High: 104, Low: 101, Close: 103, Volume: 20},
+	}
+	merged := mergeTape(daily, tape, now)
+	if len(merged) != 3 {
+		t.Fatalf("%d bars", len(merged))
+	}
+	today := merged[2]
+	if today.Close != 103 || today.High != 104 || today.Low != 100 || today.Volume != 20 {
+		t.Fatalf("%+v", today)
+	}
+	if again := mergeTape(merged, tape, now); len(again) != 3 || again[2].Close != 103 {
+		t.Fatalf("%+v", again)
+	}
+	if len(mergeTape(daily, nil, now)) != 2 {
+		t.Fatal("no tape must leave the series alone")
+	}
+}

@@ -234,8 +234,10 @@ func CandidateBlock(pool *sql.DB, m market.MarketSource, transport llm.Transport
 		if err != nil || !ok {
 			continue
 		}
-		if _, _, err := store.Refresh(pool, id, g.symbol, m); err != nil {
-			continue
+		if !hasBarsToday(pool, id, now) {
+			if _, _, err := store.Refresh(pool, id, g.symbol, m); err != nil {
+				continue
+			}
 		}
 		var knownName *string
 		var name string
@@ -451,6 +453,18 @@ func scanNote(why string) string {
 		return "no note from the scan"
 	}
 	return "scan's note, unverified — do not take a price from it: " + why
+}
+
+// hasBarsToday is the evidence cache: a candidate whose prices were fetched since the open needs
+// no second chart request for the same slot.
+func hasBarsToday(pool *sql.DB, instrumentID int64, now time.Time) bool {
+	var ts string
+	if err := pool.QueryRow(
+		"SELECT ts FROM bars WHERE instrument_id = ? ORDER BY ts DESC LIMIT 1", instrumentID,
+	).Scan(&ts); err != nil {
+		return false
+	}
+	return len(ts) >= 10 && ts[:10] == schedule.ISTDay(now)
 }
 
 func loadCandidates(pool *sql.DB, day string) ([]candidate, error) {

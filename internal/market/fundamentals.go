@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -276,6 +277,36 @@ func ParseFundamentals(body string) (Fundamentals, error) {
 		}
 	}
 	return Fundamentals{Years: years, Valuation: valuation}, nil
+}
+
+// fundamentalsCache keeps a symbol's financials for half a day: they change once a quarter, not
+// once a poll.
+var (
+	fundMu    sync.Mutex
+	fundCache = map[string]fundamentalsEntry{}
+)
+
+type fundamentalsEntry struct {
+	at time.Time
+	f  Fundamentals
+}
+
+// FetchFundamentalsCached is FetchFundamentals with a 12-hour memory.
+func FetchFundamentalsCached(client *http.Client, symbol string, nowYear int) (Fundamentals, error) {
+	fundMu.Lock()
+	entry, ok := fundCache[symbol]
+	fundMu.Unlock()
+	if ok && time.Since(entry.at) < 12*time.Hour {
+		return entry.f, nil
+	}
+	f, err := FetchFundamentals(client, symbol, nowYear)
+	if err != nil {
+		return Fundamentals{}, err
+	}
+	fundMu.Lock()
+	fundCache[symbol] = fundamentalsEntry{at: time.Now(), f: f}
+	fundMu.Unlock()
+	return f, nil
 }
 
 func abs(v float64) float64 {

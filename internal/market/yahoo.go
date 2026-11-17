@@ -9,12 +9,14 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"stock-predictor/internal/httpx"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/rules"
+	"stock-predictor/internal/schedule"
 	"stock-predictor/internal/tstamp"
 )
 
@@ -156,6 +158,49 @@ func FetchIntraday(client *http.Client, symbol, interval, rangeStr string) ([]mo
 }
 
 var yahooBlockedUntil atomic.Int64
+
+// dailyCache is one year of daily bars per symbol, keyed by the IST day. A daily candle changes
+// once a session; the live price comes from the intraday tape that gather already fetches, so a
+// poll no longer re-downloads a year of history for every instrument.
+var (
+	dailyMu    sync.Mutex
+	dailyCache = map[string]dailyBars{}
+)
+
+type dailyBars struct {
+	day  string
+	bars []models.Bar
+}
+
+// CachedBars is Bars with a day-long memory. The returned slice is a copy: callers may patch the
+// live candle without poisoning the cache.
+func (y *YahooSource) CachedBars(symbol string) ([]models.Bar, error) {
+	day := schedule.ISTDay(time.Now().UTC())
+	dailyMu.Lock()
+	entry, ok := dailyCache[symbol]
+	dailyMu.Unlock()
+	if ok && entry.day == day {
+		out := make([]models.Bar, len(entry.bars))
+		copy(out, entry.bars)
+		return out, nil
+	}
+	bars, err := y.Bars(symbol)
+	if err != nil {
+		return nil, err
+	}
+	dailyMu.Lock()
+	dailyCache[symbol] = dailyBars{day: day, bars: bars}
+	dailyMu.Unlock()
+	slog.Debug("daily bars fetched", "symbol", symbol, "bars", len(bars), "day", day)
+	return bars, nil
+}
+
+// DropDailyCache forgets one symbol, for a forced refresh.
+func DropDailyCache(symbol string) {
+	dailyMu.Lock()
+	delete(dailyCache, symbol)
+	dailyMu.Unlock()
+}
 
 // noteThrottle remembers a 429 so the next requests fail fast instead of extending the block.
 // Yahoo's limit is per client and recovers only if the client stops asking.
