@@ -1,3 +1,13 @@
+## v0.31.2
+
+### Performance
+
+- **Fewer Yahoo calls, same data.** Daily bars are fetched once per instrument per IST day and
+  today's candle is patched from the intraday tape already being read (then stored, so charts carry
+  today's price). Fundamentals are cached for 12 hours and only fetched when a model call will
+  actually happen. Trade-plan evidence skips its refresh when today's bars are already stored.
+  At ten instruments this is roughly half the outbound requests per day.
+
 ## v0.31.1
 
 ### Fixes
