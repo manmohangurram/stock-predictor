@@ -1,3 +1,25 @@
+## Unreleased — the Go rewrite
+
+The backend is Go. Same database, same JSON, same prompts, same four environment variables; the
+Rust tree, `Cargo.toml` and the benches are deleted. Design and task log: `docs/go-migration.md`.
+
+- **gin + `database/sql` + `glebarez/go-sqlite`**, WAL from the DSN; secrets stay `enc:v1:`
+  XChaCha20-Poly1305, so an existing database decrypts unchanged.
+- **Every page and endpoint is served by the Go binary**, including the SPA fallback,
+  `x-total-count` on the calls pager, the dashboard ETag over data, and the manual-run channel.
+- **Fixed on the way**: the short-term page never saw its own position (the analysis route the UI
+  calls did not exist and indicators came back `{}` instead of `null`); recording a fill sent an
+  object where the API takes positional arguments; a fully sold position vanished until the
+  instrument was archived; correcting an archived fill now restores the instrument.
+- **Short-term**: the trade plan wakes exactly at 09:15/11:15/13:15 IST, the list is NSE-only (no
+  LLM guessing), a name already held or under review is never offered again, and a plan may not add
+  to a name it holds.
+- **Resilience**: Yahoo 429s are retried, batched through spark (5 requests instead of 100), and
+  backed off with a shared cooldown; "every symbol failed" is reported as a data outage, not a
+  flat market.
+- **Logging**: stderr plus `logs/app.log`, 10 MB per file, three old files kept; `--debug` for
+  per-request and per-instrument detail, `--log-file` to move it.
+
 ## v0.30.0
 
 The front end is Vue, every page is a view, and the renderers are gone. Design:

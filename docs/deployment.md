@@ -47,7 +47,6 @@ services:
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — openssl rand -hex 32}
-      RUST_LOG: ${RUST_LOG:-info}
       TZ: ${TZ:-Asia/Kolkata}
     volumes:
       - ${DATA_DIR:-./data}:/data
@@ -65,12 +64,27 @@ Root inside a container only sees the mounted directory, but it is still worth k
 `128m` is comfortable rather than tight: this process sits at about 21 MB resident with a 250-bar
 history loaded. Drop it to `64m` if you want the ceiling to actually bite.
 
+### Logs
+
+The server logs to stderr **and** to a rotating file beside the database:
+
+- default: `<DB_PATH directory>/logs/app.log` — inside `/data/logs/app.log` for the image
+- 10 MB per file (a write that would cross the limit rotates first), and **three old files kept**
+  (`app.log.1` … `app.log.3`); anything older is deleted automatically, including files left by an
+  earlier build with a larger limit
+- `--debug` (or `-v`) turns on per-request and per-instrument detail; default is info
+- `--log-file /path/app.log` moves it, `--log-file -` keeps stderr only
+
+Every change of state is logged at info (fills, approvals, archives, settings, runs), every outbound
+request at debug with host/status/duration (never a URL query string), every 4xx as warn, and every
+panic with a stack. Provider keys, passwords and tokens are never logged.
+
 ### Time zone
 
 Not required for correctness, and deliberately so:
 
 - The NSE window is computed in **IST regardless of the container clock** (a fixed +05:30 offset in
-  `src/schedule.rs`), so polling opens at 09:00 IST on a server in UTC, Berlin or anywhere else.
+  `internal/schedule`), so polling opens at 09:00 IST on a server in UTC, Berlin or anywhere else.
 - Every timestamp is stored as **UTC RFC3339**; the browser renders it in its own zone.
 - `TZ` therefore only affects what other tools in the container see (`date` reads
   `Sun Nov 8 17:13 IST 2026`). It is set to `Asia/Kolkata` in Compose and `tzdata` is installed, so it
@@ -86,7 +100,6 @@ process environment and never opens a file.
 # .env — for docker compose, next to docker-compose.yml (mode 0600). Copy .env.example.
 SECRET_KEY=    # openssl rand -hex 32 — encrypts the stored secrets
 PUBLIC_URL=http://192.168.1.10:8080
-RUST_LOG=info
 ```
 
 | Variable | Default | Meaning |
@@ -109,7 +122,6 @@ docker run -d --name stock-predictor \
   -p 8080:8080 \
   -e PUBLIC_URL=http://192.168.1.10:8080 \
   -e SECRET_KEY="$(openssl rand -hex 32)" \
-  -e RUST_LOG=info \
   -e TZ=Asia/Kolkata \
   -v "$PWD/data:/data" \
   --memory 128m \

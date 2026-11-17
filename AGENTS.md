@@ -39,7 +39,7 @@ codebase-memory-mcp cli search_code  --project stock-predictor --pattern '<exact
 **3. Resolve a symbol to its source range:**
 
 ```sh
-codebase-memory-mcp cli get_file_outline --project stock-predictor --file-path src/llm/orchestrate.rs
+codebase-memory-mcp cli get_file_outline --project stock-predictor --file-path internal/llm/orchestrate.go
 codebase-memory-mcp cli get_code_snippet --project stock-predictor --name <qualified.name>
 ```
 
@@ -66,7 +66,7 @@ files directly when you need exact wording.
   carry `DEEPSEEK_API_KEY` (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `CUSTOM_API_KEY`) so prompts can
   be exercised without a key at rest. It never writes a setting: a stored key wins, and an
   already-exported variable is not overridden. Nothing from `.env` ships.
-- Provider keys, the ntfy token and the proxy password are encrypted at rest (`src/secrets.rs`,
+- Provider keys, the ntfy token and the proxy password are encrypted at rest (`internal/secrets`,
   `enc:v1:` prefix). Losing the key means re-entering them. Everything else —
   budget, limits, provider and keys, ntfy, polling cadence, the proxy — is a `settings` row,
   edited on the Settings page and applied without a restart.
@@ -85,7 +85,7 @@ files directly when you need exact wording.
   Each candidate is then asked with its own search results as `{{web}}`. The search query carries
   the window as operators — `after:YYYY-MM-DD lang:en` — and a result older than three days, undated
   or untitled is dropped anyway (the API *does* support `after:`/`before:`/`lang:`/`site:`).
-- The proxy is chosen only by the database: `src/http.rs` is the one client builder and calls
+- The proxy is chosen only by the database: `internal/httpx` is the one client builder and calls
   `.no_proxy()` first, so `HTTP_PROXY` can never win.
 
 ## Front-end work: always use the `ui-ux-design-pro` skill
@@ -144,6 +144,38 @@ A list that is paged is filtered on the server: `/api/calls` takes `prompt`, `ca
 is worse than no filter. The `WHERE 1 = 1` anchor in that handler is load-bearing — without it the
 first clause lands in the JOIN's `ON`, where it silently filters nothing.
 
+## Delivery: every change is a PR
+
+**Never commit straight to `main`.** Every piece of work — a fix, a page, a migration — lands as a
+pull request that passes the gates below. Open the PR as soon as the first commit exists, so CI runs
+early rather than after the whole thing is written.
+
+**A big feature is a stack of small PRs, not one large one.** Each branch is based on the one before
+it, each PR targets that previous branch, the bottom one targets `main`, and the stack merges
+bottom-up. Every step stays independently green and reviewable; if a step cannot be explained in one
+sentence, split it. Use GitHub's stack extension — reference:
+[`docs/reference/github-stacked-prs.md`](docs/reference/github-stacked-prs.md).
+
+```sh
+gh extension install github/gh-stack    # once
+gh stack init                           # first branch of the stack
+# work, commit
+gh stack add BRANCH-NAME                # next layer
+gh stack add -Am "message"              # stage + commit + next branch
+gh stack push                           # all branches
+gh stack submit                         # opens the PRs with chained bases
+gh stack view                           # order, PR links, statuses
+```
+
+Without the extension, the same chain by hand: branch from the previous branch and
+`gh pr create --base <previous-branch>`; the bottom PR targets `main`.
+
+- Branches: `<type>/<short-topic>` — `feat/`, `fix/`, `chore/`, `docs/`.
+- A PR says what changed, why, which spec/task it serves, and how it was verified (commands, flows
+  walked); a stacked PR also says its position ("1/3").
+- Refactors and behaviour changes are separate PRs; so are dependency bumps.
+- A stack is never merged top-down, and a red step blocks the ones above it.
+
 ## Quality gates
 
 Before a release, **the browser flows must pass**: `docs/testing/flows.md` is the list — every
@@ -154,42 +186,41 @@ throwaway database. CI does not run it (it needs a browser); a release is not cu
 always cheaper to fix now than after it lands.
 
 ```sh
-cargo build                                  # must compile
-cargo fmt --check                            # formatting is not a matter of taste here
-cargo audit                                  # no findings, no new ignores
-cargo test                                   # no network
-cargo clippy --all-targets                   # must be warning-free
-cargo bench --bench hot_paths                # indicators, prompt render, bar upsert (release)
+go build ./...                               # must compile
+gofmt -l cmd internal                        # must print nothing
+go vet ./...                                 # must be warning-free
+go test ./...                                # no network
+go test ./internal/rules/ -bench . -run XXX  # indicators, prompt render, bar upsert
 cd web && npx vitest run && npm run build
 ```
 
-**Audit findings are fixed by updating dependencies**, not by ignoring them: bump the crate
-(`cargo update -p <crate>`), and if a pin blocks the fix, say which pin and when it lifts. An entry in
-`.cargo/audit.toml` is a decision with a reason and an **end condition** — the one there now is
-`RUSTSEC-2026-0459`, blocked by `sqlx-sqlite 0.9.0` pinning `libsqlite3-sys 0.37`; when sqlx allows
-0.39, upgrade and delete the entry rather than renewing it.
+**Audit findings are fixed by updating dependencies**, not by ignoring them: bump the module
+(`go get <module>@latest && go mod tidy`), and if a pin blocks the fix, say which pin and when it
+lifts. `govulncheck ./...` when it is available; a suppression needs a reason and an **end
+condition**, the same rule the old `.cargo/audit.toml` entry followed.
 
 Indexes answer a query that exists. Every one was checked with `EXPLAIN QUERY PLAN` against the
 real statements; three were dead (`runs_by_started`, `idx_api_calls_conversation`,
 `idx_signals_status`) and are dropped. `runs_running` is a *partial* index — only running rows —
 because `runs` only grows and the audit page asks "anything running?" on every load.
 
-Budgets to keep: `indicators::compute` ~2.8 µs per 250 bars, prompt render ~58 µs (the book block and cap line cost ~2 µs),
-a poll's bar write ~0.2 ms (only the tail is written; a cold 250-row load is ~18 ms).
+Budgets to keep (Go, measured on the dev machine): `rules.ComputeIndicators` ~2.7 µs per 250 bars,
+prompt render ~41 µs (the book block and cap line are the cheap part), a poll's bar write ~94 µs for
+the tail (a cold 250-row load is ~4.7 ms).
 
 Token knobs: `PROMPT_WINDOW_HOURS` (default 4) is the intraday tape length, the biggest single
 lever; the static prompt block is a prefix so DeepSeek's context cache can hit it.
 Request count: one per page (`/api/dashboard` carries recent trades, `/analysis` carries signals
 and fills), and the dashboard answers 304 when its version tag is unchanged.
 
-A **run** (`src/runs.rs`, table `runs`) is one unit of scheduler work that *decides* something —
+A **run** (`internal/runs`, table `runs`) is one unit of scheduler work that *decides* something —
 stock plan, fund plan, short-term pass, or a run you started by hand. A scheduled poll writes no
 row: at 15-minute ticks that was ninety-six "nothing happened" rows a day, and the calls it made are
 already in `api_calls`. `GET /api/schedule` computes "last ran" and "next due" from the same markers
 the scheduler uses (`stock_plan_last`, `mf_plan_last`, the NSE window, `poll_secs`) — the page must
 not re-implement those rules.
 
-A **run** (`src/runs.rs`, table `runs`) is one unit of scheduler work — poll, stock plan, fund
+A **run** (`internal/runs`, table `runs`) is one unit of scheduler work — poll, stock plan, fund
 plan, short-term pass — opened *before* the work and closed after it, because `api_calls` rows only
 exist once a reply lands and therefore cannot show "running". Orphans left running by a killed
 process are closed at boot. `AppState.manual` is the channel the API uses to ask the **loop** to run

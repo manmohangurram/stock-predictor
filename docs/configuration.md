@@ -12,10 +12,12 @@ and everything else is a settings row edited on the Settings page.
 | `PUBLIC_URL` | *(empty)* | The address the app is reachable at, used only for the deep link on a notification. |
 | `SECRET_KEY` | *(generated file)* | 32 bytes — 64 hex characters or base64 — that encrypts the stored secrets. `openssl rand -hex 32`. |
 
-`RUST_LOG` is the usual tracing filter and is not part of the product surface.
+Logging is not an environment variable: `--debug` adds per-request detail and `--log-file` moves
+the rotating file (see [deployment](deployment.md#logs)).
 
-There is **no `.env` loading** — nothing reads a file, so a `.env` sitting in the working directory
-is ignored. Set variables in the process environment or the Compose `environment:` block.
+A developer's `.env` in the working directory **is** read at start-up, but only for variables that
+are not already exported, and nothing from it is ever written to a setting. In production the four
+variables above are the whole surface.
 
 ### Where did the rest go?
 
@@ -135,7 +137,7 @@ same numbers, so a fallback cannot sneak past them either.
 |---|---|---|
 | **DeepSeek** | `deepseek-chat` | Cheapest of the four; the only one that can also fetch an article's body for the escalation step. |
 | **OpenAI** | `gpt-4o-mini` | OpenAI-compatible request, JSON response mode. |
-| **Google Gemini** | `gemini-2.0-flash` | Different request and response shape, handled in `src/llm/provider.rs`. |
+| **Google Gemini** | `gemini-2.0-flash` | Different request and response shape, handled in `internal/llm/provider`. |
 | **Custom** | — | Any OpenAI-compatible endpoint: OpenRouter, Groq, a local Ollama (`http://localhost:11434/v1`), or a proxy. |
 
 Each provider's key is stored separately, so switching between them does not lose the others.
