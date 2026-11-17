@@ -1,4 +1,4 @@
-## Unreleased — the Go rewrite
+## v0.31.0 — the Go rewrite
 
 The backend is Go. Same database, same JSON, same prompts, same four environment variables; the
 Rust tree, `Cargo.toml` and the benches are deleted. Design and task log: `docs/go-migration.md`.
