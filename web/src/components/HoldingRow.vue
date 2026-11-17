@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** One holdings row. Name first: a ticker tells you nothing about what you own. */
 import { computed } from "vue";
+import { useRouter } from "vue-router";
 import type { Dashboard, PositionRow, SignalRow } from "../api";
 import { money, units } from "../format";
 import { renderConfidence } from "./confidence";
@@ -11,6 +12,11 @@ const props = defineProps<{
   signal?: SignalRow;
   mode: Dashboard["mode"];
 }>();
+
+const router = useRouter();
+const open = (): void => {
+  void router.push(`/i/${encodeURIComponent(props.position.symbol)}`);
+};
 
 const p = computed(() => props.position);
 const live = computed(() => p.value.ltp !== null);
@@ -34,7 +40,16 @@ const exitPlan = computed(() => {
 </script>
 
 <template>
-  <tr class="row" :data-symbol="p.symbol" tabindex="0" role="link" :aria-label="`${p.name}, open details`">
+  <tr
+    class="row"
+    :data-symbol="p.symbol"
+    tabindex="0"
+    role="link"
+    :aria-label="`${p.name}, open details`"
+    @click="open"
+    @keydown.enter="open"
+    @keydown.space.prevent="open"
+  >
     <td class="holding" :title="`${p.name} · ${p.symbol}`">
       <div class="name">{{ p.name }}</div>
       <div class="sub">{{ p.symbol }}</div>
