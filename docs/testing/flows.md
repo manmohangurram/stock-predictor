@@ -11,10 +11,10 @@ throwaway database, not with curl and not in CI: the point of these flows is wha
 # 1. a throwaway database — never your real one
 rm -f /tmp/flows.db*
 DB_PATH=/tmp/flows.db BIND=127.0.0.1:8100 SECRET_KEY=$(printf 'a%.0s' {1..64}) \
-  ./target/debug/stock-predictor --seed        # instruments only; the seed stops at "does not fit the budget"
+  go run ./cmd/server --seed --no-positions      # instruments only, then add instruments below
 
 DB_PATH=/tmp/flows.db BIND=127.0.0.1:8100 SECRET_KEY=$(printf 'a%.0s' {1..64}) \
-  ./target/debug/stock-predictor &             # the server
+  go run ./cmd/server &                          # the server
 
 # 2. fund the purses and give the books something to show
 curl -X PUT localhost:8100/api/settings -H 'content-type: application/json' \
@@ -178,5 +178,6 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 
 | Date | Build | Result | Notes |
 |---|---|---|---|
+| 2026-11-17 | Go port (`cmd/server`) | **partial** | Walked the ledger (long and short-term), decisions (approve, cancel, reject), the instrument page (record 25 @ 250, correct 250→260, delete with the two-step arm), archive/restore, the audit page (schedule cards, filters, empty-filter copy, pager), and all six settings tabs (save survives reload: `poll_secs` 900→600), against a throwaway DB. Found and fixed: the UI calls `/api/instruments/{symbol}/analysis`, which the Go router did not serve (the page rendered only the shell); `indicators` was sent as `{}` instead of `null` when no bars exist, crashing the page on `toFixed`; the record-fill call passed an object where `api.recordTrade` takes positional arguments, so every fill was refused with *invalid body*. Server-side `POST /api/instruments {"code":"WIT"}` correctly answers 400 with the Indian-listing message. Not walked here: **mobile 390** (this browser harness has no viewport control) and **screenshot** (needs a visible desktop window); the add-dialog **Escape** did not close under `press_key` in this harness even with the search field focused; **search results** were unavailable because Yahoo answered `429` for the instrument-search request (the AMFI cache now stops the 1.5 MB refetch per keystroke). |
 | 2026-11-13 | `92aa174` + this commit | **green** | 9 sections walked at 1440 and 390. Found and fixed: the ledger's mode tabs (30px) and decision-filter icons (26px) were under the 40px touch target; the add dialog filtered foreign listings *after* slicing and indexing, so clicking the second result added the first. Confirmed: approve opens pre-filled and posts (TCS 10 → 15 units), cancel writes nothing, reject writes a reason and moves no money, delete fill arms then deletes, Save survives a reload (`poll_secs` 600). The instrument page's chart is an in-page scroller (324px view over a 560px drawing), not a page overflow. |
 | 2026-11-11 | `ebd2413` + this commit | **green** | 9 pages, 60+ controls walked. Found and fixed: a US ADR could be added (nonsense `vs close`), the refresh status said *undefined headlines*, Archive used a native `confirm`, the currency select looked editable while locked, the reject form's submit duplicated the opener's label, and a filtered audit page said "No calls yet". |

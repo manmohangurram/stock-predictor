@@ -1,4 +1,3 @@
-/target
 *.db
 .env
 web/node_modules

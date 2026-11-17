@@ -116,7 +116,6 @@ services:
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env — openssl rand -hex 32}
-      RUST_LOG: ${RUST_LOG:-info}
       TZ: ${TZ:-Asia/Kolkata}
     volumes:
       - ${DATA_DIR:-./data}:/data
@@ -157,11 +156,16 @@ Full reference — every setting, the proxy, the secrets, the risk limits, the p
 ## Development
 
 ```bash
-cargo test                       # no test touches the network
-cargo clippy --all-targets       # must be warning-free
-cargo bench --bench hot_paths    # indicators, prompt render, bar upsert
+go build ./...                   # must compile
+gofmt -l cmd internal            # must print nothing
+go vet ./...                     # must be warning-free
+go test ./...                    # no test touches the network
+go test ./internal/rules/ -bench . -run XXX   # indicators, prompt render, bar upsert
 cd web && npx vitest run && npm run build
 ```
+
+Logs: `go run ./cmd/server --debug` writes stderr plus `data/logs/app.log` (10 MB per file, three
+old files kept). See [deployment](docs/deployment.md#logs) for the file, rotation and flags.
 
 Spec and plan live in [`docs/superpowers/`](docs/superpowers/), the design system in
 [`.interface-design/system.md`](.interface-design/system.md).

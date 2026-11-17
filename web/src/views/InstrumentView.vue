@@ -91,13 +91,14 @@ const tradeStatus = ref("");
 async function record(): Promise<void> {
   tradeStatus.value = "Recording…";
   try {
-    await api.recordTrade(symbol.value, {
-      side: side.value,
-      qty: Number(fill.value.qty),
-      price: Number(fill.value.price),
-      at: fill.value.at,
-      mode: fill.value.mode,
-    } as never);
+    await api.recordTrade(
+      symbol.value,
+      side.value,
+      Number(fill.value.qty),
+      Number(fill.value.price),
+      fill.value.at,
+      fill.value.mode as "long" | "trade",
+    );
     recording.value = false;
     fill.value = { qty: "", price: "", at: new Date().toISOString().slice(0, 10), mode: "long" };
     tradeStatus.value = "";
