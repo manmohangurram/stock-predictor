@@ -153,6 +153,37 @@ Full reference — every setting, the proxy, the secrets, the risk limits, the p
 [`docs/configuration.md`](docs/configuration.md). Every endpoint, and which the UI uses:
 [`docs/api.md`](docs/api.md).
 
+## MCP access (for an assistant)
+
+The app is an MCP server at `POST /mcp`, so an assistant can read the book and, with the right key,
+act on it. It speaks Streamable HTTP in stateless JSON mode: each request stands alone, and a
+restart costs a session nothing.
+
+**1. Create a key.** Settings -> Access -> name it, pick a scope and a lifetime (1, 7, 30, 90, 365
+days, or never). The token (`spk_...`) is shown once and never again; only its hash is stored.
+
+**2. Point the client at it.**
+
+```json
+{ "mcpServers": { "stock-predictor": {
+  "type": "http",
+  "url": "https://your-host/mcp",
+  "headers": { "Authorization": "Bearer spk_..." }
+} } }
+```
+
+**3. Use it.** A `read` key sees `get_dashboard`, `list_positions`, `list_decisions`,
+`list_trades`, `get_instrument`, `list_archived`, `get_market` and `list_runs`. A `write` key also
+gets `approve_decision`, `reject_decision`, `record_trade`, `edit_trade`, `add_instrument`,
+`restore_instrument`, `set_target_profit` and `update_settings`.
+
+A `write` key can move money: it approves proposals and records fills. It can also write settings,
+including the provider key, the ntfy token and the proxy password -- **written but never returned**.
+A key cannot mint or list keys, so a token cannot extend itself. Every tool call is recorded, and
+revoking is one click on the same tab.
+
+Keys guard `/mcp` only. The web UI and `/api/...` are unchanged.
+
 ## Development
 
 ```bash
