@@ -5,6 +5,7 @@ import LedgerView from "./views/LedgerView.vue";
 import InstrumentView from "./views/InstrumentView.vue";
 import CallsView from "./views/CallsView.vue";
 import ArchivedView from "./views/ArchivedView.vue";
+import AccessView from "./views/AccessView.vue";
 import SettingsView from "./views/SettingsView.vue";
 
 
@@ -20,7 +21,8 @@ const router = createRouter({
     { path: "/calls", component: CallsView },
     { path: "/archived", component: ArchivedView },
     { path: "/settings", component: SettingsView },
-    { path: "/settings/:tab", component: SettingsView },
+    { path: "/settings/access", component: AccessView },
+  { path: "/settings/:tab", component: SettingsView },
     // Anything else is the ledger: an unknown URL lands somewhere useful.
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],

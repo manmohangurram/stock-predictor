@@ -13,6 +13,7 @@ import { humanDuration } from "../lib/duration";
 import { money } from "../format";
 import { pill } from "../components/stamp";
 import SettingField from "../components/SettingField.vue";
+import SettingsRail from "../components/SettingsRail.vue";
 import { patchFor, seed, type Tab } from "../settings-patch";
 
 const route = useRoute();
@@ -154,20 +155,7 @@ const every = (key: "poll_secs" | "off_hours_secs"): string =>
       </div>
     </div>
 
-    <div class="tabs-row">
-      <nav class="settings-rail" role="tablist" aria-label="Settings sections">
-        <a
-          v-for="t in TABS"
-          :key="t.id"
-          role="tab"
-          :id="`tab-${t.id}`"
-          :href="`/settings/${t.id}`"
-          :aria-selected="tab === t.id"
-          :aria-controls="`panel-${t.id}`"
-          :class="{ on: tab === t.id }"
-        >{{ tabLabel(t) }}</a>
-      </nav>
-    </div>
+    <SettingsRail :current="tab" />
 
     <main class="settings-pane" role="tabpanel" :id="`panel-${tab}`">
       <div class="pane-head">

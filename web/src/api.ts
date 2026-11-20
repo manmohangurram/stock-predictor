@@ -336,7 +336,23 @@ export interface Market {
   holiday_calendar: boolean;
 }
 
+export interface ApiKey {
+  id: string;
+  name: string;
+  scope: "read" | "write";
+  prefix: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
 export const api = {
+  /** MCP access keys; the plaintext comes back once, from createKey. */
+  keys: () => req<{ keys: ApiKey[] }>("/api/keys"),
+  createKey: (body: { name: string; scope: "read" | "write"; days: number | null }) =>
+    req<{ key: ApiKey; token: string }>("/api/keys", json(body)),
+  revokeKey: (id: string) => req<{ id: string; revoked: boolean }>(`/api/keys/${id}`, { method: "DELETE" }),
   dashboard: (mode: Mode = "long") => req<Dashboard>(`/api/dashboard?mode=${mode}`),
   settings: () => req<Settings>("/api/settings"),
   testProxy: () =>
