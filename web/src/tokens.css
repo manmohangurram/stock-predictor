@@ -11,8 +11,8 @@
     /* ink */
     --ink: oklch(0.22 0.012 60);
     --ink-secondary: oklch(0.44 0.012 60);
-    --ink-tertiary: oklch(0.58 0.01 60);
-    --ink-muted: oklch(0.7 0.008 60);
+    --ink-tertiary: oklch(0.5 0.01 60);
+    --ink-muted: oklch(0.55 0.008 60);
 
     /* rules */
     --rule-subtle: oklch(0.22 0.012 60 / 0.08);
@@ -69,8 +69,8 @@
       --green-bg: oklch(0.32 0.05 155);
       --ink: oklch(0.92 0.008 85);
       --ink-secondary: oklch(0.72 0.008 85);
-      --ink-tertiary: oklch(0.58 0.008 85);
-      --ink-muted: oklch(0.45 0.008 85);
+      --ink-tertiary: oklch(0.66 0.008 85);
+      --ink-muted: oklch(0.62 0.008 85);
       --rule-subtle: oklch(1 0 0 / 0.07);
       --rule: oklch(1 0 0 / 0.12);
       --rule-strong: oklch(1 0 0 / 0.2);
