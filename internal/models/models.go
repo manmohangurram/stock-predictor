@@ -103,6 +103,11 @@ type Instrument struct {
 	Active   bool       `json:"active"`
 }
 
+// One spelling per symbol: the database holds one row per symbol whatever case it was typed in.
+func NormalizeSymbol(symbol string) string {
+	return strings.ToUpper(strings.TrimSpace(symbol))
+}
+
 type Position struct {
 	ID           int64    `json:"id"`
 	InstrumentID int64    `json:"instrument_id"`
