@@ -91,7 +91,10 @@ async function add(hit: Hit | undefined): Promise<void> {
 }
 
 function key(ev: KeyboardEvent): void {
-  if (ev.key === "ArrowDown") {
+  if (ev.key === "Escape") {
+    ev.preventDefault();
+    close();
+  } else if (ev.key === "ArrowDown") {
     ev.preventDefault();
     active.value = Math.min(active.value + 1, Math.min(flat.value.length, SHOWN) - 1);
   } else if (ev.key === "ArrowUp") {
