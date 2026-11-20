@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"time"
 
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/tstamp"
 )
 
@@ -46,7 +47,7 @@ const (
 )
 
 type Run struct {
-	ID             int64   `json:"id"`
+	ID             string  `json:"id"`
 	Prompt         string  `json:"prompt"`
 	Trigger        string  `json:"trigger"`
 	Status         string  `json:"status"`
@@ -55,6 +56,13 @@ type Run struct {
 	Summary        *string `json:"summary"`
 	ConversationID *string `json:"conversation_id"`
 	Error          *string `json:"error"`
+}
+
+// UUID is the identity a run is published under, for callers that only kept the integer.
+func UUID(pool *sql.DB, id int64) (string, error) {
+	var uuid string
+	err := pool.QueryRow("SELECT uuid FROM runs WHERE id = ?", id).Scan(&uuid)
+	return uuid, err
 }
 
 // Open a run. It exists while the work is still going, which is the whole point.
@@ -66,9 +74,9 @@ func Start(pool *sql.DB, prompt Prompt, trigger Trigger, symbol *string) (int64,
 	}
 	var id int64
 	err := pool.QueryRow(
-		`INSERT INTO runs (prompt, trigger, status, started_at, summary)
-         VALUES (?, ?, 'running', ?, ?) RETURNING id`,
-		string(prompt), string(trigger), tstamp.Now(), summary,
+		`INSERT INTO runs (prompt, trigger, status, started_at, summary, uuid)
+         VALUES (?, ?, 'running', ?, ?, ?) RETURNING id`,
+		string(prompt), string(trigger), tstamp.Now(), summary, ids.New(),
 	).Scan(&id)
 	if err == nil {
 		slog.Info("run started", "id", id, "prompt", prompt, "trigger", trigger)
@@ -119,7 +127,7 @@ func CloseOrphans(pool *sql.DB, now time.Time) (int64, error) {
 
 func Recent(pool *sql.DB, limit int64) ([]Run, error) {
 	rows, err := pool.Query(
-		`SELECT id, prompt, trigger, status, started_at, finished_at, summary,
+		`SELECT uuid, prompt, trigger, status, started_at, finished_at, summary,
                 conversation_id, error
          FROM runs ORDER BY id DESC LIMIT ?`, limit,
 	)

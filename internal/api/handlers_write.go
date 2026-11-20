@@ -876,7 +876,12 @@ func startRun(c *gin.Context, st *AppState) {
 		respondErr(c, badRequest("the poll loop is not listening"))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": id, "status": "running"})
+	uuid, uerr := runs.UUID(st.Pool, id)
+	if uerr != nil {
+		respondErr(c, internalErr(uerr))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id": uuid, "status": "running"})
 }
 
 func testNotify(c *gin.Context, st *AppState) {

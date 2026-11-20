@@ -137,7 +137,7 @@ export interface Limits {
 }
 
 export interface RunRow {
-  id: number;
+  id: string;
   prompt: string;
   trigger: "schedule" | "change" | "manual";
   status: "running" | "done" | "failed";
@@ -179,7 +179,8 @@ export interface ScheduledPrompt {
 }
 
 export interface CallRow {
-  id: number;
+  /** The uuid the server knows this call by. */
+  id: string;
   ts: string;
   endpoint: string;
   /** Why the model was asked: "price moved …", "new headline …". */
@@ -207,7 +208,7 @@ export interface CallRow {
 
 /** One call with its stored bodies. Fetched only when a row is opened. */
 export interface CallDetail {
-  id: number;
+  id: string;
   ts: string;
   endpoint: string;
   purpose: string | null;
@@ -352,7 +353,7 @@ export const api = {
   schedule: () =>
     req<{ now: string; prompts: ScheduledPrompt[] }>("/api/schedule"),
   runNow: (prompt: string, symbol?: string) =>
-    req<{ id: number; status: string }>("/api/runs", json({ prompt, symbol })),
+    req<{ id: string; status: string }>("/api/runs", json({ prompt, symbol })),
   /** The values the audit filters offer, straight from the record. */
   callFacets: () =>
     req<{ prompts: string[]; calls: string[]; models: string[] }>("/api/calls/facets"),
@@ -380,7 +381,7 @@ export const api = {
       { method: "POST" },
     ),
   approveSignal: (
-    id: number,
+    id: string,
     body: {
       qty?: number;
       price?: number;
@@ -413,7 +414,7 @@ export const api = {
       `/api/instruments/${encodeURIComponent(symbol)}`,
       { method: "DELETE" },
     ),
-  callDetail: (id: number) => req<CallDetail>(`/api/calls/${id}`),
+  callDetail: (id: string) => req<CallDetail>(`/api/calls/${id}`),
   trades: () => req<Trade[]>("/api/trades"),
   instrument: (symbol: string) =>
     req<InstrumentDetail>(`/api/instruments/${encodeURIComponent(symbol)}`),
