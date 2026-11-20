@@ -193,6 +193,8 @@ func Router(st *AppState) *gin.Engine {
 	r.GET("/api/keys", func(c *gin.Context) { listKeys(c, st) })
 	r.POST("/api/keys", func(c *gin.Context) { createKey(c, st) })
 	r.DELETE("/api/keys/:id", func(c *gin.Context) { revokeKey(c, st) })
+
+	r.Any("/mcp", gin.WrapH(MCPHandler(st, r)))
 	return r
 }
 
