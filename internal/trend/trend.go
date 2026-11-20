@@ -522,6 +522,7 @@ func setMarker(pool *sql.DB, key, value string) error {
 // The instrument for a discovered symbol: found, or created for this tick only. The bool says the
 // row is available to use; a symbol already held in the trade pot returns false.
 func ensureInstrument(pool *sql.DB, yahooSymbol, shortName string) (int64, bool, error) {
+	yahooSymbol = models.NormalizeSymbol(yahooSymbol)
 	var id int64
 	err := pool.QueryRow("SELECT id FROM instruments WHERE symbol = ?", yahooSymbol).Scan(&id)
 	if err == nil {

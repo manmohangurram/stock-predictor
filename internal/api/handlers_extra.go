@@ -75,7 +75,7 @@ func addInstrument(c *gin.Context, st *AppState) {
 		respondErr(c, badRequest("invalid body"))
 		return
 	}
-	code := strings.TrimSpace(body.Code)
+	code := models.NormalizeSymbol(body.Code)
 	if code == "" {
 		respondErr(c, badRequest("code is required"))
 		return
