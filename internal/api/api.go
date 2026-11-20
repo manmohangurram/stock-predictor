@@ -190,6 +190,9 @@ func Router(st *AppState) *gin.Engine {
 	r.GET("/api/calls/:id", func(c *gin.Context) { callDetail(c, st) })
 	r.GET("/api/market", func(c *gin.Context) { marketState(c, st) })
 	r.GET("/api/schedule", func(c *gin.Context) { scheduleView(c, st) })
+	r.GET("/api/keys", func(c *gin.Context) { listKeys(c, st) })
+	r.POST("/api/keys", func(c *gin.Context) { createKey(c, st) })
+	r.DELETE("/api/keys/:id", func(c *gin.Context) { revokeKey(c, st) })
 	return r
 }
 
