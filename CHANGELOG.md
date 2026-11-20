@@ -1,4 +1,17 @@
+## v0.36.0
+
+### Added
+
+- **Delete everything, below the archive list.** One destructive action, at the bottom of
+  `/archived`: it clears the whole book - instruments, bars, holdings, fills, the cash ledger,
+  decisions, notifications, runs, the call records, MCP keys and settings - and says how many rows it
+  removed. `POST /api/reset` needs the exact phrase `DELETE EVERYTHING`, asks for a second click, and
+  refuses without both.
+- **The admin and your session survive**, so a reset lands on an empty book rather than the setup
+  screen. `schema_migrations` stays, so the app does not try to migrate again.
+
 ## v0.35.0
+
 
 ### Added
 
