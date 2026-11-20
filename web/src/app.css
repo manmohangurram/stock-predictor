@@ -1453,50 +1453,50 @@
   .rcard-add .run-now-btn { justify-self: start; }
 }
 
-/* One radius for every surface and every control, so no box is the odd square one. */
+/* Radius follows the size of the thing: a 28px caret cannot carry a 12px corner, and a card should
+   not wear the same corner as a chip. Four steps, and a stamp keeps its printed edge. */
 .btn,
 .d-btn,
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border-radius: var(--radius);
+}
+
 .icon-btn,
 .row-caret,
 .tick-toggle,
-input:not([type="checkbox"]):not([type="radio"]),
-select,
-textarea,
-dialog,
-.add-dialog,
+.d-btn-square,
+.d-btn-xs,
+.seg-filter a,
+.decision-actions button {
+  border-radius: var(--radius-sm);
+}
+
 .card,
 .gate-card,
 .decision,
 .docket,
 .error-band,
 .notice,
-.hit,
 .search,
 .table-wrap,
 .trade-form,
-.settings-rail [role="tab"],
-.rail .chips div {
-  border-radius: var(--radius);
+dialog,
+.add-dialog,
+.settings-rail [role="tab"] {
+  border-radius: var(--radius-lg);
 }
 
-.stamp,
-.pill {
+.seg-filter {
+  border-radius: var(--radius-pill);
+}
+
+.pill,
+.decisions-filter a {
+  border-radius: var(--radius-pill);
+}
+
+.stamp {
   border-radius: var(--radius-stamp);
-}
-/* A collapsed border table cannot show a radius on its own, so the four corner cells carry it. */
-.blotter thead th:first-child,
-.ledger thead th:first-child {
-  border-top-left-radius: var(--radius);
-}
-.blotter thead th:last-child,
-.ledger thead th:last-child {
-  border-top-right-radius: var(--radius);
-}
-.blotter tbody tr:last-child td:first-child,
-.ledger tbody tr:last-child td:first-child {
-  border-bottom-left-radius: var(--radius);
-}
-.blotter tbody tr:last-child td:last-child,
-.ledger tbody tr:last-child td:last-child {
-  border-bottom-right-radius: var(--radius);
 }

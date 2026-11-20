@@ -313,6 +313,19 @@ export const auth = {
   },
 };
 
+
+/** A request with the access token on it, refreshed once if the server says the token expired. */
+async function sendRaw(path: string, init: RequestInit, retry = true): Promise<Response> {
+  const headers: Record<string, string> = { ...((init.headers ?? {}) as Record<string, string>) };
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+  const r = await fetch(path, { ...init, headers });
+  if (r.status === 401 && retry) {
+    if (await auth.refresh()) return sendRaw(path, init, false);
+    accessToken = null;
+  }
+  return r;
+}
+
 async function send<T>(path: string, init: RequestInit, retry: boolean): Promise<T> {
   const headers: Record<string, string> = { ...((init.headers ?? {}) as Record<string, string>) };
   if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
@@ -352,7 +365,7 @@ export async function dashboardCached(
   // Only the default view is cacheable: a filtered view is a different question.
   if (etag && decisions === "pending") headers["if-none-match"] = etag;
   const q = `mode=${mode}${decisions === "pending" ? "" : `&decisions=${decisions}`}`;
-  const r = await fetch(`/api/dashboard?${q}`, { headers });
+  const r = await sendRaw(`/api/dashboard?${q}`, { headers });
   if (r.status === 304) return { notModified: true };
   if (!r.ok) throw new Error(`dashboard: ${r.status}`);
   return {
@@ -434,7 +447,7 @@ export const api = {
       if (!v) continue;
       q.set(k === "channel" ? "call" : k, v);
     }
-    const r = await fetch(`/api/calls?${q}`);
+    const r = await sendRaw(`/api/calls?${q}`, {});
     if (!r.ok) throw new Error(`/api/calls: ${r.status} ${(await r.text()).slice(0, 200)}`);
     const rows = (await r.json()) as CallRow[];
     const total = Number(r.headers.get("x-total-count") ?? rows.length);
@@ -495,7 +508,7 @@ export const api = {
       { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ target_profit_pct: pct }) },
     ),
   testNotify: async () => {
-    const r = await fetch("/api/notify/test", { method: "POST" });
+    const r = await sendRaw("/api/notify/test", { method: "POST" });
     return { ok: r.ok, body: await r.json().catch(() => ({})) };
   },
   addInstrument: (code: string, name?: string, cls?: string) =>
@@ -535,7 +548,7 @@ export const api = {
       proxy_bypass?: string;
     },
   ) => {
-    const r = await fetch("/api/settings", {
+    const r = await sendRaw("/api/settings", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(patch),

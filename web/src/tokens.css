@@ -52,7 +52,10 @@
     --space-8: 32px;
     --space-12: 48px;
 
-    --radius: 10px;
+    --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
     --radius-stamp: 4px;
     --row-h-touch: 44px;
 
