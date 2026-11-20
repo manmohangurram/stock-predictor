@@ -1,4 +1,28 @@
+## v0.34.1
+
+### Fixed
+
+- **v0.34.0 rendered a blank page.** The router guard was registered above the `const router` that
+  defines it, so the app threw on load and showed nothing but the skip link. The guard now runs
+  after the router exists.
+- **A signed-in page could still say "401 sign in".** The dashboard poll, the calls pager, the
+  settings read and the notification test used a bare `fetch` and went out without the bearer; every
+  call now goes through one helper that attaches the token and refreshes once.
+
+### Changed
+
+- **A radius scale instead of one value.** 6px for a compact control (icon button, row caret, tick,
+  segment inside a group, approve/reject), 8px for a button or a field, 12px for a surface (card,
+  dialog, panel, decision box, error band, table wrapper, settings tab), a pill for a filter or a
+  status, and 4px for a stamp. Written down in `web/UI_STANDARDS.md`; a table's own corners are
+  never rounded, its wrapper holds the radius.
+- **The sign-in page uses the app's parts**: `SettingField` for its fields, the primary `.d-btn`,
+  the `.error-band` (which takes focus after a failed submit), the shell's brand row, and the ink
+  and paper tokens. One left edge and one right edge: at 1440 every element shares left 525 and
+  right 915; at 390, 41 and 349.
+
 ## v0.34.0
+
 
 **The app has a door.** One admin account, created on first run, and everything behind it.
 
