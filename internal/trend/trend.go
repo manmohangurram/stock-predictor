@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"stock-predictor/internal/httpx"
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/llm"
 	"stock-predictor/internal/market"
 	"stock-predictor/internal/models"
@@ -539,8 +540,8 @@ func ensureInstrument(pool *sql.DB, yahooSymbol, shortName string) (int64, bool,
 		return 0, false, err
 	}
 	err = pool.QueryRow(
-		`INSERT INTO instruments (symbol, class, name, currency, active)
-         VALUES (?, 'stock', ?, 'INR', 0) RETURNING id`, yahooSymbol, shortName,
+		`INSERT INTO instruments (symbol, class, name, currency, active, uuid)
+         VALUES (?, 'stock', ?, 'INR', 0, ?) RETURNING id`, yahooSymbol, shortName, ids.New(),
 	).Scan(&id)
 	if err != nil {
 		return 0, false, err

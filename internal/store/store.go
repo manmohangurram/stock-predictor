@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/market"
 	"stock-predictor/internal/models"
 )
@@ -16,8 +17,8 @@ const upsertBar = `INSERT INTO bars (instrument_id, ts, open, high, low, close, 
 	   open = excluded.open, high = excluded.high, low = excluded.low,
 	   close = excluded.close, volume = excluded.volume`
 
-const insertHeadline = `INSERT OR IGNORE INTO news (instrument_id, published_at, title, publisher, url)
-	 VALUES (?, ?, ?, ?, ?)`
+const insertHeadline = `INSERT OR IGNORE INTO news (instrument_id, published_at, title, publisher, url, uuid)
+	 VALUES (?, ?, ?, ?, ?, ?)`
 
 // Daily bars, upserted. Shared by the poll loop and by "add instrument", so a freshly
 // added symbol has a chart immediately instead of waiting for the next tick.
@@ -77,7 +78,7 @@ func Headlines(pool *sql.DB, instrumentID int64, news []models.Headline) error {
 	defer tx.Rollback()
 	for _, h := range news {
 		if _, err := tx.Exec(insertHeadline,
-			instrumentID, h.PublishedAt, h.Title, h.Publisher, h.URL,
+			instrumentID, h.PublishedAt, h.Title, h.Publisher, h.URL, ids.New(),
 		); err != nil {
 			return err
 		}

@@ -233,8 +233,8 @@ func ensureInstrument(pool *sql.DB, code, name string) (int64, error) {
 		return 0, err
 	}
 	err = pool.QueryRow(
-		`INSERT INTO instruments (symbol, class, name, currency, active)
-         VALUES (?, 'mutual_fund', ?, 'INR', 0) RETURNING id`, symbol, name,
+		`INSERT INTO instruments (symbol, class, name, currency, active, uuid)
+         VALUES (?, 'mutual_fund', ?, 'INR', 0, ?) RETURNING id`, symbol, name, ids.New(),
 	).Scan(&id)
 	return id, err
 }

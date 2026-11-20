@@ -30,8 +30,8 @@ func setup(t *testing.T) (*sql.DB, *gin.Engine, int64) {
 	}
 	t.Cleanup(func() { pool.Close() })
 	res, err := pool.Exec(
-		`INSERT INTO instruments (symbol, class, name, currency, active)
-         VALUES ('INFY.NS', 'stock', 'Infosys', 'INR', 1)`)
+		`INSERT INTO instruments (symbol, class, name, currency, active, uuid)
+         VALUES ('INFY.NS', 'stock', 'Infosys', 'INR', 1, ?)`, ids.New())
 	if err != nil {
 		t.Fatal(err)
 	}
