@@ -118,7 +118,7 @@ func RecordOn(tx *sql.Tx, instrumentID int64, side Side, qty, price float64, not
 	}
 	stamp := tstamp.From(when)
 
-	var posID int64
+	var posID string
 	var held, cost sql.NullFloat64
 	var openedAt sql.NullString
 	err = tx.QueryRow(
@@ -164,9 +164,9 @@ func RecordOn(tx *sql.Tx, instrumentID int64, side Side, qty, price float64, not
 			}
 		} else {
 			if _, err := tx.Exec(
-				`INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode, uuid)
-				 VALUES (?, ?, ?, ?, 'open', ?, ?)`,
-				instrumentID, qty, price, stamp, string(mode), ids.New(),
+				`INSERT INTO positions (id, instrument_id, qty, avg_cost, opened_at, state, mode)
+				 VALUES (?, ?, ?, ?, ?, 'open', ?)`,
+				ids.New(), instrumentID, qty, price, stamp, string(mode),
 			); err != nil {
 				return err
 			}
@@ -226,7 +226,7 @@ func RecordOn(tx *sql.Tx, instrumentID int64, side Side, qty, price float64, not
 //
 // An edit on an archived instrument brings it back into the book: correcting a fill is working
 // the name again, and leaving it archived would hide the very row that was just corrected.
-func Edit(pool *sql.DB, id int64, qty, price *float64, at *time.Time) error {
+func Edit(pool *sql.DB, id string, qty, price *float64, at *time.Time) error {
 	tx, err := pool.Begin()
 	if err != nil {
 		return err
@@ -243,7 +243,7 @@ func Edit(pool *sql.DB, id int64, qty, price *float64, at *time.Time) error {
 	return nil
 }
 
-func EditOn(tx *sql.Tx, id int64, qty, price *float64, at *time.Time) error {
+func EditOn(tx *sql.Tx, id string, qty, price *float64, at *time.Time) error {
 	var instrumentID int64
 	var sideRaw, tradedAt, modeRaw string
 	var oldQty, oldPrice float64
@@ -251,7 +251,7 @@ func EditOn(tx *sql.Tx, id int64, qty, price *float64, at *time.Time) error {
 		"SELECT instrument_id, side, qty, price, traded_at, mode FROM trades WHERE id = ?", id,
 	).Scan(&instrumentID, &sideRaw, &oldQty, &oldPrice, &tradedAt, &modeRaw)
 	if err == sql.ErrNoRows {
-		return fmt.Errorf("no fill %d", id)
+		return fmt.Errorf("no fill %s", id)
 	}
 	if err != nil {
 		return err
@@ -284,7 +284,7 @@ func EditOn(tx *sql.Tx, id int64, qty, price *float64, at *time.Time) error {
 		when = parsed.UTC()
 	}
 
-	var posID int64
+	var posID string
 	var held, cost sql.NullFloat64
 	err = tx.QueryRow(
 		`SELECT id, qty, avg_cost FROM positions
@@ -310,7 +310,7 @@ func EditOn(tx *sql.Tx, id int64, qty, price *float64, at *time.Time) error {
 		return fmt.Errorf("that edit would leave %.3f units held, which is less than nothing", held.Float64+deltaUnits)
 	}
 
-	if posID != 0 {
+	if posID != "" {
 		newHeld := held.Float64 + deltaUnits
 		basis := held.Float64 * cost.Float64
 		if side == SideBuy {
@@ -347,7 +347,7 @@ func EditOn(tx *sql.Tx, id int64, qty, price *float64, at *time.Time) error {
 	if math.Abs(deltaCash) > 1e-9 {
 		// Money back when the fill was overstated, more when it was understated.
 		if err := rules.RecordOn(tx, rules.NewCashEntry{
-			Kind: rules.CashAdjust, Amount: deltaCash, Reference: fmt.Sprintf("correct fill %d", id),
+			Kind: rules.CashAdjust, Amount: deltaCash, Reference: fmt.Sprintf("correct fill %s", id),
 		}, tstamp.From(when), mode); err != nil {
 			return err
 		}
@@ -366,7 +366,7 @@ func EditOn(tx *sql.Tx, id int64, qty, price *float64, at *time.Time) error {
 // Delete removes a fill entirely: the position moves back by exactly what the fill moved it,
 // the money difference is posted as its own adjust entry, and a decision the fill satisfied
 // returns to pending.
-func Delete(pool *sql.DB, id int64) error {
+func Delete(pool *sql.DB, id string) error {
 	tx, err := pool.Begin()
 	if err != nil {
 		return err
@@ -383,7 +383,7 @@ func Delete(pool *sql.DB, id int64) error {
 	return nil
 }
 
-func DeleteOn(tx *sql.Tx, id int64) error {
+func DeleteOn(tx *sql.Tx, id string) error {
 	var instrumentID int64
 	var sideRaw, modeRaw string
 	var qty, price float64
@@ -392,7 +392,7 @@ func DeleteOn(tx *sql.Tx, id int64) error {
 		"SELECT instrument_id, side, qty, price, note, mode FROM trades WHERE id = ?", id,
 	).Scan(&instrumentID, &sideRaw, &qty, &price, &note, &modeRaw)
 	if err == sql.ErrNoRows {
-		return fmt.Errorf("no fill %d", id)
+		return fmt.Errorf("no fill %s", id)
 	}
 	if err != nil {
 		return err
@@ -407,7 +407,7 @@ func DeleteOn(tx *sql.Tx, id int64) error {
 	}
 	value := qty * price
 
-	var posID int64
+	var posID string
 	var held, cost sql.NullFloat64
 	err = tx.QueryRow(
 		`SELECT id, qty, avg_cost FROM positions
@@ -427,7 +427,7 @@ func DeleteOn(tx *sql.Tx, id int64) error {
 		return fmt.Errorf("deleting this fill would leave %.3f units held — sell or correct the later fills first", held.Float64+deltaUnits)
 	}
 
-	if posID != 0 {
+	if posID != "" {
 		newHeld := held.Float64 + deltaUnits
 		basis := held.Float64 * cost.Float64
 		if side == SideBuy {
@@ -456,7 +456,7 @@ func DeleteOn(tx *sql.Tx, id int64) error {
 	}
 	if math.Abs(cash) > 1e-9 {
 		if err := rules.RecordOn(tx, rules.NewCashEntry{
-			Kind: rules.CashAdjust, Amount: cash, Reference: fmt.Sprintf("delete fill %d", id),
+			Kind: rules.CashAdjust, Amount: cash, Reference: fmt.Sprintf("delete fill %s", id),
 		}, tstamp.Now(), mode); err != nil {
 			return err
 		}
@@ -484,15 +484,15 @@ func DeleteOn(tx *sql.Tx, id int64) error {
 
 func insertTrade(tx *sql.Tx, instrumentID int64, side Side, qty, price float64, realised *float64, at string, note *string, mode models.Mode) error {
 	_, err := tx.Exec(
-		`INSERT INTO trades (instrument_id, side, qty, price, realised, traded_at, note, mode, uuid)
+		`INSERT INTO trades (id, instrument_id, side, qty, price, realised, traded_at, note, mode)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		instrumentID, string(side), qty, price, realised, at, note, string(mode), ids.New(),
+		ids.New(), instrumentID, string(side), qty, price, realised, at, note, string(mode),
 	)
 	return err
 }
 
 func History(pool *sql.DB, instrumentID *int64, limit int64) ([]Trade, error) {
-	const selectSQL = `SELECT t.uuid AS id, i.symbol AS symbol, t.side AS side, t.qty AS qty,
+	const selectSQL = `SELECT t.id AS id, i.symbol AS symbol, t.side AS side, t.qty AS qty,
             t.price AS price, t.realised AS realised, t.traded_at AS traded_at, t.note AS note,
             t.mode AS mode,
             (SELECT b.close FROM bars b

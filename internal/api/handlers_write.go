@@ -196,11 +196,7 @@ func recordTrade(c *gin.Context, st *AppState) {
 }
 
 func editTrade(c *gin.Context, st *AppState) {
-	id, err := pathRowID(st.Pool, c, "trades")
-	if err != nil {
-		respondErr(c, err)
-		return
-	}
+	id := c.Param("id")
 	var body struct {
 		Qty   *float64 `json:"qty"`
 		Price *float64 `json:"price"`
@@ -227,11 +223,7 @@ func editTrade(c *gin.Context, st *AppState) {
 }
 
 func deleteTrade(c *gin.Context, st *AppState) {
-	id, err := pathRowID(st.Pool, c, "trades")
-	if err != nil {
-		respondErr(c, err)
-		return
-	}
+	id := c.Param("id")
 	if derr := trades.Delete(st.Pool, id); derr != nil {
 		respondErr(c, badRequest(derr.Error()))
 		return
@@ -277,9 +269,9 @@ func postPosition(c *gin.Context, st *AppState) {
 	}
 	now := tstampNow()
 	if _, err := tx.Exec(
-		`INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, stop, target, state, uuid)
-         VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
-		id, body.Qty, body.AvgCost, now, body.Stop, body.Target, ids.New()); err != nil {
+		`INSERT INTO positions (id, instrument_id, qty, avg_cost, opened_at, stop, target, state)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'open')`,
+		ids.New(), id, body.Qty, body.AvgCost, now, body.Stop, body.Target); err != nil {
 		tx.Rollback()
 		respondErr(c, internalErr(err))
 		return
@@ -314,11 +306,7 @@ func ledgerPosition(pool *sql.DB, symbol string) (*ledger.PositionRow, error) {
 }
 
 func patchPosition(c *gin.Context, st *AppState) {
-	id, err := pathRowID(st.Pool, c, "positions")
-	if err != nil {
-		respondErr(c, err)
-		return
-	}
+	id := c.Param("id")
 	var body struct {
 		Qty    *float64 `json:"qty"`
 		Stop   *float64 `json:"stop"`
@@ -365,7 +353,7 @@ func patchPosition(c *gin.Context, st *AppState) {
 			}
 			if err := rules.RecordOn(tx, rules.NewCashEntry{
 				Kind: rules.CashSell, Amount: sold * avgCost,
-				Reference: fmt.Sprintf("sell position %d", id), Bucket: bucket,
+				Reference: fmt.Sprintf("sell position %s", id), Bucket: bucket,
 			}, tstampNow(), models.ModeLong); err != nil {
 				tx.Rollback()
 				respondErr(c, internalErr(err))

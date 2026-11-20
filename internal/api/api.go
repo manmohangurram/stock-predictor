@@ -241,13 +241,13 @@ func pathRowID(pool *sql.DB, c *gin.Context, table string) (int64, error) {
 // The tag fingerprints the data, not row counts: approving changes no id, editing a fill changes
 // values in place, and archiving flips a flag. Counting rows answered 304 through all three.
 func dashboardETag(pool *sql.DB, mode models.Mode) (string, error) {
-	var signals, pending, trades, ledger, instruments int64
-	var positions, settings string
+	var signals, pending, instruments int64
+	var trades, ledger, positions, settings string
 	err := pool.QueryRow(
 		`SELECT (SELECT COALESCE(MAX(id),0) FROM signals WHERE mode = ?) AS signals,
                 (SELECT COUNT(*) FROM signals WHERE mode = ? AND status = 'pending') AS pending,
-                (SELECT COALESCE(MAX(id),0) FROM trades WHERE mode = ?) AS trades,
-                (SELECT COALESCE(MAX(id),0) FROM cash_ledger WHERE mode = ?) AS ledger,
+                (SELECT COALESCE(MAX(id),'') FROM trades WHERE mode = ?) AS trades,
+                (SELECT COALESCE(MAX(id),'') FROM cash_ledger WHERE mode = ?) AS ledger,
                 (SELECT COALESCE(group_concat(id || ':' || qty || ':' || avg_cost || ':'
                          || COALESCE(stop, '') || ':' || COALESCE(target, '') || ':' || state), '')
                    FROM positions WHERE mode = ?) AS positions,
@@ -258,7 +258,7 @@ func dashboardETag(pool *sql.DB, mode models.Mode) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%d-%d-%d-%d-%s-%d-%s-%s",
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%d-%d-%s-%s-%s-%d-%s-%s",
 		signals, pending, trades, ledger, positions, instruments, settings, mode)))
 	return `"` + hex.EncodeToString(sum[:]) + `"`, nil
 }

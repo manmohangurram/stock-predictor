@@ -126,7 +126,7 @@ func PollOnce(deps *EngineDeps, now time.Time) (PollReport, error) {
 func storedHeadlines(pool *sql.DB, instrumentID int64, now time.Time) ([]models.Headline, error) {
 	since := tstamp.From(now.AddDate(0, 0, -7))
 	rows, err := pool.Query(
-		`SELECT id, title, publisher, published_at, url FROM news
+		`SELECT title, publisher, published_at, url FROM news
          WHERE instrument_id = ? AND published_at >= ?
          ORDER BY published_at DESC LIMIT 8`, instrumentID, since,
 	)
@@ -136,10 +136,9 @@ func storedHeadlines(pool *sql.DB, instrumentID int64, now time.Time) ([]models.
 	defer rows.Close()
 	out := []models.Headline{}
 	for rows.Next() {
-		var id int64
 		var title, publishedAt, url string
 		var publisher sql.NullString
-		if err := rows.Scan(&id, &title, &publisher, &publishedAt, &url); err != nil {
+		if err := rows.Scan(&title, &publisher, &publishedAt, &url); err != nil {
 			return nil, err
 		}
 		out = append(out, models.Headline{

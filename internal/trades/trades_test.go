@@ -82,7 +82,7 @@ func TestEditingAFillUnarchivesItsInstrument(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var tradeID int64
+	var tradeID string
 	if err := pool.QueryRow("SELECT id FROM trades LIMIT 1").Scan(&tradeID); err != nil {
 		t.Fatal(err)
 	}
