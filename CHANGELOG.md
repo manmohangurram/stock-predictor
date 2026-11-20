@@ -1,3 +1,20 @@
+## v0.37.0
+
+### Added
+
+- **Delete the book from the archive page.** One quiet outlined button under the archived list opens a
+  confirmation dialog: what it clears, an icon, the warning, one field and Cancel. Nothing is deleted
+  until the field names an instrument and the button is pressed twice.
+- **The confirmation is a real symbol.** `GET /api/reset/candidates` lists what may be typed, and the
+  field's placeholder is the first symbol the book holds, so the hint lives in the field.
+
+### Changed
+
+- **`POST /api/reset` takes `{"symbol": "INFY.NS"}`** instead of a typed phrase, matched
+  case-insensitively against `instruments`; anything else is a `400` that deletes nothing. A book with
+  no instruments asks for `EMPTY`.
+- The admin account, the session and `schema_migrations` survive, so a reset lands on an empty book.
+
 ## v0.36.0
 
 ### Added
