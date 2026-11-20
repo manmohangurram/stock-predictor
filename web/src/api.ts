@@ -284,13 +284,52 @@ export interface InstrumentDetail {
   signals: SignalRow[];
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(path, init);
+/** The access token lives in memory only: a reload asks the refresh cookie for a new one. */
+let accessToken: string | null = null;
+let refreshing: Promise<boolean> | null = null;
+
+export const auth = {
+  token: () => accessToken,
+  set: (token: string | null) => {
+    accessToken = token;
+  },
+  /** One refresh at a time, shared by every call that hits a 401 together. */
+  refresh: async (): Promise<boolean> => {
+    if (refreshing) return refreshing;
+    refreshing = (async () => {
+      try {
+        const r = await fetch("/api/auth/refresh", { method: "POST" });
+        if (!r.ok) return false;
+        const body = (await r.json()) as { access_token: string };
+        accessToken = body.access_token;
+        return true;
+      } catch {
+        return false;
+      } finally {
+        refreshing = null;
+      }
+    })();
+    return refreshing;
+  },
+};
+
+async function send<T>(path: string, init: RequestInit, retry: boolean): Promise<T> {
+  const headers: Record<string, string> = { ...((init.headers ?? {}) as Record<string, string>) };
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+  const r = await fetch(path, { ...init, headers });
+  if (r.status === 401 && retry && !path.startsWith("/api/auth/")) {
+    if (await auth.refresh()) return send<T>(path, init, false);
+    accessToken = null;
+  }
   if (!r.ok) {
     const body = await r.text();
     throw new Error(`${path}: ${r.status} ${body.slice(0, 200)}`);
   }
   return r.json() as Promise<T>;
+}
+
+async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return send<T>(path, init, true);
 }
 
 const json = (body: unknown): RequestInit => ({
@@ -348,6 +387,17 @@ export interface ApiKey {
 }
 
 export const api = {
+  /** Auth: the one door. Setup exists only while no admin does. */
+  authStatus: () =>
+    req<{ needs_setup: boolean; signed_in?: boolean; username?: string }>("/api/auth/status"),
+  authSetup: (body: { username: string; password: string }) =>
+    req<{ admin: { username: string }; access_token: string }>("/api/auth/setup", json(body)),
+  authLogin: (body: { username: string; password: string }) =>
+    req<{ admin: { username: string }; access_token: string }>("/api/auth/login", json(body)),
+  authLogout: () => req<{ signed_out: boolean }>("/api/auth/logout", { method: "POST" }),
+  changePassword: (body: { current: string; next: string }) =>
+    req<{ changed: boolean; signed_out: boolean }>("/api/auth/password", json(body)),
+
   /** MCP access keys; the plaintext comes back once, from createKey. */
   keys: () => req<{ keys: ApiKey[] }>("/api/keys"),
   createKey: (body: { name: string; scope: "read" | "write"; days: number | null }) =>

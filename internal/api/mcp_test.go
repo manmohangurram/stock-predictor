@@ -35,7 +35,7 @@ func mcpSession(t *testing.T, scope apikeys.Scope) (*mcp.ClientSession, func()) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	st := NewState(pool, &config.Config{PublicURL: "https://example.in"})
+	st := NewState(pool, &config.Config{PublicURL: "https://example.in", SecretKey: []byte("0123456789abcdef0123456789abcdef")})
 	srv := httptest.NewServer(MCPHandler(st, engine))
 	t.Cleanup(srv.Close)
 
@@ -179,7 +179,7 @@ func TestARevokedKeyCannotConnect(t *testing.T) {
 	if _, err := apikeys.Revoke(pool, key.ID, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	st := NewState(pool, &config.Config{PublicURL: "https://example.in"})
+	st := NewState(pool, &config.Config{PublicURL: "https://example.in", SecretKey: []byte("0123456789abcdef0123456789abcdef")})
 	srv := httptest.NewServer(MCPHandler(st, engine))
 	defer srv.Close()
 
