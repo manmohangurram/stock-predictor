@@ -10,7 +10,7 @@ import { onMounted, ref } from "vue";
 import { api, type CallDetail } from "../api";
 import { renderExchangeDetail } from "./call-detail";
 
-const props = defineProps<{ id: number }>();
+const props = defineProps<{ id: string }>();
 const sheet = ref<HTMLElement | null>(null);
 const detail = ref<CallDetail | null>(null);
 const failure = ref("");

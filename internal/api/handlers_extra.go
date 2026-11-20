@@ -275,7 +275,7 @@ func allDigits(s string) bool {
 }
 
 type callRow struct {
-	ID               int64   `json:"id"`
+	ID               string  `json:"id"`
 	Ts               string  `json:"ts"`
 	Endpoint         string  `json:"endpoint"`
 	DecisionAction   *string `json:"decision_action"`
@@ -397,7 +397,7 @@ func calls(c *gin.Context, st *AppState) {
 
 	pageArgs := append([]any{}, args...)
 	var page strings.Builder
-	page.WriteString(`SELECT a.id AS id, a.ts AS ts, a.endpoint AS endpoint, a.purpose AS purpose,
+	page.WriteString(`SELECT a.uuid AS id, a.ts AS ts, a.endpoint AS endpoint, a.purpose AS purpose,
                 a.round AS round, a.prompt_tokens AS prompt_tokens,
                 a.completion_tokens AS completion_tokens,
                 a.validator_verdict AS validator_verdict, a.error AS error,
@@ -515,7 +515,7 @@ func blockedReason(raw string) *string {
 }
 
 func callDetail(c *gin.Context, st *AppState) {
-	id, err := pathID(c)
+	id, err := pathRowID(st.Pool, c, "api_calls")
 	if err != nil {
 		respondErr(c, err)
 		return
@@ -566,7 +566,7 @@ func callDetail(c *gin.Context, st *AppState) {
 		}
 	}
 	out := gin.H{
-		"id": id, "ts": ts, "endpoint": endpoint, "purpose": nullIfEmpty(purpose.String),
+		"id": c.Param("id"), "ts": ts, "endpoint": endpoint, "purpose": nullIfEmpty(purpose.String),
 		"round": nullInt(round), "trigger": nullIfEmpty(trigger.String),
 		"decision_reason":   blockedReason(decisionReason.String),
 		"instrument_name":   nullIfEmpty(instrumentName.String),

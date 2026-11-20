@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"stock-predictor/internal/ids"
 )
 
 func TestTheMarketReadsTheDataNotACalendar(t *testing.T) {
@@ -79,15 +81,15 @@ func TestTheCallsPagerCountsTheFilteredTotal(t *testing.T) {
 	pool, r, id := setup(t)
 	for i := 0; i < 3; i++ {
 		if _, err := pool.Exec(
-			`INSERT INTO api_calls (ts, endpoint, purpose, prompt_template)
-             VALUES (?, 'chat', 'decide INFY.NS', 'decide_v1')`,
-			time.Now().UTC().Format(time.RFC3339)); err != nil {
+			`INSERT INTO api_calls (ts, endpoint, purpose, prompt_template, uuid)
+             VALUES (?, 'chat', 'decide INFY.NS', 'decide_v1', ?)`,
+			time.Now().UTC().Format(time.RFC3339), ids.New()); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if _, err := pool.Exec(
-		`INSERT INTO api_calls (ts, endpoint, purpose) VALUES (?, 'search', 'search INFY.NS')`,
-		time.Now().UTC().Format(time.RFC3339)); err != nil {
+		`INSERT INTO api_calls (ts, endpoint, purpose, uuid) VALUES (?, 'search', 'search INFY.NS', ?)`,
+		time.Now().UTC().Format(time.RFC3339), ids.New()); err != nil {
 		t.Fatal(err)
 	}
 	_ = id
@@ -112,8 +114,8 @@ func TestTheCallsPagerCountsTheFilteredTotal(t *testing.T) {
 func TestTheFacetsComeFromTheData(t *testing.T) {
 	pool, r, _ := setup(t)
 	if _, err := pool.Exec(
-		`INSERT INTO api_calls (ts, endpoint, purpose, prompt_template)
-         VALUES (?, 'chat', 'decide INFY.NS', 'decide_v1')`, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		`INSERT INTO api_calls (ts, endpoint, purpose, prompt_template, uuid)
+         VALUES (?, 'chat', 'decide INFY.NS', 'decide_v1', ?)`, time.Now().UTC().Format(time.RFC3339), ids.New()); err != nil {
 		t.Fatal(err)
 	}
 	code, body := do(t, r, http.MethodGet, "/api/calls/facets", nil, nil)
