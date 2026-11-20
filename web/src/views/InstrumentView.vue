@@ -109,10 +109,10 @@ async function record(): Promise<void> {
 }
 
 /* ---- correcting and deleting a fill -------------------------------------- */
-const editing = ref<number | null>(null);
+const editing = ref<string | null>(null);
 const edit = ref({ qty: "", price: "", at: "" });
 const fillStatus = ref("");
-const armed = ref<number | null>(null);
+const armed = ref<string | null>(null);
 
 function openEdit(t: Trade): void {
   editing.value = t.id;
@@ -120,7 +120,7 @@ function openEdit(t: Trade): void {
   fillStatus.value = "";
 }
 
-async function saveEdit(id: number): Promise<void> {
+async function saveEdit(id: string): Promise<void> {
   fillStatus.value = "Saving…";
   try {
     await api.editTrade(id, {
@@ -135,7 +135,7 @@ async function saveEdit(id: number): Promise<void> {
   }
 }
 
-async function deleteFill(id: number): Promise<void> {
+async function deleteFill(id: string): Promise<void> {
   if (armed.value !== id) {
     armed.value = id;
     window.setTimeout(() => {

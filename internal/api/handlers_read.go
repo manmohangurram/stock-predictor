@@ -307,7 +307,7 @@ func buildAnalysis(c *gin.Context, st *AppState, symbol string, full bool) (*Ana
 		var modelPos *models.Position
 		if position != nil {
 			modelPos = &models.Position{
-				ID: position.ID, InstrumentID: inst.ID, Qty: position.Qty,
+				ID: position.RowID, InstrumentID: inst.ID, Qty: position.Qty,
 				AvgCost: position.AvgCost, Stop: position.Stop, Target: position.Target,
 				State: position.State,
 			}

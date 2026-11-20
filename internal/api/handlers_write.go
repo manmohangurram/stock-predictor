@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"stock-predictor/internal/httpx"
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/ledger"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/notify"
@@ -195,7 +196,7 @@ func recordTrade(c *gin.Context, st *AppState) {
 }
 
 func editTrade(c *gin.Context, st *AppState) {
-	id, err := pathID(c)
+	id, err := pathRowID(st.Pool, c, "trades")
 	if err != nil {
 		respondErr(c, err)
 		return
@@ -222,11 +223,11 @@ func editTrade(c *gin.Context, st *AppState) {
 		respondErr(c, badRequest(err.Error()))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": id, "edited": true})
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id"), "edited": true})
 }
 
 func deleteTrade(c *gin.Context, st *AppState) {
-	id, err := pathID(c)
+	id, err := pathRowID(st.Pool, c, "trades")
 	if err != nil {
 		respondErr(c, err)
 		return
@@ -235,7 +236,7 @@ func deleteTrade(c *gin.Context, st *AppState) {
 		respondErr(c, badRequest(derr.Error()))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": id, "deleted": true})
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id"), "deleted": true})
 }
 
 func postPosition(c *gin.Context, st *AppState) {
@@ -276,9 +277,9 @@ func postPosition(c *gin.Context, st *AppState) {
 	}
 	now := tstampNow()
 	if _, err := tx.Exec(
-		`INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, stop, target, state)
-         VALUES (?, ?, ?, ?, ?, ?, 'open')`,
-		id, body.Qty, body.AvgCost, now, body.Stop, body.Target); err != nil {
+		`INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, stop, target, state, uuid)
+         VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
+		id, body.Qty, body.AvgCost, now, body.Stop, body.Target, ids.New()); err != nil {
 		tx.Rollback()
 		respondErr(c, internalErr(err))
 		return
@@ -313,7 +314,7 @@ func ledgerPosition(pool *sql.DB, symbol string) (*ledger.PositionRow, error) {
 }
 
 func patchPosition(c *gin.Context, st *AppState) {
-	id, err := pathID(c)
+	id, err := pathRowID(st.Pool, c, "positions")
 	if err != nil {
 		respondErr(c, err)
 		return
@@ -397,7 +398,7 @@ func patchPosition(c *gin.Context, st *AppState) {
 		respondErr(c, internalErr(err))
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"id": id, "updated": true})
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id"), "updated": true})
 }
 
 func postIPO(c *gin.Context, st *AppState) {
