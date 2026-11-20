@@ -428,7 +428,7 @@ type approveBody struct {
 	Price *float64 `json:"price"`
 	At    *string  `json:"at"`
 	Fills []struct {
-		ID    int64    `json:"id"`
+		ID    string   `json:"id"`
 		Qty   *float64 `json:"qty"`
 		Price *float64 `json:"price"`
 	} `json:"fills"`
@@ -554,6 +554,7 @@ func approveSignal(c *gin.Context, st *AppState) {
 
 type planLeg struct {
 	ID           int64
+	UUID         string
 	InstrumentID int64
 	Action       string
 	Qty          *float64
@@ -565,7 +566,7 @@ type planLeg struct {
 
 func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody) {
 	rows, err := st.Pool.Query(
-		`SELECT id, instrument_id, action, qty, entry, stop, target, mode FROM signals
+		`SELECT id, uuid, instrument_id, action, qty, entry, stop, target, mode FROM signals
          WHERE plan_id = ? AND status = 'pending'
          ORDER BY CASE action WHEN 'SELL' THEN 0 ELSE 1 END, id`, plan)
 	if err != nil {
@@ -576,7 +577,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 	for rows.Next() {
 		var leg planLeg
 		var qty, entry, stop, target sql.NullFloat64
-		if err := rows.Scan(&leg.ID, &leg.InstrumentID, &leg.Action, &qty, &entry, &stop,
+		if err := rows.Scan(&leg.ID, &leg.UUID, &leg.InstrumentID, &leg.Action, &qty, &entry, &stop,
 			&target, &leg.Mode); err != nil {
 			rows.Close()
 			respondErr(c, internalErr(err))
@@ -615,7 +616,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 	for _, leg := range legs {
 		var q, p *float64
 		for _, f := range body.Fills {
-			if f.ID == leg.ID {
+			if f.ID == leg.UUID {
 				q, p = f.Qty, f.Price
 				break
 			}

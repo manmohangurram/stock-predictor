@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/market"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/rules"
@@ -135,8 +136,8 @@ func Run(pool *sql.DB, client *http.Client, withPositions bool) (Report, error) 
 
 func insertInstrument(pool *sql.DB, symbol string, class models.AssetClass, name string) (int, error) {
 	res, err := pool.Exec(
-		"INSERT OR IGNORE INTO instruments (symbol, class, name, currency) VALUES (?, ?, ?, 'INR')",
-		symbol, string(class), name)
+		"INSERT OR IGNORE INTO instruments (symbol, class, name, currency, uuid) VALUES (?, ?, ?, 'INR', ?)",
+		symbol, string(class), name, ids.New())
 	if err != nil {
 		return 0, err
 	}

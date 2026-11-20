@@ -14,6 +14,7 @@ import (
 
 	"stock-predictor/internal/fundscan"
 	"stock-predictor/internal/httpx"
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/market"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/rules"
@@ -130,7 +131,7 @@ func addInstrument(c *gin.Context, st *AppState) {
 		name = *body.Name
 	}
 
-	id, aerr := addOrPromote(st.Pool, code, string(class), name)
+	id, uid, aerr := addOrPromote(st.Pool, code, string(class), name)
 	if aerr != nil {
 		respondErr(c, aerr)
 		return
@@ -143,33 +144,34 @@ func addInstrument(c *gin.Context, st *AppState) {
 			"bars", bars, "news", news)
 	}
 	c.JSON(http.StatusOK, InstrumentRow{
-		ID: id, Symbol: code, Class: string(class), Name: name, Currency: "INR",
+		ID: uid, Symbol: code, Class: string(class), Name: name, Currency: "INR",
 		TimingNote: class.TimingNote(), Active: true,
 	})
 }
 
 // Adding is an act of intent, so it makes the row active — including a row the short-term scan
 // already created as a candidate. A genuinely archived instrument is not revived by it.
-func addOrPromote(pool *sql.DB, code, class, name string) (int64, error) {
+func addOrPromote(pool *sql.DB, code, class, name string) (int64, string, error) {
 	var archived sql.NullString
 	err := pool.QueryRow("SELECT archived_at FROM instruments WHERE symbol = ?", code).Scan(&archived)
 	if err == nil && archived.Valid {
-		return 0, badRequest(code + " is archived — restore it from its own page")
+		return 0, "", badRequest(code + " is archived — restore it from its own page")
 	}
 	if err != nil && err != sql.ErrNoRows {
-		return 0, internalErr(err)
+		return 0, "", internalErr(err)
 	}
 	if _, err := pool.Exec(
-		`INSERT INTO instruments (symbol, class, name, currency, active)
-         VALUES (?, ?, ?, 'INR', 1)
-         ON CONFLICT(symbol) DO UPDATE SET active = 1`, code, class, name); err != nil {
-		return 0, internalErr(err)
+		`INSERT INTO instruments (symbol, class, name, currency, active, uuid)
+         VALUES (?, ?, ?, 'INR', 1, ?)
+         ON CONFLICT(symbol) DO UPDATE SET active = 1`, code, class, name, ids.New()); err != nil {
+		return 0, "", internalErr(err)
 	}
 	var id int64
-	if err := pool.QueryRow("SELECT id FROM instruments WHERE symbol = ?", code).Scan(&id); err != nil {
-		return 0, internalErr(err)
+	var uuid string
+	if err := pool.QueryRow("SELECT id, uuid FROM instruments WHERE symbol = ?", code).Scan(&id, &uuid); err != nil {
+		return 0, "", internalErr(err)
 	}
-	return id, nil
+	return id, uuid, nil
 }
 
 func refreshInstrument(c *gin.Context, st *AppState) {

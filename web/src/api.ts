@@ -149,7 +149,7 @@ export interface RunRow {
 }
 
 export interface ArchivedInstrument {
-  id: number;
+  id: string;
   symbol: string;
   name: string;
   class: "stock" | "mutual_fund" | "ipo";
@@ -240,7 +240,7 @@ export interface CheckRow {
 
 export interface Analysis {
   instrument: {
-    id: number;
+    id: string;
     symbol: string;
     class: string;
     name: string;
@@ -263,14 +263,14 @@ export interface Analysis {
   } | null;
   checks: CheckRow[];
   position: PositionRow | null;
-  headlines: { id: number; title: string; publisher: string | null; published_at: string; url: string }[];
+  headlines: { id: string; title: string; publisher: string | null; published_at: string; url: string }[];
   signals: SignalRow[];
   trades: Trade[];
 }
 
 export interface InstrumentDetail {
   instrument: {
-    id: number;
+    id: string;
     symbol: string;
     class: string;
     name: string;
@@ -280,7 +280,7 @@ export interface InstrumentDetail {
     /** False when archived: the page offers a way back instead of another archive. */
     active: boolean;
   };
-  headlines: { id: number; title: string; publisher: string | null; published_at: string; url: string }[];
+  headlines: { id: string; title: string; publisher: string | null; published_at: string; url: string }[];
   signals: SignalRow[];
 }
 
