@@ -1,4 +1,15 @@
+## v0.33.1
+
+### Changed
+
+- **The MCP catalogue documents itself.** A model picks a tool from the catalogue, so each of the
+  sixteen now carries a title, a summary that says what it returns (and, for the write tools, that
+  money moves), and one example input it can copy. The eight that only read are marked read-only;
+  the four that move money are marked destructive. A test walks the whole catalogue and fails if a
+  tool loses its title, its example or its hint.
+
 ## v0.33.0
+
 
 **The book is reachable by an assistant.** `POST /mcp` is an MCP server speaking Streamable HTTP
 in stateless JSON mode, authenticated by a key you mint in Settings -> Access.
