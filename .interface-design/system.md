@@ -65,7 +65,7 @@ Precision & Density discipline. Paper, not glass.
 | Foundation | Warm, hue 85 (paper cream) | The object this replaces is a paper ledger; cream lowers arousal vs. white or slate |
 | Depth | Borders-only, 0.5px hairlines | Dense accounting structure; shadows would imply cards floating, i.e. a product, not a record |
 | Spacing base | 4px, scale 4/8/12/16/24/32/48 | Dense rows for scanning, generous section breaks for rhythm |
-| Radius | 3px surfaces, 2px stamps | Stamped forms are not rounded; 0 would read brutal, 8 would read SaaS |
+| Radius | 6px compact controls Â· 8px controls Â· 12px surfaces Â· pill for a filter Â· 4px stamps | A corner follows the height of the thing. One value for everything makes a 28px caret a blob and a card under-rounded; zero reads brutal, 16+ reads SaaS |
 | Accent | Two stamps, not one: indigo (BUY) + red-oxide (SELL) | Buy and sell must be distinguishable without red/green, for color-blind safety |
 | Type | IBM Plex Sans + IBM Plex Mono | Institutional print heritage, real tabular figures; Inter would erase the form-like feel |
 | Theme | Light only by default | A ledger is a light object; dark mode offered via `prefers-color-scheme` at semantic level |
