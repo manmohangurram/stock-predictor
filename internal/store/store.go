@@ -17,7 +17,7 @@ const upsertBar = `INSERT INTO bars (instrument_id, ts, open, high, low, close, 
 	   open = excluded.open, high = excluded.high, low = excluded.low,
 	   close = excluded.close, volume = excluded.volume`
 
-const insertHeadline = `INSERT OR IGNORE INTO news (instrument_id, published_at, title, publisher, url, uuid)
+const insertHeadline = `INSERT OR IGNORE INTO news (id, instrument_id, published_at, title, publisher, url)
 	 VALUES (?, ?, ?, ?, ?, ?)`
 
 // Daily bars, upserted. Shared by the poll loop and by "add instrument", so a freshly
@@ -78,7 +78,7 @@ func Headlines(pool *sql.DB, instrumentID int64, news []models.Headline) error {
 	defer tx.Rollback()
 	for _, h := range news {
 		if _, err := tx.Exec(insertHeadline,
-			instrumentID, h.PublishedAt, h.Title, h.Publisher, h.URL, ids.New(),
+			ids.New(), instrumentID, h.PublishedAt, h.Title, h.Publisher, h.URL,
 		); err != nil {
 			return err
 		}

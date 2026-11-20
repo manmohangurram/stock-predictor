@@ -9,8 +9,8 @@ import (
 
 // The tables whose rows the app hands out: a page URL, a decision button, a call overlay.
 var uuidTables = []string{
-	"instruments", "news", "signals", "positions", "cash_ledger",
-	"ipo_applications", "notifications", "search_results", "trades",
+	"instruments", "signals", "cash_ledger", "ipo_applications", "notifications",
+	"search_results",
 }
 
 // BackfillUUIDs gives every row that has none an id, oldest row first, so ids sort in the order

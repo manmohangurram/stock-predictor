@@ -109,7 +109,7 @@ func NormalizeSymbol(symbol string) string {
 }
 
 type Position struct {
-	ID           int64    `json:"id"`
+	ID           string   `json:"id"`
 	InstrumentID int64    `json:"instrument_id"`
 	Qty          float64  `json:"qty"`
 	AvgCost      float64  `json:"avg_cost"`

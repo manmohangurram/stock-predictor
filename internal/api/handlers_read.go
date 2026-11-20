@@ -308,7 +308,7 @@ func buildAnalysis(c *gin.Context, st *AppState, symbol string, full bool) (*Ana
 		var modelPos *models.Position
 		if position != nil {
 			modelPos = &models.Position{
-				ID: position.RowID, InstrumentID: inst.RowID, Qty: position.Qty,
+				ID: position.ID, InstrumentID: inst.RowID, Qty: position.Qty,
 				AvgCost: position.AvgCost, Stop: position.Stop, Target: position.Target,
 				State: position.State,
 			}
@@ -394,7 +394,7 @@ func loadBarsFor(pool *sql.DB, instrumentID int64, limit int) ([]models.Bar, err
 
 func loadHeadlines(pool *sql.DB, instrumentID int64, limit int) ([]HeadlineRow, error) {
 	rows, err := pool.Query(
-		`SELECT uuid, title, publisher, published_at, url FROM news
+		`SELECT id, title, publisher, published_at, url FROM news
          WHERE instrument_id = ? ORDER BY published_at DESC LIMIT ?`, instrumentID, limit)
 	if err != nil {
 		return nil, err
