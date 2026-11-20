@@ -249,6 +249,18 @@
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
   }
+
+  /* A finger is not a pointer: every control in this app is drawn for desktop density, and the
+     smallest of them is 24-32px. On a touch screen they all get a 44px floor. */
+  @media (pointer: coarse) {
+    .btn, .d-btn, .icon-btn, .row-caret, .tick-toggle, select, input[type="date"] {
+      min-height: 44px;
+    }
+    .icon-btn, .row-caret, .d-btn-square { min-width: 44px; }
+    .d-btn.d-btn-xs { height: auto; min-height: 44px; }
+    .row-actions .btn { height: auto; }
+    .tick-toggle { display: inline-flex; align-items: center; }
+  }
 }
 
 @layer components {
