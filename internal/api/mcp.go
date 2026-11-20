@@ -136,6 +136,8 @@ func audited(st *AppState, key *apikeys.Key, tool string, args any, fn func() (j
 		time.Since(started).Milliseconds(),
 	); aerr != nil {
 		slog.Warn("mcp audit row failed", "tool", tool, "error", aerr)
+	} else if perr := pruneMcpCalls(st.Pool); perr != nil {
+		slog.Warn("mcp history prune failed", "error", perr)
 	}
 	if err != nil {
 		return &mcp.CallToolResult{

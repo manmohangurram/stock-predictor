@@ -80,7 +80,7 @@ rows), deleting a trade, deleting or archiving an instrument, minting keys.
 | `revoked_at` | NULL while live; revocation is a timestamp, never a delete |
 | `user_id` | NULL today; owner once login lands |
 
-`mcp_calls` (append-only, like `api_calls`)
+`mcp_calls` (append-only, like `api_calls`; the newest 500 rows are kept and older ones are pruned after every insert)
 
 | Column | Notes |
 |---|---|
