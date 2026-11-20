@@ -94,6 +94,38 @@ func TestAReadKeySeesTheBookAndNotTheWriteTools(t *testing.T) {
 	}
 }
 
+func TestEveryToolCarriesAnExampleForTheModel(t *testing.T) {
+	session, done := mcpSession(t, apikeys.ScopeWrite)
+	defer done()
+
+	res, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("list tools: %v", err)
+	}
+	if len(res.Tools) != 16 {
+		t.Fatalf("%d tools registered, want 16", len(res.Tools))
+	}
+	for _, tool := range res.Tools {
+		if tool.Title == "" {
+			t.Errorf("%s has no title", tool.Name)
+		}
+		if !strings.Contains(tool.Description, "Example input:") {
+			t.Errorf("%s has no example", tool.Name)
+		}
+		writes := map[string]bool{"approve_decision": true, "reject_decision": true, "record_trade": true,
+			"edit_trade": true, "add_instrument": true, "restore_instrument": true,
+			"set_target_profit": true, "update_settings": true}
+		if tool.Annotations == nil || tool.Annotations.ReadOnlyHint != !writes[tool.Name] {
+			t.Errorf("%s has the wrong read-only hint", tool.Name)
+		}
+		destructive := map[string]bool{"approve_decision": true, "reject_decision": true,
+			"record_trade": true, "edit_trade": true}
+		if destructive[tool.Name] != (tool.Annotations.DestructiveHint != nil && *tool.Annotations.DestructiveHint) {
+			t.Errorf("%s has the wrong destructive hint", tool.Name)
+		}
+	}
+}
+
 func TestAWriteKeyCanRecordAFillOverMCP(t *testing.T) {
 	session, done := mcpSession(t, apikeys.ScopeWrite)
 	defer done()

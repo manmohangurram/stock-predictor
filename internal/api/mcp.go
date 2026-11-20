@@ -153,6 +153,22 @@ func nullIfEmptyString(s string) *string {
 
 func percentEscape(symbol string) string { return url.PathEscape(symbol) }
 
+// tool stamps the shape every tool shares: a title a client can show, a summary that says what the
+// call costs when it costs anything, and one concrete example the model can copy.
+func tool(name, title, summary, example string, readOnly, destructive bool) *mcp.Tool {
+	t := &mcp.Tool{
+		Name:        name,
+		Title:       title,
+		Description: summary + "\n\nExample input: " + example,
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: readOnly},
+	}
+	if destructive {
+		yes := true
+		t.Annotations.DestructiveHint = &yes
+	}
+	return t
+}
+
 // newMCPServer builds the catalogue for one key. Write tools exist only when the key can write.
 func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "stock-predictor", Version: "1"}, nil)
@@ -168,14 +184,18 @@ func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key) *mcp.Serv
 		return "long"
 	}
 
-	mcp.AddTool(server, &mcp.Tool{Name: "get_dashboard", Description: "The book as the ledger page shows it: figures, positions, decisions and recent fills."},
+	mcp.AddTool(server, tool("get_dashboard", "Read the whole book",
+		"The book as the ledger page shows it: the head figures, every open position, the decisions and the recent fills. Start here when the question is about the portfolio as a whole.",
+		`{"mode":"long"}`, true, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args modeArg) (*mcp.CallToolResult, any, error) {
 			return audited(st, key, "get_dashboard", args, func() (json.RawMessage, error) {
 				return rest.get("/api/dashboard?mode=" + pickMode(args.Mode) + "&decisions=all")
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "list_positions", Description: "Open and closed holdings for one purse."},
+	mcp.AddTool(server, tool("list_positions", "List holdings",
+		"The positions for one purse, with qty, average cost, last price, value and the exit plan.",
+		`{"mode":"trade"}`, true, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args modeArg) (*mcp.CallToolResult, any, error) {
 			return audited(st, key, "list_positions", args, func() (json.RawMessage, error) {
 				raw, err := rest.get("/api/dashboard?mode=" + pickMode(args.Mode))
@@ -192,7 +212,9 @@ func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key) *mcp.Serv
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "list_decisions", Description: "Proposals (decisions) for one purse, filtered by state."},
+	mcp.AddTool(server, tool("list_decisions", "List decisions",
+		"Proposals the app made for one purse, filtered by state. A decision carries the uuid that approve_decision and reject_decision take.",
+		`{"mode":"long","status":"pending"}`, true, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			Mode   string `json:"mode,omitempty" jsonschema:"long or trade; default long"`
 			Status string `json:"status,omitempty" jsonschema:"pending, approved, rejected, all; default pending"`
@@ -216,7 +238,9 @@ func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key) *mcp.Serv
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "list_trades", Description: "Recorded fills, newest first, optionally for one symbol."},
+	mcp.AddTool(server, tool("list_trades", "List fills",
+		"Fills that were actually recorded, newest first, for the whole book or one symbol. The id here is what edit_trade takes.",
+		`{"symbol":"INFY.NS"}`, true, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			Symbol string `json:"symbol,omitempty" jsonschema:"e.g. INFY.NS; blank for the whole book"`
 		}) (*mcp.CallToolResult, any, error) {
@@ -228,7 +252,9 @@ func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key) *mcp.Serv
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "get_instrument", Description: "One symbol: price series, indicators, exit plan, headlines and its last decisions."},
+	mcp.AddTool(server, tool("get_instrument", "Read one instrument",
+		"One symbol in full: price series, indicators, the exit plan, headlines and its recent decisions.",
+		`{"symbol":"RELIANCE.NS"}`, true, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			Symbol string `json:"symbol" jsonschema:"e.g. INFY.NS"`
 		}) (*mcp.CallToolResult, any, error) {
@@ -237,14 +263,18 @@ func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key) *mcp.Serv
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "list_archived", Description: "Instruments a person archived, with their totals."},
+	mcp.AddTool(server, tool("list_archived", "List archived instruments",
+		"Instruments a person archived, with their totals. Nothing is restored automatically.",
+		`{}`, true, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct{}) (*mcp.CallToolResult, any, error) {
 			return audited(st, key, "list_archived", args, func() (json.RawMessage, error) {
 				return rest.get("/api/archived")
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "get_market", Description: "Market state, next open, the schedule and anything running."},
+	mcp.AddTool(server, tool("get_market", "Market state and schedule",
+		"Whether the exchange is trading, when it next opens, the prompt schedule and anything running now.",
+		`{}`, true, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct{}) (*mcp.CallToolResult, any, error) {
 			return audited(st, key, "get_market", args, func() (json.RawMessage, error) {
 				market, err := rest.get("/api/market")
@@ -260,7 +290,9 @@ func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key) *mcp.Serv
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "list_runs", Description: "Recent scheduler runs and how they ended."},
+	mcp.AddTool(server, tool("list_runs", "List runs",
+		"Recent scheduler runs and how each ended, newest first.",
+		`{"limit":10}`, true, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			Limit int `json:"limit,omitempty" jsonschema:"default 25, at most 200"`
 		}) (*mcp.CallToolResult, any, error) {
@@ -281,7 +313,9 @@ func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key) *mcp.Serv
 }
 
 func registerWriteTools(server *mcp.Server, st *AppState, key *apikeys.Key, rest restCaller) {
-	mcp.AddTool(server, &mcp.Tool{Name: "approve_decision", Description: "Approve a pending decision and record the fill it implies."},
+	mcp.AddTool(server, tool("approve_decision", "Approve a decision",
+		"Approve a pending decision and post the fill it implies. Money moves: the position, the fill row and the cash ledger change together in one transaction. Pass qty and price only when the fill differs from the proposal; anything already decided is refused.",
+		`{"id":"<decision uuid from list_decisions>","qty":11,"price":1410}`, false, true),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			ID    string   `json:"id" jsonschema:"the decision uuid from list_decisions"`
 			Qty   *float64 `json:"qty,omitempty" jsonschema:"units actually filled; defaults to the proposal"`
@@ -295,7 +329,9 @@ func registerWriteTools(server *mcp.Server, st *AppState, key *apikeys.Key, rest
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "reject_decision", Description: "Reject a pending decision, with a reason."},
+	mcp.AddTool(server, tool("reject_decision", "Reject a decision",
+		"Reject a pending decision with a reason. No money moves and no fill is written.",
+		`{"id":"<decision uuid>","reason":"earnings tomorrow"}`, false, true),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			ID     string  `json:"id" jsonschema:"the decision uuid"`
 			Reason *string `json:"reason,omitempty"`
@@ -306,7 +342,9 @@ func registerWriteTools(server *mcp.Server, st *AppState, key *apikeys.Key, rest
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "record_trade", Description: "Record a fill you actually got: one transaction over the position, the fill and the cash."},
+	mcp.AddTool(server, tool("record_trade", "Record a fill",
+		"Record a fill that actually happened: position, fill row and cash ledger in one transaction. Use list_positions first to know what is held, and side sell cannot exceed it.",
+		`{"symbol":"INFY.NS","side":"buy","qty":5,"price":1425.5,"mode":"long"}`, false, true),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			Symbol string  `json:"symbol" jsonschema:"e.g. INFY.NS"`
 			Side   string  `json:"side" jsonschema:"buy or sell"`
@@ -324,7 +362,9 @@ func registerWriteTools(server *mcp.Server, st *AppState, key *apikeys.Key, rest
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "edit_trade", Description: "Correct a recorded fill; the position and the cash move by the difference."},
+	mcp.AddTool(server, tool("edit_trade", "Correct a fill",
+		"Correct a recorded fill. Only the fields you pass change; the position and the cash move by the difference, in one transaction.",
+		`{"id":"<fill uuid from list_trades>","price":1420}`, false, true),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			ID    string   `json:"id" jsonschema:"the fill uuid from list_trades"`
 			Qty   *float64 `json:"qty,omitempty"`
@@ -338,7 +378,9 @@ func registerWriteTools(server *mcp.Server, st *AppState, key *apikeys.Key, rest
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "add_instrument", Description: "Add an NSE/BSE symbol (or a fund by AMFI code) and fetch its history."},
+	mcp.AddTool(server, tool("add_instrument", "Add an instrument",
+		"Add an NSE or BSE symbol, or a fund by AMFI scheme code, and fetch its history. A non-Indian listing is refused: it would be priced in dollars and read as rupees.",
+		`{"code":"WIPRO.NS"}`, false, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			Code  string  `json:"code" jsonschema:"e.g. WIPRO.NS, or an AMFI scheme code"`
 			Name  *string `json:"name,omitempty"`
@@ -351,7 +393,9 @@ func registerWriteTools(server *mcp.Server, st *AppState, key *apikeys.Key, rest
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "restore_instrument", Description: "Bring an archived instrument back into the book."},
+	mcp.AddTool(server, tool("restore_instrument", "Restore an archived instrument",
+		"Bring an archived instrument back into the book.",
+		`{"symbol":"INFY.NS"}`, false, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			Symbol string `json:"symbol"`
 		}) (*mcp.CallToolResult, any, error) {
@@ -360,7 +404,9 @@ func registerWriteTools(server *mcp.Server, st *AppState, key *apikeys.Key, rest
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "set_target_profit", Description: "Set the profit expectation that closes a holding."},
+	mcp.AddTool(server, tool("set_target_profit", "Set a profit expectation",
+		"Set the profit percentage that closes a holding, inside the pot's band. Pass null to fall back to the band.",
+		`{"symbol":"INFY.NS","pct":12.5}`, false, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 			Symbol string   `json:"symbol"`
 			Pct    *float64 `json:"pct" jsonschema:"null clears it back to the pot's band"`
@@ -371,7 +417,9 @@ func registerWriteTools(server *mcp.Server, st *AppState, key *apikeys.Key, rest
 			})
 		})
 
-	mcp.AddTool(server, &mcp.Tool{Name: "update_settings", Description: "Change settings the same way the Settings page does: budgets, limits, provider and key, ntfy, cadence. Secrets are written, never returned."},
+	mcp.AddTool(server, tool("update_settings", "Change settings",
+		"Change settings the way the Settings page does: budgets, limits, provider and model, the provider key, ntfy, cadence, the proxy. Only the keys you pass change. Secrets are written and never returned. Invalid values are refused with the reason.",
+		`{"poll_secs":300,"daily_cap":200}`, false, false),
 		func(ctx context.Context, req *mcp.CallToolRequest, args map[string]any) (*mcp.CallToolResult, any, error) {
 			return audited(st, key, "update_settings", args, func() (json.RawMessage, error) {
 				return rest.call(http.MethodPut, "/api/settings", args)
