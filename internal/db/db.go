@@ -147,6 +147,11 @@ func Migrate(pool *sql.DB) error {
 			return err
 		}
 	}
+	if n, err := BackfillUUIDs(pool); err != nil {
+		return fmt.Errorf("backfill uuids: %w", err)
+	} else if n > 0 {
+		slog.Info("backfilled uuids", "rows", n)
+	}
 	_, _ = pool.Exec("PRAGMA optimize")
 	return nil
 }

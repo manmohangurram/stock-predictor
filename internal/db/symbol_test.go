@@ -21,7 +21,15 @@ func TestTheSameSymbolInTwoCasesBecomesOneInstrument(t *testing.T) {
 	}
 	defer pool.Close()
 
-	before := len(Migrations) - 1
+	before := -1
+	for i, m := range Migrations {
+		if m.ID == "0023_one_instrument_per_symbol" {
+			before = i
+		}
+	}
+	if before < 0 {
+		t.Fatal("the symbol migration is missing")
+	}
 	applyPrefix(t, pool, before)
 	last := Migrations[before]
 
