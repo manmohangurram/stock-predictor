@@ -10,6 +10,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, type ArchivedInstrument } from "../api";
 import { histDate, money } from "../format";
+import SettingField from "../components/SettingField.vue";
 
 const router = useRouter();
 const rows = ref<ArchivedInstrument[]>([]);
@@ -22,6 +23,38 @@ onMounted(async () => {
     error.value = String(e);
   }
 });
+
+const phrase = ref("");
+const armed = ref(false);
+const busy = ref(false);
+const resetNote = ref("");
+const resetError = ref("");
+
+async function wipe(): Promise<void> {
+  resetError.value = "";
+  resetNote.value = "";
+  if (phrase.value.trim() !== "DELETE EVERYTHING") {
+    resetError.value = 'Type DELETE EVERYTHING, exactly, to confirm.';
+    return;
+  }
+  if (!armed.value) {
+    armed.value = true;
+    return;
+  }
+  busy.value = true;
+  try {
+    const res = await api.resetBook(phrase.value.trim());
+    const count = Object.values(res.deleted).reduce((n, v) => n + v, 0);
+    resetNote.value = `Deleted ${count} rows. The book is empty; you are still signed in.`;
+    phrase.value = "";
+    armed.value = false;
+    rows.value = [];
+  } catch (e) {
+    resetError.value = String(e);
+  } finally {
+    busy.value = false;
+  }
+}
 
 const total = computed(() => rows.value.reduce((n, r) => n + r.realised, 0));
 const fills = computed(() => rows.value.reduce((n, r) => n + r.fills, 0));
@@ -107,5 +140,36 @@ const visit = (symbol: string): void => void router.push(`/i/${encodeURIComponen
         </table>
       </div>
     </section>
+
+    <section class="danger">
+      <header class="pane-head">
+        <h2>Delete everything</h2>
+        <span class="pill todo">cannot be undone</span>
+      </header>
+      <p class="lede">
+        This clears the whole book: instruments, bars, holdings, fills, the cash ledger, decisions,
+        notifications, runs, call records, MCP keys and settings. The admin account and this session
+        stay, so you land on an empty book rather than the setup screen. There is no backup here —
+        copy the database file first if you might want any of it.
+      </p>
+      <form class="trade-form" autocomplete="off" @submit.prevent="wipe">
+        <div class="row">
+          <SettingField id="reset_phrase" label='Type DELETE EVERYTHING' v-model="phrase"
+            placeholder="DELETE EVERYTHING" autocomplete="off" />
+          <button class="d-btn d-btn-sm" type="submit" :disabled="busy" :class="{ danger: armed }">
+            {{ armed ? "Click again to delete everything" : "Delete everything" }}
+          </button>
+        </div>
+        <div v-if="resetError" class="error-band" role="alert">{{ resetError }}</div>
+        <p v-if="resetNote" class="note" role="status">{{ resetNote }}</p>
+      </form>
+    </section>
   </template>
 </template>
+<style scoped>
+.danger { margin-top: var(--space-8); border-top: 1px solid var(--rule); padding-top: var(--space-4); }
+.danger h2 { color: var(--stamp-oxide); }
+.danger .pill { border-radius: var(--radius-pill); }
+.danger .row { align-items: end; }
+.d-btn.danger { color: var(--stamp-oxide); border-color: var(--stamp-oxide); }
+</style>
