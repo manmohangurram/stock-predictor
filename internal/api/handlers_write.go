@@ -434,7 +434,7 @@ type approveBody struct {
 }
 
 func approveSignal(c *gin.Context, st *AppState) {
-	id, err := pathID(c)
+	id, err := pathRowID(st.Pool, c, "signals")
 	if err != nil {
 		respondErr(c, err)
 		return
@@ -546,7 +546,7 @@ func approveSignal(c *gin.Context, st *AppState) {
 	slog.Info("decision approved", "id", id, "side", side, "qty", fillQty, "price", fillPrice,
 		"recorded", already == 0)
 	c.JSON(http.StatusOK, gin.H{
-		"id": id, "status": "approved", "filled_qty": fillQty,
+		"id": c.Param("id"), "status": "approved", "filled_qty": fillQty,
 		"filled_price": fillPrice, "recorded": already == 0,
 	})
 }
@@ -732,7 +732,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 		return
 	}
 	slog.Info("plan approved", "id", id, "plan", plan, "legs", len(posted))
-	c.JSON(http.StatusOK, gin.H{"id": id, "plan": plan, "status": "approved", "legs": posted})
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id"), "plan": plan, "status": "approved", "legs": posted})
 }
 
 func applyExitPlan(pool *sql.DB, instrumentID int64, mode models.Mode, stop, target *float64) error {
@@ -761,7 +761,7 @@ func applyExitPlanOn(tx *sql.Tx, instrumentID int64, mode models.Mode, stop, tar
 }
 
 func rejectSignal(c *gin.Context, st *AppState) {
-	id, err := pathID(c)
+	id, err := pathRowID(st.Pool, c, "signals")
 	if err != nil {
 		respondErr(c, err)
 		return
@@ -808,7 +808,7 @@ func rejectSignal(c *gin.Context, st *AppState) {
 		reasonText = *reason
 	}
 	slog.Info("decision rejected", "id", id, "reason", reasonText)
-	c.JSON(http.StatusOK, gin.H{"id": id, "status": "rejected"})
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id"), "status": "rejected"})
 }
 
 func startRun(c *gin.Context, st *AppState) {

@@ -22,8 +22,8 @@ const isFundPlan = computed(() => first.value.plan_scope === "fund");
 const form = ref<"none" | "approve" | "reject">("none");
 const status = ref("");
 const reason = ref("");
-/** One editable fill per leg, keyed by signal id: qty (or amount for a fund) and price. */
-const fills = ref<Record<number, { qty: string; price: string }>>({});
+/** One editable fill per leg, keyed by the signal's uuid: qty (or amount for a fund) and price. */
+const fills = ref<Record<string, { qty: string; price: string }>>({});
 
 function open(kind: "approve" | "reject"): void {
   form.value = form.value === kind ? "none" : kind;

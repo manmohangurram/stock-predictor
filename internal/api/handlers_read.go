@@ -21,7 +21,7 @@ import (
 )
 
 type SignalRow struct {
-	ID            int64    `json:"id"`
+	ID            string   `json:"id"`
 	Symbol        string   `json:"symbol"`
 	Name          string   `json:"name"`
 	Class         string   `json:"class"`
@@ -40,7 +40,7 @@ type SignalRow struct {
 	StatusReason  *string  `json:"status_reason"`
 	FilledQty     *float64 `json:"filled_qty"`
 	FilledPrice   *float64 `json:"filled_price"`
-	PlanID        *int64   `json:"plan_id"`
+	PlanID        *string  `json:"plan_id"`
 	PlanRationale *string  `json:"plan_rationale"`
 	PlanScope     *string  `json:"plan_scope"`
 	Amount        *float64 `json:"amount"`
@@ -429,9 +429,9 @@ func loadSignals(pool *sql.DB, mode models.Mode, status string) ([]SignalRow, er
 		predicate = "s.action <> 'BLOCKED' AND s.status = 'pending'"
 	}
 	rows, err := pool.Query(
-		`SELECT s.id, i.symbol, i.name, i.class, s.action, s.qty, s.confidence, s.entry, s.stop,
+		`SELECT s.uuid, i.symbol, i.name, i.class, s.action, s.qty, s.confidence, s.entry, s.stop,
                 s.target, s.valid_until, s.reason_json, s.created_at, s.status, s.status_reason,
-                s.filled_qty, s.filled_price, s.plan_id
+                s.filled_qty, s.filled_price, (SELECT p.uuid FROM signals p WHERE p.id = s.plan_id)
          FROM signals s JOIN instruments i ON i.id = s.instrument_id
          WHERE `+predicate+` AND s.mode = ? ORDER BY s.id DESC LIMIT 50`, string(mode))
 	if err != nil {
@@ -444,7 +444,7 @@ func loadSignals(pool *sql.DB, mode models.Mode, status string) ([]SignalRow, er
 		var classRaw, action, createdAt, statusValue string
 		var qty, entry, stop, target, filledQty, filledPrice sql.NullFloat64
 		var confidence, validUntil, reasonJSON, statusReason sql.NullString
-		var planID sql.NullInt64
+		var planID sql.NullString
 		if err := rows.Scan(&r.ID, &r.Symbol, &r.Name, &classRaw, &action, &qty, &confidence,
 			&entry, &stop, &target, &validUntil, &reasonJSON, &createdAt, &statusValue,
 			&statusReason, &filledQty, &filledPrice, &planID); err != nil {
@@ -488,7 +488,7 @@ func loadSignals(pool *sql.DB, mode models.Mode, status string) ([]SignalRow, er
 			r.StatusReason = &statusReason.String
 		}
 		if planID.Valid {
-			r.PlanID = &planID.Int64
+			r.PlanID = &planID.String
 		}
 		r.Reasons = []string{}
 		if list, ok := reason["reasons"].([]any); ok {

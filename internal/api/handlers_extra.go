@@ -285,7 +285,7 @@ type callRow struct {
 	PlanLegs         int64   `json:"plan_legs"`
 	Model            *string `json:"model"`
 	Trigger          *string `json:"trigger"`
-	DecisionID       *int64  `json:"decision_id"`
+	DecisionID       *string `json:"decision_id"`
 	DecisionStatus   *string `json:"decision_status"`
 	Purpose          *string `json:"purpose"`
 	Round            *int64  `json:"round"`
@@ -402,7 +402,7 @@ func calls(c *gin.Context, st *AppState) {
                 a.completion_tokens AS completion_tokens,
                 a.validator_verdict AS validator_verdict, a.error AS error,
                 a.trigger AS trigger, a.prompt_template AS prompt_template,
-                d.id AS decision_id, d.status AS decision_status,
+                d.uuid AS decision_id, d.status AS decision_status,
                 d.action AS decision_action, d.reason_json AS decision_reason,
                 COALESCE(i.name, pi.name) AS instrument_name,
                 COALESCE(i.symbol, pi.symbol) AS instrument_symbol,
@@ -428,7 +428,8 @@ func calls(c *gin.Context, st *AppState) {
 		var r callRow
 		var purpose, trigger, template, verdict, errText, decisionStatus sql.NullString
 		var decisionAction, decisionReason, instrumentName, instrumentSymbol sql.NullString
-		var round, promptTokens, completionTokens, decisionID sql.NullInt64
+		var round, promptTokens, completionTokens sql.NullInt64
+		var decisionID sql.NullString
 		var planLegs int64
 		if err := rows.Scan(&r.ID, &r.Ts, &r.Endpoint, &purpose, &round, &promptTokens,
 			&completionTokens, &verdict, &errText, &trigger, &template, &decisionID,
@@ -454,7 +455,7 @@ func calls(c *gin.Context, st *AppState) {
 			r.CompletionTokens = &completionTokens.Int64
 		}
 		if decisionID.Valid {
-			r.DecisionID = &decisionID.Int64
+			r.DecisionID = &decisionID.String
 		}
 		r.PlanLegs = planLegs
 		if planLegs > 0 && (!decisionAction.Valid || decisionAction.String != "BLOCKED") {

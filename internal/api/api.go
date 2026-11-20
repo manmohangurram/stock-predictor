@@ -223,6 +223,21 @@ func pathID(c *gin.Context) (int64, error) {
 	return id, nil
 }
 
+// pathRowID turns the uuid in the URL into the integer the foreign keys still use. Slice 2 of the
+// uuid move exposes uuid; slice 4 replaces the key itself.
+func pathRowID(pool *sql.DB, c *gin.Context, table string) (int64, error) {
+	raw := c.Param("id")
+	var id int64
+	err := pool.QueryRow("SELECT id FROM "+table+" WHERE uuid = ?", raw).Scan(&id)
+	if err == sql.ErrNoRows {
+		return 0, notFound("nothing is " + raw)
+	}
+	if err != nil {
+		return 0, internalErr(err)
+	}
+	return id, nil
+}
+
 // The tag fingerprints the data, not row counts: approving changes no id, editing a fill changes
 // values in place, and archiving flips a flag. Counting rows answered 304 through all three.
 func dashboardETag(pool *sql.DB, mode models.Mode) (string, error) {
