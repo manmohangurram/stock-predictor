@@ -20,6 +20,10 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | GET | `/api/trades` | yes | The last 200 fills, all instruments |
 | GET | `/api/search?q=` | yes | Yahoo + AMFI search — feeds the add-instrument dialog (⌘K on the ledger) |
 | GET | `/api/schedule` | yes | The schedule: each prompt's last run and when it is next due (daily markers, NSE window, poll cadence) |
+| GET | `/api/keys` | yes | Access keys, never their plaintext |
+| POST | `/api/keys` | yes | Mint a key; the only response that carries the token |
+| DELETE | `/api/keys/{id}` | yes | Revoke a key (a timestamp, not a delete) |
+| POST | `/mcp` | - | MCP over Streamable HTTP; `Authorization: Bearer` with a key, `401` otherwise |
 | GET | `/api/runs?limit=&latest=1` | yes | Runs: state (`running`/`done`/`failed`), trigger, duration, result |
 | POST | `/api/runs` | yes | Start a run now: `{"prompt": "poll"\|"plan_stock"\|"plan_fund"\|"short"\|"decide", "symbol": "INFY.NS"}` |
 | GET | `/api/calls/facets` | yes | The distinct prompt verbs, endpoints and templates the filters offer |

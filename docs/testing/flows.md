@@ -153,7 +153,21 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 | Save | Writes, says *Saved*, and the value survives a reload |
 | Discard | Reverts the field to the stored value without writing |
 
-## 10. Mobile (390 × 844)
+## 10. Access (`/settings/access`)
+
+| Control | Must do |
+|---|---|
+| Access tab | Seventh tab in the settings rail, marked current on `/settings/access` |
+| Key table | Name, scope, prefix, created, expires, last used; a revoked key stays listed and says *revoked* |
+| Create | Name, scope, lifetime (1/7/30/90/365 days or never) -- the plaintext appears once in a panel |
+| Copy | Copies the token; the panel can be dismissed and the token is then gone for good |
+| Revoke | Arms on the first click, revokes on the second; the row survives and reads *revoked* |
+| `POST /mcp` without a key | `401` with `WWW-Authenticate: Bearer` |
+| A revoked key | `401`; an expired one too |
+| A read key's `tools/list` | Eight read tools, no write tool at all |
+
+## 11. Mobile (390 x 844)
+ × 844)
 
 | Page | Must do |
 |---|---|

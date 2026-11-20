@@ -1,3 +1,24 @@
+## v0.33.0
+
+**The book is reachable by an assistant.** `POST /mcp` is an MCP server speaking Streamable HTTP
+in stateless JSON mode, authenticated by a key you mint in Settings -> Access.
+
+- **Keys.** A name, a scope and a lifetime in days -- or never. `read` sees the book; `write` also
+  approves decisions, records and corrects fills, adds and restores instruments, and writes
+  settings. The token is shown once and only its hash is stored; revoking is a timestamp, so the
+  audit trail keeps its key. A key can never mint, list or read keys.
+- **Nothing new to trust in the browser.** Keys guard `/mcp` only; the UI and `/api/...` are
+  unchanged. `api_keys.user_id` is there for the login that comes later.
+- **The same code path.** Every tool dispatches through the app's own router, so a fill recorded
+  over MCP is the transaction the page would have run, with the same validation and refusals.
+- **An audit row per call.** `mcp_calls` records the tool, the arguments (secrets redacted) and the
+  outcome.
+- **Access tab.** The settings rail gains a seventh tab in the same group: list, create, one-time
+  reveal, revoke.
+
+The write scope can move money. Settings written over MCP include the provider key, the ntfy token
+and the proxy password -- written, never returned.
+
 ## v0.32.1
 
 ### Fixed
