@@ -64,6 +64,12 @@ files directly when you need exact wording.
 - Plan: `docs/superpowers/plans/2026-10-27-stock-predictor.md` (binding, task by task).
 - Design system: `.interface-design/system.md` (binding for all front-end work).
 - No test may hit the network. Fixtures only.
+- **Every identity is a UUIDv7 in text** (`internal/ids`, a wrap over `google/uuid`), and every
+  foreign key is that text — a plan's `plan_id`, a fill's `instrument_id`, a notification's
+  `signal_id`. There is no integer key and no second `uuid` column: the id sorts in creation order,
+  so `ORDER BY id DESC` still means "newest first". The migrations are only in
+  `internal/db/migrations` (the tree the embed reads); do not recreate `migrations/` at the root.
+
 - `api_calls` and `cash_ledger` are append-only. Nothing updates or deletes those rows.
 - **Every money write is one transaction.** A fill moves the position, the trade row and the
   cash ledger together (`trades::record`), a correction does the same (`trades::edit`), and a whole
