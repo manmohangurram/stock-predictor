@@ -1,3 +1,48 @@
+## v0.32.0
+
+**The database is keyed by UUIDs.** Every table's identity is a UUIDv7 in text (`internal/ids`, a
+thin wrap over `google/uuid`), and every foreign key is that text — a plan's `plan_id`, a fill's
+`instrument_id`, a notification's `signal_id`. There is no integer key and no second `uuid` column.
+The id leads with the millisecond, so `ORDER BY id DESC` still means "newest first".
+
+- **Upgrading rewrites the database.** Migrations `0023`–`0028` rebuild every table once, at boot,
+  mapping old integers to new ids. **Take a copy of the database first** — the rebuild cannot be
+  undone after it runs. A database created before any of this work was upgraded through the whole
+  chain and exercised end to end.
+- **The API speaks uuid.** `id` is a string everywhere — dashboard, calls, trades, runs, archived,
+  headlines — and `approve`, `reject`, `PATCH` and `DELETE` take the uuid from the path. A script
+  that hard-coded an integer id must switch to the value the API returns.
+- **One instrument per symbol.** The unique index is case-insensitive and the add path normalises
+  the code, so `infy.ns` can no longer become a second instrument beside `INFY.NS`; a migration
+  merges any such twins onto the oldest row. A symbol may still appear twice in the ledger when one
+  instrument is held in both books — that is two positions, not two instruments.
+
+### UI
+
+- **An audit row opens from the row.** The Show/Hide button is gone: clicking a call row expands it
+  in place, clicking again closes it, and a caret keeps the keyboard path (`aria-expanded`,
+  `aria-controls`).
+- **Dark mode is readable.** The muted and tertiary inks measured 2.4:1 against the page; they now
+  measure 4.9–6.2:1, and settings fields have a visible edge instead of a half-pixel hairline.
+- **Touch targets are 44px** where the pointer is a finger, at desktop density otherwise.
+- **Escape closes the add dialog** while its results are showing, not only from a fresh open.
+
+### Fixed
+
+- **Yahoo throttling.** Every request waits one shared 200 ms gap, a 429 costs thirty seconds and
+  escalates instead of one flat five-minute block, and a spark chunk that is throttled is waited
+  out and retried — a hundred-name sweep loses twenty names at worst, not the day's list.
+
+### Housekeeping
+
+- One migrations tree: `internal/db/migrations`. The byte-identical copy at the root is gone, and
+  `AGENTS.md` records the identity convention.
+- The `code-read` skill, installed globally, is the documented route into the code.
+
+Verified: `go build`, `go vet`, `go test ./...`, `npx vitest run`, `npm run build`, a browser
+walkthrough of `docs/testing/flows.md` (37 checks, both themes at 1440 and 390), and an upgrade of
+a populated database through the whole migration chain.
+
 ## v0.31.2
 
 ### Performance
