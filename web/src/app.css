@@ -1452,3 +1452,51 @@
      card's subject instead of its last line. */
   .rcard-add .run-now-btn { justify-self: start; }
 }
+
+/* One radius for every surface and every control, so no box is the odd square one. */
+.btn,
+.d-btn,
+.icon-btn,
+.row-caret,
+.tick-toggle,
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea,
+dialog,
+.add-dialog,
+.card,
+.gate-card,
+.decision,
+.docket,
+.error-band,
+.notice,
+.hit,
+.search,
+.table-wrap,
+.trade-form,
+.settings-rail [role="tab"],
+.rail .chips div {
+  border-radius: var(--radius);
+}
+
+.stamp,
+.pill {
+  border-radius: var(--radius-stamp);
+}
+/* A collapsed border table cannot show a radius on its own, so the four corner cells carry it. */
+.blotter thead th:first-child,
+.ledger thead th:first-child {
+  border-top-left-radius: var(--radius);
+}
+.blotter thead th:last-child,
+.ledger thead th:last-child {
+  border-top-right-radius: var(--radius);
+}
+.blotter tbody tr:last-child td:first-child,
+.ledger tbody tr:last-child td:first-child {
+  border-bottom-left-radius: var(--radius);
+}
+.blotter tbody tr:last-child td:last-child,
+.ledger tbody tr:last-child td:last-child {
+  border-bottom-right-radius: var(--radius);
+}
