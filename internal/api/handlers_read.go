@@ -430,9 +430,9 @@ func loadSignals(pool *sql.DB, mode models.Mode, status string) ([]SignalRow, er
 		predicate = "s.action <> 'BLOCKED' AND s.status = 'pending'"
 	}
 	rows, err := pool.Query(
-		`SELECT s.uuid, i.symbol, i.name, i.class, s.action, s.qty, s.confidence, s.entry, s.stop,
+		`SELECT s.id, i.symbol, i.name, i.class, s.action, s.qty, s.confidence, s.entry, s.stop,
                 s.target, s.valid_until, s.reason_json, s.created_at, s.status, s.status_reason,
-                s.filled_qty, s.filled_price, (SELECT p.uuid FROM signals p WHERE p.id = s.plan_id)
+                s.filled_qty, s.filled_price, (SELECT p.id FROM signals p WHERE p.id = s.plan_id)
          FROM signals s JOIN instruments i ON i.id = s.instrument_id
          WHERE `+predicate+` AND s.mode = ? ORDER BY s.id DESC LIMIT 50`, string(mode))
 	if err != nil {

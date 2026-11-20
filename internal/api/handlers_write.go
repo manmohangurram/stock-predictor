@@ -423,36 +423,32 @@ type approveBody struct {
 }
 
 func approveSignal(c *gin.Context, st *AppState) {
-	id, err := pathRowID(st.Pool, c, "signals")
-	if err != nil {
-		respondErr(c, err)
-		return
-	}
+	id := c.Param("id")
 	var body approveBody
 	if err := c.ShouldBindJSON(&body); err != nil {
 		respondErr(c, badRequest("invalid body"))
 		return
 	}
-	var planID sql.NullInt64
+	var planID sql.NullString
 	if err := st.Pool.QueryRow("SELECT plan_id FROM signals WHERE id = ?", id).Scan(&planID); err != nil &&
 		err != sql.ErrNoRows {
 		respondErr(c, internalErr(err))
 		return
 	}
-	if planID.Valid {
-		approvePlan(c, st, id, planID.Int64, body)
+	if planID.Valid && planID.String != "" {
+		approvePlan(c, st, id, planID.String, body)
 		return
 	}
 
 	var instrumentID int64
 	var action, modeRaw, statusValue string
 	var qty, entry, stop, target sql.NullFloat64
-	err = st.Pool.QueryRow(
+	err := st.Pool.QueryRow(
 		`SELECT instrument_id, action, qty, entry, stop, target, mode, status
          FROM signals WHERE id = ?`, id,
 	).Scan(&instrumentID, &action, &qty, &entry, &stop, &target, &modeRaw, &statusValue)
 	if err == sql.ErrNoRows {
-		respondErr(c, notFound(fmt.Sprintf("no decision %d", id)))
+		respondErr(c, notFound("no decision "+id))
 		return
 	}
 	if err != nil {
@@ -460,7 +456,7 @@ func approveSignal(c *gin.Context, st *AppState) {
 		return
 	}
 	if statusValue != "pending" {
-		respondErr(c, badRequest(fmt.Sprintf("decision %d is already %s", id, statusValue)))
+		respondErr(c, badRequest("decision "+id+" is already "+statusValue))
 		return
 	}
 	var side trades.Side
@@ -509,7 +505,7 @@ func approveSignal(c *gin.Context, st *AppState) {
 		respondErr(c, badRequest(terr.Error()))
 		return
 	}
-	note := fmt.Sprintf("decision %d", id)
+	note := fmt.Sprintf("decision %s", id)
 	var already int64
 	err = st.Pool.QueryRow("SELECT id FROM trades WHERE note = ? AND instrument_id = ?", note, instrumentID).
 		Scan(&already)
@@ -541,8 +537,7 @@ func approveSignal(c *gin.Context, st *AppState) {
 }
 
 type planLeg struct {
-	ID           int64
-	UUID         string
+	ID           string
 	InstrumentID int64
 	Action       string
 	Qty          *float64
@@ -552,9 +547,9 @@ type planLeg struct {
 	Mode         string
 }
 
-func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody) {
+func approvePlan(c *gin.Context, st *AppState, id, plan string, body approveBody) {
 	rows, err := st.Pool.Query(
-		`SELECT id, uuid, instrument_id, action, qty, entry, stop, target, mode FROM signals
+		`SELECT id, instrument_id, action, qty, entry, stop, target, mode FROM signals
          WHERE plan_id = ? AND status = 'pending'
          ORDER BY CASE action WHEN 'SELL' THEN 0 ELSE 1 END, id`, plan)
 	if err != nil {
@@ -565,7 +560,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 	for rows.Next() {
 		var leg planLeg
 		var qty, entry, stop, target sql.NullFloat64
-		if err := rows.Scan(&leg.ID, &leg.UUID, &leg.InstrumentID, &leg.Action, &qty, &entry, &stop,
+		if err := rows.Scan(&leg.ID, &leg.InstrumentID, &leg.Action, &qty, &entry, &stop,
 			&target, &leg.Mode); err != nil {
 			rows.Close()
 			respondErr(c, internalErr(err))
@@ -587,7 +582,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 	}
 	rows.Close()
 	if len(legs) == 0 {
-		respondErr(c, badRequest(fmt.Sprintf("plan %d has no pending moves left", plan)))
+		respondErr(c, badRequest(fmt.Sprintf("plan %s has no pending moves left", plan)))
 		return
 	}
 	mode, perr := models.ParseMode(legs[0].Mode)
@@ -604,7 +599,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 	for _, leg := range legs {
 		var q, p *float64
 		for _, f := range body.Fills {
-			if f.ID == leg.UUID {
+			if f.ID == leg.ID {
 				q, p = f.Qty, f.Price
 				break
 			}
@@ -616,7 +611,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 			qtyValue = *leg.Qty
 		}
 		if qtyValue <= 0 {
-			respondErr(c, badRequest(fmt.Sprintf("move %d has no quantity", leg.ID)))
+			respondErr(c, badRequest(fmt.Sprintf("move %s has no quantity", leg.ID)))
 			return
 		}
 		priceValue := 0.0
@@ -626,7 +621,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 			priceValue = *leg.Entry
 		}
 		if priceValue <= 0 {
-			respondErr(c, badRequest(fmt.Sprintf("move %d has no price", leg.ID)))
+			respondErr(c, badRequest(fmt.Sprintf("move %s has no price", leg.ID)))
 			return
 		}
 		plan2 = append(plan2, planned{leg: leg, qty: qtyValue, price: priceValue})
@@ -678,7 +673,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 		respondErr(c, internalErr(err))
 		return
 	}
-	posted := []int64{}
+	posted := []string{}
 	for _, p := range plan2 {
 		side := trades.SideBuy
 		if p.leg.Action == "SELL" {
@@ -688,7 +683,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan int64, body approveBody)
 			respondErr(c, badRequest(fmt.Sprintf("a %s move has nothing to record", p.leg.Action)))
 			return
 		}
-		note := fmt.Sprintf("decision %d", p.leg.ID)
+		note := fmt.Sprintf("decision %s", p.leg.ID)
 		var already int64
 		err := tx.QueryRow("SELECT id FROM trades WHERE note = ? AND instrument_id = ?",
 			note, p.leg.InstrumentID).Scan(&already)
@@ -751,16 +746,12 @@ func applyExitPlanOn(tx *sql.Tx, instrumentID int64, mode models.Mode, stop, tar
 }
 
 func rejectSignal(c *gin.Context, st *AppState) {
-	id, err := pathRowID(st.Pool, c, "signals")
-	if err != nil {
-		respondErr(c, err)
-		return
-	}
+	id := c.Param("id")
 	var body struct {
 		Reason *string `json:"reason"`
 	}
 	_ = c.ShouldBindJSON(&body)
-	var planID sql.NullInt64
+	var planID sql.NullString
 	if err := st.Pool.QueryRow("SELECT plan_id FROM signals WHERE id = ?", id).Scan(&planID); err != nil &&
 		err != sql.ErrNoRows {
 		respondErr(c, internalErr(err))
@@ -775,11 +766,12 @@ func rejectSignal(c *gin.Context, st *AppState) {
 	}
 	// Rejecting one leg of a plan rejects the plan: half its moves gone is not a plan.
 	var res sql.Result
-	if planID.Valid {
+	var err error
+	if planID.Valid && planID.String != "" {
 		res, err = st.Pool.Exec(
 			`UPDATE signals SET status = 'rejected', status_at = ?, status_reason = ?
              WHERE status = 'pending' AND (id = ? OR plan_id = ?)`,
-			tstampNow(), reason, id, planID.Int64)
+			tstampNow(), reason, id, planID.String)
 	} else {
 		res, err = st.Pool.Exec(
 			`UPDATE signals SET status = 'rejected', status_at = ?, status_reason = ?
@@ -790,7 +782,7 @@ func rejectSignal(c *gin.Context, st *AppState) {
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		respondErr(c, notFound(fmt.Sprintf("no pending decision %d", id)))
+		respondErr(c, notFound("no pending decision "+id))
 		return
 	}
 	reasonText := ""

@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"stock-predictor/internal/httpx"
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/rules"
 	"stock-predictor/internal/tstamp"
@@ -30,7 +31,7 @@ type Notification struct {
 	Body      string   `json:"body"`
 	Priority  Priority `json:"priority"`
 	DedupeKey string   `json:"dedupe_key"`
-	SignalID  *int64   `json:"signal_id"`
+	SignalID  *string  `json:"signal_id"`
 	// Used for the tap-through link; empty when there is nothing to open.
 	Symbol string `json:"symbol"`
 }
@@ -250,7 +251,7 @@ func Dispatch(pool *sql.DB, notifier Notifier, n Notification) (bool, error) {
 		slog.Debug("push skipped: no channel configured", "title", n.Title)
 		return false, nil
 	}
-	var existing int64
+	var existing string
 	err := pool.QueryRow("SELECT id FROM notifications WHERE dedupe_key = ?", n.DedupeKey).Scan(&existing)
 	if err == nil {
 		slog.Debug("push skipped: already sent", "dedupe_key", n.DedupeKey)
@@ -267,8 +268,8 @@ func Dispatch(pool *sql.DB, notifier Notifier, n Notification) (bool, error) {
 	slog.Info("push sent", "title", n.Title, "priority", n.Priority, "symbol", n.Symbol)
 
 	if _, err := pool.Exec(
-		"INSERT INTO notifications (signal_id, sent_at, channel, dedupe_key) VALUES (?, ?, 'ntfy', ?)",
-		n.SignalID, tstamp.Now(), n.DedupeKey,
+		"INSERT INTO notifications (id, signal_id, sent_at, channel, dedupe_key) VALUES (?, ?, ?, 'ntfy', ?)",
+		ids.New(), n.SignalID, tstamp.Now(), n.DedupeKey,
 	); err != nil {
 		return false, err
 	}
