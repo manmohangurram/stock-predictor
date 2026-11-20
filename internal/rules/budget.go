@@ -194,7 +194,7 @@ func insertEntry(e execer, entry NewCashEntry, ts string, mode models.Mode) erro
 	return nil
 }
 
-func ReserveIPO(pool *sql.DB, instrumentID int64, qty, price float64) error {
+func ReserveIPO(pool *sql.DB, instrumentID string, qty, price float64) error {
 	amount := Cost(qty, price, models.ClassIpo)
 	_, err := pool.Exec(
 		"INSERT INTO ipo_applications (instrument_id, qty, amount, status, applied_at) VALUES (?, ?, ?, 'pending', ?)",

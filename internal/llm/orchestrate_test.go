@@ -37,11 +37,11 @@ func baseInput() RunInput {
 	ind := rules.Indicators{SMA50: 100, SMA200: 90, RSI14: 55, ATR14: 3, High52: 120, Low52: 80}
 	return RunInput{
 		Instrument: &models.Instrument{
-			ID: 1, Symbol: "INFY.NS", Class: models.ClassStock, Name: "Infosys", Currency: "INR", Active: true,
+			ID: "01a1f000-0000-7000-8000-000000000001", Symbol: "INFY.NS", Class: models.ClassStock, Name: "Infosys", Currency: "INR", Active: true,
 		},
 		Ind: &ind,
 		Candidate: models.Candidate{
-			InstrumentID: 1, Action: models.ActionBuy, Entry: 100, Qty: 100,
+			InstrumentID: "01a1f000-0000-7000-8000-000000000001", Action: models.ActionBuy, Entry: 100, Qty: 100,
 		},
 		AvailableCash: 50_000, HeldQty: 0, Limits: rules.DefaultLimits(),
 		RequiredProfitPct: 5, Pot: 50_000, WindowHours: 4,

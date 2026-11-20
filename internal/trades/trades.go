@@ -72,7 +72,7 @@ func ParseWhen(input string, now time.Time) (time.Time, error) {
 	return parsed, nil
 }
 
-func Record(pool *sql.DB, instrumentID int64, side Side, qty, price float64, note *string, at *time.Time, mode models.Mode) error {
+func Record(pool *sql.DB, instrumentID string, side Side, qty, price float64, note *string, at *time.Time, mode models.Mode) error {
 	tx, err := pool.Begin()
 	if err != nil {
 		return err
@@ -91,7 +91,7 @@ func Record(pool *sql.DB, instrumentID int64, side Side, qty, price float64, not
 	return nil
 }
 
-func RecordOn(tx *sql.Tx, instrumentID int64, side Side, qty, price float64, note *string, at *time.Time, mode models.Mode) error {
+func RecordOn(tx *sql.Tx, instrumentID string, side Side, qty, price float64, note *string, at *time.Time, mode models.Mode) error {
 	if !finite(qty) || qty <= 0 {
 		return fmt.Errorf("qty must be positive")
 	}
@@ -244,7 +244,7 @@ func Edit(pool *sql.DB, id string, qty, price *float64, at *time.Time) error {
 }
 
 func EditOn(tx *sql.Tx, id string, qty, price *float64, at *time.Time) error {
-	var instrumentID int64
+	var instrumentID string
 	var sideRaw, tradedAt, modeRaw string
 	var oldQty, oldPrice float64
 	err := tx.QueryRow(
@@ -384,7 +384,7 @@ func Delete(pool *sql.DB, id string) error {
 }
 
 func DeleteOn(tx *sql.Tx, id string) error {
-	var instrumentID int64
+	var instrumentID string
 	var sideRaw, modeRaw string
 	var qty, price float64
 	var note *string
@@ -482,7 +482,7 @@ func DeleteOn(tx *sql.Tx, id string) error {
 	return nil
 }
 
-func insertTrade(tx *sql.Tx, instrumentID int64, side Side, qty, price float64, realised *float64, at string, note *string, mode models.Mode) error {
+func insertTrade(tx *sql.Tx, instrumentID string, side Side, qty, price float64, realised *float64, at string, note *string, mode models.Mode) error {
 	_, err := tx.Exec(
 		`INSERT INTO trades (id, instrument_id, side, qty, price, realised, traded_at, note, mode)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -491,7 +491,7 @@ func insertTrade(tx *sql.Tx, instrumentID int64, side Side, qty, price float64, 
 	return err
 }
 
-func History(pool *sql.DB, instrumentID *int64, limit int64) ([]Trade, error) {
+func History(pool *sql.DB, instrumentID *string, limit int64) ([]Trade, error) {
 	const selectSQL = `SELECT t.id AS id, i.symbol AS symbol, t.side AS side, t.qty AS qty,
             t.price AS price, t.realised AS realised, t.traded_at AS traded_at, t.note AS note,
             t.mode AS mode,

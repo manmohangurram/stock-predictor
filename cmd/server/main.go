@@ -192,7 +192,7 @@ func run(debug bool) error {
 
 	if flag("--ask") {
 		symbol := flagValue("--ask", "")
-		var id int64
+		var id string
 		var classRaw, name string
 		err := pool.QueryRow(
 			"SELECT id, class, name FROM instruments WHERE symbol = ?", symbol,

@@ -28,11 +28,11 @@ func TestTheReadWindowIsAWeekAndNoMore(t *testing.T) {
 	now := time.Date(2026, 11, 13, 5, 0, 0, 0, time.UTC)
 	mustExec(t, p,
 		`INSERT INTO instruments (id, symbol, class, name, currency, active)
-         VALUES (1, 'X.NS', 'stock', 'X', 'INR', 1)`)
+         VALUES ('01a1f000-0000-7000-8000-000000000010', 'X.NS', 'stock', 'X', 'INR', 1)`)
 	mustExec(t, p,
 		`INSERT INTO news (id, instrument_id, published_at, title, publisher, url)
-         VALUES ('01a1f000-0000-7000-8000-000000000001', 1, '2026-11-08T00:00:00Z', 'five days ago', 'Reuters', 'https://example.test/old')`)
-	kept, err := storedHeadlines(p, 1, now)
+         VALUES ('01a1f000-0000-7000-8000-000000000001', '01a1f000-0000-7000-8000-000000000010', '2026-11-08T00:00:00Z', 'five days ago', 'Reuters', 'https://example.test/old')`)
+	kept, err := storedHeadlines(p, "01a1f000-0000-7000-8000-000000000010", now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,8 +41,8 @@ func TestTheReadWindowIsAWeekAndNoMore(t *testing.T) {
 	}
 	mustExec(t, p,
 		`INSERT INTO news (id, instrument_id, published_at, title, publisher, url)
-         VALUES ('01a1f000-0000-7000-8000-000000000002', 1, '2026-11-04T00:00:00Z', 'nine days ago', 'Reuters', 'https://example.test/older')`)
-	kept, _ = storedHeadlines(p, 1, now)
+         VALUES ('01a1f000-0000-7000-8000-000000000002', '01a1f000-0000-7000-8000-000000000010', '2026-11-04T00:00:00Z', 'nine days ago', 'Reuters', 'https://example.test/older')`)
+	kept, _ = storedHeadlines(p, "01a1f000-0000-7000-8000-000000000010", now)
 	if len(kept) != 1 {
 		t.Fatalf("nine days old is beyond the window: %+v", kept)
 	}
@@ -57,7 +57,7 @@ func mustExec(t *testing.T, p *sql.DB, q string, args ...any) {
 
 func TestTheBandTriggerFiresOnceADayPerReason(t *testing.T) {
 	p := pool(t)
-	inst := models.Instrument{ID: 7, Symbol: "X.NS", Class: models.ClassStock}
+	inst := models.Instrument{ID: "01a1f000-0000-7000-8000-000000000007", Symbol: "X.NS", Class: models.ClassStock}
 	now := time.Date(2026, 11, 13, 6, 0, 0, 0, time.UTC)
 	if ok, err := bandTriggerFires(p, inst, "ceiling", now); err != nil || !ok {
 		t.Fatalf("%v %v", ok, err)

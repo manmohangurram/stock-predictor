@@ -145,13 +145,13 @@ func insertInstrument(pool *sql.DB, symbol string, class models.AssetClass, name
 	return int(n), nil
 }
 
-func instrumentID(pool *sql.DB, symbol string) (int64, error) {
-	var id int64
+func instrumentID(pool *sql.DB, symbol string) (string, error) {
+	var id string
 	err := pool.QueryRow("SELECT id FROM instruments WHERE symbol = ?", symbol).Scan(&id)
 	return id, err
 }
 
-func hasPosition(pool *sql.DB, instrumentID int64) (bool, error) {
+func hasPosition(pool *sql.DB, instrumentID string) (bool, error) {
 	var n int
 	err := pool.QueryRow(
 		"SELECT COUNT(*) FROM positions WHERE instrument_id = ? AND state = 'open'", instrumentID,

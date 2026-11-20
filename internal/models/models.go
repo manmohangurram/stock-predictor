@@ -95,7 +95,7 @@ type Headline struct {
 }
 
 type Instrument struct {
-	ID       int64      `json:"id"`
+	ID       string     `json:"id"`
 	Symbol   string     `json:"symbol"`
 	Class    AssetClass `json:"class"`
 	Name     string     `json:"name"`
@@ -110,7 +110,7 @@ func NormalizeSymbol(symbol string) string {
 
 type Position struct {
 	ID           string   `json:"id"`
-	InstrumentID int64    `json:"instrument_id"`
+	InstrumentID string   `json:"instrument_id"`
 	Qty          float64  `json:"qty"`
 	AvgCost      float64  `json:"avg_cost"`
 	Stop         *float64 `json:"stop"`
@@ -144,7 +144,7 @@ func ParseAction(s string) (Action, error) {
 // What the cheap rules layer proposes. Stop/Target are nil for classes that have no
 // intraday price (mutual funds, IPOs) — a 0.0 sentinel would read as a real price.
 type Candidate struct {
-	InstrumentID int64    `json:"instrument_id"`
+	InstrumentID string   `json:"instrument_id"`
 	Action       Action   `json:"action"`
 	Reasons      []string `json:"reasons"`
 	Entry        float64  `json:"entry"`

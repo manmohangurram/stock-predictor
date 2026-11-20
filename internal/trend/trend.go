@@ -134,9 +134,9 @@ func SweepGlances(pool *sql.DB) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	ids := []int64{}
+	ids := []string{}
 	for rows.Next() {
-		var id int64
+		var id string
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
 			return 0, err
@@ -458,7 +458,7 @@ func scanNote(why string) string {
 
 // hasBarsToday is the evidence cache: a candidate whose prices were fetched since the open needs
 // no second chart request for the same slot.
-func hasBarsToday(pool *sql.DB, instrumentID int64, now time.Time) bool {
+func hasBarsToday(pool *sql.DB, instrumentID string, now time.Time) bool {
 	var ts string
 	if err := pool.QueryRow(
 		"SELECT ts FROM bars WHERE instrument_id = ? ORDER BY ts DESC LIMIT 1", instrumentID,
@@ -522,9 +522,9 @@ func setMarker(pool *sql.DB, key, value string) error {
 
 // The instrument for a discovered symbol: found, or created for this tick only. The bool says the
 // row is available to use; a symbol already held in the trade pot returns false.
-func ensureInstrument(pool *sql.DB, yahooSymbol, shortName string) (int64, bool, error) {
+func ensureInstrument(pool *sql.DB, yahooSymbol, shortName string) (string, bool, error) {
 	yahooSymbol = models.NormalizeSymbol(yahooSymbol)
-	var id int64
+	var id string
 	err := pool.QueryRow("SELECT id FROM instruments WHERE symbol = ?", yahooSymbol).Scan(&id)
 	if err == nil {
 		var held sql.NullFloat64
@@ -532,24 +532,24 @@ func ensureInstrument(pool *sql.DB, yahooSymbol, shortName string) (int64, bool,
 			`SELECT CAST(COALESCE(SUM(qty),0) AS REAL) FROM positions
              WHERE instrument_id = ? AND state <> 'closed' AND mode = 'trade'`, id,
 		).Scan(&held); err != nil {
-			return 0, false, err
+			return "", false, err
 		}
 		return id, !held.Valid || held.Float64 <= 0, nil
 	}
 	if err != sql.ErrNoRows {
-		return 0, false, err
+		return "", false, err
 	}
 	err = pool.QueryRow(
-		`INSERT INTO instruments (symbol, class, name, currency, active, uuid)
-         VALUES (?, 'stock', ?, 'INR', 0, ?) RETURNING id`, yahooSymbol, shortName, ids.New(),
+		`INSERT INTO instruments (id, symbol, class, name, currency, active)
+         VALUES (?, ?, 'stock', ?, 'INR', 0) RETURNING id`, ids.New(), yahooSymbol, shortName,
 	).Scan(&id)
 	if err != nil {
-		return 0, false, err
+		return "", false, err
 	}
 	return id, true, nil
 }
 
-func loadBars(pool *sql.DB, instrumentID int64) ([]models.Bar, error) {
+func loadBars(pool *sql.DB, instrumentID string) ([]models.Bar, error) {
 	rows, err := pool.Query(
 		`SELECT ts, COALESCE(open, close), COALESCE(high, close), COALESCE(low, close), close,
                 COALESCE(volume, 0)
@@ -573,7 +573,7 @@ func loadBars(pool *sql.DB, instrumentID int64) ([]models.Bar, error) {
 	return bars, rows.Err()
 }
 
-func recentHeadlines(pool *sql.DB, instrumentID int64) ([][2]string, error) {
+func recentHeadlines(pool *sql.DB, instrumentID string) ([][2]string, error) {
 	rows, err := pool.Query(
 		`SELECT title, published_at FROM news WHERE instrument_id = ?
          ORDER BY published_at DESC LIMIT 4`, instrumentID)

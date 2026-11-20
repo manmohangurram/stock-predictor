@@ -184,7 +184,6 @@ func nullIfEmpty(s string) *string {
 
 type InstrumentRow struct {
 	ID              string   `json:"id"`
-	RowID           int64    `json:"-"`
 	Symbol          string   `json:"symbol"`
 	Class           string   `json:"class"`
 	Name            string   `json:"name"`
@@ -250,9 +249,9 @@ func buildAnalysis(c *gin.Context, st *AppState, symbol string, full bool) (*Ana
 	var targetProfit sql.NullFloat64
 	var archived sql.NullString
 	err := st.Pool.QueryRow(
-		`SELECT uuid, id, symbol, class, name, currency, target_profit_pct, active, archived_at
+		`SELECT id, symbol, class, name, currency, target_profit_pct, active, archived_at
          FROM instruments WHERE symbol = ?`, symbol,
-	).Scan(&inst.ID, &inst.RowID, &inst.Symbol, &inst.Class, &inst.Name, &inst.Currency,
+	).Scan(&inst.ID, &inst.Symbol, &inst.Class, &inst.Name, &inst.Currency,
 		&targetProfit, new(int), &archived)
 	if err == sql.ErrNoRows {
 		return nil, notFound("no instrument " + symbol)
@@ -267,11 +266,11 @@ func buildAnalysis(c *gin.Context, st *AppState, symbol string, full bool) (*Ana
 		inst.TargetProfitPct = &targetProfit.Float64
 	}
 
-	bars, err := loadBarsFor(st.Pool, inst.RowID, 400)
+	bars, err := loadBarsFor(st.Pool, inst.ID, 400)
 	if err != nil {
 		return nil, internalErr(err)
 	}
-	headlines, err := loadHeadlines(st.Pool, inst.RowID, 10)
+	headlines, err := loadHeadlines(st.Pool, inst.ID, 10)
 	if err != nil {
 		return nil, internalErr(err)
 	}
@@ -308,7 +307,7 @@ func buildAnalysis(c *gin.Context, st *AppState, symbol string, full bool) (*Ana
 		var modelPos *models.Position
 		if position != nil {
 			modelPos = &models.Position{
-				ID: position.ID, InstrumentID: inst.RowID, Qty: position.Qty,
+				ID: position.ID, InstrumentID: inst.ID, Qty: position.Qty,
 				AvgCost: position.AvgCost, Stop: position.Stop, Target: position.Target,
 				State: position.State,
 			}
@@ -316,7 +315,7 @@ func buildAnalysis(c *gin.Context, st *AppState, symbol string, full bool) (*Ana
 		available, _ := rules.Available(st.Pool)
 		checks := rules.Diagnose(rules.CandidateInput{
 			Instrument: &models.Instrument{
-				ID: inst.RowID, Symbol: inst.Symbol, Class: class, Name: inst.Name,
+				ID: inst.ID, Symbol: inst.Symbol, Class: class, Name: inst.Name,
 				Currency: inst.Currency, Active: true,
 			},
 			Bars: bars, Ind: &ind, Position: modelPos, AvailableCash: available,
@@ -338,7 +337,7 @@ func buildAnalysis(c *gin.Context, st *AppState, symbol string, full bool) (*Ana
 	for _, b := range bars[start:] {
 		out.Bars = append(out.Bars, BarPoint{Ts: b.Ts, Close: b.Close})
 	}
-	tradeRows, err := trades.History(st.Pool, &inst.RowID, 200)
+	tradeRows, err := trades.History(st.Pool, &inst.ID, 200)
 	if err != nil {
 		return nil, internalErr(err)
 	}
@@ -369,7 +368,7 @@ func trailingReturn(bars []models.Bar, days int) *float64 {
 	return &value
 }
 
-func loadBarsFor(pool *sql.DB, instrumentID int64, limit int) ([]models.Bar, error) {
+func loadBarsFor(pool *sql.DB, instrumentID string, limit int) ([]models.Bar, error) {
 	rows, err := pool.Query(
 		`SELECT ts, COALESCE(open, close), COALESCE(high, close), COALESCE(low, close), close,
                 COALESCE(volume, 0)
@@ -392,7 +391,7 @@ func loadBarsFor(pool *sql.DB, instrumentID int64, limit int) ([]models.Bar, err
 	return bars, rows.Err()
 }
 
-func loadHeadlines(pool *sql.DB, instrumentID int64, limit int) ([]HeadlineRow, error) {
+func loadHeadlines(pool *sql.DB, instrumentID string, limit int) ([]HeadlineRow, error) {
 	rows, err := pool.Query(
 		`SELECT id, title, publisher, published_at, url FROM news
          WHERE instrument_id = ? ORDER BY published_at DESC LIMIT ?`, instrumentID, limit)
@@ -545,7 +544,7 @@ type ArchivedRow struct {
 
 func archivedInstruments(c *gin.Context, st *AppState) {
 	rows, err := st.Pool.Query(
-		`SELECT i.uuid, i.symbol, i.name, i.class,
+		`SELECT i.id, i.symbol, i.name, i.class,
                 (SELECT COUNT(*) FROM trades t WHERE t.instrument_id = i.id) AS fills,
                 (SELECT COUNT(*) FROM signals s WHERE s.instrument_id = i.id) AS decisions,
                 (SELECT MAX(t.traded_at) FROM trades t WHERE t.instrument_id = i.id) AS last_fill,
