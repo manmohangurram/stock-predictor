@@ -1,4 +1,17 @@
+## v0.32.1
+
+### Fixed
+
+- **Upgrading a database that has ever sent a push.** `0027` drops `signals` while
+  `notifications.signal_id` still points at it, and SQLite refuses that drop with foreign keys on.
+  Any database with a notification row stopped there with *FOREIGN KEY constraint failed*, left
+  `signals_new` behind, and every retry after that reported *table signals_new already exists*.
+  `0027` and `0028` now switch the pragma off for the rewrite, run the whole rewrite in one
+  transaction so a failure leaves the old tables intact, and clear a leftover `*_new` table first,
+  so a database already stuck in that state recovers by booting, with no manual SQL.
+
 ## v0.32.0
+
 
 **The database is keyed by UUIDs.** Every table's identity is a UUIDv7 in text (`internal/ids`, a
 thin wrap over `google/uuid`), and every foreign key is that text — a plan's `plan_id`, a fill's
