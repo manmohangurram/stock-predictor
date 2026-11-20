@@ -224,12 +224,12 @@ func bandTriggerFires(pool *sql.DB, instrument models.Instrument, reason string,
 
 // One book call: the model sees every holding, the cash and today's list, and may answer with
 // up to three moves that stand or fall together. Returns true only when a plan was stored.
-func planBook(deps *EngineDeps, now time.Time, scope llm.Scope, run *int64) (bool, error) {
+func planBook(deps *EngineDeps, now time.Time, scope llm.Scope, run *string) (bool, error) {
 	return planBookWith(deps, now, scope, run, "", false)
 }
 
 // extra is fresh context for this one call — news pulled because a holding left its band.
-func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *int64, extra string, force bool) (bool, error) {
+func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string, extra string, force bool) (bool, error) {
 	manual := run != nil
 	var slot string
 	if scope.IsTrade() {
@@ -546,7 +546,7 @@ func recordPlanRefusal(pool *sql.DB, why string, now time.Time, conversationID *
 }
 
 // The stock plan on its own, for a manual run: the same call the poll makes, asked now.
-func PlanStock(deps *EngineDeps, now time.Time, run *int64) (bool, error) {
+func PlanStock(deps *EngineDeps, now time.Time, run *string) (bool, error) {
 	return planBook(deps, now, llm.ScopeStock, run)
 }
 
@@ -640,7 +640,7 @@ func ExpireTradePositions(pool *sql.DB, now time.Time) ([]string, error) {
 	return out, nil
 }
 
-func PlanTrade(deps *EngineDeps, now time.Time, run *int64) (bool, error) {
+func PlanTrade(deps *EngineDeps, now time.Time, run *string) (bool, error) {
 	planned, err := planBook(deps, now, llm.ScopeTrade, run)
 	if err != nil {
 		return false, err
@@ -668,7 +668,7 @@ func PlanTrade(deps *EngineDeps, now time.Time, run *int64) (bool, error) {
 }
 
 // The fund plan, run once a day after the arithmetic scan has ranked today's funds.
-func PlanFunds(deps *EngineDeps, now time.Time, run *int64) (bool, error) {
+func PlanFunds(deps *EngineDeps, now time.Time, run *string) (bool, error) {
 	return planBook(deps, now, llm.ScopeFund, run)
 }
 

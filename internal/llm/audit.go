@@ -30,14 +30,14 @@ type ApiCallRow struct {
 
 func RecordCall(pool *sql.DB, row ApiCallRow) error {
 	_, err := pool.Exec(
-		`INSERT INTO api_calls (ts, conversation_id, round, endpoint, purpose, prompt_template,
+		`INSERT INTO api_calls (id, ts, conversation_id, round, endpoint, purpose, prompt_template,
             prompt_hash, request_json, response_json, http_status, prompt_tokens,
-            completion_tokens, latency_ms, validator_verdict, error, trigger, uuid)
+            completion_tokens, latency_ms, validator_verdict, error, trigger)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		tstamp.Now(), row.ConversationID, row.Round, row.Endpoint, row.Purpose,
+		ids.New(), tstamp.Now(), row.ConversationID, row.Round, row.Endpoint, row.Purpose,
 		row.PromptTemplate, row.PromptHash, row.RequestJSON, row.ResponseJSON, row.HTTPStatus,
 		row.PromptTokens, row.CompletionTokens, row.LatencyMS, row.ValidatorVerdict, row.Error,
-		row.Trigger, ids.New(),
+		row.Trigger,
 	)
 	return err
 }

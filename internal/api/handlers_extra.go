@@ -399,7 +399,7 @@ func calls(c *gin.Context, st *AppState) {
 
 	pageArgs := append([]any{}, args...)
 	var page strings.Builder
-	page.WriteString(`SELECT a.uuid AS id, a.ts AS ts, a.endpoint AS endpoint, a.purpose AS purpose,
+	page.WriteString(`SELECT a.id AS id, a.ts AS ts, a.endpoint AS endpoint, a.purpose AS purpose,
                 a.round AS round, a.prompt_tokens AS prompt_tokens,
                 a.completion_tokens AS completion_tokens,
                 a.validator_verdict AS validator_verdict, a.error AS error,
@@ -517,17 +517,13 @@ func blockedReason(raw string) *string {
 }
 
 func callDetail(c *gin.Context, st *AppState) {
-	id, err := pathRowID(st.Pool, c, "api_calls")
-	if err != nil {
-		respondErr(c, err)
-		return
-	}
+	id := c.Param("id")
 	var ts, endpoint string
 	var purpose, trigger, template, requestJSON, responseJSON, verdict, errText, decisionReason sql.NullString
 	var instrumentName, instrumentSymbol sql.NullString
 	var round, promptTokens, completionTokens sql.NullInt64
 	var planLegs int64
-	err = st.Pool.QueryRow(
+	err := st.Pool.QueryRow(
 		`SELECT a.id, a.ts, a.endpoint, a.purpose, a.round, a.trigger, a.prompt_template,
                 a.request_json, a.response_json, a.prompt_tokens, a.completion_tokens,
                 a.validator_verdict, a.error, d.reason_json AS decision_reason,
@@ -546,7 +542,7 @@ func callDetail(c *gin.Context, st *AppState) {
 		&responseJSON, &promptTokens, &completionTokens, &verdict, &errText, &decisionReason,
 		&instrumentName, &instrumentSymbol, &planLegs)
 	if err == sql.ErrNoRows {
-		respondErr(c, notFound(fmt.Sprintf("no call %d", id)))
+		respondErr(c, notFound("no call "+id))
 		return
 	}
 	if err != nil {

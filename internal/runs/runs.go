@@ -58,26 +58,19 @@ type Run struct {
 	Error          *string `json:"error"`
 }
 
-// UUID is the identity a run is published under, for callers that only kept the integer.
-func UUID(pool *sql.DB, id int64) (string, error) {
-	var uuid string
-	err := pool.QueryRow("SELECT uuid FROM runs WHERE id = ?", id).Scan(&uuid)
-	return uuid, err
-}
-
 // Open a run. It exists while the work is still going, which is the whole point.
-func Start(pool *sql.DB, prompt Prompt, trigger Trigger, symbol *string) (int64, error) {
+func Start(pool *sql.DB, prompt Prompt, trigger Trigger, symbol *string) (string, error) {
 	var summary *string
 	if symbol != nil {
 		s := *symbol + " only"
 		summary = &s
 	}
-	var id int64
-	err := pool.QueryRow(
-		`INSERT INTO runs (prompt, trigger, status, started_at, summary, uuid)
-         VALUES (?, ?, 'running', ?, ?, ?) RETURNING id`,
-		string(prompt), string(trigger), tstamp.Now(), summary, ids.New(),
-	).Scan(&id)
+	id := ids.New()
+	_, err := pool.Exec(
+		`INSERT INTO runs (id, prompt, trigger, status, started_at, summary)
+         VALUES (?, ?, ?, 'running', ?, ?)`,
+		id, string(prompt), string(trigger), tstamp.Now(), summary,
+	)
 	if err == nil {
 		slog.Info("run started", "id", id, "prompt", prompt, "trigger", trigger)
 	}
@@ -85,7 +78,7 @@ func Start(pool *sql.DB, prompt Prompt, trigger Trigger, symbol *string) (int64,
 }
 
 // Close a run with one line a person can read.
-func Finish(pool *sql.DB, id int64, summary string, conversationID *string) error {
+func Finish(pool *sql.DB, id string, summary string, conversationID *string) error {
 	_, err := pool.Exec(
 		`UPDATE runs SET status = 'done', finished_at = ?, summary = ?,
             conversation_id = COALESCE(?, conversation_id)
@@ -99,7 +92,7 @@ func Finish(pool *sql.DB, id int64, summary string, conversationID *string) erro
 }
 
 // Close a run that broke. The error is kept: a run that failed is still a thing that happened.
-func Fail(pool *sql.DB, id int64, failure string) error {
+func Fail(pool *sql.DB, id string, failure string) error {
 	_, err := pool.Exec(
 		"UPDATE runs SET status = 'failed', finished_at = ?, error = ? WHERE id = ?",
 		tstamp.Now(), failure, id,
@@ -127,7 +120,7 @@ func CloseOrphans(pool *sql.DB, now time.Time) (int64, error) {
 
 func Recent(pool *sql.DB, limit int64) ([]Run, error) {
 	rows, err := pool.Query(
-		`SELECT uuid, prompt, trigger, status, started_at, finished_at, summary,
+		`SELECT id, prompt, trigger, status, started_at, finished_at, summary,
                 conversation_id, error
          FROM runs ORDER BY id DESC LIMIT ?`, limit,
 	)

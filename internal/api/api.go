@@ -26,7 +26,7 @@ import (
 )
 
 type ManualRequest struct {
-	RunID int64
+	RunID string
 	Cmd   runs.Manual
 }
 
