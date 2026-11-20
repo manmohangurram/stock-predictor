@@ -5,7 +5,7 @@
  */
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { api, auth, type ApiKey } from "../api";
+import { api, auth, type ApiKey, type McpCall } from "../api";
 import SettingsRail from "../components/SettingsRail.vue";
 import SettingField from "../components/SettingField.vue";
 import { histDate } from "../format";
@@ -129,7 +129,23 @@ async function changePassword(): Promise<void> {
   }
 }
 
-onMounted(load);
+const calls = ref<McpCall[]>([]);
+const callLimit = ref(200);
+const callsError = ref("");
+
+async function loadCalls(): Promise<void> {
+  try {
+    calls.value = (await api.mcpCalls(callLimit.value)).calls;
+    callsError.value = "";
+  } catch (e) {
+    callsError.value = String(e);
+  }
+}
+
+onMounted(async () => {
+  await load();
+  await loadCalls();
+});
 </script>
 
 <template>
@@ -236,6 +252,56 @@ onMounted(load);
       <div v-if="passwordError" class="error-band" role="alert">{{ passwordError }}</div>
       <p v-if="passwordNote" class="note" role="status">{{ passwordNote }}</p>
     </form>
+    <header class="pane-head">
+      <h2>Tool calls</h2>
+      <label class="note">
+        last
+        <select v-model.number="callLimit" aria-label="How many calls to list" @change="loadCalls">
+          <option :value="50">50</option>
+          <option :value="200">200</option>
+          <option :value="500">500</option>
+        </select>
+      </label>
+    </header>
+    <p class="lede">
+      Everything an MCP client asked the book to do, newest first, with the key it used. Arguments
+      are stored with secrets already redacted.
+    </p>
+
+    <div v-if="callsError" class="error-band" role="alert">{{ callsError }}</div>
+
+    <div class="table-wrap">
+      <table class="blotter calls">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Key</th>
+            <th scope="col">Tool</th>
+            <th scope="col" class="hide-narrow">Arguments</th>
+            <th scope="col">Result</th>
+            <th scope="col" class="right">ms</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="call in calls" :key="call.id">
+            <td class="mono">{{ histDate(call.ts) }}</td>
+            <td>{{ call.key_name || call.prefix || "removed key" }}</td>
+            <td class="mono">{{ call.tool }}</td>
+            <td class="mono hide-narrow">{{ call.args_json }}</td>
+            <td>
+              <span v-if="call.status === 'ok'" class="ok">ok</span>
+              <span v-else class="bad">{{ call.error || "error" }}</span>
+            </td>
+            <td class="right mono">{{ call.ms }}</td>
+          </tr>
+          <tr v-if="calls.length === 0">
+            <td colspan="6" class="empty">
+              No tool calls yet. Connect a client to <code>/mcp</code> and they will appear here.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 </template>
 
@@ -245,6 +311,11 @@ onMounted(load);
 @media (max-width: 760px) {
   .hide-narrow { display: none; }
 }
+
+.calls td { vertical-align: top; }
+.calls .ok { color: var(--green); }
+.calls .bad { color: var(--stamp-oxide); }
+.calls td.mono { overflow-wrap: anywhere; }
 .token code { display: block; overflow-wrap: anywhere; font-family: var(--font-ledger); }
 tr.revoked td { color: var(--ink-muted); }
 </style>

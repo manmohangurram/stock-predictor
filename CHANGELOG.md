@@ -1,4 +1,18 @@
+## v0.35.0
+
+### Added
+
+- **The MCP history, on Settings → Access.** Every tool call a client made, newest first, with the
+  key it used, the arguments it sent (secrets already redacted) and the outcome. `GET
+  /api/mcp/calls?limit=` serves it.
+
+### Retention
+
+- **The table keeps the newest 500 rows.** Older calls are deleted after every insert, so the history
+  cannot grow without bound: the endpoint caps `limit` at 500, and the page offers 50, 200 or 500.
+
 ## v0.34.2
+
 
 ### Added
 

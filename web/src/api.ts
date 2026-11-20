@@ -388,6 +388,19 @@ export interface Market {
   holiday_calendar: boolean;
 }
 
+export interface McpCall {
+  id: string;
+  ts: string;
+  key_name: string;
+  key_id: string;
+  prefix: string;
+  tool: string;
+  args_json: string;
+  status: "ok" | "error";
+  error: string | null;
+  ms: number;
+}
+
 export interface ApiKey {
   id: string;
   name: string;
@@ -416,6 +429,8 @@ export const api = {
   createKey: (body: { name: string; scope: "read" | "write"; days: number | null }) =>
     req<{ key: ApiKey; token: string }>("/api/keys", json(body)),
   revokeKey: (id: string) => req<{ id: string; revoked: boolean }>(`/api/keys/${id}`, { method: "DELETE" }),
+  /** What an assistant asked the book to do, newest first; the server caps it at 5000. */
+  mcpCalls: (limit = 200) => req<{ calls: McpCall[] }>(`/api/mcp/calls?limit=${limit}`),
   dashboard: (mode: Mode = "long") => req<Dashboard>(`/api/dashboard?mode=${mode}`),
   settings: () => req<Settings>("/api/settings"),
   testProxy: () =>
