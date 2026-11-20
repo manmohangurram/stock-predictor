@@ -25,35 +25,12 @@ onMounted(async () => {
 });
 
 const symbols = computed(() => rows.value.map((r) => r.symbol));
-const phrase = ref("");
-const armed = ref(false);
-const busy = ref(false);
-const resetNote = ref("");
-const resetError = ref("");
-
-async function wipe(): Promise<void> {
-  resetError.value = "";
-  resetNote.value = "";
-  if (phrase.value.trim() !== "DELETE EVERYTHING") {
-    resetError.value = 'Type DELETE EVERYTHING, exactly, to confirm.';
-    return;
-  }
-  if (!armed.value) {
-    armed.value = true;
-    return;
-  }
-  busy.value = true;
+async function reload(): Promise<void> {
   try {
-    const res = await api.resetBook(phrase.value.trim());
-    const count = Object.values(res.deleted).reduce((n, v) => n + v, 0);
-    resetNote.value = `Deleted ${count} rows. The book is empty; you are still signed in.`;
-    phrase.value = "";
-    armed.value = false;
-    rows.value = [];
+    rows.value = await api.archived();
+    error.value = "";
   } catch (e) {
-    resetError.value = String(e);
-  } finally {
-    busy.value = false;
+    error.value = String(e);
   }
 }
 
@@ -142,7 +119,7 @@ const visit = (symbol: string): void => void router.push(`/i/${encodeURIComponen
       </div>
     </section>
 
-    <DangerZone variant="A" :symbols="symbols" />
+    <DangerZone @deleted="reload" />
   </template>
 </template>
 <style scoped>

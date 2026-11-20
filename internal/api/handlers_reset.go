@@ -24,6 +24,30 @@ var resetKeep = map[string]bool{
 	"schema_migrations": true,
 }
 
+func resetCandidates(c *gin.Context, st *AppState) {
+	rows, err := st.Pool.Query(
+		"SELECT symbol FROM instruments ORDER BY symbol LIMIT 50")
+	if err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	defer rows.Close()
+	symbols := []string{}
+	for rows.Next() {
+		var sym string
+		if err := rows.Scan(&sym); err != nil {
+			respondErr(c, internalErr(err))
+			return
+		}
+		symbols = append(symbols, sym)
+	}
+	if err := rows.Err(); err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"symbols": symbols})
+}
+
 func resetBook(c *gin.Context, st *AppState) {
 	var body struct {
 		Symbol string `json:"symbol"`

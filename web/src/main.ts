@@ -7,7 +7,6 @@ import InstrumentView from "./views/InstrumentView.vue";
 import CallsView from "./views/CallsView.vue";
 import ArchivedView from "./views/ArchivedView.vue";
 import AccessView from "./views/AccessView.vue";
-import DangerPreview from "./views/DangerPreview.vue";
 import LoginView from "./views/LoginView.vue";
 import SettingsView from "./views/SettingsView.vue";
 
@@ -24,7 +23,6 @@ const router = createRouter({
     { path: "/calls", component: CallsView },
     { path: "/archived", component: ArchivedView },
     { path: "/login", component: LoginView },
-    { path: "/preview/danger", component: DangerPreview },
   { path: "/settings", component: SettingsView },
     { path: "/settings/access", component: AccessView },
   { path: "/settings/:tab", component: SettingsView },
