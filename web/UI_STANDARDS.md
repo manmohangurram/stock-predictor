@@ -49,6 +49,21 @@ someone else's currency?* If a styling decision only works because it is dramati
 
 Four levels, and nothing else. A fifth grey is a design decision nobody recorded.
 
+### Radius â€” four steps, chosen by size
+
+| Token | Value | On |
+|---|---|---|
+| `--radius-sm` | 6px | a compact control: icon button, row caret, tick, square button, a segment inside a group, an approve/reject button |
+| `--radius` | 8px | a normal control: button, input, select, textarea |
+| `--radius-lg` | 12px | a surface: card, dialog, panel, decision box, error band, table wrapper, settings tab |
+| `--radius-pill` | 999px | a filter or a status pill, and the group that holds segments |
+| `--radius-stamp` | 4px | a stamp (`BUY`, `SELL`, `DONE`) â€” it is a printed mark, not a button |
+
+**A control's corner follows its height.** One radius for everything makes a 28px caret look like a
+blob and a 40px button look under-rounded; the four steps above are the whole scale, and a fifth
+radius is a design decision nobody recorded. Never round a table's own corners â€” the wrapper is what
+holds a radius.
+
 ### Rules
 
 `--rule-subtle` (0.08) · `--rule` (0.14) · `--rule-strong` (0.24) — hairline, normal, emphatic.

@@ -1452,3 +1452,51 @@
      card's subject instead of its last line. */
   .rcard-add .run-now-btn { justify-self: start; }
 }
+
+/* Radius follows the size of the thing: a 28px caret cannot carry a 12px corner, and a card should
+   not wear the same corner as a chip. Four steps, and a stamp keeps its printed edge. */
+.btn,
+.d-btn,
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border-radius: var(--radius);
+}
+
+.icon-btn,
+.row-caret,
+.tick-toggle,
+.d-btn-square,
+.d-btn-xs,
+.seg-filter a,
+.decision-actions button {
+  border-radius: var(--radius-sm);
+}
+
+.card,
+.gate-card,
+.decision,
+.docket,
+.error-band,
+.notice,
+.search,
+.table-wrap,
+.trade-form,
+dialog,
+.add-dialog,
+.settings-rail [role="tab"] {
+  border-radius: var(--radius-lg);
+}
+
+.seg-filter {
+  border-radius: var(--radius-pill);
+}
+
+.pill,
+.decisions-filter a {
+  border-radius: var(--radius-pill);
+}
+
+.stamp {
+  border-radius: var(--radius-stamp);
+}
