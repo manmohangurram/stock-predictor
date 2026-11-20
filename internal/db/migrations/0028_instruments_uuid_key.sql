@@ -1,6 +1,24 @@
 -- The hub. instruments takes the uuid as its primary key and every instrument_id in the database
 -- becomes text in the same pass, because a foreign key to a text primary key must be text. A
 -- temporary map carries the old integer to the new id; children join through it.
+--
+-- Foreign keys are off for the rewrite: notifications.signal_id still points at signals, which is
+-- rebuilt here because it is a child of instruments. The pragma must sit outside the transaction,
+-- so it comes first, and the whole rewrite runs in one so a failure leaves no half-built table.
+
+PRAGMA foreign_keys = OFF;
+BEGIN;
+
+DROP TABLE IF EXISTS bars_new;
+DROP TABLE IF EXISTS news_new;
+DROP TABLE IF EXISTS signals_new;
+DROP TABLE IF EXISTS positions_new;
+DROP TABLE IF EXISTS trades_new;
+DROP TABLE IF EXISTS ipo_applications_new;
+DROP TABLE IF EXISTS search_results_new;
+DROP TABLE IF EXISTS llm_memos_new;
+DROP TABLE IF EXISTS cash_ledger_new;
+DROP TABLE IF EXISTS instruments_new;
 
 CREATE TEMP TABLE instrument_map AS
 SELECT id AS old_id,
@@ -218,3 +236,6 @@ CREATE INDEX IF NOT EXISTS trades_by_instrument ON trades (instrument_id, traded
 CREATE INDEX IF NOT EXISTS idx_cash_ledger_bucket ON cash_ledger (mode, bucket);
 
 DROP TABLE instrument_map;
+
+COMMIT;
+PRAGMA foreign_keys = ON;

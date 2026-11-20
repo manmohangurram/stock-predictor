@@ -1,6 +1,16 @@
 -- signals take the uuid as their primary key, and the two references to them move with it:
 -- signals.plan_id, signals.pair_id and notifications.signal_id. A temporary map holds the old
 -- integer to the new text id so every reference is rewritten in one pass.
+--
+-- Foreign keys are off for the rewrite: notifications.signal_id references signals, and SQLite
+-- refuses to drop a table something points at. The pragma must sit outside the transaction, so it
+-- comes first, and the whole rewrite runs in one so a failure leaves no half-built table behind.
+
+PRAGMA foreign_keys = OFF;
+BEGIN;
+
+DROP TABLE IF EXISTS signals_new;
+DROP TABLE IF EXISTS notifications_new;
 
 CREATE TEMP TABLE signal_map AS
 SELECT id AS old_id,
@@ -74,3 +84,6 @@ DROP TABLE notifications;
 ALTER TABLE notifications_new RENAME TO notifications;
 
 DROP TABLE signal_map;
+
+COMMIT;
+PRAGMA foreign_keys = ON;
