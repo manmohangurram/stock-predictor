@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"stock-predictor/internal/auth"
 	"stock-predictor/internal/config"
 	"stock-predictor/internal/db"
 	"stock-predictor/internal/ids"
@@ -20,6 +21,17 @@ import (
 	"stock-predictor/internal/rules"
 	"stock-predictor/internal/trades"
 )
+
+// testToken is the access token setup signs in with, so every existing test exercises the route
+// it was written for rather than the gate.
+var testToken string
+
+func withAuth(req *http.Request) *http.Request {
+	if testToken != "" {
+		req.Header.Set("Authorization", "Bearer "+testToken)
+	}
+	return req
+}
 
 func setup(t *testing.T) (*sql.DB, *gin.Engine, string) {
 	t.Helper()
@@ -38,8 +50,21 @@ func setup(t *testing.T) (*sql.DB, *gin.Engine, string) {
 	if _, err := rules.EnsureMonth(pool, models.ModeLong, "", 100_000, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	st := NewState(pool, &config.Config{PublicURL: "https://example.in"})
+	cfg := &config.Config{PublicURL: "https://example.in", SecretKey: []byte("0123456789abcdef0123456789abcdef")}
+	st := NewState(pool, cfg)
 	st.Manual = make(chan ManualRequest, 8)
+	if _, err := auth.Create(pool, "admin", "a-long-test-password", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	admin, err := auth.Current(pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := auth.Issue(pool, auth.SigningKey(string(cfg.SecretKey)), admin, "test", time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	testToken = tokens.Access
 	return pool, Router(st), id
 }
 
@@ -53,6 +78,9 @@ func do(t *testing.T, r *gin.Engine, method, path string, body any, headers map[
 	}
 	req := httptest.NewRequest(method, path, &buf)
 	req.Header.Set("Content-Type", "application/json")
+	if testToken != "" && req.Header.Get("Authorization") == "" {
+		req.Header.Set("Authorization", "Bearer "+testToken)
+	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -119,7 +147,7 @@ func TestTheDashboardCarriesTheBookAndAnswers304(t *testing.T) {
 		t.Fatalf("budget %v available %v", dash.Budget, dash.Available)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/dashboard?mode=long", nil)
+	req := withAuth(httptest.NewRequest(http.MethodGet, "/api/dashboard?mode=long", nil))
 	req.Header.Set("If-None-Match", "")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)

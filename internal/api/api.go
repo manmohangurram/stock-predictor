@@ -113,6 +113,7 @@ func respondErr(c *gin.Context, err error) {
 // which the server mounts as a fallback.
 func Router(st *AppState) *gin.Engine {
 	r := gin.New()
+	r.Use(authGate(st))
 	// A panic must leave a stack in the log file, not only on the terminal that happened to be
 	// attached.
 	r.Use(func(c *gin.Context) {
@@ -151,6 +152,14 @@ func Router(st *AppState) *gin.Engine {
 			slog.Debug("api request", attrs...)
 		}
 	})
+	r.POST("/api/auth/setup", func(c *gin.Context) { authSetup(c, st) })
+	r.POST("/api/auth/login", func(c *gin.Context) { authLogin(c, st) })
+	r.POST("/api/auth/refresh", func(c *gin.Context) { authRefresh(c, st) })
+	r.POST("/api/auth/logout", func(c *gin.Context) { authLogout(c, st) })
+	r.GET("/api/auth/status", func(c *gin.Context) { authStatus(c, st) })
+	r.GET("/api/auth/me", func(c *gin.Context) { authMe(c, st) })
+	r.POST("/api/auth/password", func(c *gin.Context) { authPassword(c, st) })
+
 	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
 
 	r.GET("/api/dashboard", func(c *gin.Context) { dashboardHandler(c, st) })

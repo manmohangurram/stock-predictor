@@ -93,7 +93,7 @@ func TestTheCallsPagerCountsTheFilteredTotal(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = id
-	req := httptest.NewRequest(http.MethodGet, "/api/calls?call=chat&limit=2", nil)
+	req := withAuth(httptest.NewRequest(http.MethodGet, "/api/calls?call=chat&limit=2", nil))
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {

@@ -16,6 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"stock-predictor/internal/apikeys"
+	"stock-predictor/internal/auth"
 	"stock-predictor/internal/ids"
 	"stock-predictor/internal/tstamp"
 )
@@ -25,6 +26,15 @@ import (
 // run - not a second path that can drift from it.
 
 type mcpKeyContext struct{}
+
+// mcpTokenContext carries the access token the tools use to call the app's own router, which is
+// gated like every other REST route.
+type mcpTokenContext struct{}
+
+func accessFromRequest(r *http.Request) string {
+	token, _ := r.Context().Value(mcpTokenContext{}).(string)
+	return token
+}
 
 func keyFromRequest(r *http.Request) *apikeys.Key {
 	key, _ := r.Context().Value(mcpKeyContext{}).(*apikeys.Key)
@@ -45,7 +55,9 @@ func bearerToken(r *http.Request) string {
 // tools at all.
 func MCPHandler(st *AppState, engine http.Handler) http.Handler {
 	handler := mcp.NewStreamableHTTPHandler(
-		func(r *http.Request) *mcp.Server { return newMCPServer(st, engine, keyFromRequest(r)) },
+		func(r *http.Request) *mcp.Server {
+			return newMCPServer(st, engine, keyFromRequest(r), accessFromRequest(r))
+		},
 		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true},
 	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,12 +69,18 @@ func MCPHandler(st *AppState, engine http.Handler) http.Handler {
 			return
 		}
 		ctx := context.WithValue(r.Context(), mcpKeyContext{}, key)
+		if admin, aerr := auth.Current(st.Pool); aerr == nil {
+			if access, terr := auth.IssueAccess(signingKey(st), admin.ID, time.Now().UTC()); terr == nil {
+				ctx = context.WithValue(ctx, mcpTokenContext{}, access)
+			}
+		}
 		handler.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 type restCaller struct {
 	engine http.Handler
+	token  string
 }
 
 // call dispatches one request through the app's own router and decodes the JSON answer.
@@ -76,6 +94,9 @@ func (c restCaller) call(method, path string, body any) (json.RawMessage, error)
 		reader = bytes.NewReader(encoded)
 	}
 	req := httptest.NewRequest(method, path, reader)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -170,9 +191,9 @@ func tool(name, title, summary, example string, readOnly, destructive bool) *mcp
 }
 
 // newMCPServer builds the catalogue for one key. Write tools exist only when the key can write.
-func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key) *mcp.Server {
+func newMCPServer(st *AppState, engine http.Handler, key *apikeys.Key, access string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "stock-predictor", Version: "1"}, nil)
-	rest := restCaller{engine: engine}
+	rest := restCaller{engine: engine, token: access}
 
 	type modeArg struct {
 		Mode string `json:"mode,omitempty" jsonschema:"long or trade; default long"`

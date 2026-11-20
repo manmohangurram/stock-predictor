@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { api, auth } from "../api";
+
 const TABS = [
   { id: "money", label: "Money" },
   { id: "risk", label: "Risk limits" },
@@ -10,7 +12,30 @@ const TABS = [
 ];
 
 defineProps<{ current: string }>();
+
+async function signOut(): Promise<void> {
+  try {
+    await api.authLogout();
+  } finally {
+    auth.set(null);
+    window.location.href = "/login";
+  }
+}
 </script>
+
+<style scoped>
+.sign-out {
+  margin-left: auto;
+  align-self: center;
+  background: none;
+  border: 0;
+  padding: 4px 8px;
+  color: var(--ink-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.sign-out:hover { color: var(--ink); }
+</style>
 
 <template>
   <div class="tabs-row">
@@ -25,6 +50,7 @@ defineProps<{ current: string }>();
         :aria-controls="`panel-${t.id}`"
         :class="{ on: current === t.id }"
       >{{ t.label }}</a>
+      <button class="sign-out" type="button" @click="signOut">Sign out</button>
     </nav>
   </div>
 </template>
