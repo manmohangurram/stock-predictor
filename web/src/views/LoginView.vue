@@ -117,6 +117,11 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
+/*
+ * One left edge and one right edge for everything in the card: the brand, the title, the lede, the
+ * labels, the inputs, the button and the note all share the content width. The fields are allowed
+ * past the 232px cap the settings panes use, because a card has only one column to fill.
+ */
 .gate {
   min-height: 100vh;
   display: grid;
@@ -124,6 +129,8 @@ async function submit(): Promise<void> {
   padding: var(--space-6) var(--space-4);
   background: var(--paper);
 }
+.gate-card,
+.gate-card :deep(*) { box-sizing: border-box; }
 .gate-card {
   width: min(440px, 100%);
   background: var(--paper-raised);
@@ -136,25 +143,27 @@ async function submit(): Promise<void> {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-5);
+  margin: 0 0 var(--space-4);
   font-family: var(--font-form);
 }
 .gate-brand b { font-size: var(--text-base); }
+.pane-head { margin: 0; }
 h1 {
   font-family: var(--font-form);
   font-size: var(--text-xl);
+  line-height: 1.2;
   margin: 0 0 var(--space-2);
 }
-.lede { color: var(--ink-muted); margin: 0 0 var(--space-5); }
+.lede { color: var(--ink-muted); margin: 0 0 var(--space-6); }
 form { display: grid; gap: var(--space-4); }
-form :deep(.field),
-form :deep(.field-line) { width: 100%; }
-form :deep(.field input) { width: 100%; min-width: 0; flex: 1 1 auto; }
+form :deep(.field) { width: 100%; }
+form :deep(.field input) { max-width: none; width: 100%; min-width: 0; }
+.error-band { margin: 0; }
 .gate-foot {
   display: grid;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+  gap: var(--space-3);
+  margin-top: var(--space-1);
 }
 .gate-foot .d-btn { width: 100%; }
-.gate-foot .note { text-align: center; }
+.gate-foot .note { text-align: start; margin: 0; }
 </style>
