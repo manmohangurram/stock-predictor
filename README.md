@@ -134,6 +134,16 @@ only from a `v*` tag.
 Docker, Compose, a systemd unit, backups and the container's `/data` uid edge case:
 [`docs/deployment.md`](docs/deployment.md).
 
+## Sign in
+
+The first time you open the app it asks you to set the admin password; every launch after that asks
+you to sign in. There is one account, it holds one book, and the password cannot be recovered — only
+replaced from inside the app once you are in.
+
+Access is a short-lived JWT (fifteen minutes, signed with a key derived from `SECRET_KEY`) plus a
+thirty-day refresh token in an HttpOnly cookie that rotates on every use. Signing out, or changing
+the password, revokes it. Rotating `SECRET_KEY` ends every session, which is the emergency lever.
+
 ## Configuration
 
 Three environment variables, and nothing else:

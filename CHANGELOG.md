@@ -1,3 +1,22 @@
+## v0.34.0
+
+**The app has a door.** One admin account, created on first run, and everything behind it.
+
+- **First run** shows *Set up the admin*: choose a username and a password. Once that row exists the
+  same page is a sign-in, and the setup call answers `409` from then on.
+- **Sign-in issues a pair**: an HS256 access JWT good for fifteen minutes (key derived from
+  `SECRET_KEY`) and a refresh token good for thirty days in an HttpOnly cookie, stored only as a
+  hash and **rotated on every use** — presenting a spent token revokes the whole chain.
+- **The gate**: every `/api/...` route except health and the auth endpoints requires the access
+  token. The SPA keeps it in memory, refreshes once on a `401`, and falls back to `/login`.
+- **Sign out** lives in the settings rail; changing the password ends every session.
+- **Backward compatible**: migration `0030` only *adds* `admin` and `refresh_tokens` and fills
+  `api_keys.user_id`. An existing database keeps every row and stops at the setup screen once.
+- **MCP is unchanged**: keys still open `/mcp`, now owned by the admin.
+
+Upgrade: pull, start, and set the password the first time you open the app. There is no way to
+recover it — that is the point — so put it somewhere safe.
+
 ## v0.33.1
 
 ### Changed
