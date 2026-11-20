@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/rules"
 	"stock-predictor/internal/tstamp"
@@ -33,7 +34,7 @@ func ParseSide(s string) (Side, error) {
 }
 
 type Trade struct {
-	ID          int64    `json:"id"`
+	ID          string   `json:"id"`
 	Symbol      string   `json:"symbol"`
 	Side        string   `json:"side"`
 	Qty         float64  `json:"qty"`
@@ -163,9 +164,9 @@ func RecordOn(tx *sql.Tx, instrumentID int64, side Side, qty, price float64, not
 			}
 		} else {
 			if _, err := tx.Exec(
-				`INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode)
-				 VALUES (?, ?, ?, ?, 'open', ?)`,
-				instrumentID, qty, price, stamp, string(mode),
+				`INSERT INTO positions (instrument_id, qty, avg_cost, opened_at, state, mode, uuid)
+				 VALUES (?, ?, ?, ?, 'open', ?, ?)`,
+				instrumentID, qty, price, stamp, string(mode), ids.New(),
 			); err != nil {
 				return err
 			}
@@ -483,15 +484,15 @@ func DeleteOn(tx *sql.Tx, id int64) error {
 
 func insertTrade(tx *sql.Tx, instrumentID int64, side Side, qty, price float64, realised *float64, at string, note *string, mode models.Mode) error {
 	_, err := tx.Exec(
-		`INSERT INTO trades (instrument_id, side, qty, price, realised, traded_at, note, mode)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		instrumentID, string(side), qty, price, realised, at, note, string(mode),
+		`INSERT INTO trades (instrument_id, side, qty, price, realised, traded_at, note, mode, uuid)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		instrumentID, string(side), qty, price, realised, at, note, string(mode), ids.New(),
 	)
 	return err
 }
 
 func History(pool *sql.DB, instrumentID *int64, limit int64) ([]Trade, error) {
-	const selectSQL = `SELECT t.id AS id, i.symbol AS symbol, t.side AS side, t.qty AS qty,
+	const selectSQL = `SELECT t.uuid AS id, i.symbol AS symbol, t.side AS side, t.qty AS qty,
             t.price AS price, t.realised AS realised, t.traded_at AS traded_at, t.note AS note,
             t.mode AS mode,
             (SELECT b.close FROM bars b

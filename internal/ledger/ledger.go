@@ -13,7 +13,8 @@ import (
 )
 
 type PositionRow struct {
-	ID              int64    `json:"id"`
+	ID              string   `json:"id"`
+	RowID           int64    `json:"-"`
 	Symbol          string   `json:"symbol"`
 	Name            string   `json:"name"`
 	Class           string   `json:"class"`
@@ -32,7 +33,7 @@ type PositionRow struct {
 // removes a row from the ledger; a full sale only flips its state.
 func Positions(pool *sql.DB, mode models.Mode) ([]PositionRow, error) {
 	rows, err := pool.Query(
-		`SELECT p.id AS id, i.symbol AS symbol, i.name AS name, i.class AS class, p.qty AS qty,
+		`SELECT p.uuid AS id, p.id AS row_id, i.symbol AS symbol, i.name AS name, i.class AS class, p.qty AS qty,
                 p.avg_cost AS avg_cost, p.stop AS stop, p.target AS target,
                 i.target_profit_pct AS target_profit_pct, p.state AS state,
                 (SELECT b.close FROM bars b WHERE b.instrument_id = p.instrument_id
@@ -52,7 +53,7 @@ func Positions(pool *sql.DB, mode models.Mode) ([]PositionRow, error) {
 		var r PositionRow
 		var classRaw string
 		var ltp, stop, target, targetProfit sql.NullFloat64
-		if err := rows.Scan(&r.ID, &r.Symbol, &r.Name, &classRaw, &r.Qty, &r.AvgCost,
+		if err := rows.Scan(&r.ID, &r.RowID, &r.Symbol, &r.Name, &classRaw, &r.Qty, &r.AvgCost,
 			&stop, &target, &targetProfit, &r.State, &ltp); err != nil {
 			return nil, err
 		}

@@ -32,7 +32,7 @@ export interface SignalRow {
 }
 
 export interface PositionRow {
-  id: number;
+  id: string;
   symbol: string;
   /** The readable name — what the ledger shows instead of the ticker. */
   name: string;
@@ -65,7 +65,7 @@ export interface Dashboard {
 }
 
 export interface Trade {
-  id: number;
+  id: string;
   symbol: string;
   side: "buy" | "sell";
   mode: Mode;
@@ -393,10 +393,10 @@ export const api = {
       `/api/signals/${id}/approve`,
       json(body),
     ),
-  deleteTrade: (id: number) =>
-    req<{ id: number; deleted: boolean }>(`/api/trades/${id}`, { method: "DELETE" }),
-  editTrade: (id: number, body: { qty?: number; price?: number; at?: string }) =>
-    req<{ id: number; edited: boolean }>(`/api/trades/${id}`, {
+  deleteTrade: (id: string) =>
+    req<{ id: string; deleted: boolean }>(`/api/trades/${id}`, { method: "DELETE" }),
+  editTrade: (id: string, body: { qty?: number; price?: number; at?: string }) =>
+    req<{ id: string; edited: boolean }>(`/api/trades/${id}`, {
       ...json(body),
       method: "PATCH",
     }),
