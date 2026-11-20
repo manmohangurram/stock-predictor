@@ -10,7 +10,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, type ArchivedInstrument } from "../api";
 import { histDate, money } from "../format";
-import SettingField from "../components/SettingField.vue";
+import DangerZone from "../components/DangerZone.vue";
 
 const router = useRouter();
 const rows = ref<ArchivedInstrument[]>([]);
@@ -24,35 +24,13 @@ onMounted(async () => {
   }
 });
 
-const phrase = ref("");
-const armed = ref(false);
-const busy = ref(false);
-const resetNote = ref("");
-const resetError = ref("");
-
-async function wipe(): Promise<void> {
-  resetError.value = "";
-  resetNote.value = "";
-  if (phrase.value.trim() !== "DELETE EVERYTHING") {
-    resetError.value = 'Type DELETE EVERYTHING, exactly, to confirm.';
-    return;
-  }
-  if (!armed.value) {
-    armed.value = true;
-    return;
-  }
-  busy.value = true;
+const symbols = computed(() => rows.value.map((r) => r.symbol));
+async function reload(): Promise<void> {
   try {
-    const res = await api.resetBook(phrase.value.trim());
-    const count = Object.values(res.deleted).reduce((n, v) => n + v, 0);
-    resetNote.value = `Deleted ${count} rows. The book is empty; you are still signed in.`;
-    phrase.value = "";
-    armed.value = false;
-    rows.value = [];
+    rows.value = await api.archived();
+    error.value = "";
   } catch (e) {
-    resetError.value = String(e);
-  } finally {
-    busy.value = false;
+    error.value = String(e);
   }
 }
 
@@ -141,35 +119,39 @@ const visit = (symbol: string): void => void router.push(`/i/${encodeURIComponen
       </div>
     </section>
 
-    <section class="danger">
-      <header class="pane-head">
-        <h2>Delete everything</h2>
-        <span class="pill todo">cannot be undone</span>
-      </header>
-      <p class="lede">
-        This clears the whole book: instruments, bars, holdings, fills, the cash ledger, decisions,
-        notifications, runs, call records, MCP keys and settings. The admin account and this session
-        stay, so you land on an empty book rather than the setup screen. There is no backup here —
-        copy the database file first if you might want any of it.
-      </p>
-      <form class="trade-form" autocomplete="off" @submit.prevent="wipe">
-        <div class="row">
-          <SettingField id="reset_phrase" label='Type DELETE EVERYTHING' v-model="phrase"
-            placeholder="DELETE EVERYTHING" autocomplete="off" />
-          <button class="d-btn d-btn-sm" type="submit" :disabled="busy" :class="{ danger: armed }">
-            {{ armed ? "Click again to delete everything" : "Delete everything" }}
-          </button>
-        </div>
-        <div v-if="resetError" class="error-band" role="alert">{{ resetError }}</div>
-        <p v-if="resetNote" class="note" role="status">{{ resetNote }}</p>
-      </form>
-    </section>
+    <DangerZone @deleted="reload" />
   </template>
 </template>
 <style scoped>
-.danger { margin-top: var(--space-8); border-top: 1px solid var(--rule); padding-top: var(--space-4); }
-.danger h2 { color: var(--stamp-oxide); }
-.danger .pill { border-radius: var(--radius-pill); }
-
-.d-btn.danger { color: var(--stamp-oxide); border-color: var(--stamp-oxide); }
+.danger {
+  margin-top: var(--space-8);
+  padding: var(--space-4);
+  border: 1px solid var(--stamp-oxide-bg);
+  border-radius: var(--radius-lg);
+  background: var(--paper-raised);
+}
+.danger-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.danger h2 {
+  margin: 0;
+  font-family: var(--font-form);
+  font-size: var(--text-lg);
+  color: var(--stamp-oxide);
+}
+.danger .lede { margin: var(--space-2) 0 var(--space-4); max-width: 62ch; }
+.danger-form { display: grid; gap: var(--space-3); }
+.danger-form :deep(.field) { width: 100%; max-width: 420px; }
+.danger-form :deep(.field input) { width: 100%; max-width: none; }
+.danger-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.danger-action {
+  border-color: var(--stamp-oxide);
+  color: var(--stamp-oxide);
+  background: var(--paper-raised);
+}
+.danger-action:hover { background: var(--stamp-oxide-bg); color: var(--stamp-oxide); }
+.danger-action:disabled { opacity: .6; }
 </style>
