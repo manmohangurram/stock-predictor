@@ -264,10 +264,10 @@ func storeSignal(pool *sql.DB, instrumentID int64, name, code string, nav, score
 		"scheme_code": code,
 	})
 	_, err := pool.Exec(
-		`INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
-            created_at, confidence, mode, kind, status, uuid)
-         VALUES (?, 'BUY', ?, ?, ?, ?, ?, NULL, 'long', 'fundscan', 'pending', ?)`,
-		instrumentID, 0.0, nav, tstamp.From(now.AddDate(0, 0, 7)), reason, tstamp.From(now), ids.New(),
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, confidence, mode, kind, status)
+         VALUES (?, ?, 'BUY', ?, ?, ?, ?, ?, NULL, 'long', 'fundscan', 'pending')`,
+		ids.New(), instrumentID, 0.0, nav, tstamp.From(now.AddDate(0, 0, 7)), reason, tstamp.From(now),
 	)
 	return err
 }

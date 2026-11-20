@@ -457,7 +457,7 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		return false, nil
 	}
 
-	var planID *int64
+	var planID *string
 	for _, m := range plan.Moves {
 		reasonJSON := mustJSON(map[string]any{
 			"reasons":        []string{},
@@ -477,14 +477,14 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		if scope.IsTrade() {
 			moveMode = models.ModeTrade
 		}
-		var id int64
+		var id string
 		err := deps.Pool.QueryRow(
-			`INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-                reason_json, created_at, confidence, mode, kind, status, plan_id, conversation_id, uuid)
-             SELECT id, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'plan', 'pending', ?, ?, ?
+			`INSERT INTO signals (id, instrument_id, action, qty, entry, stop, target, valid_until,
+                reason_json, created_at, confidence, mode, kind, status, plan_id, conversation_id)
+             SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'plan', 'pending', ?, ?
              FROM instruments WHERE symbol = ? RETURNING id`,
-			string(m.Action), m.Qty, m.Price, m.Stop, m.Target, tstamp.From(validUntil),
-			reasonJSON, tstamp.From(now), string(moveMode), planID, conversation, ids.New(), m.Symbol,
+			ids.New(), string(m.Action), m.Qty, m.Price, m.Stop, m.Target, tstamp.From(validUntil),
+			reasonJSON, tstamp.From(now), string(moveMode), planID, conversation, m.Symbol,
 		).Scan(&id)
 		if err == sql.ErrNoRows {
 			why := fmt.Sprintf("%s is not in the book, so the plan cannot be stored", m.Symbol)
@@ -533,12 +533,12 @@ func recordPlanRefusal(pool *sql.DB, why string, now time.Time, conversationID *
 		fund = 1
 	}
 	_, err := pool.Exec(
-		`INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
-            created_at, mode, kind, status, conversation_id, uuid)
-         SELECT id, 'BLOCKED', 0, 0, ?, ?, ?, ?, 'plan', 'pending', ?, ?
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, mode, kind, status, conversation_id)
+         SELECT ?, id, 'BLOCKED', 0, 0, ?, ?, ?, ?, 'plan', 'pending', ?
          FROM instruments WHERE (class = 'mutual_fund') = ? AND active = 1
          ORDER BY id LIMIT 1`,
-		tstamp.From(now.Add(18*time.Hour)), reason, tstamp.From(now), string(mode),
+		ids.New(), tstamp.From(now.Add(18*time.Hour)), reason, tstamp.From(now), string(mode),
 		conversationID, fund,
 	)
 	return err
@@ -627,10 +627,10 @@ func ExpireTradePositions(pool *sql.DB, now time.Time) ([]string, error) {
 			entry = *e.close
 		}
 		if _, err := pool.Exec(
-			`INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
-                created_at, mode, kind, status, uuid)
-             VALUES (?, 'SELL', ?, ?, ?, ?, ?, 'trade', 'expiry', 'pending', ?)`,
-			e.instrumentID, e.qty, entry, tstamp.From(now.Add(18*time.Hour)), reason, tstamp.From(now), ids.New(),
+			`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
+                created_at, mode, kind, status)
+             VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?, 'trade', 'expiry', 'pending')`,
+			ids.New(), e.instrumentID, e.qty, entry, tstamp.From(now.Add(18*time.Hour)), reason, tstamp.From(now),
 		); err != nil {
 			return out, err
 		}
@@ -1530,15 +1530,15 @@ func latestSignal(pool *sql.DB, instrumentID int64) (*lastSignal, error) {
 	return &s, nil
 }
 
-func insertSignal(pool *sql.DB, instrumentID int64, r resolved, now time.Time, conversationID *string) (int64, error) {
+func insertSignal(pool *sql.DB, instrumentID int64, r resolved, now time.Time, conversationID *string) (string, error) {
 	reason := mustJSON(map[string]any{"reasons": r.reasons, "rationale": r.rationale})
-	var id int64
+	var id string
 	err := pool.QueryRow(
-		`INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-            reason_json, created_at, confidence, conversation_id, uuid)
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, confidence, conversation_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-		instrumentID, string(r.action), r.qty, r.entry, r.stop, r.target, r.validUntil,
-		reason, tstamp.From(now), r.confidence, conversationID, ids.New(),
+		ids.New(), instrumentID, string(r.action), r.qty, r.entry, r.stop, r.target, r.validUntil,
+		reason, tstamp.From(now), r.confidence, conversationID,
 	).Scan(&id)
 	return id, err
 }
@@ -1550,11 +1550,11 @@ func recordBlocked(pool *sql.DB, instrument models.Instrument, r resolved, avail
 		"shortfall": cost - available, "reasons": r.reasons,
 	})
 	_, err := pool.Exec(
-		`INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-            reason_json, created_at, conversation_id, uuid)
-         VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		instrument.ID, r.qty, r.entry, r.stop, r.target, r.validUntil, reason,
-		tstamp.From(now), conversationID, ids.New(),
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, conversation_id)
+         VALUES (?, ?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ids.New(), instrument.ID, r.qty, r.entry, r.stop, r.target, r.validUntil, reason,
+		tstamp.From(now), conversationID,
 	)
 	return err
 }
@@ -1571,11 +1571,11 @@ func recordRefused(pool *sql.DB, instrument models.Instrument, p *llm.Proposal, 
 		},
 	})
 	_, err := pool.Exec(
-		`INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-            reason_json, created_at, confidence, conversation_id, uuid)
-         VALUES (?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		instrument.ID, p.Qty, p.Entry, p.Stop, p.Target, p.ValidUntil, reason,
-		tstamp.From(now), string(p.Confidence), conversationID, ids.New(),
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, confidence, conversation_id)
+         VALUES (?, ?, 'BLOCKED', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ids.New(), instrument.ID, p.Qty, p.Entry, p.Stop, p.Target, p.ValidUntil, reason,
+		tstamp.From(now), string(p.Confidence), conversationID,
 	)
 	return err
 }
@@ -1854,9 +1854,9 @@ func rotateForCash(deps *EngineDeps, instrument models.Instrument, candidate mod
 	}
 	var sellID int64
 	err = deps.Pool.QueryRow(
-		`INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
-            created_at, confidence, mode, kind, status, uuid)
-         SELECT id, 'SELL', ?, ?, ?, ?, ?, ?, 'long', 'rotation', 'pending', ?
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, confidence, mode, kind, status)
+         SELECT ?, id, 'SELL', ?, ?, ?, ?, ?, ?, 'long', 'rotation', 'pending'
          FROM instruments WHERE symbol = ? RETURNING id`,
 		sell.Qty, sell.Price, validUntil,
 		mustJSON(map[string]any{"reasons": []string{why}}),
@@ -1867,9 +1867,9 @@ func rotateForCash(deps *EngineDeps, instrument models.Instrument, candidate mod
 	}
 	var buyID int64
 	err = deps.Pool.QueryRow(
-		`INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-            reason_json, created_at, confidence, mode, kind, status, pair_id, uuid)
-         SELECT id, 'BUY', ?, ?, ?, ?, ?, ?, ?, ?, 'long', 'rotation', 'pending', ?, ?
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, confidence, mode, kind, status, pair_id)
+         SELECT ?, id, 'BUY', ?, ?, ?, ?, ?, ?, ?, ?, 'long', 'rotation', 'pending', ?
          FROM instruments WHERE symbol = ? RETURNING id`,
 		buy.Qty, buy.Price, buy.Stop, buy.Target, validUntil,
 		mustJSON(map[string]any{

@@ -223,28 +223,13 @@ func pathID(c *gin.Context) (int64, error) {
 	return id, nil
 }
 
-// pathRowID turns the uuid in the URL into the integer the foreign keys still use. Slice 2 of the
-// uuid move exposes uuid; slice 4 replaces the key itself.
-func pathRowID(pool *sql.DB, c *gin.Context, table string) (int64, error) {
-	raw := c.Param("id")
-	var id int64
-	err := pool.QueryRow("SELECT id FROM "+table+" WHERE uuid = ?", raw).Scan(&id)
-	if err == sql.ErrNoRows {
-		return 0, notFound("nothing is " + raw)
-	}
-	if err != nil {
-		return 0, internalErr(err)
-	}
-	return id, nil
-}
-
 // The tag fingerprints the data, not row counts: approving changes no id, editing a fill changes
 // values in place, and archiving flips a flag. Counting rows answered 304 through all three.
 func dashboardETag(pool *sql.DB, mode models.Mode) (string, error) {
-	var signals, pending, instruments int64
-	var trades, ledger, positions, settings string
+	var pending, instruments int64
+	var signals, trades, ledger, positions, settings string
 	err := pool.QueryRow(
-		`SELECT (SELECT COALESCE(MAX(id),0) FROM signals WHERE mode = ?) AS signals,
+		`SELECT (SELECT COALESCE(MAX(id),'') FROM signals WHERE mode = ?) AS signals,
                 (SELECT COUNT(*) FROM signals WHERE mode = ? AND status = 'pending') AS pending,
                 (SELECT COALESCE(MAX(id),'') FROM trades WHERE mode = ?) AS trades,
                 (SELECT COALESCE(MAX(id),'') FROM cash_ledger WHERE mode = ?) AS ledger,
@@ -258,7 +243,7 @@ func dashboardETag(pool *sql.DB, mode models.Mode) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%d-%d-%s-%s-%s-%d-%s-%s",
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s-%d-%s-%s-%s-%d-%s-%s",
 		signals, pending, trades, ledger, positions, instruments, settings, mode)))
 	return `"` + hex.EncodeToString(sum[:]) + `"`, nil
 }

@@ -94,6 +94,14 @@ func TestTheDashboardCarriesTheBookAndAnswers304(t *testing.T) {
 	if err := trades.Record(pool, id, trades.SideBuy, 10, 100, nil, nil, models.ModeLong); err != nil {
 		t.Fatal(err)
 	}
+	pending := ids.New()
+	if _, err := pool.Exec(
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, status, mode)
+         VALUES (?, ?, 'BUY', 5, 100, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'long')`,
+		pending, id, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
 	code, body := do(t, r, http.MethodGet, "/api/dashboard?mode=long", nil, nil)
 	if code != http.StatusOK {
 		t.Fatalf("%d %s", code, body)
@@ -104,6 +112,9 @@ func TestTheDashboardCarriesTheBookAndAnswers304(t *testing.T) {
 	}
 	if len(dash.Positions) != 1 || dash.Positions[0].Qty != 10 {
 		t.Fatalf("%+v", dash.Positions)
+	}
+	if len(dash.Signals) != 1 || dash.Signals[0].ID != pending {
+		t.Fatalf("the pending decision did not come back by its uuid: %+v", dash.Signals)
 	}
 	if dash.Budget != 100_000 || dash.Available != 99_000 {
 		t.Fatalf("budget %v available %v", dash.Budget, dash.Available)
@@ -137,10 +148,10 @@ func TestApprovingASignalRecordsTheFillAndItAppearsImmediately(t *testing.T) {
 	pool, r, id := setup(t)
 	signalUUID := ids.New()
 	_, err := pool.Exec(
-		`INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-            reason_json, created_at, status, mode, uuid)
-         VALUES (?, 'BUY', 10, 100, 95, 110, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'long', ?)`,
-		id, time.Now().UTC().Format(time.RFC3339), signalUUID)
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, stop, target, valid_until,
+            reason_json, created_at, status, mode)
+         VALUES (?, ?, 'BUY', 10, 100, 95, 110, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'long')`,
+		signalUUID, id, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,24 +222,23 @@ func TestArchivingAHeldInstrumentIsRefused(t *testing.T) {
 
 func TestRejectingOneLegRejectsThePlan(t *testing.T) {
 	pool, r, id := setup(t)
-	insert := func(action string, planID int64) (int64, string) {
+	insert := func(action string, planID string) (string, string) {
 		uid := ids.New()
-		res, err := pool.Exec(
-			`INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
-                created_at, status, mode, plan_id, uuid)
-             VALUES (?, ?, 1, 100, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'long', ?, ?)`,
-			id, action, time.Now().UTC().Format(time.RFC3339), planID, uid)
+		_, err := pool.Exec(
+			`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
+                created_at, status, mode, plan_id)
+             VALUES (?, ?, ?, 1, 100, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'long', ?)`,
+			uid, id, action, time.Now().UTC().Format(time.RFC3339), planID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		sid, _ := res.LastInsertId()
-		return sid, uid
+		return uid, uid
 	}
-	first, _ := insert("SELL", 0)
-	if _, err := pool.Exec("UPDATE signals SET plan_id = ? WHERE id = ?", first, first); err != nil {
+	first, firstUUID := insert("SELL", "")
+	if _, err := pool.Exec("UPDATE signals SET plan_id = ? WHERE id = ?", firstUUID, first); err != nil {
 		t.Fatal(err)
 	}
-	_, secondUUID := insert("BUY", first)
+	_, secondUUID := insert("BUY", firstUUID)
 	code, body := do(t, r, http.MethodPost, "/api/signals/"+secondUUID+"/reject",
 		map[string]any{"reason": "not today"}, nil)
 	if code != http.StatusOK {

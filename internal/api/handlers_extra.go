@@ -404,7 +404,7 @@ func calls(c *gin.Context, st *AppState) {
                 a.completion_tokens AS completion_tokens,
                 a.validator_verdict AS validator_verdict, a.error AS error,
                 a.trigger AS trigger, a.prompt_template AS prompt_template,
-                d.uuid AS decision_id, d.status AS decision_status,
+                d.id AS decision_id, d.status AS decision_status,
                 d.action AS decision_action, d.reason_json AS decision_reason,
                 COALESCE(i.name, pi.name) AS instrument_name,
                 COALESCE(i.symbol, pi.symbol) AS instrument_symbol,
