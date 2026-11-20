@@ -37,6 +37,19 @@ Then, with the MCP attached to that page:
 5. Native dialogs need a **trusted** key: `press_key` with `Escape` closes the add dialog,
    `evaluate_script` synthesising the event does not.
 
+## 0. Sign in (`/login`)
+
+| Control | Must do |
+|---|---|
+| First run, no admin | The page says *Set up the admin*: username, password, password again |
+| Set up | Creates the admin, signs in and lands on `/`, which renders the book |
+| Setup called twice | `409` — the page shows *Sign in* instead |
+| Wrong password | *That password does not match.*, and the band takes focus |
+| Signed out, any page | Redirects to `/login`; the book never flashes |
+| Refresh | A reload keeps the session (the HttpOnly cookie mints a new access token) |
+| Sign out (settings rail) | Returns to `/login`; the old refresh token is refused |
+| Password change (Settings → Access) | Ends every session and returns to `/login` |
+
 ## 1. Rail (every page)
 
 | Control | Must do | How to check |

@@ -1,4 +1,20 @@
+## v0.34.2
+
+### Added
+
+- **Change the password, from the app.** Settings â†’ Access gains a *Password* section beside the MCP
+  keys: current, new, and new again. A wrong current password is refused with a reason; a successful
+  change ends every signed-in session and returns to the sign-in page, because the old refresh
+  tokens are revoked in the same transaction.
+
+### Docs
+
+- `docs/testing/flows.md` now begins with **step 0, the door**: first-run setup, the `409` on a
+  second setup, a wrong password, the redirect that keeps the book from flashing, the reload that
+  keeps the session, sign-out, and the password change.
+
 ## v0.34.1
+
 
 ### Fixed
 

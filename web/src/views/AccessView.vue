@@ -4,10 +4,13 @@
  * never show it again — the table lists a prefix so you can tell two keys apart after the fact.
  */
 import { computed, onMounted, ref } from "vue";
-import { api, type ApiKey } from "../api";
+import { useRouter } from "vue-router";
+import { api, auth, type ApiKey } from "../api";
 import SettingsRail from "../components/SettingsRail.vue";
+import SettingField from "../components/SettingField.vue";
 import { histDate } from "../format";
 
+const router = useRouter();
 const keys = ref<ApiKey[]>([]);
 const error = ref("");
 const busy = ref(false);
@@ -91,6 +94,39 @@ function expires(k: ApiKey): string {
 function lastUsed(k: ApiKey): string {
   if (!k.last_used_at) return "never used";
   return histDate(k.last_used_at);
+}
+
+const current = ref("");
+const next = ref("");
+const again = ref("");
+const passwordNote = ref("");
+const passwordError = ref("");
+
+async function changePassword(): Promise<void> {
+  passwordError.value = "";
+  passwordNote.value = "";
+  if (next.value.length < 10) {
+    passwordError.value = "Use at least 10 characters.";
+    return;
+  }
+  if (next.value !== again.value) {
+    passwordError.value = "The two passwords do not match.";
+    return;
+  }
+  try {
+    await api.changePassword({ current: current.value, next: next.value });
+    current.value = "";
+    next.value = "";
+    again.value = "";
+    passwordNote.value = "Password changed. Sign in again with the new one.";
+    auth.set(null);
+    setTimeout(() => void router.push("/login"), 1800);
+  } catch (e) {
+    const text = String(e);
+    passwordError.value = text.includes("403")
+      ? "That is not the current password."
+      : text;
+  }
 }
 
 onMounted(load);
@@ -178,6 +214,28 @@ onMounted(load);
         </tbody>
       </table>
     </div>
+
+    <header class="pane-head">
+      <h2>Password</h2>
+      <span class="note">the one door</span>
+    </header>
+    <p class="lede">
+      Changing it ends every signed-in session, including the one you are using. There is no reset
+      by email; if it is lost, it is replaced on the server.
+    </p>
+    <form class="trade-form" autocomplete="off" @submit.prevent="changePassword">
+      <div class="row">
+        <SettingField id="current_password" label="Current password" type="password"
+          v-model="current" autocomplete="current-password" />
+        <SettingField id="new_password" label="New password" type="password"
+          v-model="next" autocomplete="new-password" placeholder="10+ characters" />
+        <SettingField id="again_password" label="New password again" type="password"
+          v-model="again" autocomplete="new-password" />
+        <button class="d-btn d-btn-sm d-btn-primary" type="submit">Change password</button>
+      </div>
+      <div v-if="passwordError" class="error-band" role="alert">{{ passwordError }}</div>
+      <p v-if="passwordNote" class="note" role="status">{{ passwordNote }}</p>
+    </form>
   </section>
 </template>
 
