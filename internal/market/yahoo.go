@@ -157,7 +157,41 @@ func FetchIntraday(client *http.Client, symbol, interval, rangeStr string) ([]mo
 	return fetchChart(client, symbol, interval, rangeStr)
 }
 
-var yahooBlockedUntil atomic.Int64
+// Yahoo's limit is burst-shaped, not volume-shaped: a hundred charts in one tick is a 429, the same
+// hundred spread over a day is not. One request every 200 ms is below anything it has refused.
+var yahooGap = 200 * time.Millisecond
+
+var yahooNext atomic.Int64
+
+// pace holds the next request until the gap has passed, and claims the slot after it.
+func pace() {
+	for {
+		now := time.Now().UnixNano()
+		next := yahooNext.Load()
+		if next > now {
+			time.Sleep(time.Duration(next - now))
+			continue
+		}
+		if yahooNext.CompareAndSwap(next, now+int64(yahooGap)) {
+			return
+		}
+	}
+}
+
+// A 429 costs thirty seconds, then a minute, then two. The flat five-minute block this replaces
+// turned one throttled sweep into an afternoon of blank screens.
+var (
+	throttleFirst = 30 * time.Second
+	throttleMax   = 10 * time.Minute
+	throttleCalm  = 10 * time.Minute
+)
+
+var (
+	throttleMu      sync.Mutex
+	throttleUntil   time.Time
+	throttleAt      time.Time
+	throttleStrikes int
+)
 
 // dailyCache is one year of daily bars per symbol, keyed by the IST day. A daily candle changes
 // once a session; the live price comes from the intraday tape that gather already fetches, so a
@@ -203,24 +237,54 @@ func DropDailyCache(symbol string) {
 }
 
 // noteThrottle remembers a 429 so the next requests fail fast instead of extending the block.
-// Yahoo's limit is per client and recovers only if the client stops asking.
 func noteThrottle(resp *http.Response) {
-	if yahooBlocked() {
-		return // the block is already in force; one line is enough
+	throttleMu.Lock()
+	defer throttleMu.Unlock()
+	throttleStrikes++
+	wait := throttleFirst << (throttleStrikes - 1)
+	if wait <= 0 || wait > throttleMax {
+		wait = throttleMax
 	}
-	wait := 5 * time.Minute
 	if raw := resp.Header.Get("Retry-After"); raw != "" {
 		if secs, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && secs > 0 && secs <= 900 {
-			wait = time.Duration(secs) * time.Second
+			if h := time.Duration(secs) * time.Second; h > wait {
+				wait = h
+			}
 		}
 	}
-	yahooBlockedUntil.Store(time.Now().Add(wait).UnixNano())
-	slog.Warn("yahoo throttled the client; backing off", "for", wait.Round(time.Second))
+	throttleAt = time.Now()
+	throttleUntil = throttleAt.Add(wait)
+	slog.Warn("yahoo throttled the client; backing off", "for", wait.Round(time.Second),
+		"strikes", throttleStrikes)
 }
 
 func yahooBlocked() bool {
-	until := yahooBlockedUntil.Load()
-	return until > 0 && time.Now().UnixNano() < until
+	throttleMu.Lock()
+	defer throttleMu.Unlock()
+	return time.Now().Before(throttleUntil)
+}
+
+// A quiet window is what resets the strike count: a single good reply between two bursts must not
+// make the next 429 cheap again.
+func throttleEnded() {
+	throttleMu.Lock()
+	defer throttleMu.Unlock()
+	if time.Since(throttleAt) > throttleCalm {
+		throttleStrikes = 0
+	}
+}
+
+// waitOutThrottle sleeps through a block short enough to be worth waiting for, and reports whether
+// it did. The daily sweep can afford this; a poll tick cannot.
+func waitOutThrottle(max time.Duration) bool {
+	throttleMu.Lock()
+	left := time.Until(throttleUntil)
+	throttleMu.Unlock()
+	if left <= 0 || left > max {
+		return false
+	}
+	time.Sleep(left)
+	return true
 }
 
 // doRetry runs a GET, waiting out 429/5xx instead of treating a throttle as "no data". Yahoo
@@ -231,6 +295,7 @@ func doRetry(client *http.Client, req *http.Request, attempts int) (*http.Respon
 		return nil, fmt.Errorf("yahoo is throttling this client; backing off")
 	}
 	for i := 0; ; i++ {
+		pace()
 		resp, err := client.Do(req)
 		if err != nil {
 			if i >= attempts-1 {
@@ -240,6 +305,7 @@ func doRetry(client *http.Client, req *http.Request, attempts int) (*http.Respon
 			continue
 		}
 		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode < 500 {
+			throttleEnded()
 			return resp, nil
 		}
 		if resp.StatusCode == http.StatusTooManyRequests {
@@ -328,54 +394,83 @@ func FetchYahooNews(client *http.Client, symbol string) ([]models.Headline, erro
 	return news, nil
 }
 
-// FetchClosesBatch returns daily closes for up to a few dozen symbols in one request, using
-// Yahoo's spark endpoint. The per-symbol chart endpoint throttles a 100-name sweep; this does
-// the same job in five requests.
+// Yahoo's spark endpoint takes at most twenty symbols per request — twenty-one is a 400 — and the
+// per-symbol chart endpoint throttles a 100-name sweep outright.
+const sparkChunk = 20
+
+// How long the daily sweep will sit out a throttle before giving up on the rest of the day.
+var sparkWaitMax = 2 * time.Minute
+
+func sparkRequest(client *http.Client, symbols []string) (map[string][]float64, error) {
+	q := url.Values{}
+	q.Set("symbols", strings.Join(symbols, ","))
+	q.Set("range", "1mo")
+	q.Set("interval", "1d")
+	resp, err := getYahoo(client, "https://query1.finance.yahoo.com/v8/finance/spark?"+q.Encode())
+	if err != nil {
+		return nil, fmt.Errorf("spark: request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("spark: read body: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("spark: http status %d", resp.StatusCode)
+	}
+	var payload map[string]struct {
+		Close []float64 `json:"close"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("spark: payload: %w", err)
+	}
+	out := make(map[string][]float64, len(payload))
+	for symbol, row := range payload {
+		closes := make([]float64, 0, len(row.Close))
+		for _, c := range row.Close {
+			if c > 0 {
+				closes = append(closes, c)
+			}
+		}
+		if len(closes) > 0 {
+			out[symbol] = closes
+		}
+	}
+	return out, nil
+}
+
+// FetchClosesBatch returns daily closes for a hundred symbols in five requests, using Yahoo's spark
+// endpoint. A chunk that is throttled is waited out and retried once; a chunk that still fails is
+// dropped, not fatal, so one 429 costs twenty names rather than the whole day's list.
 func FetchClosesBatch(client *http.Client, symbols []string) (map[string][]float64, error) {
 	out := map[string][]float64{}
-	const chunk = 20
-	for start := 0; start < len(symbols); start += chunk {
-		end := start + chunk
+	var firstErr error
+	for start := 0; start < len(symbols); start += sparkChunk {
+		end := start + sparkChunk
 		if end > len(symbols) {
 			end = len(symbols)
 		}
-		q := url.Values{}
-		q.Set("symbols", strings.Join(symbols[start:end], ","))
-		q.Set("range", "1mo")
-		q.Set("interval", "1d")
-		resp, err := getYahoo(client, "https://query1.finance.yahoo.com/v8/finance/spark?"+q.Encode())
+		batch, err := sparkRequest(client, symbols[start:end])
 		if err != nil {
-			return out, fmt.Errorf("spark: request: %w", err)
-		}
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return out, fmt.Errorf("spark: read body: %w", err)
-		}
-		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			return out, fmt.Errorf("spark: http status %d", resp.StatusCode)
-		}
-		var payload map[string]struct {
-			Close []float64 `json:"close"`
-		}
-		if err := json.Unmarshal(body, &payload); err != nil {
-			return out, fmt.Errorf("spark: payload: %w", err)
-		}
-		for symbol, row := range payload {
-			closes := make([]float64, 0, len(row.Close))
-			for _, c := range row.Close {
-				if c > 0 {
-					closes = append(closes, c)
-				}
-			}
-			if len(closes) > 0 {
-				out[symbol] = closes
+			firstErr = err
+			if waitOutThrottle(sparkWaitMax) {
+				batch, err = sparkRequest(client, symbols[start:end])
 			}
 		}
-		slog.Debug("spark chunk", "requested", end-start, "returned", len(payload))
-		if end < len(symbols) {
-			time.Sleep(100 * time.Millisecond)
+		if err != nil {
+			slog.Warn("spark chunk dropped", "symbols", end-start, "error", err)
+			continue
 		}
+		for symbol, closes := range batch {
+			out[symbol] = closes
+		}
+		slog.Debug("spark chunk", "requested", end-start, "returned", len(batch))
+	}
+	if len(out) == 0 && firstErr != nil {
+		return out, firstErr
+	}
+	if firstErr != nil {
+		slog.Warn("spark sweep is partial", "symbols", len(symbols), "measured", len(out))
 	}
 	return out, nil
 }
