@@ -21,8 +21,9 @@ database it came from, and two databases will hand the same id to different rows
 - **Text, not BLOB.** SQLite has no native UUID type. Text is debuggable in a test fixture, sorts
   correctly, and the JSON is a string in both directions. The 36-byte cost is irrelevant at this
   table size, where the largest table is measured in thousands of rows.
-- **Generated in Go** (`internal/ids.New()`), not by SQL: one generator, one place to test the
-  clock and the monotonic counter, and no dependency on SQLite's `randomblob` spelling.
+- **Generated in Go** (`internal/ids.New()`, a thin wrapper over `github.com/google/uuid`'s v7),
+  not by SQL: one generator, one place to test the format, and no dependency on SQLite's
+  `randomblob` spelling.
 - **FKs are TEXT** and keep their `REFERENCES` clauses.
 
 `settings.key`, `plan_candidates(day, symbol)` and `trend_candidates(day, symbol)` stay as they are:
