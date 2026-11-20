@@ -96,6 +96,13 @@ function pageSize(size: string): void {
   void router.push({ path: "/calls", query: { offset: "0", limit: size, ...filters.value } });
 }
 
+/** The whole row is the control; a link or a button inside it keeps its own job. */
+function toggle(event: MouseEvent, id: number): void {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("a, button, input, select, textarea, label")) return;
+  open.value = open.value === id ? null : id;
+}
+
 const promptType = (r: CallRow): string => {
   if (r.endpoint === "search") return "Web search";
   if (r.endpoint === "fetch") return "Web fetch";
@@ -228,11 +235,11 @@ watch(() => route.fullPath, load);
         <thead><tr>
           <th scope="col">Time</th><th scope="col" class="hide-sm">Prompt type</th>
           <th scope="col" class="hide-sm">Call</th><th scope="col">Holding</th>
-          <th scope="col">Review</th><th scope="col" class="right"><span class="hide-sm">View</span></th>
+          <th scope="col">Review</th><th scope="col" class="right"><span class="sr-only">Open</span></th>
         </tr></thead>
         <tbody>
           <template v-for="r in rows" :key="r.id">
-            <tr>
+            <tr class="row call-row" :class="{ open: open === r.id }" @click="toggle($event, r.id)">
               <td class="time" :title="r.ts">{{ dayTime(r.ts) }}</td>
               <td class="hide-sm">{{ promptType(r) }}</td>
               <td class="hide-sm">{{ titleCase(r.endpoint) }}</td>
@@ -248,11 +255,12 @@ watch(() => route.fullPath, load);
                         v-html="pill(reviewBadge(r).tone, reviewBadge(r).label, reviewBadge(r).title)" />
                 </div>
               </td>
-              <td class="right">
-                <button class="d-btn d-btn-sm d-btn-ghost" type="button"
+              <td class="right caret-cell">
+                <button class="row-caret" type="button"
                         :aria-expanded="open === r.id" :aria-controls="`call-${r.id}`"
-                        aria-label="Show the call" @click="open = open === r.id ? null : r.id">
-                  {{ open === r.id ? "Hide" : "Show" }}
+                        :aria-label="open === r.id ? `Hide this ${promptType(r)} call` : `Show this ${promptType(r)} call`"
+                        @click.stop="open = open === r.id ? null : r.id">
+                  <span class="caret" :class="{ open: open === r.id }" aria-hidden="true"></span>
                 </button>
               </td>
             </tr>
