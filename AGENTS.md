@@ -104,6 +104,14 @@ files directly when you need exact wording.
 
 ## Front-end work: always use the `ui-ux-design-pro` skill
 
+**A UI change is not done until screenshots exist — and they are shown.** Before you say a screen is
+fixed, capture it at **1440 and 390**, in **light and dark**, and put the images in the conversation
+(or the PR). Measure what matters with `getBoundingClientRect()` — shared left edges, right edges of
+numbers, input widths, overflow — rather than describing it. A passing build, a green CI and a
+type-check say nothing about how it looks; a screenshot that has not been taken is a claim you cannot
+make. If a screenshot cannot be produced, say so plainly instead of implying the visual was checked.
+
+
 Before any UI change, load `ui-ux-design-pro` (`/skill:ui-ux-design-pro`, or read its `SKILL.md`
 and the reference it points at). It carries the token architecture, the type scale and the
 checklist that keep this app looking like one hand drew it. Then obey `.interface-design/system.md`.
@@ -159,6 +167,19 @@ is worse than no filter. The `WHERE 1 = 1` anchor in that handler is load-bearin
 first clause lands in the JOIN's `ON`, where it silently filters nothing.
 
 ## Delivery: every change is a PR
+
+**Never cut a release without consent.** A tag, a GitHub release and a version bump in the CHANGELOG
+are one action, and it happens only when the user asks for it in that turn ("release", "ship it",
+"give me a release now"). Merging a PR is not consent. A green CI is not consent. "It is ready" is not
+consent. If the work is finished, say it is finished and stop; the next release is the user's call.
+
+**A feature that touches more than one layer is a stack, built with the `gh stack` extension.** A
+schema change plus an API plus a page is three PRs, not one: install `gh extension install
+github/gh-stack` once, then `gh stack init`, `gh stack add`, `gh stack push`, `gh stack submit`. The
+bottom PR targets `main` and each one above it targets the branch below. One large PR for a
+multi-layer feature is a policy violation, not a shortcut. A stack merges bottom-up; a red step
+blocks everything above it.
+
 
 **Never commit straight to `main`.** Every piece of work — a fix, a page, a migration — lands as a
 pull request that passes the gates below. Open the PR as soon as the first commit exists, so CI runs

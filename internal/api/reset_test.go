@@ -8,14 +8,14 @@ import (
 func TestDeletingEverythingEmptiesTheBookAndKeepsTheAdmin(t *testing.T) {
 	pool, r, _ := setup(t)
 
-	if code, body := do(t, r, http.MethodPost, "/api/reset", map[string]any{"confirm": "nope"}, nil); code != http.StatusBadRequest {
-		t.Fatalf("a wrong phrase answered %d %s", code, body)
+	if code, body := do(t, r, http.MethodPost, "/api/reset", map[string]any{"symbol": "NOT-IN-THE-BOOK"}, nil); code != http.StatusBadRequest {
+		t.Fatalf("an unknown symbol answered %d %s", code, body)
 	}
 	if n := countRows(t, pool, "SELECT COUNT(*) FROM instruments"); n != 1 {
 		t.Fatalf("a refused reset still deleted: %d instruments", n)
 	}
 
-	code, body := do(t, r, http.MethodPost, "/api/reset", map[string]any{"confirm": "DELETE EVERYTHING"}, nil)
+	code, body := do(t, r, http.MethodPost, "/api/reset", map[string]any{"symbol": "infy.ns"}, nil)
 	if code != http.StatusOK {
 		t.Fatalf("%d %s", code, body)
 	}

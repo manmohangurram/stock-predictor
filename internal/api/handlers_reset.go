@@ -13,7 +13,9 @@ import (
 // The one destructive action in the app: wipe the book. Everything except the admin and the schema
 // record goes, so the app is empty but still yours to sign in to.
 
-const resetPhrase = "DELETE EVERYTHING"
+// The phrase for a book that has nothing in it; otherwise the confirmation is an instrument's own
+// symbol, which proves the person knows what they are about to lose.
+const resetEmptyPhrase = "EMPTY"
 
 // kept across a reset: the door, the migration record, and the session you are using it from.
 var resetKeep = map[string]bool{
@@ -24,15 +26,38 @@ var resetKeep = map[string]bool{
 
 func resetBook(c *gin.Context, st *AppState) {
 	var body struct {
-		Confirm string `json:"confirm"`
+		Symbol string `json:"symbol"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		respondErr(c, badRequest("invalid body"))
 		return
 	}
-	if strings.TrimSpace(body.Confirm) != resetPhrase {
-		respondErr(c, badRequest(fmt.Sprintf("type %q to confirm", resetPhrase)))
+	given := strings.ToUpper(strings.TrimSpace(body.Symbol))
+	if given == "" {
+		respondErr(c, badRequest("type a symbol from this book to confirm"))
 		return
+	}
+	var listed int
+	if err := st.Pool.QueryRow("SELECT COUNT(*) FROM instruments").Scan(&listed); err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	if listed == 0 {
+		if given != resetEmptyPhrase {
+			respondErr(c, badRequest("the book is empty; type EMPTY to confirm"))
+			return
+		}
+	} else {
+		var match int
+		if err := st.Pool.QueryRow(
+			"SELECT COUNT(*) FROM instruments WHERE upper(trim(symbol)) = ?", given).Scan(&match); err != nil {
+			respondErr(c, internalErr(err))
+			return
+		}
+		if match == 0 {
+			respondErr(c, badRequest(fmt.Sprintf("%s is not an instrument in this book", given)))
+			return
+		}
 	}
 	removed, err := wipe(st.Pool, c.Request.Context())
 	if err != nil {
