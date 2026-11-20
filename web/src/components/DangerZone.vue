@@ -77,13 +77,11 @@ async function wipe(): Promise<void> {
       <form method="dialog" class="delete-body" @submit.prevent="wipe">
         <header class="delete-head">
           <span class="delete-icon" aria-hidden="true">!</span>
-          <div class="delete-text">
-            <div class="delete-title-row">
-              <h2 id="delete-title">Delete everything</h2>
-              <span class="pill todo">cannot be undone</span>
-            </div>
+          <div class="delete-words">
+            <h2 id="delete-title">Delete everything</h2>
             <p class="delete-sub">Clears the book. The admin and your session stay.</p>
           </div>
+          <span class="pill todo">cannot be undone</span>
         </header>
 
         <p class="delete-lede">
@@ -126,63 +124,56 @@ async function wipe(): Promise<void> {
 }
 .delete-dialog::backdrop { background: oklch(0.2 0.01 60 / 0.45); }
 
-/* One text edge: the icon owns a fixed first column, everything written sits in the second. */
 .delete-body {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  column-gap: var(--space-4);
-  row-gap: var(--space-4);
+  gap: var(--space-4);
   padding: var(--space-6);
   margin: 0;
 }
-.delete-head { display: contents; }
+
+.delete-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
 .delete-icon {
-  grid-column: 1;
-  align-self: center;
-  width: 36px;
-  height: 36px;
+  flex: none;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border-radius: 50%;
   background: var(--stamp-oxide-bg);
   color: var(--stamp-oxide);
   font-family: var(--font-form);
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   font-weight: 700;
   line-height: 1;
 }
-.delete-text { grid-column: 2; align-self: center; min-width: 0; }
-.delete-title-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.delete-title-row h2 {
+.delete-words { flex: 1; min-width: 0; }
+.delete-words h2 {
   margin: 0;
   font-family: var(--font-form);
-  font-size: var(--text-xl);
-  line-height: 1.15;
-  color: var(--stamp-oxide);
+  font-size: var(--text-lg);
+  line-height: 1.2;
 }
-.delete-sub { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--ink-muted); }
-.delete-lede { grid-column: 2; margin: 0; color: var(--ink-secondary); font-size: var(--text-sm); }
-.delete-field { grid-column: 2; display: grid; gap: var(--space-2); }
+.delete-sub { margin: 2px 0 0; font-size: var(--text-sm); color: var(--ink-muted); }
+.delete-head .pill { flex: none; }
+
+.delete-lede { margin: 0; color: var(--ink-secondary); font-size: var(--text-sm); }
+.delete-field { display: grid; gap: var(--space-2); }
 .delete-body :deep(.field) { width: 100%; }
 .delete-body :deep(.field input) { width: 100%; max-width: none; }
 .hint { margin: 0; font-size: var(--text-sm); color: var(--ink-tertiary); }
-.delete-body .error-band { grid-column: 2; margin: 0; }
-.delete-foot {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-}
+.delete-body .error-band { margin: 0; }
+
+.delete-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .delete-action { border-color: var(--stamp-oxide); color: var(--stamp-oxide); background: var(--paper-raised); }
 .delete-action:hover { background: var(--stamp-oxide-bg); }
 
 @media (max-width: 480px) {
-  .delete-body { grid-template-columns: 1fr; padding: var(--space-4); }
-  .delete-title-row { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
-  .delete-title-row h2 { font-size: var(--text-lg); }
-  .delete-icon { grid-column: 1; align-self: start; }
-  .delete-text, .delete-lede, .delete-field, .delete-body .error-band { grid-column: 1; }
-  .delete-foot { grid-column: 1; }
+  .delete-body { padding: var(--space-4); }
+  .delete-head { flex-wrap: wrap; }
+  .delete-head .pill { order: 3; margin-left: 44px; }
 }
 </style>
