@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { api } from "../api";
 import SettingField from "./SettingField.vue";
 
@@ -13,6 +13,8 @@ const armed = ref(false);
 const note = ref("");
 const error = ref("");
 const field = ref<HTMLElement | null>(null);
+
+const placeholder = computed(() => symbols.value[0] ?? "EMPTY");
 
 async function open(): Promise<void> {
   error.value = "";
@@ -90,10 +92,7 @@ async function wipe(): Promise<void> {
         </p>
 
         <div ref="field" class="delete-field">
-          <SettingField id="delete_symbol" label="Symbol" v-model="symbol" placeholder="INFY.NS" />
-          <p class="hint">
-            {{ symbols.length ? `In this book: ${symbols.slice(0, 4).join(", ")}${symbols.length > 4 ? ", …" : ""}` : "The book is empty, so type EMPTY." }}
-          </p>
+          <SettingField id="delete_symbol" label="Symbol" v-model="symbol" :placeholder="placeholder" />
         </div>
 
         <div v-if="error" class="error-band" role="alert">{{ error }}</div>
@@ -164,7 +163,6 @@ async function wipe(): Promise<void> {
 .delete-field { display: grid; gap: var(--space-2); }
 .delete-body :deep(.field) { width: 100%; }
 .delete-body :deep(.field input) { width: 100%; max-width: none; }
-.hint { margin: 0; font-size: var(--text-sm); color: var(--ink-tertiary); }
 .delete-body .error-band { margin: 0; }
 
 .delete-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
