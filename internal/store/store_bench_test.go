@@ -7,21 +7,22 @@ import (
 	"time"
 
 	"stock-predictor/internal/db"
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/models"
 )
 
-func benchPool(b *testing.B) (*sql.DB, int64) {
+func benchPool(b *testing.B) (*sql.DB, string) {
 	b.Helper()
 	pool, err := db.ConnectAndMigrate(b.Context(), filepath.Join(b.TempDir(), "bench.db"))
 	if err != nil {
 		b.Fatal(err)
 	}
-	res, err := pool.Exec(
-		"INSERT INTO instruments (symbol, class, name, currency, active) VALUES ('B.NS', 'stock', 'B', 'INR', 1)")
-	if err != nil {
+	id := ids.New()
+	if _, err := pool.Exec(
+		"INSERT INTO instruments (id, symbol, class, name, currency, active) VALUES (?, 'B.NS', 'stock', 'B', 'INR', 1)", id,
+	); err != nil {
 		b.Fatal(err)
 	}
-	id, _ := res.LastInsertId()
 	b.Cleanup(func() { pool.Close() })
 	return pool, id
 }

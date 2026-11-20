@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"stock-predictor/internal/db"
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/llm"
 	"stock-predictor/internal/market"
 	"stock-predictor/internal/models"
@@ -234,10 +235,10 @@ func TestACreatedRowThatProposedSomethingStays(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := p.Exec(
-		`INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
             created_at, mode, status, kind)
-         VALUES (?, 'BUY', 10, 268.34, '2026-11-12T15:30:00+05:30', '{}',
-                 '2026-11-11T06:00:00Z', 'trade', 'pending', 'trend')`, id,
+         VALUES (?, ?, 'BUY', 10, 268.34, '2026-11-12T15:30:00+05:30', '{}',
+                 '2026-11-11T06:00:00Z', 'trade', 'pending', 'trend')`, ids.New(), id,
 	); err != nil {
 		t.Fatal(err)
 	}

@@ -25,7 +25,7 @@ const insertHeadline = `INSERT OR IGNORE INTO news (id, instrument_id, published
 //
 // One transaction per batch, and only the tail is written: rows at or after the newest
 // stored ts, which keeps a poll's write at a fraction of a millisecond.
-func Bars(pool *sql.DB, instrumentID int64, bars []models.Bar) error {
+func Bars(pool *sql.DB, instrumentID string, bars []models.Bar) error {
 	var last string
 	err := pool.QueryRow(
 		"SELECT ts FROM bars WHERE instrument_id = ? ORDER BY ts DESC LIMIT 1", instrumentID,
@@ -70,7 +70,7 @@ func PruneNews(pool *sql.DB, days int64) (int64, error) {
 }
 
 // Headlines are stored once per url. The body is never fetched here — only on escalation.
-func Headlines(pool *sql.DB, instrumentID int64, news []models.Headline) error {
+func Headlines(pool *sql.DB, instrumentID string, news []models.Headline) error {
 	tx, err := pool.Begin()
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ func Headlines(pool *sql.DB, instrumentID int64, news []models.Headline) error {
 
 // One round trip for a newly added symbol: daily prices and headlines, both persisted.
 // A failure here must not fail the add — the instrument exists either way.
-func Refresh(pool *sql.DB, instrumentID int64, symbol string, market market.MarketSource) (int, int, error) {
+func Refresh(pool *sql.DB, instrumentID string, symbol string, market market.MarketSource) (int, int, error) {
 	daily, err := market.Bars(symbol)
 	if err != nil {
 		return 0, 0, err

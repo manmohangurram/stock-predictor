@@ -94,7 +94,7 @@ func Run(pool *sql.DB, rt *rules.Runtime, client *http.Client, now time.Time) (R
 
 	// Only a fund you hold gets a chart: a proposal is not in the book, and storing 3,400 points
 	// for one is history nobody asked for.
-	held := map[string]int64{}
+	held := map[string]string{}
 	rows, err := pool.Query(
 		`SELECT DISTINCT i.id, i.symbol FROM positions p
          JOIN instruments i ON i.id = p.instrument_id
@@ -103,7 +103,7 @@ func Run(pool *sql.DB, rt *rules.Runtime, client *http.Client, now time.Time) (R
 		return report, err
 	}
 	for rows.Next() {
-		var id int64
+		var id string
 		var symbol string
 		if err := rows.Scan(&id, &symbol); err != nil {
 			rows.Close()
@@ -222,15 +222,15 @@ func clashes(category string, existing []string) bool {
 }
 
 // The fund's instrument row, created inactive so the scan never starts polling it.
-func ensureInstrument(pool *sql.DB, code, name string) (int64, error) {
+func ensureInstrument(pool *sql.DB, code, name string) (string, error) {
 	symbol := "AMFI:" + code
-	var id int64
+	var id string
 	err := pool.QueryRow("SELECT id FROM instruments WHERE symbol = ?", symbol).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
 	if err != sql.ErrNoRows {
-		return 0, err
+		return "", err
 	}
 	err = pool.QueryRow(
 		`INSERT INTO instruments (symbol, class, name, currency, active, uuid)
@@ -240,7 +240,7 @@ func ensureInstrument(pool *sql.DB, code, name string) (int64, error) {
 }
 
 // The NAV series as daily bars. A fund has no OHLC, so every price is the NAV and volume is 0.
-func saveNAVHistory(pool *sql.DB, instrumentID int64, h market.FundHistory) error {
+func saveNAVHistory(pool *sql.DB, instrumentID string, h market.FundHistory) error {
 	return store.Bars(pool, instrumentID, NAVBars(h))
 }
 
@@ -256,7 +256,7 @@ func NAVBars(h market.FundHistory) []models.Bar {
 	return out
 }
 
-func storeSignal(pool *sql.DB, instrumentID int64, name, code string, nav, score float64, now time.Time) error {
+func storeSignal(pool *sql.DB, instrumentID string, name, code string, nav, score float64, now time.Time) error {
 	reason := mustJSON(map[string]any{
 		"reasons":     []string{fmt.Sprintf("%s returned +%.1f%% over the trailing window", name, score)},
 		"rationale":   "A six-month-plus commitment: judged on trailing returns, with the fund earmark in mind.",

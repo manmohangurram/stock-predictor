@@ -196,7 +196,7 @@ func TestCandidateSellOnStop(t *testing.T) {
 	}
 	close := bars[len(bars)-1].Close
 	pos := &models.Position{Qty: 10, Stop: fptr(close + 1.0)}
-	instr := &models.Instrument{ID: 1, Symbol: "T.NS", Class: models.ClassStock}
+	instr := &models.Instrument{ID: "01a1f000-0000-7000-8000-000000000001", Symbol: "T.NS", Class: models.ClassStock}
 	c := Candidate(CandidateInput{
 		Instrument: instr, Bars: bars, Ind: &ind, Position: pos, AvailableCash: 0, Cfg: DefaultRuleConfig(),
 	})
@@ -211,7 +211,7 @@ func TestCandidateBuyInUptrend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	instr := &models.Instrument{ID: 1, Symbol: "T.NS", Class: models.ClassStock}
+	instr := &models.Instrument{ID: "01a1f000-0000-7000-8000-000000000002", Symbol: "T.NS", Class: models.ClassStock}
 	c := Candidate(CandidateInput{
 		Instrument: instr, Bars: bars, Ind: &ind, AvailableCash: 10_000, Cfg: DefaultRuleConfig(),
 	})
@@ -229,7 +229,7 @@ func TestCandidateMFBuyCarriesNoStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	instr := &models.Instrument{ID: 1, Symbol: "F", Class: models.ClassMutualFund}
+	instr := &models.Instrument{ID: "01a1f000-0000-7000-8000-000000000003", Symbol: "F", Class: models.ClassMutualFund}
 	c := Candidate(CandidateInput{
 		Instrument: instr, Bars: bars, Ind: &ind, AvailableCash: 10_000, Cfg: DefaultRuleConfig(),
 	})

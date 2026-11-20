@@ -27,7 +27,7 @@ func Fingerprint(headlines []models.Headline) string {
 }
 
 // True when the model has already answered for exactly this headline set.
-func Unchanged(pool *sql.DB, instrumentID int64, fp string) (bool, error) {
+func Unchanged(pool *sql.DB, instrumentID string, fp string) (bool, error) {
 	var stored string
 	err := pool.QueryRow("SELECT headline_fp FROM llm_memos WHERE instrument_id = ?", instrumentID).Scan(&stored)
 	if err == sql.ErrNoRows {
@@ -50,7 +50,7 @@ func DefaultCallGate() CallGate {
 }
 
 // True when the model should be consulted for this instrument at this price and time.
-func ShouldCall(pool *sql.DB, instrumentID int64, price float64, now time.Time, gate CallGate, headlinesChanged bool) (bool, error) {
+func ShouldCall(pool *sql.DB, instrumentID string, price float64, now time.Time, gate CallGate, headlinesChanged bool) (bool, error) {
 	if headlinesChanged {
 		return true, nil
 	}
@@ -77,7 +77,7 @@ func ShouldCall(pool *sql.DB, instrumentID int64, price float64, now time.Time, 
 
 // Recorded after every attempt, success or failure: a failing call must not loop every
 // tick.
-func RecordMemoCall(pool *sql.DB, instrumentID int64, price float64, now time.Time, headlineFP string) error {
+func RecordMemoCall(pool *sql.DB, instrumentID string, price float64, now time.Time, headlineFP string) error {
 	_, err := pool.Exec(
 		`INSERT INTO llm_memos (instrument_id, headline_fp, decided_at, last_price, last_call_at)
          VALUES (?, ?, ?, ?, ?)
@@ -89,7 +89,7 @@ func RecordMemoCall(pool *sql.DB, instrumentID int64, price float64, now time.Ti
 	return err
 }
 
-func Remember(pool *sql.DB, instrumentID int64, fp string) error {
+func Remember(pool *sql.DB, instrumentID string, fp string) error {
 	_, err := pool.Exec(
 		`INSERT INTO llm_memos (instrument_id, headline_fp, decided_at) VALUES (?, ?, ?)
          ON CONFLICT(instrument_id) DO UPDATE SET headline_fp = excluded.headline_fp,

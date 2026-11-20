@@ -203,14 +203,14 @@ func modeOf(raw string) (models.Mode, *ApiError) {
 	return "", badRequest(fmt.Sprintf("mode must be long or trade, got %q", raw))
 }
 
-func instrumentIDBySymbol(pool *sql.DB, symbol string) (int64, error) {
-	var id int64
+func instrumentIDBySymbol(pool *sql.DB, symbol string) (string, error) {
+	var id string
 	err := pool.QueryRow("SELECT id FROM instruments WHERE symbol = ?", symbol).Scan(&id)
 	if err == sql.ErrNoRows {
-		return 0, notFound("no instrument " + symbol)
+		return "", notFound("no instrument " + symbol)
 	}
 	if err != nil {
-		return 0, internalErr(err)
+		return "", internalErr(err)
 	}
 	return id, nil
 }

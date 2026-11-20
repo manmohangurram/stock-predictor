@@ -21,7 +21,7 @@ import (
 	"stock-predictor/internal/trades"
 )
 
-func setup(t *testing.T) (*sql.DB, *gin.Engine, int64) {
+func setup(t *testing.T) (*sql.DB, *gin.Engine, string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	pool, err := db.ConnectAndMigrate(t.Context(), filepath.Join(t.TempDir(), "t.db"))
@@ -29,13 +29,12 @@ func setup(t *testing.T) (*sql.DB, *gin.Engine, int64) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { pool.Close() })
-	res, err := pool.Exec(
-		`INSERT INTO instruments (symbol, class, name, currency, active, uuid)
-         VALUES ('INFY.NS', 'stock', 'Infosys', 'INR', 1, ?)`, ids.New())
-	if err != nil {
+	id := ids.New()
+	if _, err := pool.Exec(
+		`INSERT INTO instruments (id, symbol, class, name, currency, active)
+         VALUES (?, 'INFY.NS', 'stock', 'Infosys', 'INR', 1)`, id); err != nil {
 		t.Fatal(err)
 	}
-	id, _ := res.LastInsertId()
 	if _, err := rules.EnsureMonth(pool, models.ModeLong, "", 100_000, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}

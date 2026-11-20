@@ -123,7 +123,7 @@ func PollOnce(deps *EngineDeps, now time.Time) (PollReport, error) {
 
 // The headlines the model reads: the last week, newest first. So today's search is preferred
 // simply by being newest, and a holiday week falls back to whatever that week did carry.
-func storedHeadlines(pool *sql.DB, instrumentID int64, now time.Time) ([]models.Headline, error) {
+func storedHeadlines(pool *sql.DB, instrumentID string, now time.Time) ([]models.Headline, error) {
 	since := tstamp.From(now.AddDate(0, 0, -7))
 	rows, err := pool.Query(
 		`SELECT title, publisher, published_at, url FROM news
@@ -207,7 +207,7 @@ func RefreshNews(deps *EngineDeps, now time.Time) (int, error) {
 // True once per IST day per reason: the same band edge must not buy ninety-six calls.
 func bandTriggerFires(pool *sql.DB, instrument models.Instrument, reason string, now time.Time) (bool, error) {
 	marker := schedule.ISTDay(now) + "-" + reason
-	key := fmt.Sprintf("stock_band_trigger_%d", instrument.ID)
+	key := fmt.Sprintf("stock_band_trigger_%s", instrument.ID)
 	v, err := getSetting(pool, key)
 	if err != nil {
 		return false, err
@@ -592,7 +592,7 @@ func ExpireTradePositions(pool *sql.DB, now time.Time) ([]string, error) {
 		return nil, err
 	}
 	type expired struct {
-		instrumentID int64
+		instrumentID string
 		symbol       string
 		name         string
 		qty          float64
@@ -1409,7 +1409,7 @@ func clampToLimits(c models.Candidate, limits rules.Limits, pot, exposure float6
 	return c, true
 }
 
-func loadExposure(pool *sql.DB, instrumentID int64) (float64, error) {
+func loadExposure(pool *sql.DB, instrumentID string) (float64, error) {
 	var sum sql.NullFloat64
 	err := pool.QueryRow(
 		`SELECT SUM(qty * avg_cost) FROM positions
@@ -1418,7 +1418,7 @@ func loadExposure(pool *sql.DB, instrumentID int64) (float64, error) {
 	return sum.Float64, err
 }
 
-func loadTargetProfit(pool *sql.DB, instrumentID int64) (*float64, error) {
+func loadTargetProfit(pool *sql.DB, instrumentID string) (*float64, error) {
 	var v sql.NullFloat64
 	err := pool.QueryRow("SELECT target_profit_pct FROM instruments WHERE id = ?", instrumentID).Scan(&v)
 	if err == sql.ErrNoRows || !v.Valid {
@@ -1430,7 +1430,7 @@ func loadTargetProfit(pool *sql.DB, instrumentID int64) (*float64, error) {
 	return &v.Float64, nil
 }
 
-func loadPosition(pool *sql.DB, instrumentID int64) (*models.Position, error) {
+func loadPosition(pool *sql.DB, instrumentID string) (*models.Position, error) {
 	var p models.Position
 	var stop, target sql.NullFloat64
 	err := pool.QueryRow(
@@ -1454,7 +1454,7 @@ func loadPosition(pool *sql.DB, instrumentID int64) (*models.Position, error) {
 
 // Refresh the entry on the last signal when it is still a live model decision. Returns false
 // when the stored signal was rules-only, has expired, or the price left the band.
-func reuseModelSignal(pool *sql.DB, instrumentID int64, price, atr float64, now time.Time) (bool, error) {
+func reuseModelSignal(pool *sql.DB, instrumentID string, price, atr float64, now time.Time) (bool, error) {
 	var id int64
 	var entry sql.NullFloat64
 	var validUntil, reasonJSON sql.NullString
@@ -1505,7 +1505,7 @@ type lastSignal struct {
 	Target *float64
 }
 
-func latestSignal(pool *sql.DB, instrumentID int64) (*lastSignal, error) {
+func latestSignal(pool *sql.DB, instrumentID string) (*lastSignal, error) {
 	var s lastSignal
 	var entry, stop, target sql.NullFloat64
 	err := pool.QueryRow(
@@ -1530,7 +1530,7 @@ func latestSignal(pool *sql.DB, instrumentID int64) (*lastSignal, error) {
 	return &s, nil
 }
 
-func insertSignal(pool *sql.DB, instrumentID int64, r resolved, now time.Time, conversationID *string) (string, error) {
+func insertSignal(pool *sql.DB, instrumentID string, r resolved, now time.Time, conversationID *string) (string, error) {
 	reason := mustJSON(map[string]any{"reasons": r.reasons, "rationale": r.rationale})
 	var id string
 	err := pool.QueryRow(
@@ -1665,7 +1665,7 @@ func FormatBook(rows []llm.HoldingLine, current string) string {
 	return out
 }
 
-func loadRecentTrades(pool *sql.DB, instrumentID int64, now time.Time) (string, error) {
+func loadRecentTrades(pool *sql.DB, instrumentID string, now time.Time) (string, error) {
 	cutoff := tstamp.From(now.AddDate(0, 0, -7))
 	rows, err := pool.Query(
 		`SELECT qty, avg_cost, opened_at, state FROM positions
@@ -1693,7 +1693,7 @@ func loadRecentTrades(pool *sql.DB, instrumentID int64, now time.Time) (string, 
 	return join(parts, "; "), rows.Err()
 }
 
-func loadLastDecision(pool *sql.DB, instrumentID int64) (string, error) {
+func loadLastDecision(pool *sql.DB, instrumentID string) (string, error) {
 	var action, at string
 	var entry sql.NullFloat64
 	var reason sql.NullString

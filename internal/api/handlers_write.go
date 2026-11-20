@@ -26,7 +26,8 @@ func httpxClientFor(rt *rules.Runtime) (*http.Client, error) {
 
 func archiveInstrument(c *gin.Context, st *AppState) {
 	symbol := c.Param("symbol")
-	var id, active int64
+	var id string
+	var active int64
 	var archived sql.NullString
 	err := st.Pool.QueryRow("SELECT id, active, archived_at FROM instruments WHERE symbol = ?", symbol).
 		Scan(&id, &active, &archived)
@@ -339,7 +340,7 @@ func patchPosition(c *gin.Context, st *AppState) {
 		}
 		sold := oldQty - *body.Qty
 		if sold > 0 {
-			var instrumentID int64
+			var instrumentID string
 			if err := tx.QueryRow("SELECT instrument_id FROM positions WHERE id = ?", id).Scan(&instrumentID); err != nil {
 				tx.Rollback()
 				respondErr(c, internalErr(err))
@@ -440,7 +441,7 @@ func approveSignal(c *gin.Context, st *AppState) {
 		return
 	}
 
-	var instrumentID int64
+	var instrumentID string
 	var action, modeRaw, statusValue string
 	var qty, entry, stop, target sql.NullFloat64
 	err := st.Pool.QueryRow(
@@ -538,7 +539,7 @@ func approveSignal(c *gin.Context, st *AppState) {
 
 type planLeg struct {
 	ID           string
-	InstrumentID int64
+	InstrumentID string
 	Action       string
 	Qty          *float64
 	Entry        *float64
@@ -720,7 +721,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan string, body approveBody
 	c.JSON(http.StatusOK, gin.H{"id": c.Param("id"), "plan": plan, "status": "approved", "legs": posted})
 }
 
-func applyExitPlan(pool *sql.DB, instrumentID int64, mode models.Mode, stop, target *float64) error {
+func applyExitPlan(pool *sql.DB, instrumentID string, mode models.Mode, stop, target *float64) error {
 	tx, err := pool.Begin()
 	if err != nil {
 		return err
@@ -732,7 +733,7 @@ func applyExitPlan(pool *sql.DB, instrumentID int64, mode models.Mode, stop, tar
 	return tx.Commit()
 }
 
-func applyExitPlanOn(tx *sql.Tx, instrumentID int64, mode models.Mode, stop, target *float64) error {
+func applyExitPlanOn(tx *sql.Tx, instrumentID string, mode models.Mode, stop, target *float64) error {
 	if stop == nil && target == nil {
 		return nil
 	}

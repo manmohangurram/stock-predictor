@@ -151,32 +151,31 @@ func addInstrument(c *gin.Context, st *AppState) {
 
 // Adding is an act of intent, so it makes the row active — including a row the short-term scan
 // already created as a candidate. A genuinely archived instrument is not revived by it.
-func addOrPromote(pool *sql.DB, code, class, name string) (int64, string, error) {
+func addOrPromote(pool *sql.DB, code, class, name string) (string, string, error) {
 	var archived sql.NullString
 	err := pool.QueryRow("SELECT archived_at FROM instruments WHERE symbol = ?", code).Scan(&archived)
 	if err == nil && archived.Valid {
-		return 0, "", badRequest(code + " is archived — restore it from its own page")
+		return "", "", badRequest(code + " is archived — restore it from its own page")
 	}
 	if err != nil && err != sql.ErrNoRows {
-		return 0, "", internalErr(err)
+		return "", "", internalErr(err)
 	}
 	if _, err := pool.Exec(
 		`INSERT INTO instruments (symbol, class, name, currency, active, uuid)
          VALUES (?, ?, ?, 'INR', 1, ?)
          ON CONFLICT(symbol) DO UPDATE SET active = 1`, code, class, name, ids.New()); err != nil {
-		return 0, "", internalErr(err)
+		return "", "", internalErr(err)
 	}
-	var id int64
-	var uuid string
-	if err := pool.QueryRow("SELECT id, uuid FROM instruments WHERE symbol = ?", code).Scan(&id, &uuid); err != nil {
-		return 0, "", internalErr(err)
+	var id string
+	if err := pool.QueryRow("SELECT id FROM instruments WHERE symbol = ?", code).Scan(&id); err != nil {
+		return "", "", internalErr(err)
 	}
-	return id, uuid, nil
+	return id, id, nil
 }
 
 func refreshInstrument(c *gin.Context, st *AppState) {
 	symbol := c.Param("symbol")
-	var id int64
+	var id string
 	var classRaw string
 	var active int64
 	err := st.Pool.QueryRow("SELECT id, class, active FROM instruments WHERE symbol = ?", symbol).
@@ -206,7 +205,7 @@ func refreshInstrument(c *gin.Context, st *AppState) {
 
 // refreshAny fetches prices and headlines. An archived book is not priced, and a read must not
 // rebuild what archiving cleared.
-func refreshAny(pool *sql.DB, id int64, symbol, class string, rt *rules.Runtime, cache bool) (int, int, error) {
+func refreshAny(pool *sql.DB, id string, symbol, class string, rt *rules.Runtime, cache bool) (int, int, error) {
 	if class == string(models.ClassMutualFund) {
 		bars, err := refreshFund(pool, id, symbol, rt, cache)
 		if err == nil {
@@ -235,7 +234,7 @@ func refreshAny(pool *sql.DB, id int64, symbol, class string, rt *rules.Runtime,
 	return bars, news, err
 }
 
-func refreshFund(pool *sql.DB, id int64, symbol string, rt *rules.Runtime, cache bool) (int, error) {
+func refreshFund(pool *sql.DB, id string, symbol string, rt *rules.Runtime, cache bool) (int, error) {
 	code := ""
 	if symbol != "" && allDigits(symbol) {
 		code = symbol

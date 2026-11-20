@@ -7,25 +7,26 @@ import (
 	"time"
 
 	"stock-predictor/internal/db"
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/ledger"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/rules"
 )
 
-func setup(t *testing.T) (*sql.DB, int64) {
+func setup(t *testing.T) (*sql.DB, string) {
 	t.Helper()
 	pool, err := db.ConnectAndMigrate(t.Context(), filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { pool.Close() })
-	res, err := pool.Exec(
-		"INSERT INTO instruments (symbol, class, name, currency, active) VALUES ('INFY.NS', 'stock', 'Infosys', 'INR', 1)",
-	)
-	if err != nil {
+	id := ids.New()
+	if _, err := pool.Exec(
+		"INSERT INTO instruments (id, symbol, class, name, currency, active) VALUES (?, 'INFY.NS', 'stock', 'Infosys', 'INR', 1)",
+		id,
+	); err != nil {
 		t.Fatal(err)
 	}
-	id, _ := res.LastInsertId()
 	if _, err := rules.EnsureMonth(pool, models.ModeLong, "", 100_000, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
@@ -117,13 +118,12 @@ func TestABuyMustFitThePurse(t *testing.T) {
 
 func TestAMutualFundCannotEnterTheTradingPot(t *testing.T) {
 	pool, _ := setup(t)
-	res, err := pool.Exec(
-		"INSERT INTO instruments (symbol, class, name, currency, active) VALUES ('F', 'mutual_fund', 'Fund', 'INR', 1)",
-	)
-	if err != nil {
+	fundID := "01a1f000-0000-7000-8000-0000000000f1"
+	if _, err := pool.Exec(
+		"INSERT INTO instruments (id, symbol, class, name, currency, active) VALUES (?, 'F', 'mutual_fund', 'Fund', 'INR', 1)", fundID,
+	); err != nil {
 		t.Fatal(err)
 	}
-	fundID, _ := res.LastInsertId()
 	if err := Record(pool, fundID, SideBuy, 1, 100, nil, nil, models.ModeTrade); err == nil {
 		t.Fatal("a fund entered the trading pot")
 	}
