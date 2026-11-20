@@ -413,6 +413,10 @@ export interface ApiKey {
 }
 
 export const api = {
+  /** The symbols a delete confirmation may name; EMPTY when the book holds nothing. */
+  resetCandidates: () => req<{ symbols: string[] }>("/api/reset/candidates"),
+  resetBook: (symbol: string) =>
+    req<{ deleted: Record<string, number> }>("/api/reset", json({ symbol })),
   /** Auth: the one door. Setup exists only while no admin does. */
   authStatus: () =>
     req<{ needs_setup: boolean; signed_in?: boolean; username?: string }>("/api/auth/status"),

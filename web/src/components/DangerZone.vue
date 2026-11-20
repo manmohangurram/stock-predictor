@@ -33,11 +33,6 @@ function close(): void {
   dialog.value?.close();
 }
 
-const hint = () =>
-  symbols.value.length
-    ? `In this book: ${symbols.value.slice(0, 4).join(", ")}${symbols.value.length > 4 ? ", …" : ""}`
-    : "The book is empty, so type EMPTY.";
-
 function matches(): boolean {
   const typed = symbol.value.trim().toUpperCase();
   if (!typed) return false;
@@ -82,11 +77,13 @@ async function wipe(): Promise<void> {
       <form method="dialog" class="delete-body" @submit.prevent="wipe">
         <header class="delete-head">
           <span class="delete-icon" aria-hidden="true">!</span>
-          <div>
-            <h2 id="delete-title">Delete everything</h2>
+          <div class="delete-text">
+            <div class="delete-title-row">
+              <h2 id="delete-title">Delete everything</h2>
+              <span class="pill todo">cannot be undone</span>
+            </div>
             <p class="delete-sub">Clears the book. The admin and your session stay.</p>
           </div>
-          <span class="pill todo">cannot be undone</span>
         </header>
 
         <p class="delete-lede">
@@ -94,10 +91,12 @@ async function wipe(): Promise<void> {
           records, MCP keys and settings all go. Type the symbol you are willing to lose.
         </p>
 
-        <div ref="field">
+        <div ref="field" class="delete-field">
           <SettingField id="delete_symbol" label="Symbol" v-model="symbol" placeholder="INFY.NS" />
+          <p class="hint">
+            {{ symbols.length ? `In this book: ${symbols.slice(0, 4).join(", ")}${symbols.length > 4 ? ", …" : ""}` : "The book is empty, so type EMPTY." }}
+          </p>
         </div>
-        <p class="hint">{{ hint() }}</p>
 
         <div v-if="error" class="error-band" role="alert">{{ error }}</div>
 
@@ -118,7 +117,7 @@ async function wipe(): Promise<void> {
 .delete-open:hover { background: var(--stamp-oxide-bg); }
 
 .delete-dialog {
-  width: min(520px, calc(100vw - 32px));
+  width: min(540px, calc(100vw - 32px));
   padding: 0;
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius-lg);
@@ -126,25 +125,64 @@ async function wipe(): Promise<void> {
   color: var(--ink);
 }
 .delete-dialog::backdrop { background: oklch(0.2 0.01 60 / 0.45); }
-.delete-body { display: grid; gap: var(--space-4); padding: var(--space-6); margin: 0; }
-.delete-head { display: flex; align-items: flex-start; gap: var(--space-3); }
+
+/* One text edge: the icon owns a fixed first column, everything written sits in the second. */
+.delete-body {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: var(--space-4);
+  row-gap: var(--space-4);
+  padding: var(--space-6);
+  margin: 0;
+}
+.delete-head { display: contents; }
 .delete-icon {
-  width: 24px; height: 24px; flex: none;
-  display: grid; place-items: center;
+  grid-column: 1;
+  align-self: center;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
   border-radius: 50%;
   background: var(--stamp-oxide-bg);
   color: var(--stamp-oxide);
   font-family: var(--font-form);
+  font-size: var(--text-lg);
   font-weight: 700;
+  line-height: 1;
 }
-.delete-head > div { flex: 1; min-width: 0; }
-.delete-head h2 { margin: 0; font-family: var(--font-form); font-size: var(--text-lg); color: var(--stamp-oxide); }
-.delete-sub { margin: 2px 0 0; font-size: var(--text-sm); color: var(--ink-muted); }
-.delete-lede { margin: 0; color: var(--ink-secondary); font-size: var(--text-sm); }
-.hint { margin: 0; font-size: var(--text-sm); color: var(--ink-tertiary); }
+.delete-text { grid-column: 2; align-self: center; min-width: 0; }
+.delete-title-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.delete-title-row h2 {
+  margin: 0;
+  font-family: var(--font-form);
+  font-size: var(--text-xl);
+  line-height: 1.15;
+  color: var(--stamp-oxide);
+}
+.delete-sub { margin: var(--space-1) 0 0; font-size: var(--text-sm); color: var(--ink-muted); }
+.delete-lede { grid-column: 2; margin: 0; color: var(--ink-secondary); font-size: var(--text-sm); }
+.delete-field { grid-column: 2; display: grid; gap: var(--space-2); }
 .delete-body :deep(.field) { width: 100%; }
 .delete-body :deep(.field input) { width: 100%; max-width: none; }
-.delete-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.hint { margin: 0; font-size: var(--text-sm); color: var(--ink-tertiary); }
+.delete-body .error-band { grid-column: 2; margin: 0; }
+.delete-foot {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
 .delete-action { border-color: var(--stamp-oxide); color: var(--stamp-oxide); background: var(--paper-raised); }
 .delete-action:hover { background: var(--stamp-oxide-bg); }
+
+@media (max-width: 480px) {
+  .delete-body { grid-template-columns: 1fr; padding: var(--space-4); }
+  .delete-title-row { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+  .delete-title-row h2 { font-size: var(--text-lg); }
+  .delete-icon { grid-column: 1; align-self: start; }
+  .delete-text, .delete-lede, .delete-field, .delete-body .error-band { grid-column: 1; }
+  .delete-foot { grid-column: 1; }
+}
 </style>
