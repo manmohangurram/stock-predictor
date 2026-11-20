@@ -14,24 +14,25 @@ comment, it is a changelog entry.
 Existing comments in this repo predate the rule. Do not add to them, and do not use them as
 precedent for a new multi-line block.
 
-## Reading code: never open a whole file to inspect one function
+## Reading code: always load `code-read`, never open a whole file for one function
 
-**Always load the `code-read` skill before touching code** (`/skill:code-read`, or `read`
-its `SKILL.md`). It encodes this whole flow. The commands below are the concrete spelling (CLI)
-for when the skill is already known.
+**Every session, before touching code: load the `code-read` skill** (`skill` tool, name
+`code-read`; it lives in `~/.agents/skills/code-read/SKILL.md`). It is the required route into this
+repo — locate by name, file name or keyword, outline the file, read one function. The commands
+below are the concrete spelling for when the skill is already loaded.
 
-One index, three queries, then one narrow read.
-
-**1. Index the repo** (once; persists and re-syncs):
+**1. Index** (once per checkout; re-index when `index_status` is older than the last commit):
 
 ```sh
-codebase-memory-mcp cli index_repository --repo-path /home/mohan/projects/stock-predicter
+codebase-memory-mcp cli index_status --project stock-predictor
+codebase-memory-mcp cli index_repository --repo-path "C:/Users/Mohan/Documents/Projects/stock-predictor"
 ```
 
 **2. Locate.** Never guess a path:
 
 ```sh
 codebase-memory-mcp cli search_graph --project stock-predictor --name-pattern '<symbol>'
+codebase-memory-mcp cli search_graph --project stock-predictor --file-pattern '<file fragment>'
 codebase-memory-mcp cli search_graph --project stock-predictor --query '<what it does>'
 codebase-memory-mcp cli search_code  --project stock-predictor --pattern '<exact string>'
 ```
@@ -40,12 +41,19 @@ codebase-memory-mcp cli search_code  --project stock-predictor --pattern '<exact
 
 ```sh
 codebase-memory-mcp cli get_file_outline --project stock-predictor --file-path internal/llm/orchestrate.go
-codebase-memory-mcp cli get_code_snippet --project stock-predictor --name <qualified.name>
+codebase-memory-mcp cli trace_path --project stock-predictor --function-name <Name> --direction both --depth 2
+codebase-memory-mcp cli get_code_snippet --project stock-predictor --qualified-name <qn>
 ```
+
+`--qualified-name` is the flag; `--name` silently returns nothing. The `qn` column from step 2 is
+the argument.
 
 **4. Read only those ranges**, batched into one turn. Read a whole file only if it is under
 ~120 lines or the question genuinely spans it. `search_code` confirms an exact literal — then
 read the range around the hit.
+
+A stale graph is worse than no graph: it answers with code that no longer exists. If a lookup for a
+file you know is missing, re-index before concluding anything.
 
 Markdown (docs, specs, `.interface-design/`) is indexed by the graph too, but for prose read the
 files directly when you need exact wording.
