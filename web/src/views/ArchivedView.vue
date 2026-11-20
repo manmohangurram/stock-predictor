@@ -170,6 +170,6 @@ const visit = (symbol: string): void => void router.push(`/i/${encodeURIComponen
 .danger { margin-top: var(--space-8); border-top: 1px solid var(--rule); padding-top: var(--space-4); }
 .danger h2 { color: var(--stamp-oxide); }
 .danger .pill { border-radius: var(--radius-pill); }
-.danger .row { align-items: end; }
+
 .d-btn.danger { color: var(--stamp-oxide); border-color: var(--stamp-oxide); }
 </style>
