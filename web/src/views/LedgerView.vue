@@ -45,7 +45,7 @@ interface Entry {
   fund: boolean;
 }
 const entries = computed<Entry[]>(() => {
-  const shown = [...(data.value?.signals ?? [])].sort((a, b) => b.id - a.id);
+  const shown = [...(data.value?.signals ?? [])].sort((a, b) => (a.id < b.id ? 1 : -1));
   const plans = new Map<number, SignalRow[]>();
   for (const s of shown) {
     if (s.plan_id) plans.set(s.plan_id, [...(plans.get(s.plan_id) ?? []), s]);

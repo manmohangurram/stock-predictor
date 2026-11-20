@@ -15,6 +15,7 @@ import (
 
 	"stock-predictor/internal/config"
 	"stock-predictor/internal/db"
+	"stock-predictor/internal/ids"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/rules"
 	"stock-predictor/internal/trades"
@@ -134,16 +135,16 @@ func TestTheDashboardCarriesTheBookAndAnswers304(t *testing.T) {
 
 func TestApprovingASignalRecordsTheFillAndItAppearsImmediately(t *testing.T) {
 	pool, r, id := setup(t)
-	res, err := pool.Exec(
+	signalUUID := ids.New()
+	_, err := pool.Exec(
 		`INSERT INTO signals (instrument_id, action, qty, entry, stop, target, valid_until,
-            reason_json, created_at, status, mode)
-         VALUES (?, 'BUY', 10, 100, 95, 110, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'long')`,
-		id, time.Now().UTC().Format(time.RFC3339))
+            reason_json, created_at, status, mode, uuid)
+         VALUES (?, 'BUY', 10, 100, 95, 110, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'long', ?)`,
+		id, time.Now().UTC().Format(time.RFC3339), signalUUID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	signalID, _ := res.LastInsertId()
-	code, body := do(t, r, http.MethodPost, "/api/signals/"+itoa(signalID)+"/approve",
+	code, body := do(t, r, http.MethodPost, "/api/signals/"+signalUUID+"/approve",
 		map[string]any{"qty": 10, "price": 100}, nil)
 	if code != http.StatusOK {
 		t.Fatalf("%d %s", code, body)
@@ -210,24 +211,25 @@ func TestArchivingAHeldInstrumentIsRefused(t *testing.T) {
 
 func TestRejectingOneLegRejectsThePlan(t *testing.T) {
 	pool, r, id := setup(t)
-	insert := func(action string, planID int64) int64 {
+	insert := func(action string, planID int64) (int64, string) {
+		uid := ids.New()
 		res, err := pool.Exec(
 			`INSERT INTO signals (instrument_id, action, qty, entry, valid_until, reason_json,
-                created_at, status, mode, plan_id)
-             VALUES (?, ?, 1, 100, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'long', ?)`,
-			id, action, time.Now().UTC().Format(time.RFC3339), planID)
+                created_at, status, mode, plan_id, uuid)
+             VALUES (?, ?, 1, 100, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'long', ?, ?)`,
+			id, action, time.Now().UTC().Format(time.RFC3339), planID, uid)
 		if err != nil {
 			t.Fatal(err)
 		}
 		sid, _ := res.LastInsertId()
-		return sid
+		return sid, uid
 	}
-	first := insert("SELL", 0)
+	first, _ := insert("SELL", 0)
 	if _, err := pool.Exec("UPDATE signals SET plan_id = ? WHERE id = ?", first, first); err != nil {
 		t.Fatal(err)
 	}
-	second := insert("BUY", first)
-	code, body := do(t, r, http.MethodPost, "/api/signals/"+itoa(second)+"/reject",
+	_, secondUUID := insert("BUY", first)
+	code, body := do(t, r, http.MethodPost, "/api/signals/"+secondUUID+"/reject",
 		map[string]any{"reason": "not today"}, nil)
 	if code != http.StatusOK {
 		t.Fatalf("%d %s", code, body)

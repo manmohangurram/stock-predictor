@@ -1,5 +1,6 @@
 export interface SignalRow {
-  id: number;
+  /** The uuid the server knows this decision by. */
+  id: string;
   symbol: string;
   /** The readable name — a plan card says "Infosys", not "INFY.NS". */
   name: string;
@@ -21,7 +22,7 @@ export interface SignalRow {
   filled_qty: number | null;
   filled_price: number | null;
   /** Set when this row is one leg of a plan; every leg shares the first leg's id. */
-  plan_id: number | null;
+  plan_id: string | null;
   /** The sentence that explains the whole plan, carried on every leg. */
   plan_rationale: string | null;
   /** "stock" or "fund" — the two plans are different arguments. */
@@ -183,7 +184,7 @@ export interface CallRow {
   endpoint: string;
   /** Why the model was asked: "price moved …", "new headline …". */
   trigger: string | null;
-  decision_id: number | null;
+  decision_id: string | null;
   decision_status: "pending" | "approved" | "rejected" | null;
   /** "BLOCKED" when the proposal could not be funded. */
   decision_action: string | null;
@@ -385,10 +386,10 @@ export const api = {
       price?: number;
       at?: string;
       /** A plan carries one fill per leg. */
-      fills?: { id: number; qty: number; price: number }[];
+      fills?: { id: string; qty: number; price: number }[];
     },
   ) =>
-    req<{ id: number; status: string; recorded: boolean }>(
+    req<{ id: string; status: string; recorded: boolean }>(
       `/api/signals/${id}/approve`,
       json(body),
     ),
@@ -399,8 +400,8 @@ export const api = {
       ...json(body),
       method: "PATCH",
     }),
-  rejectSignal: (id: number, reason?: string) =>
-    req<{ id: number; status: string }>(`/api/signals/${id}/reject`, json({ reason })),
+  rejectSignal: (id: string, reason?: string) =>
+    req<{ id: string; status: string }>(`/api/signals/${id}/reject`, json({ reason })),
   refreshInstrument: (symbol: string) =>
     // The server answers `{bars, headlines}`; the old name said `news` and printed "undefined".
     req<{ ok: boolean; bars: number; headlines: number; cached: boolean }>(
