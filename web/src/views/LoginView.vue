@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { nextTick, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, auth } from "../api";
+import SettingField from "../components/SettingField.vue";
 
 const router = useRouter();
 const mode = ref<"login" | "setup">("login");
@@ -11,6 +12,7 @@ const confirm = ref("");
 const error = ref("");
 const busy = ref(false);
 const ready = ref(false);
+const band = ref<HTMLElement | null>(null);
 
 onMounted(async () => {
   try {
@@ -24,11 +26,20 @@ onMounted(async () => {
   }
 });
 
+async function fail(message: string): Promise<void> {
+  error.value = message;
+  await nextTick();
+  band.value?.focus();
+}
+
 async function submit(): Promise<void> {
   error.value = "";
+  if (!username.value.trim()) return fail("Enter the username.");
+  if (password.value.length < (mode.value === "setup" ? 10 : 1)) {
+    return fail(mode.value === "setup" ? "Use at least 10 characters." : "Enter the password.");
+  }
   if (mode.value === "setup" && password.value !== confirm.value) {
-    error.value = "The two passwords do not match.";
-    return;
+    return fail("The two passwords do not match.");
   }
   busy.value = true;
   try {
@@ -38,11 +49,9 @@ async function submit(): Promise<void> {
     await router.push("/");
   } catch (e) {
     const text = String(e);
-    error.value = text.includes("401")
-      ? "That password does not match."
-      : text.includes("409")
-        ? "This instance already has an admin. Sign in instead."
-        : text;
+    if (text.includes("401")) await fail("That password does not match.");
+    else if (text.includes("409")) await fail("This instance already has an admin. Sign in instead.");
+    else await fail(text);
   } finally {
     busy.value = false;
   }
@@ -50,66 +59,102 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <section class="login">
-    <div class="card">
-      <header>
+  <section class="gate">
+    <div class="gate-card">
+      <div class="gate-brand">
+        <img src="/favicon.svg" width="28" height="28" alt="" aria-hidden="true" />
+        <b>Stock Predictor</b>
+      </div>
+
+      <header class="pane-head">
         <h1>{{ mode === "setup" ? "Set up the admin" : "Sign in" }}</h1>
-        <p class="lede">
-          {{
-            mode === "setup"
-              ? "This book has no password yet. Choose one now — it is the only door, and it cannot be recovered."
-              : "One admin, one password. Your book is behind it."
-          }}
-        </p>
       </header>
+      <p class="lede">
+        {{
+          mode === "setup"
+            ? "This book has no password yet. Choose one now — it is the only door, and it cannot be recovered."
+            : "One admin, one password. Your book is behind it."
+        }}
+      </p>
 
-      <form autocomplete="off" @submit.prevent="submit">
-        <label class="field">
-          <span class="lbl">Username</span>
-          <input v-model="username" type="text" autocapitalize="none" :readonly="!ready" />
-        </label>
-        <label class="field">
-          <span class="lbl">Password</span>
-          <input
-            v-model="password"
-            type="password"
-            :placeholder="mode === 'setup' ? 'at least 10 characters' : ''"
-            autofocus
-          />
-        </label>
-        <label v-if="mode === 'setup'" class="field">
-          <span class="lbl">Again</span>
-          <input v-model="confirm" type="password" />
-        </label>
+      <form autocomplete="on" @submit.prevent="submit">
+        <SettingField
+          id="username"
+          label="Username"
+          v-model="username"
+          autocomplete="username"
+          :disabled="!ready"
+        />
+        <SettingField
+          id="password"
+          label="Password"
+          type="password"
+          v-model="password"
+          :autocomplete="mode === 'setup' ? 'new-password' : 'current-password'"
+          :placeholder="mode === 'setup' ? '10+ characters' : ''"
+          autofocus
+        />
+        <SettingField
+          v-if="mode === 'setup'"
+          id="confirm"
+          label="Password again"
+          type="password"
+          v-model="confirm"
+          autocomplete="new-password"
+        />
 
-        <div v-if="error" class="error-band" role="alert">{{ error }}</div>
+        <div v-if="error" ref="band" class="error-band" role="alert" tabindex="-1">{{ error }}</div>
 
-        <button class="d-btn d-btn-primary wide" type="submit" :disabled="busy || !ready">
-          {{ mode === "setup" ? "Create the admin and sign in" : "Sign in" }}
-        </button>
+        <div class="gate-foot">
+          <button class="d-btn d-btn-primary" type="submit" :disabled="busy || !ready">
+            {{ mode === "setup" ? "Create the admin and sign in" : "Sign in" }}
+          </button>
+          <span class="note">{{ mode === "setup" ? "First run — this happens once." : "" }}</span>
+        </div>
       </form>
     </div>
   </section>
 </template>
 
 <style scoped>
-.login {
+.gate {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: var(--space-6);
+  padding: var(--space-6) var(--space-4);
   background: var(--paper);
 }
-.card {
-  width: min(420px, 100%);
+.gate-card {
+  width: min(440px, 100%);
   background: var(--paper-raised);
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
   padding: var(--space-6);
   box-shadow: var(--shadow-1);
 }
-h1 { font-family: var(--font-form); font-size: var(--text-xl); margin: 0 0 var(--space-2); }
+.gate-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  font-family: var(--font-form);
+}
+.gate-brand b { font-size: var(--text-base); }
+h1 {
+  font-family: var(--font-form);
+  font-size: var(--text-xl);
+  margin: 0 0 var(--space-2);
+}
 .lede { color: var(--ink-muted); margin: 0 0 var(--space-5); }
 form { display: grid; gap: var(--space-4); }
-.wide { width: 100%; }
+form :deep(.field),
+form :deep(.field-line) { width: 100%; }
+form :deep(.field input) { width: 100%; min-width: 0; flex: 1 1 auto; }
+.gate-foot {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.gate-foot .d-btn { width: 100%; }
+.gate-foot .note { text-align: center; }
 </style>

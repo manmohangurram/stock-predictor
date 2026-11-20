@@ -11,9 +11,21 @@ withDefaults(
     placeholder?: string;
     min?: string;
     disabled?: boolean;
+    autocomplete?: string;
+    autofocus?: boolean;
     modelValue: string;
   }>(),
-  { type: "text", unit: "", help: "", step: undefined, placeholder: "", min: undefined, disabled: false },
+  {
+    type: "text",
+    unit: "",
+    help: "",
+    step: undefined,
+    placeholder: "",
+    min: undefined,
+    disabled: false,
+    autocomplete: "off",
+    autofocus: false,
+  },
 );
 defineEmits<{ "update:modelValue": [string] }>();
 </script>
@@ -30,8 +42,9 @@ defineEmits<{ "update:modelValue": [string] }>();
         :min="min"
         :placeholder="placeholder"
         :disabled="disabled"
+        :autocomplete="autocomplete"
+        :autofocus="autofocus"
         :value="modelValue"
-        autocomplete="off"
         @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       />
       <span v-if="unit" class="unit">{{ unit }}</span>

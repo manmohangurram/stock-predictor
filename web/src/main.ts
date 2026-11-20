@@ -15,19 +15,6 @@ import SettingsView from "./views/SettingsView.vue";
  * Vue owns the app element and the URL. Until the last page is ported, every route renders through
  * `LegacyView`, which hands the markup to the plain renderers in `renderer.ts`.
  */
-let opened = false;
-
-// The access token lives in memory, so a fresh load asks the refresh cookie for one before the
-// first page renders; a refused refresh sends the visitor to the sign-in screen.
-router.beforeEach(async (to) => {
-  if (to.path === "/login") return true;
-  if (!opened) {
-    opened = true;
-    if (!auth.token()) await auth.refresh();
-  }
-  return auth.token() ? true : "/login";
-});
-
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -42,6 +29,19 @@ const router = createRouter({
     // Anything else is the ledger: an unknown URL lands somewhere useful.
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],
+});
+
+let opened = false;
+
+// The access token lives in memory, so a fresh load asks the refresh cookie for one before the
+// first page renders; a refused refresh sends the visitor to the sign-in screen.
+router.beforeEach(async (to) => {
+  if (to.path === "/login") return true;
+  if (!opened) {
+    opened = true;
+    if (!auth.token()) await auth.refresh();
+  }
+  return auth.token() ? true : "/login";
 });
 
 createApp(App).use(router).mount("#app");
