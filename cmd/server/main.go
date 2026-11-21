@@ -235,10 +235,12 @@ func run(debug bool) error {
 				fmt.Printf("fund scan: %+v\n", scan)
 			}
 		}
-		if planned, err := engine.PlanTrade(deps, time.Now().UTC(), nil); err != nil {
+		if planned, note, err := engine.PlanTrade(deps, time.Now().UTC(), nil); err != nil {
 			fmt.Println("trade plan failed:", err)
 		} else if planned {
 			fmt.Println("trade plan: stored")
+		} else if note != "" {
+			fmt.Println("trade plan:", note)
 		} else {
 			fmt.Println("trade plan: nothing worth doing")
 		}
@@ -426,10 +428,10 @@ func pollLoop(ctx context.Context, pool *sql.DB, cfg *config.Config, manual <-ch
 					slog.Info("fund scan", "examined", scan.Examined, "proposed", scan.Proposed)
 				}
 			}
-			if _, err := engine.PlanFunds(deps, time.Now().UTC(), nil); err != nil {
+			if _, _, err := engine.PlanFunds(deps, time.Now().UTC(), nil); err != nil {
 				slog.Warn("fund plan failed", "error", err)
 			}
-			if _, err := engine.PlanTrade(deps, time.Now().UTC(), nil); err != nil {
+			if _, _, err := engine.PlanTrade(deps, time.Now().UTC(), nil); err != nil {
 				slog.Warn("trade plan failed", "error", err)
 			}
 		}
@@ -482,28 +484,19 @@ func runManual(deps *engine.EngineDeps, req api.ManualRequest) {
 			report.Asked, report.Polled, report.Signals, report.Plans)
 	case runs.ManualPlanStock:
 		var planned bool
-		planned, err = engine.PlanStock(deps, now, &req.RunID)
-		if planned {
-			summary = "a stock plan is in the ledger"
-		} else {
-			summary = "nothing worth doing — no plan"
-		}
+		var note string
+		planned, note, err = engine.PlanStock(deps, now, &req.RunID)
+		summary = planRunSummary(planned, note, "a stock plan is in the ledger")
 	case runs.ManualPlanTrade:
 		var planned bool
-		planned, err = engine.PlanTrade(deps, now, &req.RunID)
-		if planned {
-			summary = "a trade plan is in the ledger"
-		} else {
-			summary = "nothing worth doing — no trade plan"
-		}
+		var note string
+		planned, note, err = engine.PlanTrade(deps, now, &req.RunID)
+		summary = planRunSummary(planned, note, "a trade plan is in the ledger")
 	case runs.ManualPlanFund:
 		var planned bool
-		planned, err = engine.PlanFunds(deps, now, &req.RunID)
-		if planned {
-			summary = "a fund plan is in the ledger"
-		} else {
-			summary = "nothing worth doing — no plan"
-		}
+		var note string
+		planned, note, err = engine.PlanFunds(deps, now, &req.RunID)
+		summary = planRunSummary(planned, note, "a fund plan is in the ledger")
 	case runs.ManualDecide:
 		var line *string
 		line, err = engine.DecideOne(deps, req.Cmd.Symbol, now)
@@ -519,6 +512,18 @@ func runManual(deps *engine.EngineDeps, req api.ManualRequest) {
 		return
 	}
 	_ = runs.Finish(deps.Pool, req.RunID, summary, nil)
+}
+
+// A manual plan says what it did, and when nothing happened it says why: a run that only reports
+// "nothing worth doing" cannot be told apart from a skipped one on the audit page.
+func planRunSummary(planned bool, note, stored string) string {
+	switch {
+	case planned:
+		return stored
+	case note != "":
+		return note
+	}
+	return "nothing worth doing — no plan"
 }
 
 // rollMonths is the month boundary, once per purse: stocks, mutual funds, short-term.

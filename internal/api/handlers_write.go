@@ -644,9 +644,10 @@ func approveSignal(c *gin.Context, st *AppState) {
 		return
 	}
 	note := fmt.Sprintf("decision %s", id)
-	var already int64
+	var already string
 	err = st.Pool.QueryRow("SELECT id FROM trades WHERE note = ? AND instrument_id = ?", note, instrumentID).
 		Scan(&already)
+	recorded := err == sql.ErrNoRows
 	if err == sql.ErrNoRows {
 		if rerr := trades.Record(st.Pool, instrumentID, side, fillQty, fillPrice, &note, &when, mode); rerr != nil {
 			respondErr(c, badRequest(rerr.Error()))
@@ -667,10 +668,10 @@ func approveSignal(c *gin.Context, st *AppState) {
 		return
 	}
 	slog.Info("decision approved", "id", id, "side", side, "qty", fillQty, "price", fillPrice,
-		"recorded", already == 0)
+		"recorded", recorded)
 	c.JSON(http.StatusOK, gin.H{
 		"id": c.Param("id"), "status": "approved", "filled_qty": fillQty,
-		"filled_price": fillPrice, "recorded": already == 0,
+		"filled_price": fillPrice, "recorded": recorded,
 	})
 }
 
@@ -822,7 +823,7 @@ func approvePlan(c *gin.Context, st *AppState, id, plan string, body approveBody
 			return
 		}
 		note := fmt.Sprintf("decision %s", p.leg.ID)
-		var already int64
+		var already string
 		err := tx.QueryRow("SELECT id FROM trades WHERE note = ? AND instrument_id = ?",
 			note, p.leg.InstrumentID).Scan(&already)
 		if err == sql.ErrNoRows {
