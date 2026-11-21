@@ -12,7 +12,8 @@ import (
 )
 
 // The one door into the app. The SPA holds the access token in memory and sends it as a bearer; the
-// refresh token lives in an HttpOnly cookie scoped to /api/auth so a script cannot read it.
+// refresh token lives in an HttpOnly cookie scoped to /api, so a script cannot read it and the
+// session list can recognise which browser is asking.
 
 const refreshCookie = "sp_refresh"
 
@@ -26,12 +27,16 @@ func setRefreshCookie(c *gin.Context, st *AppState, token string, expires time.T
 		age = 0
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(refreshCookie, token, age, "/api/auth", "", secureCookies(st), true)
+	// The cookie moved from /api/auth to /api; a browser that signed in before keeps both, and
+	// the longer path is sent first, so the stale one has to be retired here.
+	c.SetCookie(refreshCookie, "", -1, "/api/auth", "", secureCookies(st), true)
+	c.SetCookie(refreshCookie, token, age, "/api", "", secureCookies(st), true)
 }
 
 func clearRefreshCookie(c *gin.Context, st *AppState) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(refreshCookie, "", -1, "/api/auth", "", secureCookies(st), true)
+	c.SetCookie(refreshCookie, "", -1, "/api", "", secureCookies(st), true)
 }
 
 func bearerFrom(c *gin.Context) string {
@@ -204,6 +209,48 @@ func authLogout(c *gin.Context, st *AppState) {
 	c.JSON(http.StatusOK, gin.H{"signed_out": true})
 }
 
+// authSessions lists the live browser sessions, the one making the request marked current.
+func authSessions(c *gin.Context, st *AppState) {
+	a, err := auth.Current(st.Pool)
+	if err != nil {
+		respondErr(c, notFound("no admin"))
+		return
+	}
+	presented, _ := c.Cookie(refreshCookie)
+	list, err := auth.Sessions(st.Pool, a.ID, presented, time.Now().UTC())
+	if err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	out := make([]gin.H, 0, len(list))
+	for _, s := range list {
+		out = append(out, gin.H{
+			"id":         s.ID,
+			"created_at": s.CreatedAt,
+			"expires_at": s.ExpiresAt,
+			"user_agent": s.UserAgent,
+			"current":    s.Current,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"sessions": out})
+}
+
+// authSessionsRevokeAll ends every session and clears this browser's cookie too.
+func authSessionsRevokeAll(c *gin.Context, st *AppState) {
+	a, err := auth.Current(st.Pool)
+	if err != nil {
+		respondErr(c, notFound("no admin"))
+		return
+	}
+	n, err := auth.RevokeAllCount(st.Pool, a.ID, time.Now().UTC())
+	if err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	clearRefreshCookie(c, st)
+	c.JSON(http.StatusOK, gin.H{"revoked": n, "signed_out": true})
+}
+
 func authMe(c *gin.Context, st *AppState) {
 	a, err := auth.Current(st.Pool)
 	if err != nil {
@@ -211,6 +258,28 @@ func authMe(c *gin.Context, st *AppState) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"username": a.Username})
+}
+
+func authUsername(c *gin.Context, st *AppState) {
+	var body struct {
+		Password string `json:"password"`
+		Username string `json:"username"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		respondErr(c, badRequest("invalid body"))
+		return
+	}
+	a, err := auth.Rename(st.Pool, body.Password, body.Username)
+	switch err {
+	case nil:
+		c.JSON(http.StatusOK, gin.H{"username": a.Username})
+	case auth.ErrBadPassword:
+		respondErr(c, &ApiError{Status: http.StatusForbidden, Message: "current password is wrong"})
+	case auth.ErrBadUsername:
+		respondErr(c, badRequest(err.Error()))
+	default:
+		respondErr(c, internalErr(err))
+	}
 }
 
 func authPassword(c *gin.Context, st *AppState) {

@@ -160,3 +160,147 @@ func TestSignInIssuesAPairAndRefreshRotatesIt(t *testing.T) {
 		t.Fatalf("a replayed refresh token answered %d", w3.Code)
 	}
 }
+
+func TestTheSignInNameCanBeChangedAndOnlyWithThePassword(t *testing.T) {
+	r, _ := freshApp(t)
+	if w := post(t, r, "/api/auth/setup", `{"username":"admin","password":"a-long-enough-password"}`); w.Code != http.StatusCreated {
+		t.Fatalf("setup %d %s", w.Code, w.Body.String())
+	}
+
+	if w := post(t, r, "/api/auth/username", `{"username":"mohan","password":"wrong"}`); w.Code != http.StatusForbidden {
+		t.Fatalf("a wrong password renamed the admin: %d %s", w.Code, w.Body.String())
+	}
+	if w := post(t, r, "/api/auth/username", `{"username":"   ","password":"a-long-enough-password"}`); w.Code != http.StatusBadRequest {
+		t.Fatalf("an empty name answered %d %s", w.Code, w.Body.String())
+	}
+
+	w := post(t, r, "/api/auth/username", `{"username":" mohan ","password":"a-long-enough-password"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	var renamed struct {
+		Username string `json:"username"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &renamed); err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Username != "mohan" {
+		t.Fatalf("the name came back as %q", renamed.Username)
+	}
+
+	if w := post(t, r, "/api/auth/login", `{"username":"admin","password":"a-long-enough-password"}`); w.Code != http.StatusUnauthorized {
+		t.Fatalf("the old name still signs in: %d", w.Code)
+	}
+	if w := post(t, r, "/api/auth/login", `{"username":"mohan","password":"a-long-enough-password"}`); w.Code != http.StatusOK {
+		t.Fatalf("the new name does not sign in: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSessionsListTheBrowsersAndOneSwitchEndsThemAll(t *testing.T) {
+	r, _ := freshApp(t)
+	if w := post(t, r, "/api/auth/setup", `{"username":"admin","password":"a-long-enough-password"}`); w.Code != http.StatusCreated {
+		t.Fatalf("setup %d %s", w.Code, w.Body.String())
+	}
+
+	login := func(agent string) (token, refresh string) {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login",
+			strings.NewReader(`{"username":"admin","password":"a-long-enough-password"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", agent)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("login %s: %d %s", agent, w.Code, w.Body.String())
+		}
+		var out struct {
+			AccessToken string `json:"access_token"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		var chosen *http.Cookie
+		legacyRetired := false
+		for _, c := range w.Result().Cookies() {
+			if c.Path == "/api" && c.Value != "" {
+				chosen = c
+			}
+			if c.Path == "/api/auth" && c.MaxAge < 0 {
+				legacyRetired = true
+			}
+		}
+		if chosen == nil {
+			t.Fatal("login set no refresh cookie on /api")
+		}
+		if !legacyRetired {
+			t.Fatal("login did not retire the old /api/auth cookie")
+		}
+		return out.AccessToken, chosen.Value
+	}
+
+	token, refresh := login("Mozilla/5.0 (Windows) Chrome")
+	login("Mozilla/5.0 (Android) Chrome")
+
+	withCookie := map[string]string{
+		"Authorization": "Bearer " + token,
+		"Cookie":        "sp_refresh=" + refresh,
+	}
+	code, body := do(t, r, http.MethodGet, "/api/sessions", nil, withCookie)
+	if code != http.StatusOK {
+		t.Fatalf("sessions %d %s", code, body)
+	}
+	var list struct {
+		Sessions []struct {
+			Current   bool   `json:"current"`
+			UserAgent string `json:"user_agent"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal(body, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Sessions) != 3 {
+		t.Fatalf("setup and two logins leave three sessions, the list shows %d: %s", len(list.Sessions), body)
+	}
+	current := 0
+	for _, s := range list.Sessions {
+		if s.Current {
+			current++
+		}
+	}
+	if current != 1 {
+		t.Fatalf("exactly one session is this browser, found %d", current)
+	}
+
+	revoke := httptest.NewRequest(http.MethodPost, "/api/sessions/revoke-all", nil)
+	revoke.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, revoke)
+	if w.Code != http.StatusOK {
+		t.Fatalf("revoke-all %d %s", w.Code, w.Body.String())
+	}
+	var res struct {
+		Revoked   int64 `json:"revoked"`
+		SignedOut bool  `json:"signed_out"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Revoked != 3 || !res.SignedOut {
+		t.Fatalf("every session must end and the browser sign out: %+v", res)
+	}
+	if cleared := w.Header().Values("Set-Cookie"); len(cleared) == 0 {
+		t.Fatal("revoke-all left the refresh cookie in place")
+	}
+
+	if code, body := do(t, r, http.MethodGet, "/api/sessions", nil,
+		map[string]string{"Authorization": "Bearer " + token}); code != http.StatusOK {
+		t.Fatalf("sessions after revoke %d %s", code, body)
+	} else {
+		list.Sessions = nil
+		if err := json.Unmarshal(body, &list); err != nil {
+			t.Fatal(err)
+		}
+		if len(list.Sessions) != 0 {
+			t.Fatalf("revoked sessions still listed: %s", body)
+		}
+	}
+}

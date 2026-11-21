@@ -159,6 +159,11 @@ func Router(st *AppState) *gin.Engine {
 	r.GET("/api/auth/status", func(c *gin.Context) { authStatus(c, st) })
 	r.GET("/api/auth/me", func(c *gin.Context) { authMe(c, st) })
 	r.POST("/api/auth/password", func(c *gin.Context) { authPassword(c, st) })
+	r.POST("/api/auth/username", func(c *gin.Context) { authUsername(c, st) })
+
+	// The live sessions behind the refresh tokens, and the one switch that ends them all.
+	r.GET("/api/sessions", func(c *gin.Context) { authSessions(c, st) })
+	r.POST("/api/sessions/revoke-all", func(c *gin.Context) { authSessionsRevokeAll(c, st) })
 
 	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
 
