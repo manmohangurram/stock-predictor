@@ -1,3 +1,19 @@
+## v1.0.1
+
+Prices are asked for differently, not more often. A chart request now names its window in epoch
+seconds with the flags Yahoo's own web page sends, and the two Yahoo edges take turns instead of one
+host taking every poll. What the app does with the answer is untouched.
+
+### Changed
+
+- **One way to ask for a chart.** `period1`/`period2` replace `range`, and `includePrePost`,
+  `events`, `usePreMarketChartPreviousClose`, `lang`, `region` and `source` ride along. Intervals
+  are unchanged: the prompt's tape is still 15 minutes, because every bar inside the window is a
+  line of the prompt.
+- **Yahoo's two edges share the load.** `query1` and `query2` are picked at random per request for
+  charts, search and the spark sweep. One host absorbing a whole poll is what earns a `429`; the
+  200 ms pace and the escalating cooldown are what survive one.
+
 ## v1.0.0
 
 The front end is rewritten, every page is on the new design, and the API has the three endpoints those
