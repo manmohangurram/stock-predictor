@@ -977,10 +977,9 @@ const gone = (): void => void router.push("/archived");
                     </p>
                 </div>
                 <footer class="fill-foot">
-                    <span class="hint" role="status"
-                        >{{ tradeStatus }} The trade row and the cash ledger
-                        move together.</span
-                    >
+                    <span v-if="tradeStatus" class="hint" role="status">{{
+                        tradeStatus
+                    }}</span>
                     <button
                         class="d-btn d-btn-sm d-btn-ghost"
                         type="button"
@@ -1376,7 +1375,12 @@ const gone = (): void => void router.push("/archived");
     padding: 16px 18px;
 }
 .fill-body .dseg {
+    display: inline-flex;
+    width: max-content;
     margin-bottom: 12px;
+}
+.fill-body .dseg button {
+    flex: 0 0 auto;
 }
 .fill-grid {
     display: grid;
@@ -1421,6 +1425,7 @@ const gone = (): void => void router.push("/archived");
 .fill-foot {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 8px;
     padding: 12px 18px;
     border-top: 1px solid var(--rule-subtle);
