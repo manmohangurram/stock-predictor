@@ -94,10 +94,10 @@ const refs = computed(() => {
       <line :x1="left" :x2="left" :y1="top" :y2="h - bottom" stroke="var(--rule)" />
       <path
         :d="`${geo.path} L${geo.x(geo.closes.length - 1).toFixed(1)},${h - bottom} L${left},${h - bottom} Z`"
-        fill="var(--stamp-ink)"
+        fill="var(--ink)"
         opacity=".06"
       />
-      <path :d="geo.path" fill="none" stroke="var(--stamp-ink)" stroke-width="1.75" />
+      <path :d="geo.path" fill="none" stroke="var(--ink)" stroke-width="1.75" />
       <template v-for="(r, n) in refs" :key="`r${n}`">
         <line
           :x1="left"

@@ -1,17 +1,19 @@
 <script setup lang="ts">
 /**
- * The instrument: the chart and its evidence, with the numbers you act on beside it.
- *
- * Everything here is about one holding, so the page is a two-column reading order — the tape and
- * what you did, then the exit, the expectation, the rules and the two dangerous buttons.
+ * One instrument: the tape first, then what the position is worth, then what was done about it.
+ * Archive and delete sit at the very end of the record — a thumb cannot reach them by accident.
  */
 import { computed, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { api, type Analysis, type InstrumentDetail, type SignalRow, type Trade } from "../api";
-import { clock, day, money, units } from "../format";
-import { pill, statusPill } from "../components/stamp";
-import { ITEMS, isDecisionFilter, type DecisionFilter } from "../components/decision-filter";
-import DecisionItem from "../components/DecisionItem.vue";
+import { RouterLink, useRoute, useRouter } from "vue-router";
+import { Plus, RefreshCw } from "lucide-vue-next";
+import {
+    api,
+    type Analysis,
+    type InstrumentDetail,
+    type SignalRow,
+    type Trade,
+} from "../api";
+import { clock, day, dayTime, money, today, units } from "../format";
 import DeleteInstrument from "../components/DeleteInstrument.vue";
 import PriceChart from "../components/PriceChart.vue";
 
@@ -21,22 +23,21 @@ const analysis = ref<Analysis | null>(null);
 const detail = ref<InstrumentDetail | null>(null);
 const trades = ref<Trade[]>([]);
 const error = ref("");
-const decisions = ref<DecisionFilter>("all");
 
 type Ledger = Analysis & { trades: Trade[] };
 
 const symbol = computed(() => String(route.params.symbol ?? ""));
 
 async function load(): Promise<void> {
-  try {
-    const a = (await api.analysis(symbol.value)) as Ledger;
-    analysis.value = a;
-    detail.value = a as unknown as InstrumentDetail;
-    trades.value = a.trades ?? [];
-    error.value = "";
-  } catch (e) {
-    error.value = String(e);
-  }
+    try {
+        const a = (await api.analysis(symbol.value)) as Ledger;
+        analysis.value = a;
+        detail.value = a as unknown as InstrumentDetail;
+        trades.value = a.trades ?? [];
+        error.value = "";
+    } catch (e) {
+        error.value = String(e);
+    }
 }
 
 onMounted(load);
@@ -50,64 +51,115 @@ const isFund = computed(() => klass.value === "mutual_fund");
 const archived = computed(() => !inst.value?.active);
 
 const ltp = computed(() =>
-  a.value?.bars.length ? a.value.bars[a.value.bars.length - 1].close : (position.value?.avg_cost ?? null),
+    a.value?.bars.length
+        ? a.value.bars[a.value.bars.length - 1].close
+        : (position.value?.avg_cost ?? null),
+);
+const prevClose = computed(() =>
+    a.value && a.value.bars.length > 1
+        ? a.value.bars[a.value.bars.length - 2].close
+        : null,
+);
+const change = computed(() =>
+    ltp.value !== null && prevClose.value !== null
+        ? ltp.value - prevClose.value
+        : null,
 );
 const invested = computed(() =>
-  position.value ? position.value.qty * position.value.avg_cost : null,
+    position.value ? position.value.qty * position.value.avg_cost : null,
 );
 const value = computed(() =>
-  position.value && ltp.value !== null ? position.value.qty * ltp.value : null,
+    position.value && ltp.value !== null
+        ? position.value.qty * ltp.value
+        : null,
 );
 const unrealised = computed(() =>
-  invested.value !== null && value.value !== null ? value.value - invested.value : null,
+    invested.value !== null && value.value !== null
+        ? value.value - invested.value
+        : null,
 );
-const realised = computed(() => trades.value.reduce((n, t) => n + (t.realised ?? 0), 0));
-const closedOut = computed(() => trades.value.length > 0 && realised.value !== 0);
+const costPct = computed(() =>
+    unrealised.value !== null && invested.value
+        ? (unrealised.value / invested.value) * 100
+        : null,
+);
+const realised = computed(() =>
+    trades.value.reduce((n, t) => n + (t.realised ?? 0), 0),
+);
+const closedOut = computed(
+    () => trades.value.length > 0 && realised.value !== 0,
+);
 const sign = (n: number): string => (n >= 0 ? "+" : "−");
 const signed = (n: number): string => `${sign(n)}${money(Math.abs(n))}`;
+const pct = (n: number): string => `${sign(n)}${Math.abs(n).toFixed(1)}%`;
+const tone = (n: number | null): string =>
+    n === null || n === 0 ? "" : n > 0 ? "up" : "down";
 
-const facts = computed(() => {
-  const ind = a.value?.indicators;
-  if (!ind) return [];
-  return [
-    ["SMA50", money(ind.sma50)],
-    ["SMA200", money(ind.sma200)],
-    ["RSI14", ind.rsi14.toFixed(1)],
-    ["ATR14", money(ind.atr14)],
-    ["52w low", money(ind.low52)],
-    ["52w high", money(ind.high52)],
-  ];
+const signals = computed<SignalRow[]>(() => detail.value?.signals ?? []);
+const pending = computed(
+    () => signals.value.filter((s) => s.status === "pending").length,
+);
+const approved = computed(
+    () => signals.value.filter((s) => s.status === "approved").length,
+);
+
+const rr = computed(() => {
+    const p = position.value;
+    if (!p || p.stop === null || p.target === null || ltp.value === null)
+        return null;
+    const risk = ltp.value - p.stop;
+    if (risk <= 0) return null;
+    return (p.target - ltp.value) / risk;
 });
 
-const shownSignals = computed<SignalRow[]>(() => {
-  const all = detail.value?.signals ?? [];
-  return decisions.value === "all" ? all : all.filter((s) => s.status === decisions.value);
+const blocked = computed(() =>
+    (a.value?.checks ?? []).filter((c) => !c.passed),
+);
+const ruleNote = computed(() =>
+    !a.value?.checks.length
+        ? "no rule check yet"
+        : blocked.value.length
+          ? `${blocked.value.length} blocking`
+          : "all clear",
+);
+
+const facts = computed(() => {
+    const ind = a.value?.indicators;
+    if (!ind) return [];
+    return [
+        ["SMA50", money(ind.sma50)],
+        ["SMA200", money(ind.sma200)],
+        ["RSI14", ind.rsi14.toFixed(1)],
+        ["ATR14", money(ind.atr14)],
+        ["52w low", money(ind.low52)],
+        ["52w high", money(ind.high52)],
+    ];
 });
 
 /* ---- recording a fill ---------------------------------------------------- */
 const recording = ref(false);
 const side = ref<"buy" | "sell">("buy");
-const fill = ref({ qty: "", price: "", at: new Date().toISOString().slice(0, 10), mode: "long" });
+const fill = ref({ qty: "", price: "", at: today(), mode: "long" });
 const tradeStatus = ref("");
 
 async function record(): Promise<void> {
-  tradeStatus.value = "Recording…";
-  try {
-    await api.recordTrade(
-      symbol.value,
-      side.value,
-      Number(fill.value.qty),
-      Number(fill.value.price),
-      fill.value.at,
-      fill.value.mode as "long" | "trade",
-    );
-    recording.value = false;
-    fill.value = { qty: "", price: "", at: new Date().toISOString().slice(0, 10), mode: "long" };
-    tradeStatus.value = "";
-    await load();
-  } catch (e) {
-    tradeStatus.value = String(e);
-  }
+    tradeStatus.value = "Recording…";
+    try {
+        await api.recordTrade(
+            symbol.value,
+            side.value,
+            Number(fill.value.qty),
+            Number(fill.value.price),
+            fill.value.at,
+            fill.value.mode as "long" | "trade",
+        );
+        recording.value = false;
+        fill.value = { qty: "", price: "", at: today(), mode: "long" };
+        tradeStatus.value = "";
+        await load();
+    } catch (e) {
+        tradeStatus.value = String(e);
+    }
 }
 
 /* ---- correcting and deleting a fill -------------------------------------- */
@@ -117,378 +169,1236 @@ const fillStatus = ref("");
 const armed = ref<string | null>(null);
 
 function openEdit(t: Trade): void {
-  editing.value = t.id;
-  edit.value = { qty: String(t.qty), price: String(t.price), at: t.traded_at.slice(0, 10) };
-  fillStatus.value = "";
+    editing.value = t.id;
+    edit.value = {
+        qty: String(t.qty),
+        price: String(t.price),
+        at: t.traded_at.slice(0, 10),
+    };
+    fillStatus.value = "";
 }
 
 async function saveEdit(id: string): Promise<void> {
-  fillStatus.value = "Saving…";
-  try {
-    await api.editTrade(id, {
-      qty: Number(edit.value.qty),
-      price: Number(edit.value.price),
-      at: edit.value.at,
-    } as never);
-    editing.value = null;
-    await load();
-  } catch (e) {
-    fillStatus.value = String(e);
-  }
+    fillStatus.value = "Saving…";
+    try {
+        await api.editTrade(id, {
+            qty: Number(edit.value.qty),
+            price: Number(edit.value.price),
+            at: edit.value.at,
+        } as never);
+        editing.value = null;
+        await load();
+    } catch (e) {
+        fillStatus.value = String(e);
+    }
 }
 
 async function deleteFill(id: string): Promise<void> {
-  if (armed.value !== id) {
-    armed.value = id;
-    window.setTimeout(() => {
-      if (armed.value === id) armed.value = null;
-    }, 4000);
-    return;
-  }
-  try {
-    await api.deleteTrade(id);
-    armed.value = null;
-    editing.value = null;
-    await load();
-  } catch (e) {
-    fillStatus.value = String(e);
-  }
+    if (armed.value !== id) {
+        armed.value = id;
+        window.setTimeout(() => {
+            if (armed.value === id) armed.value = null;
+        }, 4000);
+        return;
+    }
+    try {
+        await api.deleteTrade(id);
+        armed.value = null;
+        editing.value = null;
+        await load();
+    } catch (e) {
+        fillStatus.value = String(e);
+    }
 }
 
 const vsClose = (t: Trade): { text: string; tone: string } => {
-  if (t.market_close === null) return { text: "—", tone: "" };
-  const diff = (t.price - t.market_close) / t.market_close;
-  return {
-    text: `${diff >= 0 ? "+" : ""}${(diff * 100).toFixed(2)}%`,
-    tone: diff > 0.0005 ? "up" : diff < -0.0005 ? "down" : "",
-  };
+    if (t.market_close === null) return { text: "—", tone: "" };
+    const diff = (t.price - t.market_close) / t.market_close;
+    return {
+        text: `${diff >= 0 ? "+" : ""}${(diff * 100).toFixed(2)}%`,
+        tone: diff > 0.0005 ? "up" : diff < -0.0005 ? "down" : "",
+    };
 };
 
 /* ---- expected profit, refresh, archive ----------------------------------- */
 const target = ref("");
-const refreshStatus = ref("Fetches this symbol now, instead of waiting for the next poll.");
+const refreshStatus = ref("");
 const manageStatus = ref("");
 const archiving = ref(false);
 
 watch(inst, (i) => {
-  target.value = i?.target_profit_pct == null ? "" : String(i.target_profit_pct);
+    target.value =
+        i?.target_profit_pct == null ? "" : String(i.target_profit_pct);
 });
 
 async function saveTarget(): Promise<void> {
-  const raw = target.value.trim();
-  try {
-    await api.setTargetProfit(symbol.value, raw === "" ? null : Number(raw));
-    await load();
-  } catch (e) {
-    manageStatus.value = String(e);
-  }
+    const raw = target.value.trim();
+    try {
+        await api.setTargetProfit(
+            symbol.value,
+            raw === "" ? null : Number(raw),
+        );
+        await load();
+    } catch (e) {
+        manageStatus.value = String(e);
+    }
 }
 
 async function refreshNow(): Promise<void> {
-  refreshStatus.value = "Fetching…";
-  try {
-    const r = await api.refreshInstrument(symbol.value);
-    refreshStatus.value = `Stored ${r.bars} bars and ${r.headlines} headlines.`;
-    await load();
-  } catch (e) {
-    refreshStatus.value = String(e);
-  }
+    refreshStatus.value = "Fetching…";
+    try {
+        const r = await api.refreshInstrument(symbol.value);
+        refreshStatus.value = `Stored ${r.bars} bars and ${r.headlines} headlines.`;
+        await load();
+    } catch (e) {
+        refreshStatus.value = String(e);
+    }
 }
 
 async function archive(): Promise<void> {
-  if (!archiving.value) {
-    archiving.value = true;
-    manageStatus.value = "Archiving clears prices and headlines; fills and decisions stay.";
-    window.setTimeout(() => (archiving.value = false), 5000);
-    return;
-  }
-  try {
-    await api.archiveInstrument(symbol.value);
-    await load();
-  } catch (e) {
-    manageStatus.value = String(e);
-  }
+    if (!archiving.value) {
+        archiving.value = true;
+        manageStatus.value =
+            "Archiving clears prices and headlines; fills and decisions stay.";
+        window.setTimeout(() => (archiving.value = false), 5000);
+        return;
+    }
+    try {
+        await api.archiveInstrument(symbol.value);
+        await load();
+    } catch (e) {
+        manageStatus.value = String(e);
+    }
 }
 
 async function restore(): Promise<void> {
-  try {
-    await api.restoreInstrument(symbol.value);
-    await load();
-  } catch (e) {
-    manageStatus.value = String(e);
-  }
+    try {
+        await api.restoreInstrument(symbol.value);
+        await load();
+    } catch (e) {
+        manageStatus.value = String(e);
+    }
 }
 
-const gone = (): void => void router.push("/");
+const gone = (): void => void router.push("/archived");
 </script>
 
 <template>
-  <div v-if="error" class="error-band">Something failed: {{ error }}
-    <button class="d-btn d-btn-sm" @click="load()">Retry</button>
-  </div>
-  <template v-else-if="a && inst">
-    <header class="page-head">
-      <div class="who">
-        <a class="back-icon" href="/" aria-label="Back to the ledger" title="Back to the ledger">
-          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor"
-               stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M10 13L5 8l5-5" />
-          </svg>
-        </a>
-        <div class="who-text">
-          <h1 :title="inst.name">{{ inst.name }}</h1>
-          <div class="page-sub">{{ inst.symbol }} · {{ inst.class.replace("_", " ") }}</div>
-        </div>
-      </div>
-      <div class="figures">
-        <div><span class="lbl">Last</span><b>{{ ltp === null ? "—" : money(ltp) }}</b></div>
-        <div><span class="lbl">Held</span><b>{{ position ? `${units(position.qty)} @ ${money(position.avg_cost)}` : "—" }}</b></div>
-        <div><span class="lbl">Value</span><b>{{ value === null ? "—" : money(value) }}</b></div>
-        <div v-if="archived">
-          <span class="lbl">Realised</span>
-          <b :class="realised >= 0 ? 'up' : 'down'">{{ closedOut ? signed(realised) : "—" }}</b>
-          <div class="sub">from {{ trades.length }} fill{{ trades.length === 1 ? "" : "s" }}</div>
-        </div>
-        <div v-else>
-          <span class="lbl">Unrealised</span>
-          <b :class="unrealised === null ? '' : unrealised >= 0 ? 'up' : 'down'">{{ unrealised === null ? "—" : signed(unrealised) }}</b>
-        </div>
-      </div>
-    </header>
-
-    <div class="inst-grid">
-      <div class="inst-main">
-        <section class="card chart-card">
-          <div class="card-head">
-            <div class="head-title">
-              <h2>{{ isFund ? "NAV" : "Price" }}</h2>
-              <span class="sub">{{ a.bars.length }} {{ isFund ? "NAV points" : "sessions" }} ·
-                {{ isFund ? "units are allotted at NAV" : "daily close" }}</span>
-            </div>
-          </div>
-          <PriceChart :analysis="a" />
-        </section>
-
-        <section class="card">
-          <div class="card-head">
-            <div class="head-title">
-              <h2>Fills</h2>
-              <span class="sub">{{ trades.length ? `${trades.length} recorded · what you actually paid` : "nothing recorded yet" }}</span>
-            </div>
-            <button class="d-btn d-btn-sm" type="button" :aria-expanded="recording" @click="recording = !recording">Record fill</button>
-          </div>
-
-          <form v-if="recording" class="trade-form" @submit.prevent="record">
-            <div class="seg" role="radiogroup" aria-label="Buy or sell">
-              <label class="seg-option" :class="{ on: side === 'buy' }">
-                <input v-model="side" type="radio" name="side" value="buy" /><span>Buy</span>
-              </label>
-              <label class="seg-option" :class="{ on: side === 'sell' }">
-                <input v-model="side" type="radio" name="side" value="sell" /><span>Sell</span>
-              </label>
-            </div>
-            <div class="fill-grid">
-              <label class="field"><span class="lbl">{{ isFund ? "Units" : "Quantity" }}</span>
-                <input v-model="fill.qty" name="qty" type="number" min="0" step="any" required
-                       :placeholder="position ? `held ${units(position.qty)}` : (isFund ? 'Units' : 'Qty')" /></label>
-              <label class="field"><span class="lbl">{{ isFund ? "NAV" : "Price" }}</span>
-                <input v-model="fill.price" name="price" type="number" min="0" step="any" required
-                       :placeholder="isFund ? 'NAV' : 'Price'" /></label>
-              <label class="field"><span class="lbl">Date</span>
-                <input v-model="fill.at" name="at" type="date" :max="new Date().toISOString().slice(0, 10)" /></label>
-              <label class="field"><span class="lbl">Pot</span>
-                <select v-if="klass === 'stock'" v-model="fill.mode" name="mode">
-                  <option value="long">Long-term</option><option value="trade">Short-term</option>
-                </select>
-                <span v-else class="static">Long-term only</span></label>
-            </div>
-            <button class="d-btn d-btn-sm d-btn-primary wide" type="submit">Record fill</button>
-            <p class="help" role="status">{{ tradeStatus }} A buy is limited by cash; a sell by what you hold.</p>
-          </form>
-
-          <div v-if="trades.length" class="table-wrap">
-            <table class="blotter fills">
-              <thead><tr>
-                <th scope="col">Date</th><th scope="col">Side</th><th scope="col" class="num">Qty</th>
-                <th scope="col" class="num">Your price</th><th scope="col" class="hide-sm num">Close that day</th>
-                <th scope="col" class="hide-sm num">vs close</th><th scope="col"></th>
-              </tr></thead>
-              <tbody>
-                <template v-for="t in trades" :key="t.id">
-                  <tr>
-                    <td class="mono">{{ day(t.traded_at) }}</td>
-                    <td><span class="stamp" :data-stamp="t.side === 'buy' ? 'buy' : 'sell'">{{ t.side.toUpperCase() }}</span></td>
-                    <td class="num">{{ units(t.qty) }}</td>
-                    <td class="num">{{ money(t.price) }}</td>
-                    <td class="num hide-sm">{{ t.market_close === null ? "—" : money(t.market_close) }}</td>
-                    <td class="num hide-sm" :class="vsClose(t).tone">{{ vsClose(t).text }}</td>
-                    <td class="right">
-                      <button class="d-btn d-btn-xs d-btn-ghost d-btn-square" type="button"
-                              :aria-expanded="editing === t.id" title="Correct this fill" aria-label="Correct this fill"
-                              @click="openEdit(t)">
-                        <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"
-                             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                          <path d="M11.2 2.3l2.5 2.5-8 8-3.2.7.7-3.2 8-8z" /></svg>
-                      </button>
-                    </td>
-                  </tr>
-                  <tr v-if="editing === t.id">
-                    <td colspan="7">
-                      <form class="edit-fill-form" @submit.prevent="saveEdit(t.id)">
-                        <div class="fill-grid">
-                          <label class="field"><span class="lbl">Quantity</span>
-                            <input v-model="edit.qty" name="qty" type="number" min="0" step="any" /></label>
-                          <label class="field"><span class="lbl">Price</span>
-                            <input v-model="edit.price" name="price" type="number" min="0" step="any" /></label>
-                          <label class="field"><span class="lbl">Date</span>
-                            <input v-model="edit.at" name="at" type="date" :max="new Date().toISOString().slice(0, 10)" /></label>
-                        </div>
-                        <div class="row">
-                          <button class="d-btn d-btn-sm d-btn-primary" type="submit">Save</button>
-                          <button class="d-btn d-btn-sm d-btn-ghost" type="button" @click="editing = null">Cancel</button>
-                          <button class="d-btn d-btn-sm d-btn-ghost danger push-right" type="button"
-                                  :data-armed="armed === t.id" @click="deleteFill(t.id)">{{
-                            armed === t.id ? "Delete? Click again" : "Delete fill"
-                          }}</button>
-                          <span class="help" role="status">{{ fillStatus }}</span>
-                        </div>
-                      </form>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-          <p v-else class="empty">No fills recorded for this instrument.</p>
-        </section>
-
-        <section class="card">
-          <div class="card-head">
-            <div class="head-title">
-              <h2>Decisions</h2>
-              <span class="sub">{{ (detail?.signals ?? []).length }}{{ (detail?.signals ?? []).length ? "" : " — nothing yet" }}</span>
-            </div>
-            <div class="seg-filter" role="group" aria-label="Decision status">
-                <a v-for="it in ITEMS" :key="it.id" :href="`?decisions=${it.id}`" class="seg-item"
-                   :class="{ on: decisions === it.id }" :aria-current="decisions === it.id ? 'page' : undefined"
-                   :title="`${it.label} — ${it.hint}`" :aria-label="it.label"
-                   @click.prevent="decisions = isDecisionFilter(it.id) ? it.id : 'all'">
-                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
-                       stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-                       v-html="it.icon" />
-                  <span>{{ it.label }}</span>
-                </a>
-            </div>
-          </div>
-          <div class="feed decisions-feed">
-            <DecisionItem v-for="s in shownSignals" :key="s.id" :legs="[s]" :single="true" @reload="load()" />
-            <p v-if="!shownSignals.length" class="empty">
-              {{ decisions === "all" ? "No decisions recorded yet." : `Nothing ${decisions} here.` }}
-            </p>
-          </div>
-        </section>
-
-        <details class="card fold" :open="!!(detail?.headlines ?? []).length">
-          <summary class="card-head">
-            <div class="head-title">
-              <h2>Headlines</h2>
-              <span class="sub">{{ (detail?.headlines ?? []).length }}{{ (detail?.headlines ?? []).length ? "" : " — nothing stored" }}</span>
-            </div>
-          </summary>
-          <div class="fold-body">
-            <ul v-if="(detail?.headlines ?? []).length" class="headlines">
-              <li v-for="h in detail!.headlines" :key="h.id">
-                <a :href="h.url" target="_blank" rel="noreferrer noopener">{{ h.title }}</a>
-                <span class="cites">{{ h.publisher ?? "" }} · {{ day(h.published_at) }}</span>
-              </li>
-            </ul>
-            <p v-else class="empty">No headlines stored yet.</p>
-          </div>
-        </details>
-      </div>
-
-      <aside class="inst-side">
-        <section class="card">
-          <div class="card-head"><h2>Exit plan</h2></div>
-          <div v-if="position && (position.stop !== null || position.target !== null)" class="plan">
-            <div v-if="position.stop !== null" class="pair"><span>Sell if it falls to</span><b class="num down">{{ money(position.stop) }}</b></div>
-            <div v-if="position.target !== null" class="pair"><span>Take profit at</span><b class="num up">{{ money(position.target) }}</b></div>
-            <div v-if="position.stop !== null" class="pair"><span>Money at risk</span>
-              <b class="num down">{{ signed((position.stop - (ltp ?? position.avg_cost)) * position.qty) }}</b></div>
-            <div v-if="position.target !== null" class="pair"><span>Reward if it works</span>
-              <b class="num up">{{ signed((position.target - (ltp ?? position.avg_cost)) * position.qty) }}</b></div>
-            <div v-if="position.stop !== null && position.target !== null && position.stop !== (ltp ?? position.avg_cost)" class="pair">
-              <span>Reward : risk</span>
-              <b class="num">{{
-                (Math.abs((position.target - (ltp ?? position.avg_cost)) / (position.stop - (ltp ?? position.avg_cost))) || 0).toFixed(1)
-              }} : 1</b>
-            </div>
-          </div>
-          <p v-else class="empty">
-            {{ isFund ? "A fund has no intraday exit: units are allotted at NAV." : "No stop or target recorded yet." }}
-          </p>
-        </section>
-
-        <section class="card">
-          <div class="card-head"><h2>Profit expected</h2></div>
-          <form class="target-form" @submit.prevent="saveTarget">
-            <input v-model="target" name="pct" type="number" min="0" step="0.5" placeholder="default"
-                   aria-label="Expected profit percent" />
-            <button class="d-btn d-btn-sm" type="submit">Save</button>
-          </form>
-          <p class="help">Blank uses the pot's minimum; the band's maximum always wins.</p>
-        </section>
-
-        <section v-if="!isFund" class="card">
-          <div class="card-head"><h2>What the rules see</h2></div>
-          <div v-if="a.checks.length" class="rules">
-            <div v-for="c in a.checks" :key="c.name" class="rule-row">
-              <span v-html="pill(c.passed ? 'ok' : 'todo', c.passed ? 'pass' : 'block')" />
-              <span>{{ c.name }} <span class="sub">{{ c.detail }}</span></span>
-            </div>
-          </div>
-          <p v-else class="empty">Not enough data for a rule check yet.</p>
-        </section>
-
-        <section class="card">
-          <div class="card-head"><h2>Manage</h2></div>
-          <button class="d-btn d-btn-sm d-btn-ghost" type="button" @click="refreshNow">Refresh</button>
-          <p class="help" role="status">{{ refreshStatus }}</p>
-          <template v-if="archived">
-            <button class="d-btn d-btn-sm d-btn-primary" type="button" @click="restore">Restore</button>
-            <p class="help" role="status">
-              It is archived: no prices are fetched and no decisions are made. Restoring puts it back
-              in the book — the fills and decisions above were never touched.
-            </p>
-          </template>
-          <template v-else>
-            <button class="d-btn d-btn-sm d-btn-ghost" type="button" :disabled="!!position" @click="archive">
-              {{ archiving ? "Archive? Click again — prices cleared, fills kept" : "Archive" }}
-            </button>
-            <p class="help" role="status">
-              {{ manageStatus || (position
-                ? "An instrument you hold cannot be archived — sell it first."
-                : "Archiving clears the prices and headlines; the fills and decisions stay on the Archived page.") }}
-            </p>
-          </template>
-
-          <div class="manage-danger">
-            <DeleteInstrument :symbol="symbol" :name="inst.name" :disabled="!!position" @deleted="gone" />
-            <p class="help">
-              {{ position
-                ? "A stock you hold cannot be deleted — sell it first."
-                : "Deleting removes it and its records for good; the cash its fills moved returns to the pot." }}
-            </p>
-          </div>
-        </section>
-
-        <section v-if="facts.length && !isFund" class="card">
-          <div class="card-head"><h2>Indicators</h2></div>
-          <div class="facts">
-            <div v-for="[k, v] in facts" :key="k" class="pair"><span>{{ k }}</span><span class="num">{{ v }}</span></div>
-          </div>
-        </section>
-      </aside>
+    <div v-if="error" class="error-band">
+        Something failed: {{ error }}
+        <button class="d-btn d-btn-xs" type="button" @click="load()">
+            Retry
+        </button>
     </div>
-  </template>
+
+    <div v-else-if="a && inst" class="pg dossier">
+        <RouterLink v-if="archived" to="/archived" class="back"
+            >← Archived</RouterLink
+        >
+
+        <header class="pg-top">
+            <div class="pg-main">
+                <div class="pg-eyebrow">
+                    {{ isFund ? "Fund · AMFI" : "Stock · NSE"
+                    }}{{ archived ? " · archived" : "" }}
+                </div>
+                <h1 class="pg-title">{{ inst.name }}</h1>
+                <div class="pg-sub">
+                    <span class="sym">{{ inst.symbol }}</span>
+                    <template v-if="position">
+                        · {{ units(position.qty) }} @
+                        {{ money(position.avg_cost) }}</template
+                    >
+                    <template v-if="ltp !== null">
+                        · last price {{ money(ltp) }}</template
+                    >
+                </div>
+            </div>
+            <div class="pg-side">
+                <div class="price">
+                    <b class="num">{{ ltp === null ? "—" : money(ltp) }}</b>
+                    <span
+                        v-if="change !== null"
+                        class="num"
+                        :class="tone(change)"
+                    >
+                        {{ signed(change) }} <em>today</em>
+                    </span>
+                    <span
+                        v-if="costPct !== null"
+                        class="num"
+                        :class="tone(costPct)"
+                        >{{ pct(costPct) }} on cost</span
+                    >
+                </div>
+                <div class="pg-acts">
+                    <button
+                        class="d-btn d-btn-xs"
+                        type="button"
+                        :disabled="archived"
+                        aria-label="Refresh this instrument"
+                        @click="refreshNow"
+                    >
+                        <RefreshCw
+                            :size="14"
+                            :stroke-width="1.75"
+                            aria-hidden="true"
+                        />
+                        <span class="acts-label">Refresh</span>
+                    </button>
+                    <button
+                        class="d-btn d-btn-xs d-btn-primary record"
+                        type="button"
+                        :disabled="archived"
+                        :aria-expanded="recording"
+                        @click="recording = !recording"
+                    >
+                        <Plus
+                            :size="14"
+                            :stroke-width="1.75"
+                            aria-hidden="true"
+                        />
+                        <span class="acts-label">Record a fill</span>
+                    </button>
+                </div>
+                <p v-if="refreshStatus" class="hint" role="status">
+                    {{ refreshStatus }}
+                </p>
+            </div>
+        </header>
+
+        <section class="panel hero">
+            <div class="panel-head">
+                <h2>{{ isFund ? "NAV" : "Price" }}</h2>
+                <span class="r">
+                    {{ a.bars.length }}
+                    {{ isFund ? "NAV points" : "sessions" }} ·
+                    {{ isFund ? "units are allotted at NAV" : "daily close" }}
+                </span>
+            </div>
+            <PriceChart :analysis="a" />
+            <div v-if="facts.length && !isFund" class="facts">
+                <span v-for="[k, v] in facts" :key="k"
+                    ><em>{{ k }}</em> <b class="num">{{ v }}</b></span
+                >
+            </div>
+        </section>
+
+        <section class="band">
+            <div>
+                <h3>Position</h3>
+                <div class="kv2">
+                    <span>Shares</span
+                    ><b class="num">{{
+                        position ? units(position.qty) : "—"
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Average cost</span
+                    ><b class="num">{{
+                        position ? money(position.avg_cost) : "—"
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Invested</span
+                    ><b class="num">{{
+                        invested === null ? "—" : money(invested)
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Market value</span
+                    ><b class="num">{{
+                        value === null ? "—" : money(value)
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Unrealised</span>
+                    <b class="num" :class="tone(unrealised)">{{
+                        unrealised === null ? "—" : signed(unrealised)
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>On cost</span>
+                    <b class="num" :class="tone(costPct)">{{
+                        costPct === null ? "—" : pct(costPct)
+                    }}</b>
+                </div>
+            </div>
+
+            <div>
+                <h3>The plan</h3>
+                <div class="kv2">
+                    <span>Stop</span
+                    ><b class="num">{{
+                        position?.stop == null ? "—" : money(position.stop)
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Target</span
+                    ><b class="num">{{
+                        position?.target == null ? "—" : money(position.target)
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Reward : risk</span>
+                    <b class="num">{{
+                        rr === null ? "—" : `${rr.toFixed(1)} : 1`
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Price data</span
+                    ><b class="num">{{ a.bars.length }} / 200 bars</b>
+                </div>
+                <div class="kv2">
+                    <span>Rule check</span
+                    ><b :class="blocked.length ? 'down' : ''">{{ ruleNote }}</b>
+                </div>
+                <form class="target" @submit.prevent="saveTarget">
+                    <label>
+                        <span>Profit expected</span>
+                        <input
+                            v-model="target"
+                            name="pct"
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            placeholder="pot default"
+                            aria-label="Expected profit percent"
+                        />
+                    </label>
+                    <button class="d-btn d-btn-xs" type="submit">Save</button>
+                </form>
+                <p class="hint">
+                    Blank uses the pot's minimum; the band's maximum always
+                    wins.
+                </p>
+            </div>
+
+            <div>
+                <h3>The file</h3>
+                <template v-if="(detail?.headlines ?? []).length">
+                    <a
+                        v-for="h in (detail?.headlines ?? []).slice(0, 4)"
+                        :key="h.id"
+                        class="file"
+                        :href="h.url"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        >{{ h.title
+                        }}<span class="src"
+                            >{{ h.publisher ?? "—" }} ·
+                            {{ day(h.published_at) }}</span
+                        ></a
+                    >
+                </template>
+                <p v-else class="hint">
+                    Nothing stored yet — Refresh fetches headlines.
+                </p>
+                <div class="kv2 filed">
+                    <span>Decisions recorded</span>
+                    <b class="num"
+                        >{{ approved }} approved · {{ pending }} pending</b
+                    >
+                </div>
+                <div v-if="(detail?.headlines ?? []).length > 4" class="hint">
+                    +{{ (detail?.headlines ?? []).length - 4 }} more stored
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <h2>Fills</h2>
+                <span class="r">
+                    {{ trades.length }}
+                    {{ trades.length === 1 ? "fill" : "fills" }} ·
+                    {{
+                        position
+                            ? `${units(position.qty)} held`
+                            : "nothing held"
+                    }}
+                </span>
+            </div>
+
+            <form v-if="recording" class="fill-form" @submit.prevent="record">
+                <div class="dseg" role="radiogroup" aria-label="Buy or sell">
+                    <button
+                        type="button"
+                        :class="{ on: side === 'buy' }"
+                        :aria-pressed="side === 'buy'"
+                        @click="side = 'buy'"
+                    >
+                        Buy
+                    </button>
+                    <button
+                        type="button"
+                        :class="{ on: side === 'sell' }"
+                        :aria-pressed="side === 'sell'"
+                        @click="side = 'sell'"
+                    >
+                        Sell
+                    </button>
+                </div>
+                <label class="fld">
+                    <span>{{ isFund ? "Units" : "Quantity" }}</span>
+                    <input
+                        v-model="fill.qty"
+                        name="qty"
+                        type="number"
+                        min="0"
+                        step="any"
+                        required
+                        :placeholder="
+                            position
+                                ? `held ${units(position.qty)}`
+                                : isFund
+                                  ? 'Units'
+                                  : 'Qty'
+                        "
+                    />
+                </label>
+                <label class="fld">
+                    <span>{{ isFund ? "NAV" : "Price" }}</span>
+                    <input
+                        v-model="fill.price"
+                        name="price"
+                        type="number"
+                        min="0"
+                        step="any"
+                        required
+                        :placeholder="isFund ? 'NAV' : 'Price'"
+                    />
+                </label>
+                <label class="fld">
+                    <span>Date</span>
+                    <input
+                        v-model="fill.at"
+                        name="at"
+                        type="date"
+                        :max="today()"
+                    />
+                </label>
+                <label v-if="klass === 'stock'" class="fld">
+                    <span>Book</span>
+                    <select v-model="fill.mode" name="mode">
+                        <option value="long">Long-term</option>
+                        <option value="trade">Short-term</option>
+                    </select>
+                </label>
+                <button class="d-btn d-btn-xs d-btn-primary" type="submit">
+                    Record a fill
+                </button>
+                <p class="hint wide" role="status">
+                    {{ tradeStatus }} A buy is limited by cash; a sell by what
+                    you hold.
+                </p>
+            </form>
+
+            <table v-if="trades.length" class="fills only-desk">
+                <thead>
+                    <tr>
+                        <th scope="col" class="c-when">Date</th>
+                        <th scope="col" class="c-side">Side</th>
+                        <th scope="col" class="r c-qty">Qty</th>
+                        <th scope="col" class="r c-price">Price</th>
+                        <th scope="col" class="r c-value">Value</th>
+                        <th scope="col" class="r c-vs hide-sm">vs close</th>
+                        <th scope="col" class="r c-mode hide-sm">Book</th>
+                        <th scope="col" class="c-act"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template v-for="t in trades" :key="t.id">
+                        <tr>
+                            <td class="num when">{{ dayTime(t.traded_at) }}</td>
+                            <td>
+                                <span
+                                    class="pill"
+                                    :class="t.side === 'buy' ? 'p-b' : 'p-s'"
+                                    >{{ t.side.toUpperCase() }}</span
+                                >
+                            </td>
+                            <td class="r num">{{ units(t.qty) }}</td>
+                            <td class="r num">{{ money(t.price) }}</td>
+                            <td class="r num">{{ money(t.qty * t.price) }}</td>
+                            <td class="r num hide-sm" :class="vsClose(t).tone">
+                                {{ vsClose(t).text }}
+                            </td>
+                            <td class="r hint hide-sm">
+                                {{
+                                    t.mode === "trade"
+                                        ? "short-term"
+                                        : "long-term"
+                                }}
+                            </td>
+                            <td class="r">
+                                <button
+                                    class="link"
+                                    type="button"
+                                    :aria-expanded="editing === t.id"
+                                    @click="openEdit(t)"
+                                >
+                                    Edit
+                                </button>
+                            </td>
+                        </tr>
+                        <tr v-if="editing === t.id">
+                            <td colspan="8">
+                                <form
+                                    class="edit-form"
+                                    @submit.prevent="saveEdit(t.id)"
+                                >
+                                    <label class="fld"
+                                        ><span>Quantity</span
+                                        ><input
+                                            v-model="edit.qty"
+                                            name="qty"
+                                            type="number"
+                                            min="0"
+                                            step="any"
+                                    /></label>
+                                    <label class="fld"
+                                        ><span>Price</span
+                                        ><input
+                                            v-model="edit.price"
+                                            name="price"
+                                            type="number"
+                                            min="0"
+                                            step="any"
+                                    /></label>
+                                    <label class="fld"
+                                        ><span>Date</span
+                                        ><input
+                                            v-model="edit.at"
+                                            name="at"
+                                            type="date"
+                                            :max="today()"
+                                    /></label>
+                                    <button
+                                        class="d-btn d-btn-xs d-btn-primary"
+                                        type="submit"
+                                    >
+                                        Save
+                                    </button>
+                                    <button
+                                        class="d-btn d-btn-xs"
+                                        type="button"
+                                        @click="editing = null"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        class="d-btn d-btn-xs danger"
+                                        type="button"
+                                        :data-armed="armed === t.id"
+                                        @click="deleteFill(t.id)"
+                                    >
+                                        {{
+                                            armed === t.id
+                                                ? "Delete? Click again"
+                                                : "Delete fill"
+                                        }}
+                                    </button>
+                                    <span
+                                        v-if="fillStatus"
+                                        class="hint"
+                                        role="status"
+                                        >{{ fillStatus }}</span
+                                    >
+                                </form>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <p v-else class="empty-note">No fills recorded yet.</p>
+            <div v-if="trades.length" class="rows only-mobile">
+                <div v-for="t in trades" :key="t.id" class="row">
+                    <span class="num when">{{ day(t.traded_at) }}</span>
+                    <span class="who">
+                        <span
+                            class="pill"
+                            :class="t.side === 'buy' ? 'p-b' : 'p-s'"
+                            >{{ t.side.toUpperCase() }}</span
+                        >
+                        {{ units(t.qty) }} @ {{ money(t.price) }}
+                    </span>
+                    <b class="num">{{ money(t.qty * t.price) }}</b>
+                </div>
+            </div>
+            <div class="panel-foot">
+                <span class="hint"
+                    >A fill moves the position, the trade and the cash together,
+                    in one transaction.</span
+                >
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <h2>Decisions</h2>
+                <span class="r"
+                    >{{ signals.length }} recorded · {{ pending }} pending</span
+                >
+            </div>
+            <table v-if="signals.length" class="dec only-desk">
+                <thead>
+                    <tr>
+                        <th scope="col" class="c-when">When</th>
+                        <th scope="col" class="c-status">Status</th>
+                        <th scope="col" class="c-side">Side</th>
+                        <th scope="col" class="r">Qty @ price</th>
+                        <th scope="col" class="r hide-sm">Stop</th>
+                        <th scope="col" class="r hide-sm">Target</th>
+                        <th scope="col" class="r hide-sm">Plan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="s in signals" :key="s.id">
+                        <td class="num when">{{ dayTime(s.created_at) }}</td>
+                        <td>
+                            <span
+                                class="pill"
+                                :class="
+                                    s.status === 'approved'
+                                        ? 'p-b'
+                                        : s.status === 'rejected'
+                                          ? 'p-n'
+                                          : 'p-a'
+                                "
+                            >
+                                {{ s.status.toUpperCase() }}
+                            </span>
+                        </td>
+                        <td>
+                            <span
+                                class="pill"
+                                :class="s.action === 'SELL' ? 'p-s' : 'p-b'"
+                                >{{ s.action }}</span
+                            >
+                        </td>
+                        <td class="r num">
+                            {{
+                                s.amount !== null
+                                    ? money(s.amount)
+                                    : `${s.qty === null ? "—" : units(s.qty)} @ ${s.entry === null ? "—" : money(s.entry)}`
+                            }}
+                        </td>
+                        <td class="r num hide-sm">
+                            {{ s.stop === null ? "—" : money(s.stop) }}
+                        </td>
+                        <td class="r num hide-sm">
+                            {{ s.target === null ? "—" : money(s.target) }}
+                        </td>
+                        <td class="r sym hide-sm">
+                            {{ (s.plan_id ?? "").slice(-6) || "—" }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <p v-else class="empty-note">
+                No decisions recorded for this instrument yet.
+            </p>
+            <div v-if="signals.length" class="rows only-mobile">
+                <div v-for="s in signals" :key="s.id" class="row">
+                    <span class="num when">{{ clock(s.created_at) }}</span>
+                    <span class="who">
+                        <span
+                            class="pill"
+                            :class="
+                                s.status === 'approved'
+                                    ? 'p-b'
+                                    : s.status === 'rejected'
+                                      ? 'p-n'
+                                      : 'p-a'
+                            "
+                            >{{ s.status.toUpperCase() }}</span
+                        >
+                        {{
+                            s.amount !== null
+                                ? money(s.amount)
+                                : `${s.qty === null ? "—" : units(s.qty)} @ ${s.entry === null ? "—" : money(s.entry)}`
+                        }}
+                    </span>
+                    <span class="num sym">{{
+                        (s.plan_id ?? "").slice(-6) || "—"
+                    }}</span>
+                </div>
+            </div>
+            <div class="panel-foot">
+                <span class="hint"
+                    >A pending leg is signed off in Decisions.</span
+                >
+                <RouterLink to="/decisions" class="link"
+                    >Open decisions</RouterLink
+                >
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <h2>Archive or delete</h2>
+                <span class="r">at the end of the record</span>
+            </div>
+            <div class="manage">
+                <p class="hint">
+                    {{
+                        archived
+                            ? "This record is archived: no prices are fetched and no decisions are made. Restoring puts it back in the book — the fills above were never touched."
+                            : `Archiving keeps the fills and clears the prices. Deleting removes the record and returns its cash to the pot.${
+                                  position
+                                      ? " Both are refused while you hold shares — sell it flat first."
+                                      : ""
+                              }`
+                    }}
+                </p>
+                <div class="manage-acts">
+                    <template v-if="archived">
+                        <button
+                            class="d-btn d-btn-xs d-btn-primary"
+                            type="button"
+                            @click="restore"
+                        >
+                            Restore
+                        </button>
+                    </template>
+                    <button
+                        v-else
+                        class="d-btn d-btn-xs"
+                        type="button"
+                        :disabled="!!position"
+                        @click="archive"
+                    >
+                        {{ archiving ? "Archive? Click again" : "Archive" }}
+                    </button>
+                    <DeleteInstrument
+                        :symbol="symbol"
+                        :name="inst.name"
+                        :disabled="!!position"
+                        @deleted="gone"
+                    />
+                </div>
+            </div>
+            <p v-if="manageStatus" class="panel-foot hint" role="status">
+                {{ manageStatus }}
+            </p>
+        </section>
+
+        <div class="actbar">
+            <button
+                class="d-btn d-btn-xs"
+                type="button"
+                :disabled="archived"
+                @click="refreshNow"
+            >
+                <RefreshCw
+                    :size="14"
+                    :stroke-width="1.75"
+                    aria-hidden="true"
+                />Refresh
+            </button>
+            <button
+                class="d-btn d-btn-xs d-btn-primary grow"
+                type="button"
+                :disabled="archived"
+                :aria-expanded="recording"
+                @click="recording = !recording"
+            >
+                <Plus
+                    :size="14"
+                    :stroke-width="1.75"
+                    aria-hidden="true"
+                />Record a fill
+            </button>
+        </div>
+    </div>
 </template>
+
+<style scoped>
+.back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    color: var(--ink-secondary);
+    font-size: 12px;
+    text-decoration: none;
+}
+.back:hover {
+    color: var(--brand);
+}
+.price {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.price b {
+    font-family: var(--font-ledger);
+    font-size: 36px;
+    font-weight: 500;
+    letter-spacing: -0.04em;
+    line-height: 1;
+}
+.price span {
+    font-size: 12px;
+}
+.price em {
+    font-style: normal;
+    color: var(--ink-tertiary);
+}
+.record {
+    min-width: 168px;
+    justify-content: center;
+}
+.hero {
+    margin-top: 4px;
+}
+.hero :deep(.chart) {
+    margin: 0;
+    padding: 4px 8px 0;
+}
+.hero :deep(.chart svg) {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.facts {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 8px 16px 12px;
+    border-top: 1px solid var(--rule-subtle);
+    font-size: 10.5px;
+    color: var(--ink-tertiary);
+}
+.facts em {
+    font-style: normal;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 9px;
+    margin-right: 3px;
+}
+.facts b {
+    color: var(--ink-secondary);
+    font-weight: 500;
+}
+
+/* position / plan / file */
+.band {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule-subtle);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    margin-bottom: 14px;
+}
+.band > div {
+    padding: 14px 16px;
+}
+.band > div + div {
+    border-left: 1px solid var(--rule-subtle);
+}
+.band h3 {
+    margin: 0 0 8px;
+    font-size: 9.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    font-weight: 700;
+}
+.kv2 {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 3px 0;
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+}
+.kv2 b {
+    font-weight: 500;
+    color: var(--ink);
+}
+.kv2.filed {
+    margin-top: 10px;
+    border-top: 1px dashed var(--rule-subtle);
+    padding-top: 8px;
+}
+.file {
+    display: block;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--rule-subtle);
+    font-size: 11.5px;
+    color: var(--ink);
+    text-decoration: none;
+    line-height: 1.35;
+}
+.file:hover {
+    color: var(--brand);
+}
+.file .src {
+    display: block;
+    font-size: 10px;
+    color: var(--ink-tertiary);
+    margin-top: 2px;
+}
+.target {
+    display: flex;
+    align-items: end;
+    gap: 6px;
+    margin-top: 8px;
+}
+.target label {
+    display: grid;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+}
+.target label span {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    font-weight: 700;
+}
+.target input {
+    height: 30px;
+    min-height: 30px;
+    padding: 0 8px;
+    font-family: var(--font-ledger);
+    font-size: 12.5px;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius-sm);
+    background: var(--paper-raised);
+    color: var(--ink);
+    width: 100%;
+}
+.hint {
+    font-size: 11px;
+    color: var(--ink-tertiary);
+}
+.up {
+    color: var(--green);
+}
+.down {
+    color: var(--stamp-oxide);
+}
+
+/* fills and decisions */
+.fills,
+.dec {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    table-layout: fixed;
+}
+.fills th,
+.dec th {
+    font-size: 9.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    text-align: left;
+    padding: 8px 16px;
+    background: var(--paper);
+    font-weight: 700;
+    border-top: 1px solid var(--rule-subtle);
+}
+.fills td,
+.dec td {
+    padding: 9px 16px;
+    border-top: 1px solid var(--rule-subtle);
+    vertical-align: middle;
+    overflow-wrap: anywhere;
+}
+.fills tbody tr:hover,
+.dec tbody tr:hover {
+    background: var(--paper);
+}
+.fills .r,
+.dec .r {
+    text-align: right;
+}
+.fills .when,
+.dec .when {
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+    white-space: nowrap;
+}
+.fills .c-when {
+    width: 128px;
+}
+.fills .c-side {
+    width: 76px;
+}
+.fills .c-qty {
+    width: 70px;
+}
+.fills .c-price,
+.fills .c-vs {
+    width: 104px;
+}
+.fills .c-value {
+    width: 124px;
+}
+.fills .c-mode {
+    width: 96px;
+}
+.fills .c-act {
+    width: 66px;
+}
+.dec .c-when {
+    width: 128px;
+}
+.dec .c-status,
+.dec .c-side {
+    width: 92px;
+}
+.link {
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 11.5px;
+    color: var(--brand);
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: none;
+}
+.link:hover {
+    text-decoration: underline;
+}
+.fill-form,
+.edit-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: end;
+    padding: 12px 16px;
+    border-top: 1px solid var(--rule-subtle);
+    background: var(--paper);
+}
+.edit-form {
+    border-top: 0;
+    padding: 4px 0 8px;
+}
+.fld {
+    display: grid;
+    gap: 3px;
+    flex: 0 1 128px;
+    min-width: 0;
+}
+.fld span {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    font-weight: 700;
+}
+.fld input,
+.fld select {
+    height: 30px;
+    min-height: 30px;
+    padding: 0 8px;
+    font-family: var(--font-ledger);
+    font-size: 12.5px;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius-sm);
+    background: var(--paper-raised);
+    color: var(--ink);
+    width: 100%;
+}
+.fld select {
+    font-family: var(--font-form);
+}
+.hint.wide {
+    flex-basis: 100%;
+    margin: 0;
+}
+.danger[data-armed="true"] {
+    border-color: var(--stamp-oxide);
+    color: var(--stamp-oxide);
+}
+.panel-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 16px;
+    border-top: 1px solid var(--rule-subtle);
+    background: var(--paper);
+}
+.empty-note {
+    padding: 16px;
+    margin: 0;
+    font-size: 12px;
+    color: var(--ink-tertiary);
+    text-align: center;
+}
+
+/* archive and delete */
+.manage {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 14px 16px;
+}
+.manage .hint {
+    max-width: 74ch;
+    margin: 0;
+}
+.manage-acts {
+    display: flex;
+    gap: 6px;
+    flex: none;
+}
+:deep(.delete-instrument) {
+    display: flex;
+}
+
+/* the phone's own action bar */
+.actbar {
+    display: none;
+}
+.only-mobile {
+    display: none;
+}
+.rows .row {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    padding: 9px 14px;
+    border-top: 1px solid var(--rule-subtle);
+    font-size: 11.5px;
+}
+.rows .row:first-child {
+    border-top: 0;
+}
+.rows .who {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.rows .when {
+    color: var(--ink-tertiary);
+}
+.rows .sym {
+    color: var(--ink-tertiary);
+    font-size: 10.5px;
+}
+
+@media (max-width: 900px) {
+    .pg-eyebrow {
+        display: none;
+    }
+    .pg-title {
+        font-size: 26px;
+        margin: 0;
+    }
+    .price b {
+        font-size: 30px;
+    }
+    .pg-top {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+    }
+    .pg-side {
+        justify-items: start;
+        gap: 8px;
+    }
+    .price {
+        justify-content: flex-start;
+    }
+    .pg-acts {
+        display: none;
+    }
+    .hero :deep(.chart) {
+        padding: 0 4px;
+    }
+    .hero :deep(.chart text) {
+        display: none;
+    }
+    .only-desk {
+        display: none;
+    }
+    .only-mobile {
+        display: block;
+    }
+    .band > div:last-child {
+        display: none;
+    }
+    .band {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .band > div + div {
+        border-left: 0;
+        border-top: 1px solid var(--rule-subtle);
+    }
+    .fills .c-when {
+        width: 104px;
+    }
+    .fills .c-side {
+        width: 64px;
+    }
+    .fills .c-qty,
+    .fills .c-price {
+        width: 74px;
+    }
+    .fills .c-value {
+        width: 92px;
+    }
+    .fills .c-act {
+        width: 48px;
+    }
+    .dec .c-when {
+        width: 104px;
+    }
+    .dec .c-status {
+        width: 78px;
+    }
+    .dec .c-side {
+        width: 62px;
+    }
+    .manage {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    .manage-acts {
+        display: flex;
+        gap: 6px;
+    }
+    .pg {
+        padding-bottom: 64px;
+    }
+    .actbar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 54px;
+        display: flex;
+        gap: 6px;
+        padding: 8px 16px;
+        background: var(--paper-raised);
+        border-top: 1px solid var(--rule);
+        z-index: 15;
+    }
+    .actbar .d-btn {
+        min-height: 38px;
+        font-size: 12px;
+    }
+    .actbar .grow {
+        flex: 1;
+        justify-content: center;
+    }
+}
+</style>
