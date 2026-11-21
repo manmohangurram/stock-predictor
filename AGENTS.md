@@ -2,17 +2,22 @@
 
 ## Comments: never add noise
 
-**Do not add explanatory comments.** No narration of what the code does, no paragraphs above a
+**Do not add explanatory comments.** No narration of what the code does, no paragraph above a
 CSS rule or a branch saying why it is nicer this way, no "this fixes X" beside a line. If a change
 needs a story, the story belongs in `CHANGELOG.md` or the commit message.
 
-The only comment allowed is one line stating a why the code cannot show — a boundary that looks
-arbitrary (`// 15:30 IST == 10:00 UTC; NSE has no DST`), a trap (`// The WHERE 1 = 1 anchor is
-load-bearing`), or a trade-off with a number behind it. One line. If it needs two, it is not a
-comment, it is a changelog entry.
+**Nothing on a declaration.** A field, a var, a constant, a struct member and a one-line helper are
+named well enough by their name. A comment over them that says what they are — `// The owner's
+profit expectation for this instrument, if any.`, `// staleDaily is set when …` — is noise, and it
+is removed when found. Rename the field instead.
 
-Existing comments in this repo predate the rule. Do not add to them, and do not use them as
-precedent for a new multi-line block.
+The only comment allowed is one line at a point of non-obvious logic — a boundary that looks
+arbitrary (`// 15:30 IST == 10:00 UTC; NSE has no DST`), a trap (`// The WHERE 1 = 1 anchor is
+load-bearing`), an ordering rule (why this write comes before that one), or a trade-off with a
+number behind it. One line. If it needs two, it is not a comment, it is a changelog entry.
+
+The declarations were swept once and that is the baseline: do not restore a field comment "for
+clarity", and do not add one to a field you introduce.
 
 ## Reading code: always load `code-read`, never open a whole file for one function
 
