@@ -1,3 +1,28 @@
+## v1.0.3
+
+The poll stops failing on its own records, a run says why it did nothing, and the book stops
+repeating itself: the recent fills are the book you are looking at, and a holding leads with its
+name instead of its symbol.
+
+### Fixed
+
+- **A holding's ticks no longer fail on its own history.** `signals.id` and `trades.id` are UUIDs,
+  but five readers scanned them as integers — `reuseModelSignal`, `latestSignal`, `rotateForCash`
+  and the two approve endpoints. Any instrument with a previous decision failed its poll with
+  `converting driver.Value type string ... to a int64`.
+- **A plan that skipped says so.** "nothing worth doing" covered both "the model looked and
+  passed" and "the model was never asked", and the second summary overwrote the first. A manual
+  run now carries the reason it skipped — no model key, this slot already asked, the daily call
+  cap, nothing held and nothing offered — and a pass keeps its own why.
+
+### Changed
+
+- **Recent fills is the book you are looking at.** The list is filtered by the book instead of
+  showing both behind a "Book" column, which is gone.
+- **The name leads, the symbol follows.** An instrument added without a name no longer takes its
+  symbol as its name; `addInstrument` asks Yahoo. The instrument page, the fill rows and the
+  archive print the name first and the symbol only when it is not already the title.
+
 ## v1.0.2
 
 Every Yahoo request now leaves with the agent it was always meant to send. The header had been
