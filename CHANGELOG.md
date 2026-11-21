@@ -1,3 +1,23 @@
+## v1.0.4
+
+A refused Yahoo series used to take the instrument with it: nothing stored, nothing decided, the
+book frozen at yesterday's close. The price now stays current and a recorded stop or target still
+sells — without asking the model about a series that is a day old.
+
+### Fixed
+
+- **A refused daily series is no longer a blank tick.** The poll falls back to the bars already
+  stored, so the tape's price reaches the book and the chart. The model is not asked: with
+  indicators it cannot trust, the only rule left is a recorded stop or target against the live
+  close, and that still produces a SELL. A name with less history than the rules need now
+  accumulates a bar every tick instead of freezing at whatever the last refresh stored.
+
+### Changed
+
+- **Declarations carry no comments.** Fields, vars, constants and one-line helpers are named well
+  enough; the comments that restated them are gone, and `AGENTS.md` forbids adding them back. What
+  is left is one line at a point of non-obvious logic.
+
 ## v1.0.3
 
 The poll stops failing on its own records, a run says why it did nothing, and the book stops
