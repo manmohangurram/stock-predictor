@@ -52,14 +52,14 @@ func resetYahooLimiter(t *testing.T) {
 	t.Helper()
 	savedGap, savedFirst, savedWait := yahooGap, throttleFirst, sparkWaitMax
 	throttleMu.Lock()
-	throttleUntil, throttleAt, throttleStrikes = time.Time{}, time.Time{}, 0
+	throttleUntil, throttleAt, throttleStrikes = map[string]time.Time{}, map[string]time.Time{}, 0
 	throttleMu.Unlock()
 	yahooNext.Store(0)
 	yahooGap, throttleFirst, sparkWaitMax = 0, 5*time.Millisecond, 500*time.Millisecond
 	t.Cleanup(func() {
 		yahooGap, throttleFirst, sparkWaitMax = savedGap, savedFirst, savedWait
 		throttleMu.Lock()
-		throttleUntil, throttleAt, throttleStrikes = time.Time{}, time.Time{}, 0
+		throttleUntil, throttleAt, throttleStrikes = map[string]time.Time{}, map[string]time.Time{}, 0
 		throttleMu.Unlock()
 		yahooNext.Store(0)
 	})
@@ -111,9 +111,9 @@ func TestEveryThrottleWaitsLongerThanTheOneBefore(t *testing.T) {
 	resetYahooLimiter(t)
 	waits := []time.Duration{}
 	for i := 0; i < 3; i++ {
-		noteThrottle(&http.Response{StatusCode: http.StatusTooManyRequests, Header: http.Header{}})
+		noteThrottle(yahooHosts[0], &http.Response{StatusCode: http.StatusTooManyRequests, Header: http.Header{}})
 		throttleMu.Lock()
-		waits = append(waits, time.Until(throttleUntil))
+		waits = append(waits, time.Until(throttleUntil[yahooHosts[0]]))
 		throttleMu.Unlock()
 	}
 	if waits[1] <= waits[0] || waits[2] <= waits[1] {
@@ -125,9 +125,9 @@ func TestRetryAfterRaisesTheCooldown(t *testing.T) {
 	resetYahooLimiter(t)
 	header := http.Header{}
 	header.Set("Retry-After", "120")
-	noteThrottle(&http.Response{StatusCode: http.StatusTooManyRequests, Header: header})
+	noteThrottle(yahooHosts[1], &http.Response{StatusCode: http.StatusTooManyRequests, Header: header})
 	throttleMu.Lock()
-	left := time.Until(throttleUntil)
+	left := time.Until(throttleUntil[yahooHosts[1]])
 	throttleMu.Unlock()
 	if left < 100*time.Second {
 		t.Fatalf("Retry-After was ignored: %v", left)
