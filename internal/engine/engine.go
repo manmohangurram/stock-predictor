@@ -779,13 +779,15 @@ func gather(deps *EngineDeps, instrument models.Instrument, now time.Time) (*gat
 	}
 	// The daily series is fetched once a day; today's candle is what the tape says it is.
 	bars = mergeTape(bars, tape, now)
-	ind, err := rules.ComputeIndicators(bars)
-	if err != nil {
-		slog.Debug("not enough history for indicators", "symbol", instrument.Symbol)
-		return nil, nil
-	}
+	// Stored before the indicators are asked for: a name with too little history still accumulates
+	// one every tick, which is the only way it ever grows into a decidable instrument.
 	if err := store.Bars(deps.Pool, instrument.ID, bars); err != nil {
 		return nil, err
+	}
+	ind, err := rules.ComputeIndicators(bars)
+	if err != nil {
+		slog.Debug("not enough history for indicators", "symbol", instrument.Symbol, "bars", len(bars))
+		return nil, nil
 	}
 	// The morning's search already stored what the web said; a tick reads it, it does not re-ask.
 	news, err := storedHeadlines(deps.Pool, instrument.ID, now)
