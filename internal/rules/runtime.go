@@ -21,50 +21,34 @@ import (
 
 // What the API is allowed to say about the proxy: that it exists, and where to.
 type View struct {
-	PollSecs          uint64  `json:"poll_secs"`
-	OffHoursSecs      uint64  `json:"off_hours_secs"`
-	PromptWindowHours uint32  `json:"prompt_window_hours"`
-	MinPriceMove      float64 `json:"min_price_move"`
-	DailyCap          uint32  `json:"daily_cap"`
-	// The short-term scan's filters: price floor, turnover floor, locked-band cut-off.
-	ScanMinPrice    float64 `json:"scan_min_price"`
-	ScanMinTurnover float64 `json:"scan_min_turnover"`
-	ScanLockedPct   float64 `json:"scan_locked_pct"`
-	ProxyConfigured bool    `json:"proxy_configured"`
-	ProxyHost       string  `json:"proxy_host"`
-	// The username is shown back; the password never is.
+	PollSecs            uint64  `json:"poll_secs"`
+	OffHoursSecs        uint64  `json:"off_hours_secs"`
+	PromptWindowHours   uint32  `json:"prompt_window_hours"`
+	MinPriceMove        float64 `json:"min_price_move"`
+	DailyCap            uint32  `json:"daily_cap"`
+	ScanMinPrice        float64 `json:"scan_min_price"`
+	ScanMinTurnover     float64 `json:"scan_min_turnover"`
+	ScanLockedPct       float64 `json:"scan_locked_pct"`
+	ProxyConfigured     bool    `json:"proxy_configured"`
+	ProxyHost           string  `json:"proxy_host"`
 	ProxyUser           *string `json:"proxy_user"`
 	ProxyPassConfigured bool    `json:"proxy_pass_configured"`
 	ProxyBypass         *string `json:"proxy_bypass"`
 }
 
 type Runtime struct {
-	// Tick cadence while the market is open.
-	PollSecs uint64
-	// Tick cadence outside market hours, which only exists to pick up headlines.
-	OffHoursSecs uint64
-	// Hours of 15-minute tape in every prompt. The biggest token lever.
+	PollSecs          uint64
+	OffHoursSecs      uint64
 	PromptWindowHours uint32
-	// Skip a model call unless the price moved at least this much.
-	MinPriceMove float64
-	// Hard ceiling on model calls per day.
-	DailyCap uint32
-	// What the short-term scan is allowed to offer, in rupees: below this price a single
-	// tick is a large part of the move.
-	ScanMinPrice float64
-	// Daily turnover (rupees) a candidate must trade: an order the size of this pot has to
-	// be a rounding error against the day's volume.
-	ScanMinTurnover float64
-	// A stock already this far up is pinned at its 20% circuit: no fill is available at any
-	// price.
-	ScanLockedPct float64
-	// All outbound traffic goes through this, when set. Never carries credentials.
-	Proxy *string
-	// Proxy credentials, stored apart from the URL so the password can be masked like a key.
-	ProxyUser *string
-	ProxyPass *string
-	// Comma-separated hosts that skip the proxy.
-	ProxyBypass *string
+	MinPriceMove      float64
+	DailyCap          uint32
+	ScanMinPrice      float64
+	ScanMinTurnover   float64
+	ScanLockedPct     float64
+	Proxy             *string
+	ProxyUser         *string
+	ProxyPass         *string
+	ProxyBypass       *string
 }
 
 func DefaultRuntime() Runtime {

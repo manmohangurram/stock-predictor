@@ -20,10 +20,8 @@ import (
 // result.
 
 type MonthReport struct {
-	Month string
-	// Cash removed because the month ended. Zero when there was nothing left.
+	Month   string
 	Expired float64
-	// The allowance granted for the new month. Zero when the month was already current.
 	Granted float64
 }
 

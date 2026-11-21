@@ -10,10 +10,9 @@ import (
 
 // One row per outbound model call, success or failure.
 type ApiCallRow struct {
-	ConversationID *string
-	Round          *int64
-	Endpoint       string
-	// Why this call happened: "price moved 1,150.20 → 1,171.60", "new headline: …".
+	ConversationID   *string
+	Round            *int64
+	Endpoint         string
 	Trigger          *string
 	Purpose          *string
 	PromptTemplate   *string

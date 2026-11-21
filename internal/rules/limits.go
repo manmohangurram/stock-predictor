@@ -11,13 +11,10 @@ import (
 
 // Risk limits for one pot. Percentages are of that pot; amounts are in the account currency.
 type Limits struct {
-	MinProfitPct   float64 `json:"min_profit_pct"`
-	MaxProfitPct   float64 `json:"max_profit_pct"`
-	MinTradeAmount float64 `json:"min_trade_amount"`
-	MaxTradeAmount float64 `json:"max_trade_amount"`
-	// Cap on total exposure to a single instrument, as a percentage of the pot. A
-	// percentage rather than a fixed amount so the cap keeps its meaning when the budget
-	// changes.
+	MinProfitPct     float64 `json:"min_profit_pct"`
+	MaxProfitPct     float64 `json:"max_profit_pct"`
+	MinTradeAmount   float64 `json:"min_trade_amount"`
+	MaxTradeAmount   float64 `json:"max_trade_amount"`
 	MaxInstrumentPct float64 `json:"max_instrument_pct"`
 }
 

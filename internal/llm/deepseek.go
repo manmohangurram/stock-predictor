@@ -92,7 +92,6 @@ func (f *FixtureTransport) Post(url, body string) (HttpReply, error) {
 }
 
 type ChatRequest struct {
-	// Why the model is being asked, for the audit trail.
 	Trigger        *string
 	ConversationID string
 	Round          int64
@@ -109,13 +108,9 @@ type ChatReply struct {
 }
 
 type SearchHit struct {
-	Title string `json:"title"`
-	// Where it came from: "Hindustan Times". The model weighs a wire report differently to
-	// a forum.
-	Site string `json:"site"`
-	URL  string `json:"url"`
-	// The short one (100-200 chars): what the model reads, because the summary is 600-800
-	// and three of those per candidate per tick is a lot of prompt for a little signal.
+	Title   string  `json:"title"`
+	Site    string  `json:"site"`
+	URL     string  `json:"url"`
 	Snippet string  `json:"snippet"`
 	Summary string  `json:"summary"`
 	Date    *string `json:"date"`

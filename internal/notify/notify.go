@@ -32,8 +32,7 @@ type Notification struct {
 	Priority  Priority `json:"priority"`
 	DedupeKey string   `json:"dedupe_key"`
 	SignalID  *string  `json:"signal_id"`
-	// Used for the tap-through link; empty when there is nothing to open.
-	Symbol string `json:"symbol"`
+	Symbol    string   `json:"symbol"`
 }
 
 // Copy follows the design system: one line, figures in mono, no adjectives.
@@ -109,8 +108,6 @@ func DedupeKey(symbol string, c models.Candidate) string {
 type Notifier interface {
 	Send(n Notification) error
 
-	// False when there is nowhere to push: ntfy with no topic. A decision is still recorded,
-	// it just does not reach a phone.
 	Configured() bool
 }
 
@@ -119,8 +116,7 @@ type Ntfy struct {
 	url       string
 	token     string
 	publicURL string
-	// Empty topic means "off", not "post to the root and fail".
-	enabled bool
+	enabled   bool
 }
 
 func NewNtfy(baseURL, topic, token, publicURL string, rt *rules.Runtime) (*Ntfy, error) {

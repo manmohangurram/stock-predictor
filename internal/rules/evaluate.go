@@ -30,6 +30,7 @@ type CandidateInput struct {
 	Position      *models.Position
 	AvailableCash float64
 	Cfg           RuleConfig
+	PriceOnly     bool
 }
 
 // The cheap gate. Returns nil when no rule fires, which is what keeps the LLM off the
@@ -45,14 +46,13 @@ func Candidate(input CandidateInput) *models.Candidate {
 	ind := input.Ind
 	class := input.Instrument.Class
 	reasons := []string{}
-
 	if input.Position != nil {
 		pos := input.Position
 		belowStop := pos.Stop != nil && close < *pos.Stop
 		// The other half of a trade: the target is a sell order that already exists, not a
 		// wish.
 		atTarget := pos.Target != nil && close >= *pos.Target
-		trendBreak := ind.RSI14 > input.Cfg.RsiSellFloor && close < ind.SMA50
+		trendBreak := !input.PriceOnly && ind != nil && ind.RSI14 > input.Cfg.RsiSellFloor && close < ind.SMA50
 		if belowStop {
 			reasons = append(reasons, fmt.Sprintf(
 				"close %.2f below recorded stop %.2f", close, *pos.Stop))
@@ -78,6 +78,10 @@ func Candidate(input CandidateInput) *models.Candidate {
 				Urgent:       belowStop || atTarget,
 			}
 		}
+	}
+
+	if input.PriceOnly || ind == nil {
+		return nil
 	}
 
 	uptrend := close > ind.SMA50 && ind.SMA50 > ind.SMA200

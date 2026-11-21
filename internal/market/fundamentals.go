@@ -26,20 +26,16 @@ type Year struct {
 	OperatingIncome *float64
 	GrossProfit     *float64
 	Currency        string
-	// The same endpoint serves valuation: PE and market cap, crumb-free.
-	PE        *float64
-	MarketCap *float64
+	PE              *float64
+	MarketCap       *float64
 }
 
 type Fundamentals struct {
-	// Oldest first.
-	Years []Year
-	// The latest quarter, when the endpoint has one.
+	Years   []Year
 	Quarter *struct {
 		AsOf    string
 		Revenue float64
 	}
-	// Trailing PE and market cap, as of the latest close.
 	Valuation *struct {
 		PE        float64
 		MarketCap float64

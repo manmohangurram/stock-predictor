@@ -33,35 +33,27 @@ type LlmDeps struct {
 }
 
 type RunInput struct {
-	// Why the gate let this call through, carried into the audit row.
-	CallReason    *string
-	Instrument    *models.Instrument
-	Ind           *rules.Indicators
-	Candidate     models.Candidate
-	AvailableCash float64
-	HeldQty       float64
-	// Limits, pot and current exposure: the same numbers the validator enforces, so the model
-	// is asked for something that can actually be accepted.
-	Limits rules.Limits
-	// This stock's expectation, already defaulted and clamped to the band by the caller.
+	CallReason         *string
+	Instrument         *models.Instrument
+	Ind                *rules.Indicators
+	Candidate          models.Candidate
+	AvailableCash      float64
+	HeldQty            float64
+	Limits             rules.Limits
 	RequiredProfitPct  float64
 	InstrumentExposure float64
 	Pot                float64
-	// Hours of intraday tape included in the prompt.
-	WindowHours  uint32
-	Headlines    []models.Headline
-	PriceWindow  string
-	DailySummary string
-	// Revenue, profit and valuation as a few lines; "unavailable" when unfetched.
-	Fundamentals string
-	// The short-horizon card; empty for the long-term book.
-	ShortContext string
-	// Which book this is: it decides the playbook.
-	Mode         models.Mode
-	Positions    string
-	RecentTrades string
-	LastDecision string
-	Now          time.Time
+	WindowHours        uint32
+	Headlines          []models.Headline
+	PriceWindow        string
+	DailySummary       string
+	Fundamentals       string
+	ShortContext       string
+	Mode               models.Mode
+	Positions          string
+	RecentTrades       string
+	LastDecision       string
+	Now                time.Time
 }
 
 type OutcomeKind int

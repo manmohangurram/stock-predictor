@@ -22,26 +22,20 @@ const (
 )
 
 type ShortContext struct {
-	// Minutes since the open (0 before it) and until the close (0 after it).
-	MinutesFromOpen uint32 `json:"minutes_from_open"`
-	MinutesToClose  uint32 `json:"minutes_to_close"`
-	// Today's move so far, and the gap from yesterday's close, in percent.
-	DayChangePct *float64 `json:"day_change_pct"`
-	GapPct       *float64 `json:"gap_pct"`
-	// Yesterday's high/low and where the last price sits between them, in percent.
-	PrevHighPct *float64 `json:"prev_high_pct"`
-	PrevLowPct  *float64 `json:"prev_low_pct"`
-	// Relative volume: today's pace against the 20-day average, 1.0 = average.
-	Rvol   *float64 `json:"rvol"`
-	ATR14  *float64 `json:"atr14"`
-	AtrPct *float64 `json:"atr_pct"`
-	// Close-to-close returns over 3, 5 and 10 sessions.
-	Ret3D  *float64 `json:"ret_3d"`
-	Ret5D  *float64 `json:"ret_5d"`
-	Ret10D *float64 `json:"ret_10d"`
-	// Distance from the 52-week extremes, in percent.
-	From52wHighPct *float64 `json:"from_52w_high_pct"`
-	From52wLowPct  *float64 `json:"from_52w_low_pct"`
+	MinutesFromOpen uint32   `json:"minutes_from_open"`
+	MinutesToClose  uint32   `json:"minutes_to_close"`
+	DayChangePct    *float64 `json:"day_change_pct"`
+	GapPct          *float64 `json:"gap_pct"`
+	PrevHighPct     *float64 `json:"prev_high_pct"`
+	PrevLowPct      *float64 `json:"prev_low_pct"`
+	Rvol            *float64 `json:"rvol"`
+	ATR14           *float64 `json:"atr14"`
+	AtrPct          *float64 `json:"atr_pct"`
+	Ret3D           *float64 `json:"ret_3d"`
+	Ret5D           *float64 `json:"ret_5d"`
+	Ret10D          *float64 `json:"ret_10d"`
+	From52wHighPct  *float64 `json:"from_52w_high_pct"`
+	From52wLowPct   *float64 `json:"from_52w_low_pct"`
 }
 
 func pctStr(v *float64) string {
