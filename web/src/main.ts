@@ -6,6 +6,7 @@ import LedgerView from "./views/LedgerView.vue";
 import InstrumentView from "./views/InstrumentView.vue";
 import CallsView from "./views/CallsView.vue";
 import ArchivedView from "./views/ArchivedView.vue";
+import DecisionsView from "./views/DecisionsView.vue";
 import AccessView from "./views/AccessView.vue";
 import LoginView from "./views/LoginView.vue";
 import SettingsView from "./views/SettingsView.vue";
@@ -20,6 +21,7 @@ const router = createRouter({
   routes: [
     { path: "/", component: LedgerView },
     { path: "/i/:symbol", component: InstrumentView },
+    { path: "/decisions", component: DecisionsView },
     { path: "/calls", component: CallsView },
     { path: "/archived", component: ArchivedView },
     { path: "/login", component: LoginView },

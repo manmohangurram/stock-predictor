@@ -35,6 +35,9 @@
         --green: #0e7a45;
         --green-bg: #dbf4e5;
 
+        --fund: #0e6a5f;
+        --fund-soft: #dcefeb;
+
         --font-form:
             "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         --font-ledger:
@@ -61,6 +64,7 @@
         --radius-sm: 6px;
         --radius: 10px;
         --radius-lg: 14px;
+        --radius-card: 12px;
         --radius-pill: 999px;
         --radius-stamp: 4px;
         --row-h-touch: 44px;
@@ -105,6 +109,9 @@
 
         --green: #4ade80;
         --green-bg: #0f2c1d;
+
+        --fund: #5eead4;
+        --fund-soft: #0c2a26;
 
         --shadow-card:
             0 1px 2px rgb(0 0 0 / 0.45), 0 14px 34px rgb(0 0 0 / 0.4);

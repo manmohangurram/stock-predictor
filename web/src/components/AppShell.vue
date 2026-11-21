@@ -10,6 +10,7 @@ import {
     Archive,
     BookOpen,
     ChevronDown,
+    ListChecks,
     LogOut,
     Moon,
     ScrollText,
@@ -23,6 +24,7 @@ import { railBadges } from "../stores/rail";
 const route = useRoute();
 const links = [
     { id: "ledger", label: "Book", href: "/", icon: BookOpen },
+    { id: "decisions", label: "Decisions", href: "/decisions", icon: ListChecks },
     { id: "archived", label: "Archived", href: "/archived", icon: Archive },
     { id: "audit", label: "Audit", href: "/calls", icon: ScrollText },
     { id: "settings", label: "Settings", href: "/settings", icon: Settings },
@@ -33,6 +35,7 @@ const active = computed(() => {
     if (p.startsWith("/calls")) return "audit";
     if (p.startsWith("/settings")) return "settings";
     if (p.startsWith("/archived")) return "archived";
+    if (p.startsWith("/decisions")) return "decisions";
     return "ledger";
 });
 

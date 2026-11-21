@@ -437,7 +437,13 @@ export const api = {
   revokeKey: (id: string) => req<{ id: string; revoked: boolean }>(`/api/keys/${id}`, { method: "DELETE" }),
   /** What an assistant asked the book to do, newest first; the server caps it at 5000. */
   mcpCalls: (limit = 200) => req<{ calls: McpCall[] }>(`/api/mcp/calls?limit=${limit}`),
-  dashboard: (mode: Mode = "long") => req<Dashboard>(`/api/dashboard?mode=${mode}`),
+  dashboard: (
+    mode: Mode = "long",
+    decisions: "pending" | "approved" | "rejected" | "all" = "pending",
+  ) =>
+    req<Dashboard>(
+      `/api/dashboard?mode=${mode}${decisions === "pending" ? "" : `&decisions=${decisions}`}`,
+    ),
   settings: () => req<Settings>("/api/settings"),
   testProxy: () =>
     req<{ ok: boolean; status: number | null; millis: number; error: string | null }>(

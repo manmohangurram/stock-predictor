@@ -1,0 +1,246 @@
+/*
+ * The redesign's page furniture: the title block, the KPI strip, the card and the two segmented
+ * controls. Every ported page shares these, so a page only carries what is genuinely its own.
+ *
+ * Names are prefixed (`pg-`) or new (`.tag`, `.dseg`, `.mseg`) so they cannot collide with the
+ * classes the pages still drawn by `app.css` were written against.
+ */
+@layer components {
+    .pg-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 28px;
+        border-bottom: 1px solid var(--rule-subtle);
+        padding-bottom: 14px;
+        margin-bottom: 18px;
+    }
+    .pg-eyebrow {
+        font-size: 9.5px;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        color: var(--ink-tertiary);
+        font-weight: 700;
+    }
+    .pg-title {
+        margin: 2px 0 0;
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: 38px;
+        letter-spacing: -0.015em;
+        line-height: 1.05;
+    }
+    .pg-sub {
+        color: var(--ink-secondary);
+        font-size: 12.5px;
+        margin-top: 5px;
+    }
+    .pg-side {
+        display: grid;
+        gap: 12px;
+        justify-items: end;
+    }
+    .pg-kpis {
+        display: flex;
+        gap: 26px;
+        text-align: right;
+    }
+    .pg-kpis span {
+        display: block;
+        font-size: 9.5px;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+        color: var(--ink-tertiary);
+        font-weight: 700;
+    }
+    .pg-kpis b {
+        font-family: var(--font-ledger);
+        font-size: 17px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+    }
+    .pg-kpi-link {
+        text-decoration: none;
+        color: inherit;
+        border-radius: var(--radius-sm);
+    }
+    .pg-kpi-link:hover b,
+    .pg-kpi-link:focus-visible b {
+        color: var(--brand);
+    }
+    .pg-acts {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    .pg .d-btn {
+        font-size: 11.5px;
+    }
+
+    .panel {
+        background: var(--paper-raised);
+        border: 1px solid var(--rule-subtle);
+        border-radius: var(--radius-card);
+        margin-bottom: 14px;
+        overflow: hidden;
+        box-shadow: var(--shadow-card);
+    }
+    .panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 16px;
+        border-bottom: 1px solid var(--rule-subtle);
+    }
+    .panel-head h2 {
+        margin: 0;
+        font-size: 12.5px;
+        font-weight: 650;
+    }
+    .panel-head .r {
+        font-size: 11px;
+        color: var(--ink-tertiary);
+    }
+
+    .pill.p-b {
+        background: var(--green-bg);
+        color: var(--green);
+    }
+    .pill.p-s {
+        background: var(--stamp-oxide-bg);
+        color: var(--stamp-oxide);
+    }
+    .pill.p-a {
+        background: var(--brand-soft);
+        color: var(--brand);
+    }
+    .pill.p-n {
+        background: var(--paper-inset);
+        color: var(--ink-secondary);
+    }
+    .pg .pill {
+        font-size: 9.5px;
+        padding: 2px 6px;
+        width: max-content;
+        max-width: 100%;
+        text-align: center;
+    }
+
+    .tag {
+        font-size: 8.5px;
+        letter-spacing: 0.09em;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 4px;
+        border: 1px solid var(--rule-strong);
+        color: var(--ink-tertiary);
+        white-space: nowrap;
+    }
+    .tag.fund {
+        background: var(--fund-soft);
+        border-color: transparent;
+        color: var(--fund);
+    }
+    .tag.short {
+        background: var(--brand-soft);
+        border-color: transparent;
+        color: var(--brand);
+    }
+
+    .dseg {
+        display: inline-flex;
+        gap: 2px;
+        background: var(--paper-inset);
+        border-radius: 8px;
+        padding: 3px;
+    }
+    .dseg button {
+        font: inherit;
+        font-size: 12px;
+        padding: 5px 16px;
+        border: 0;
+        border-radius: 6px;
+        background: none;
+        color: var(--ink-secondary);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .dseg button.on {
+        background: var(--paper-raised);
+        color: var(--ink);
+        font-weight: 650;
+        box-shadow: 0 1px 2px rgb(16 23 21 / 0.08);
+    }
+    .dseg button:focus-visible {
+        outline: 2px solid var(--rule-focus);
+        outline-offset: 1px;
+    }
+
+    .mseg {
+        display: flex;
+        gap: 2px;
+        background: var(--paper-inset);
+        border-radius: 7px;
+        padding: 2px;
+    }
+    .mseg button {
+        font: inherit;
+        font-size: 10px;
+        padding: 3px 8px;
+        border: 0;
+        border-radius: 5px;
+        background: none;
+        color: var(--ink-secondary);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .mseg button.on {
+        background: var(--paper-raised);
+        color: var(--ink);
+        font-weight: 650;
+        box-shadow: 0 1px 2px rgb(16 23 21 / 0.08);
+    }
+    .mseg button:focus-visible {
+        outline: 2px solid var(--rule-focus);
+        outline-offset: 1px;
+    }
+
+    @media (max-width: 900px) {
+        .pg-top {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 12px;
+        }
+        .pg-title {
+            font-size: 30px;
+        }
+        .pg-side {
+            justify-items: stretch;
+            gap: 10px;
+        }
+        .pg-kpis {
+            gap: 14px;
+            justify-content: space-between;
+            text-align: left;
+        }
+        .pg-acts {
+            justify-content: flex-start;
+        }
+        .pg-acts .d-btn {
+            min-height: 34px;
+        }
+        .dseg {
+            display: flex;
+        }
+        .dseg button {
+            flex: 1;
+            text-align: center;
+            padding: 6px 10px;
+        }
+    }
+}
