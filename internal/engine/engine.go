@@ -26,48 +26,34 @@ import (
 )
 
 type EngineDeps struct {
-	Pool *sql.DB
-	// Read at the top of every tick, so an edit in the UI applies without a restart.
+	Pool      *sql.DB
 	Runtime   rules.Runtime
 	Market    market.MarketSource
 	Transport llm.Transport
 	Notifier  notify.Notifier
 	Rules     rules.RuleConfig
-	// Skip the quiet-tick dedupe. Used by --predict, where a human asked for an answer right
-	// now and "nothing changed since last time" is not an answer.
-	Force bool
+	Force     bool
 
-	// CandidateBlock is the trade plan's list (trend.rs). Nil leaves it empty.
 	CandidateBlock func(pool *sql.DB, m market.MarketSource, t llm.Transport, now time.Time) string
-	// SweepGlances drops the names a trade plan looked at and did not use (trend.rs).
-	SweepGlances func(pool *sql.DB) (int64, error)
-	// DailyList is the stock plan's benchmark list (benchmark.rs).
-	DailyList func(pool *sql.DB, m market.MarketSource, now time.Time) (string, error)
-	// NewsSearch is the morning pass's web search (market/googlenews.rs).
-	NewsSearch func(client *http.Client, name string, limit int) ([]models.Headline, error)
-	// Fundamentals is the financials block (market/fundamentals.rs). Nil reads "unavailable".
-	Fundamentals func(deps *EngineDeps, symbol string, year int) string
+	SweepGlances   func(pool *sql.DB) (int64, error)
+	DailyList      func(pool *sql.DB, m market.MarketSource, now time.Time) (string, error)
+	NewsSearch     func(client *http.Client, name string, limit int) ([]models.Headline, error)
+	Fundamentals   func(deps *EngineDeps, symbol string, year int) string
 }
 
 type PollReport struct {
-	// One human-readable line per decision, for --predict.
 	Notes         []string
 	Candidates    int
 	LLMCalls      int64
 	Signals       int
 	Notifications int
 	Blocked       int
-	// Instruments this tick looked at: the denominator for "2 of 6 instruments asked".
-	Polled int
-	// Instruments the model was actually asked about this tick (ruling and re-priced alike).
-	Asked int
-	// Instruments the gate left alone this tick: no price move, no new headline.
-	NotAsked []string
-	// Fresh news pulled this tick because a holding left its band, for the plan to read.
-	Fresh string
-	// Plan calls that produced a plan. Zero is the normal answer.
-	Plans  int
-	Errors []string
+	Polled        int
+	Asked         int
+	NotAsked      []string
+	Fresh         string
+	Plans         int
+	Errors        []string
 }
 
 type resolved struct {
@@ -755,6 +741,8 @@ type gathered struct {
 	positionsText      string
 	recentTrades       string
 	lastDecision       string
+	staleDaily         bool
+	indOK              bool
 }
 
 func (g gathered) lastClose() float64 {
@@ -765,7 +753,7 @@ func (g gathered) lastClose() float64 {
 }
 
 func gather(deps *EngineDeps, instrument models.Instrument, now time.Time) (*gathered, error) {
-	bars, err := loadDaily(deps, instrument.Symbol)
+	bars, staleDaily, err := loadDaily(deps, instrument)
 	if err != nil {
 		return nil, err
 	}
@@ -779,15 +767,13 @@ func gather(deps *EngineDeps, instrument models.Instrument, now time.Time) (*gat
 	}
 	// The daily series is fetched once a day; today's candle is what the tape says it is.
 	bars = mergeTape(bars, tape, now)
-	// Stored before the indicators are asked for: a name with too little history still accumulates
-	// one every tick, which is the only way it ever grows into a decidable instrument.
 	if err := store.Bars(deps.Pool, instrument.ID, bars); err != nil {
 		return nil, err
 	}
 	ind, err := rules.ComputeIndicators(bars)
+	indOK := err == nil
 	if err != nil {
 		slog.Debug("not enough history for indicators", "symbol", instrument.Symbol, "bars", len(bars))
-		return nil, nil
 	}
 	// The morning's search already stored what the web said; a tick reads it, it does not re-ask.
 	news, err := storedHeadlines(deps.Pool, instrument.ID, now)
@@ -840,18 +826,88 @@ func gather(deps *EngineDeps, instrument models.Instrument, now time.Time) (*gat
 		priceWindow: priceWindow, tape: tape,
 		dailySummary: formatDaily(bars, 10), positionsText: FormatBook(holdings, instrument.Symbol),
 		recentTrades: recent, lastDecision: lastDecision,
+		staleDaily: staleDaily, indOK: indOK,
 	}, nil
 }
 
-// loadDaily uses the day-long cache when the source has one, so a poll does not re-download a year
-// of history for every instrument.
-func loadDaily(deps *EngineDeps, symbol string) ([]models.Bar, error) {
+// Only a recorded stop or target can act without indicators; everything else waits for a series.
+func priceOnlyExit(deps *EngineDeps, instrument models.Instrument, g *gathered, now time.Time, report *PollReport) error {
+	close := g.lastClose()
+	why := "the daily series is too short"
+	if g.staleDaily {
+		why = "the daily series was refused"
+	}
+	report.Notes = append(report.Notes, fmt.Sprintf(
+		"%s: %s — price %.2f from the tape, no model call", instrument.Symbol, why, close))
+	if g.position == nil || close <= 0 {
+		return nil
+	}
+	candidate := rules.Candidate(rules.CandidateInput{
+		Instrument: &instrument, Bars: g.bars, Ind: &g.ind, Position: g.position,
+		AvailableCash: g.available, Cfg: deps.Rules, PriceOnly: true,
+	})
+	if candidate == nil || candidate.Action != models.ActionSell {
+		return nil
+	}
+	validUntil := tstamp.From(now.Add(18 * time.Hour))
+	return finish(deps, instrument, finished{
+		resolved: resolved{
+			action: candidate.Action, entry: candidate.Entry, stop: candidate.Stop,
+			target: candidate.Target, validUntil: &validUntil, qty: candidate.Qty,
+			reasons: candidate.Reasons,
+		},
+		sizing: sizing{available: g.available},
+		now:    now,
+	}, report)
+}
+
+// A refused daily fetch falls back to the stored series: the price is the tape's, the indicators lag.
+func loadDaily(deps *EngineDeps, instrument models.Instrument) ([]models.Bar, bool, error) {
+	var bars []models.Bar
+	var err error
 	if cached, ok := deps.Market.(interface {
 		CachedBars(string) ([]models.Bar, error)
 	}); ok {
-		return cached.CachedBars(symbol)
+		bars, err = cached.CachedBars(instrument.Symbol)
+	} else {
+		bars, err = deps.Market.Bars(instrument.Symbol)
 	}
-	return deps.Market.Bars(symbol)
+	if err == nil {
+		return bars, false, nil
+	}
+	stored, serr := storedBars(deps.Pool, instrument.ID, 400)
+	if serr != nil {
+		return nil, false, serr
+	}
+	if len(stored) == 0 {
+		return nil, false, err
+	}
+	slog.Warn("daily series refused; using the stored one", "symbol", instrument.Symbol,
+		"bars", len(stored), "error", err)
+	return stored, true, nil
+}
+
+func storedBars(pool *sql.DB, instrumentID string, limit int) ([]models.Bar, error) {
+	rows, err := pool.Query(
+		`SELECT ts, COALESCE(open, close), COALESCE(high, close), COALESCE(low, close), close,
+                COALESCE(volume, 0)
+         FROM bars WHERE instrument_id = ? ORDER BY ts DESC LIMIT ?`, instrumentID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []models.Bar{}
+	for rows.Next() {
+		var b models.Bar
+		if err := rows.Scan(&b.Ts, &b.Open, &b.High, &b.Low, &b.Close, &b.Volume); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out, rows.Err()
 }
 
 // mergeTape folds today's tape into the daily series: replace today's candle when the daily fetch
@@ -910,6 +966,9 @@ func pollInstrument(deps *EngineDeps, instrument models.Instrument, now time.Tim
 		return nil
 	}
 	report.Polled++
+	if !g.indOK {
+		return priceOnlyExit(deps, instrument, g, now, report)
+	}
 
 	// A winner's stop follows the price up, and the book in memory moves with it: the rules
 	// below must judge the stop that is now recorded, not the one this tick began with.
