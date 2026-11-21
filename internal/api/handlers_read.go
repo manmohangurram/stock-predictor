@@ -216,6 +216,7 @@ type Analysis struct {
 	Instrument InstrumentRow       `json:"instrument"`
 	Trailing1Y *float64            `json:"trailing_1y"`
 	Bars       []BarPoint          `json:"bars"`
+	BarCount   int                 `json:"bar_count"`
 	Indicators map[string]any      `json:"indicators"`
 	Checks     []CheckRow          `json:"checks"`
 	Position   *ledger.PositionRow `json:"position"`
@@ -292,7 +293,7 @@ func buildAnalysis(c *gin.Context, st *AppState, symbol string, full bool) (*Ana
 	}
 	out := &Analysis{
 		Instrument: inst, Headlines: headlines, Signals: allSignals, Position: position,
-		Bars: []BarPoint{}, Checks: []CheckRow{},
+		Bars: []BarPoint{}, Checks: []CheckRow{}, BarCount: len(bars),
 	}
 	if !full {
 		return out, nil

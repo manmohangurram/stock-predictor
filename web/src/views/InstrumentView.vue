@@ -445,15 +445,18 @@ const gone = (): void => void router.push("/archived");
                 <form class="target" @submit.prevent="saveTarget">
                     <label>
                         <span>Profit target %</span>
-                        <input
-                            v-model="target"
-                            name="pct"
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            placeholder="pot default"
-                            aria-label="Expected profit percent"
-                        />
+                        <span class="pct">
+                            <input
+                                v-model="target"
+                                name="pct"
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                placeholder="pot default"
+                                aria-label="Expected profit percent"
+                            />
+                            <i aria-hidden="true">%</i>
+                        </span>
                     </label>
                     <button class="d-btn d-btn-xs" type="submit">Save</button>
                 </form>
@@ -485,7 +488,7 @@ const gone = (): void => void router.push("/archived");
                 </div>
                 <div class="kv2">
                     <span>Price data</span
-                    ><b class="num">{{ a.bars.length }} / 200 bars</b>
+                    ><b class="num">{{ a.bar_count }} / 200 bars</b>
                 </div>
                 <div class="kv2">
                     <span>Rule check</span>
@@ -1097,6 +1100,7 @@ const gone = (): void => void router.push("/archived");
     height: 30px;
     min-height: 30px;
     padding: 0 8px;
+    padding-right: 24px;
     font-family: var(--font-ledger);
     font-size: 12.5px;
     border: 1px solid var(--rule-strong);
@@ -1104,6 +1108,25 @@ const gone = (): void => void router.push("/archived");
     background: var(--paper-raised);
     color: var(--ink);
     width: 100%;
+}
+.target input::-webkit-outer-spin-button,
+.target input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.target .pct {
+    position: relative;
+    display: block;
+}
+.target .pct i {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    font: 500 11px var(--font-ledger);
+    font-style: normal;
+    color: var(--ink-tertiary);
+    pointer-events: none;
 }
 .hint {
     font-size: 11px;

@@ -252,7 +252,10 @@ export interface Analysis {
   };
   /** The trailing year on the stored series; null when history does not reach back that far. */
   trailing_1y: number | null;
+  /** The last 120 closes, for the chart. */
   bars: BarPoint[];
+  /** Every bar the rules read — more than `bars` once history passes 120. */
+  bar_count: number;
   indicators: {
     sma50: number;
     sma200: number;
