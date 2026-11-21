@@ -1476,9 +1476,11 @@ dialog,
     .tabbar a { flex: 1; display: flex; align-items: center; justify-content: center;
       padding: 8px 0 10px; color: var(--ink-tertiary); text-decoration: none; min-height: 54px; }
     .tabbar a.on { color: var(--brand); }
-    .tabbar a.on svg { background: var(--brand-soft); border-radius: 9px; padding: 5px;
-      box-sizing: content-box; }
+    .tabbar .tab-icon { display: grid; place-items: center; width: 29px; height: 29px;
+      border-radius: 9px; }
+    .tabbar a.on .tab-icon { background: var(--brand-soft); }
     .tabbar a span { display: none; }
+    .tabbar a span.tab-icon { display: grid; }
   }
 }
 

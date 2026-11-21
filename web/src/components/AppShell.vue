@@ -258,12 +258,14 @@ onBeforeUnmount(() => {
                 :class="{ on: active === l.id }"
                 :aria-current="active === l.id ? 'page' : undefined"
             >
-                <component
-                    :is="l.icon"
-                    :size="19"
-                    :stroke-width="1.75"
-                    aria-hidden="true"
-                />
+                <span class="tab-icon">
+                    <component
+                        :is="l.icon"
+                        :size="19"
+                        :stroke-width="1.75"
+                        aria-hidden="true"
+                    />
+                </span>
                 <span>{{ l.label }}</span>
             </a>
         </nav>
