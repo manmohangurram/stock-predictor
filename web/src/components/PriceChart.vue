@@ -110,6 +110,16 @@ const refs = computed(() => {
         out.push(at(ind.sma50, "SMA50", "var(--ink-tertiary)", "1 4"));
         out.push(at(ind.sma200, "SMA200", "var(--stamp-oxide)", "1 4"));
     }
+    // Two refs a few rupees apart land on one line; spread the labels, not the values.
+    const gap = 11;
+    const sorted = [...out].sort((p, q) => Number(p.y) - Number(q.y));
+    for (let i = 1; i < sorted.length; i++) {
+        const prev = Number(sorted[i - 1].y);
+        if (Number(sorted[i].y) - prev < gap)
+            sorted[i].y = (prev + gap).toFixed(1);
+    }
+    const over = Number(sorted[sorted.length - 1].y) - (h - 4);
+    if (over > 0) for (const r of sorted) r.y = (Number(r.y) - over).toFixed(1);
     return out;
 });
 </script>
@@ -299,7 +309,6 @@ const refs = computed(() => {
         </figcaption>
     </figure>
 </template>
-
 
 <style scoped>
 .spark {
