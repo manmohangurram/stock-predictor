@@ -1,3 +1,48 @@
+## v1.0.0
+
+The front end is rewritten, every page is on the new design, and the API has the three endpoints those
+screens needed. Nothing about the money changed: the same validator, the same single transaction per
+write, the same append-only ledger.
+
+### Added
+
+- **One design across the app.** The book statement, the decisions queue and its sign-off form, the
+  archive and its record, the audit list with the parsed-call drawer, the instrument page (chart, the
+  three-card band, the fill dialog), every settings tab, access, and a new logs tab that holds the MCP
+  tool calls. Each page is a view; the old renderers are gone.
+- **A sign-in that carries the product.** Two panels: the dark one says what the book is, the paper one
+  asks for the name and the password. The password field can be revealed, the username is whatever you
+  set, and a first run still gets its setup card.
+- **Every session, and one switch to end them.** `GET /api/sessions` lists the live browsers with the
+  current one marked; `POST /api/sessions/revoke-all` ends them all and clears this cookie.
+- **A changeable sign-in name.** `POST /api/auth/username` renames the one admin and asks for the
+  current password, like the password change does. The header, the account menu and the sign-in field
+  all read the stored name.
+- **Delete one instrument, not the book.** `DELETE /api/instruments/{symbol}/records` erases the
+  instrument and everything recorded against it, and returns its cash to the pot in one transaction.
+
+### Changed
+
+- **Fields obey one rule.** Mono 13px, 34px tall, one border, one corner. A unit rides inside the
+  field, so every control in a column ends on the same edge.
+- **The settings rail is a group, not a growing list.** Money, Risk limits, Model, Notifications,
+  Cadence, Network, Access and Logs each own a URL.
+- **The refresh cookie is scoped to `/api`**, so the session list can tell which browser is asking.
+  The old `/api/auth` cookie is retired on every write and clear; without that, a browser that signed
+  in before keeps sending the stale value first and the replay detector signs it out.
+
+### Removed
+
+- `GET /api/reset/candidates` and `POST /api/reset`. Deleting one instrument covers what they did,
+  without the typed phrase.
+
+### Fixed
+
+- The risk-limits table wraps at 390 instead of clipping its last columns.
+- Dialogs fill their body at every width, and a phone shows no keyboard hints.
+- A field no longer drifts down when the cell beside it carries more help text.
+- 598 lines of CSS that no page used are gone; the bundle is 21 kB smaller.
+
 ## v0.37.0
 
 ### Added

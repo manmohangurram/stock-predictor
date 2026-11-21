@@ -6,6 +6,16 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | Method | Path | Used by UI | Purpose |
 |---|---|---|---|
 | GET | `/api/health` | — | Liveness: `{"ok":true}` |
+| GET | `/api/auth/status` | yes | Setup needed? signed in? the name at the door |
+| POST | `/api/auth/setup` | yes | Create the one admin; `409` once one exists |
+| POST | `/api/auth/login` | yes | Name and password; returns the access token and sets the refresh cookie |
+| POST | `/api/auth/refresh` | yes | Rotate the refresh cookie into a new access token |
+| POST | `/api/auth/logout` | yes | End this browser's session |
+| POST | `/api/auth/password` | yes | Change the password; ends every session |
+| POST | `/api/auth/username` | yes | Rename the admin; asks for the current password |
+| GET | `/api/auth/me` | yes | The signed-in name |
+| GET | `/api/sessions` | yes | Live browsers behind the refresh tokens, this one marked `current` |
+| POST | `/api/sessions/revoke-all` | yes | End every session and clear this browser's cookie |
 | GET | `/api/dashboard?mode=&decisions=` | yes | The ledger in one request: budget, positions, pending signals, recent fills, ETag |
 | GET / PUT | `/api/settings` | yes | Every settings row; PUT writes only the keys present |
 | POST | `/api/settings/proxy/test` | yes | One real request through the stored proxy |
