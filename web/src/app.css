@@ -468,7 +468,7 @@
   .rail > a:hover { background: var(--paper-raised); color: var(--ink); }
   .rail > a.on { background: var(--paper-raised); color: var(--ink); font-weight: 600;
     border-left-color: var(--stamp-ink); }
-  .rail > a svg { flex: none; width: 16px; height: 16px; color: var(--ink-tertiary); }
+  .rail > a svg { flex: none; width: 18px; height: 18px; color: var(--ink-tertiary); }
   .rail > a:hover svg, .rail > a.on svg { color: var(--ink); }
   .rail-badge { margin-left: auto; font-family: var(--font-ledger); font-size: var(--text-xs); color: var(--ink-muted); }
 

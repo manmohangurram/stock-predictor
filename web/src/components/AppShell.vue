@@ -8,15 +8,16 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import { Archive, BookOpen, ScrollText, Settings } from "lucide-vue-next";
 import { api, type Market } from "../api";
 import { railBadges } from "../stores/rail";
 
 const route = useRoute();
 const links = [
-  { id: "ledger", label: "Ledger", href: "/", group: "work", icon: '<path d="M4 6h16M4 12h16M4 18h10" />' },
-  { id: "audit", label: "Audit", href: "/calls", group: "work", icon: '<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><path d="M10 12h6M10 16h6"/>' },
-  { id: "settings", label: "Settings", href: "/settings", group: "setup", icon: '<path d="M3 7h7M15.5 7H21M3 17h2.5M10.5 17H21"/><circle cx="13" cy="7" r="2.5"/><circle cx="8" cy="17" r="2.5"/>' },
-  { id: "archived", label: "Archived", href: "/archived", group: "setup", icon: '<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v12h14V8"/><path d="M10 12h4"/>' },
+  { id: "ledger", label: "Ledger", href: "/", group: "work", icon: BookOpen },
+  { id: "audit", label: "Audit", href: "/calls", group: "work", icon: ScrollText },
+  { id: "settings", label: "Settings", href: "/settings", group: "setup", icon: Settings },
+  { id: "archived", label: "Archived", href: "/archived", group: "setup", icon: Archive },
 ] as const;
 
 const active = computed(() => {
@@ -92,9 +93,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
           :class="{ on: active === l.id }"
           :aria-current="active === l.id ? 'page' : undefined"
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-               stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
-               aria-hidden="true" v-html="l.icon" />
+          <component :is="l.icon" :size="18" :stroke-width="1.75" aria-hidden="true" />
           <span>{{ l.label }}</span>
           <span v-if="badge(l.id)" class="rail-badge">{{ badge(l.id) }}</span>
         </a>
