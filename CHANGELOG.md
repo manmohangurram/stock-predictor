@@ -1,3 +1,18 @@
+## v1.0.2
+
+Every Yahoo request now leaves with the agent it was always meant to send. The header had been
+dropped in the one place an outbound client is built, so the first request of a poll was answered
+with a 429 and the app read that refusal as an outage.
+
+### Fixed
+
+- **The user agent is sent.** `httpx.ClientWith` accepted one and discarded it, so Yahoo saw
+  `Go-http-client/1.1` and refused it. The header is stamped on the transport, and a request that
+  sets its own keeps it.
+- **One refused edge no longer stops the poll.** The cooldown is per host, and a 429 hands the
+  request to the other edge before the caller loses its answer. A refusal costs one attempt per
+  edge, not three on the host that just said no.
+
 ## v1.0.1
 
 Prices are asked for differently, not more often. A chart request now names its window in epoch
