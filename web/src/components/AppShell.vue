@@ -19,8 +19,10 @@ import {
     User,
 } from "lucide-vue-next";
 import { api, auth, type Market } from "../api";
+import { useAdmin } from "../admin";
 
 const route = useRoute();
+const { username: adminName } = useAdmin();
 const links = [
     { id: "ledger", label: "Book", href: "/", icon: BookOpen },
     {
@@ -223,7 +225,8 @@ onBeforeUnmount(() => {
                         aria-label="Account"
                     >
                         <div class="who">
-                            <b>Admin</b><span>Signed in · local session</span>
+                            <b>{{ adminName }}</b
+                            ><span>Signed in · local session</span>
                         </div>
                         <button type="button" role="menuitem" @click="signOut">
                             <LogOut

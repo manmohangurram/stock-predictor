@@ -404,6 +404,15 @@ export interface McpCall {
   ms: number;
 }
 
+export interface SessionInfo {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  user_agent: string;
+  /** The token this browser is using right now. */
+  current: boolean;
+}
+
 export interface ApiKey {
   id: string;
   name: string;
@@ -432,6 +441,14 @@ export const api = {
   authLogout: () => req<{ signed_out: boolean }>("/api/auth/logout", { method: "POST" }),
   changePassword: (body: { current: string; next: string }) =>
     req<{ changed: boolean; signed_out: boolean }>("/api/auth/password", json(body)),
+  changeUsername: (body: { username: string; password: string }) =>
+    req<{ username: string }>("/api/auth/username", json(body)),
+  me: () => req<{ username: string }>("/api/auth/me"),
+
+  /** The live browser sessions behind the refresh tokens. */
+  sessions: () => req<{ sessions: SessionInfo[] }>("/api/sessions"),
+  revokeAllSessions: () =>
+    req<{ revoked: number; signed_out: boolean }>("/api/sessions/revoke-all", { method: "POST" }),
 
   /** MCP access keys; the plaintext comes back once, from createKey. */
   keys: () => req<{ keys: ApiKey[] }>("/api/keys"),

@@ -170,7 +170,7 @@ export function parseReply(content: string): Reply {
   const headlines = more?.headlines ?? decision.headlines;
   return {
     verdict,
-    entry: num(decision.entry),
+    entry: num(decision.entry) ?? num(decision.price),
     stop: num(decision.stop),
     target: num(decision.target),
     qty: num(decision.qty),

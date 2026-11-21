@@ -10,7 +10,9 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { api, type Dashboard, type Mode, type SignalRow } from "../api";
 import { money } from "../format";
 import { debitOf } from "../lib/decision";
+import { ClipboardList } from "lucide-vue-next";
 import DecisionCard from "../components/DecisionCard.vue";
+import AppEmpty from "../components/ui/AppEmpty.vue";
 
 type Horizon = "all" | Mode;
 type Status = "pending" | "approved" | "rejected";
@@ -200,9 +202,12 @@ onBeforeUnmount(() => window.clearInterval(timer));
             @reload="load()"
         />
 
-        <p v-if="loaded && !shown.length" class="panel empty-note">
-            {{ emptyText }}
-        </p>
+        <AppEmpty
+            v-if="loaded && !shown.length"
+            class="panel"
+            :icon="ClipboardList"
+            :text="emptyText"
+        />
     </div>
 </template>
 

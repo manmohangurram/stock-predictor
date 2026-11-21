@@ -6,7 +6,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { ChevronRight, RefreshCw } from "lucide-vue-next";
+import { ChevronRight, RefreshCw, Wallet } from "lucide-vue-next";
 import {
     api,
     type Dashboard,
@@ -17,6 +17,7 @@ import {
 import { clock, histDate, money, units } from "../format";
 import { debitOf } from "../lib/decision";
 import AddInstrument from "../components/AddInstrument.vue";
+import AppEmpty from "../components/ui/AppEmpty.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -554,13 +555,16 @@ watch(mode, load);
                     />
                 </RouterLink>
 
-                <p v-if="!shown.length" class="empty-note">
-                    {{
+                <AppEmpty
+                    v-if="!shown.length"
+                    compact
+                    :icon="Wallet"
+                    :text="
                         positions.length
-                            ? "Nothing in this filter."
-                            : "Nothing here yet — add an instrument above."
-                    }}
-                </p>
+                            ? 'Nothing in this filter.'
+                            : 'Nothing here yet — add an instrument above.'
+                    "
+                />
             </section>
         </template>
     </div>
@@ -687,7 +691,7 @@ watch(mode, load);
     color: var(--ink-tertiary);
     text-align: left;
     padding: 8px 16px;
-    background: var(--paper);
+    background: var(--paper-soft);
     font-weight: 700;
     border-top: 1px solid var(--rule-subtle);
 }
@@ -698,7 +702,7 @@ watch(mode, load);
     overflow-wrap: anywhere;
 }
 .fills tbody tr:hover {
-    background: var(--paper);
+    background: var(--paper-soft);
 }
 .fills .r {
     text-align: right;

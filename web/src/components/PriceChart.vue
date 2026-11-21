@@ -3,6 +3,8 @@
 import { computed } from "vue";
 import type { Analysis } from "../api";
 import { day, money } from "../format";
+import { LineChart } from "lucide-vue-next";
+import AppEmpty from "./ui/AppEmpty.vue";
 
 const props = withDefaults(
     defineProps<{ analysis: Analysis; compact?: boolean }>(),
@@ -127,10 +129,12 @@ const refs = computed(() => {
 </script>
 
 <template>
-    <p v-if="!geo" class="empty">
-        No price history stored yet — open this instrument once the next poll
-        has run.
-    </p>
+    <AppEmpty
+        v-if="!geo"
+        compact
+        :icon="LineChart"
+        text="No price history stored yet — open this instrument once the next poll has run."
+    />
     <figure v-else-if="compact && spark" class="spark">
         <svg
             viewBox="0 0 1000 240"

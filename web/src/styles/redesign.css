@@ -6,6 +6,7 @@
  * classes the pages still drawn by `app.css` were written against.
  */
 @layer components {
+
     .pg-top {
         display: flex;
         justify-content: space-between;
@@ -61,15 +62,6 @@
         display: inline-flex;
         align-items: center;
         gap: 3px;
-    }
-    .pg-kpi-link {
-        text-decoration: none;
-        color: inherit;
-        border-radius: var(--radius-sm);
-    }
-    .pg-kpi-link:hover b,
-    .pg-kpi-link:focus-visible b {
-        color: var(--brand);
     }
     .pg-acts {
         display: flex;
@@ -245,7 +237,7 @@
     }
 }
 
-/* Unlayered on purpose: app.css's base `a { color }` outranks the component layer here. */
+/* Unlayered on purpose: app.css base `a { color }` outranks the component layer here. */
 .topnav a {
     color: var(--ink-tertiary);
 }
@@ -262,4 +254,15 @@
 .topnav a.on svg {
     color: var(--brand);
     opacity: 1;
+}
+
+/* In the dark theme the raised segment must stay lighter than its track, or the chosen one reads as a hole. */
+[data-theme="dark"] .dseg,
+[data-theme="dark"] .mseg {
+    background: var(--paper);
+}
+[data-theme="dark"] .dseg button.on,
+[data-theme="dark"] .mseg button.on {
+    background: var(--paper-inset);
+    box-shadow: none;
 }

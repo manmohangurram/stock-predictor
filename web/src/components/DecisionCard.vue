@@ -542,13 +542,6 @@ const posted = computed(() => {
 .signoff .failure {
     grid-column: 1 / -1;
 }
-.input-sm {
-    height: 32px;
-    min-height: 32px;
-    font-family: var(--font-ledger);
-    font-size: 12.5px;
-    border-radius: var(--radius-sm);
-}
 .amt {
     text-align: right;
     margin-left: auto;

@@ -5,7 +5,11 @@
         --paper: #f6f5ef;
         --paper-raised: #ffffff;
         --paper-inset: #eeefe8;
+        --paper-soft: #fbfbf7;
         --paper-settled: #dbf4e5;
+        --shell: #0e1512;
+        --shell-ink: #eef2ef;
+        --shell-dim: #9fb0a8;
 
         --ink: #0e1512;
         --ink-secondary: #4b5751;
@@ -72,6 +76,7 @@
         --shadow-card:
             0 1px 2px rgb(16 23 21 / 0.05), 0 10px 26px rgb(16 23 21 / 0.06);
         --shadow-pop: 0 18px 40px rgb(16 23 21 / 0.2);
+        --scrim: rgb(43 42 39 / 0.35);
 
         color-scheme: light;
     }
@@ -80,12 +85,16 @@
         --paper: #0a0f0d;
         --paper-raised: #111815;
         --paper-inset: #1a2420;
+        --paper-soft: #151e1a;
         --paper-settled: #0f2c1d;
+        --shell: #060b09;
+        --shell-ink: #e8eeea;
+        --shell-dim: #8fa097;
 
         --ink: #e8eeea;
         --ink-secondary: #a8b4ae;
         --ink-tertiary: #78857f;
-        --ink-muted: #6f7b75;
+        --ink-muted: #7e8a84;
 
         --rule-subtle: #1b2621;
         --rule: #222e29;
@@ -116,6 +125,7 @@
         --shadow-card:
             0 1px 2px rgb(0 0 0 / 0.45), 0 14px 34px rgb(0 0 0 / 0.4);
         --shadow-pop: 0 22px 50px rgb(0 0 0 / 0.55);
+        --scrim: rgb(0 0 0 / 0.62);
 
         color-scheme: dark;
     }
@@ -125,12 +135,16 @@
             --paper: #0a0f0d;
             --paper-raised: #111815;
             --paper-inset: #1a2420;
+            --paper-soft: #151e1a;
             --paper-settled: #0f2c1d;
-
+            --shell: #060b09;
+            --shell-ink: #e8eeea;
+            --shell-dim: #8fa097;
+    
             --ink: #e8eeea;
             --ink-secondary: #a8b4ae;
             --ink-tertiary: #78857f;
-            --ink-muted: #6f7b75;
+            --ink-muted: #7e8a84;
 
             --rule-subtle: #1b2621;
             --rule: #222e29;
@@ -158,6 +172,7 @@
             --shadow-card:
                 0 1px 2px rgb(0 0 0 / 0.45), 0 14px 34px rgb(0 0 0 / 0.4);
             --shadow-pop: 0 22px 50px rgb(0 0 0 / 0.55);
+            --scrim: rgb(0 0 0 / 0.62);
 
             color-scheme: dark;
         }

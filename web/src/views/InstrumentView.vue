@@ -5,7 +5,13 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { Plus, RefreshCw } from "lucide-vue-next";
+import {
+    ClipboardList,
+    Newspaper,
+    Plus,
+    ReceiptText,
+    RefreshCw,
+} from "lucide-vue-next";
 import {
     api,
     type Analysis,
@@ -16,6 +22,8 @@ import {
 import { clock, day, dayTime, money, today, units } from "../format";
 import DeleteInstrument from "../components/DeleteInstrument.vue";
 import PriceChart from "../components/PriceChart.vue";
+import AppDateField from "../components/ui/AppDateField.vue";
+import AppEmpty from "../components/ui/AppEmpty.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -159,11 +167,15 @@ const fillDialog = ref<HTMLDialogElement | null>(null);
 const side = ref<"buy" | "sell">("buy");
 const fill = ref({ qty: "", price: "", at: today(), mode: "long" });
 
+const atIso = ref(fill.value.at);
+const atBad = computed(() => !atIso.value || atIso.value > today());
+
 watch(recording, (open) => {
     const d = fillDialog.value;
     if (!d) return;
     if (open) {
         tradeStatus.value = "";
+        atIso.value = fill.value.at;
         if (!d.open) d.showModal();
     } else if (d.open) {
         d.close();
@@ -189,11 +201,12 @@ async function record(): Promise<void> {
             side.value,
             Number(fill.value.qty),
             Number(fill.value.price),
-            fill.value.at,
+            atIso.value,
             fill.value.mode as "long" | "trade",
         );
         recording.value = false;
         fill.value = { qty: "", price: "", at: today(), mode: "long" };
+        atIso.value = today();
         tradeStatus.value = "";
         await load();
     } catch (e) {
@@ -543,9 +556,12 @@ const gone = (): void => void router.push("/archived");
                         ></a
                     >
                 </template>
-                <p v-else class="hint">
-                    Nothing stored yet — Refresh fetches headlines.
-                </p>
+                <AppEmpty
+                    v-else
+                    compact
+                    :icon="Newspaper"
+                    text="Nothing stored yet — Refresh fetches headlines."
+                />
                 <div v-if="(detail?.headlines ?? []).length > 5" class="hint">
                     +{{ (detail?.headlines ?? []).length - 5 }} more stored
                 </div>
@@ -638,14 +654,10 @@ const gone = (): void => void router.push("/archived");
                                             min="0"
                                             step="any"
                                     /></label>
-                                    <label class="fld"
-                                        ><span>Date</span
-                                        ><input
-                                            v-model="edit.at"
-                                            name="at"
-                                            type="date"
-                                            :max="today()"
-                                    /></label>
+                                    <AppDateField
+                                        v-model="edit.at"
+                                        :max="today()"
+                                    />
                                     <button
                                         class="d-btn d-btn-xs d-btn-primary"
                                         type="submit"
@@ -683,7 +695,12 @@ const gone = (): void => void router.push("/archived");
                     </template>
                 </tbody>
             </table>
-            <p v-else class="empty-note">No fills recorded yet.</p>
+            <AppEmpty
+                v-else
+                compact
+                :icon="ReceiptText"
+                text="No fills recorded yet — Record a fill posts the trade, the position and the cash together."
+            />
             <div v-if="trades.length" class="rows only-mobile">
                 <div v-for="t in trades" :key="t.id" class="row">
                     <span class="num when">{{ day(t.traded_at) }}</span>
@@ -768,9 +785,12 @@ const gone = (): void => void router.push("/archived");
                     </tr>
                 </tbody>
             </table>
-            <p v-else class="empty-note">
-                No decisions recorded for this instrument yet.
-            </p>
+            <AppEmpty
+                v-else
+                compact
+                :icon="ClipboardList"
+                text="No decisions recorded for this instrument yet."
+            />
             <div v-if="signals.length" class="rows only-mobile">
                 <div v-for="s in signals" :key="s.id" class="row">
                     <span class="num when">{{ clock(s.created_at) }}</span>
@@ -937,15 +957,10 @@ const gone = (): void => void router.push("/archived");
                                 :placeholder="isFund ? 'NAV' : 'Price'"
                             />
                         </label>
-                        <label class="fld">
-                            <span>Date</span>
-                            <input
-                                v-model="fill.at"
-                                name="at"
-                                type="date"
-                                :max="today()"
-                            />
-                        </label>
+                        <AppDateField
+                            v-model="atIso"
+                            :max="today()"
+                        />
                         <label v-if="klass === 'stock'" class="fld">
                             <span>Book</span>
                             <select v-model="fill.mode" name="mode">
@@ -1204,16 +1219,7 @@ const gone = (): void => void router.push("/archived");
     font-weight: 700;
 }
 .target input {
-    height: 30px;
-    min-height: 30px;
-    padding: 0 8px;
     padding-right: 24px;
-    font-family: var(--font-ledger);
-    font-size: 12.5px;
-    border: 1px solid var(--rule-strong);
-    border-radius: var(--radius-sm);
-    background: var(--paper-raised);
-    color: var(--ink);
     width: 100%;
 }
 .target input::-webkit-outer-spin-button,
@@ -1347,10 +1353,11 @@ const gone = (): void => void router.push("/archived");
     border-radius: var(--radius-lg);
     background: var(--paper-raised);
     color: var(--ink);
+    box-shadow: var(--shadow-pop);
     overflow: auto;
 }
 .fill-dialog::backdrop {
-    background: oklch(0.2 0.02 60 / 0.35);
+    background: var(--scrim);
 }
 .fill-dialog[open] {
     margin: auto;
@@ -1432,7 +1439,6 @@ const gone = (): void => void router.push("/archived");
     gap: 8px;
     padding: 12px 18px;
     border-top: 1px solid var(--rule-subtle);
-    background: var(--paper);
 }
 .fill-foot .hint {
     margin: 0 auto 0 0;
@@ -1467,19 +1473,7 @@ const gone = (): void => void router.push("/archived");
 }
 .fld input,
 .fld select {
-    height: 30px;
-    min-height: 30px;
-    padding: 0 8px;
-    font-family: var(--font-ledger);
-    font-size: 12.5px;
-    border: 1px solid var(--rule-strong);
-    border-radius: var(--radius-sm);
-    background: var(--paper-raised);
-    color: var(--ink);
     width: 100%;
-}
-.fld select {
-    font-family: var(--font-form);
 }
 .hint.wide {
     flex-basis: 100%;

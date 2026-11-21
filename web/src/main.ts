@@ -8,6 +8,7 @@ import CallsView from "./views/CallsView.vue";
 import ArchivedView from "./views/ArchivedView.vue";
 import DecisionsView from "./views/DecisionsView.vue";
 import AccessView from "./views/AccessView.vue";
+import LogsView from "./views/LogsView.vue";
 import LoginView from "./views/LoginView.vue";
 import SettingsView from "./views/SettingsView.vue";
 
@@ -27,6 +28,7 @@ const router = createRouter({
     { path: "/login", component: LoginView },
   { path: "/settings", component: SettingsView },
     { path: "/settings/access", component: AccessView },
+    { path: "/settings/logs", component: LogsView },
   { path: "/settings/:tab", component: SettingsView },
     // Anything else is the ledger: an unknown URL lands somewhere useful.
     { path: "/:pathMatch(.*)*", redirect: "/" },

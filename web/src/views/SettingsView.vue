@@ -15,9 +15,11 @@ import { pill } from "../components/stamp";
 import SettingField from "../components/SettingField.vue";
 import SettingsRail from "../components/SettingsRail.vue";
 import { patchFor, seed, type Tab } from "../settings-patch";
+import { useAdmin } from "../admin";
 
 const route = useRoute();
 const router = useRouter();
+const { username: adminName } = useAdmin();
 const data = ref<Settings | null>(null);
 const values = reactive<Record<string, string>>({});
 const saved = ref<Record<string, string>>({});
@@ -26,14 +28,15 @@ const error = ref("");
 const notifyStatus = ref("");
 const proxyStatus = ref("");
 const busy = ref(false);
+const activeKeys = ref(0);
 
-const TABS: { id: Tab; title: string; lede: string }[] = [
-  { id: "money", title: "Money", lede: "Three purses, each granted monthly and each expiring: long-term stocks, mutual funds, and the short-term book. They never share money." },
-  { id: "risk", title: "Risk limits", lede: "What a decision may be, per purse. The validator refuses a proposal outside these numbers rather than shrinking it." },
-  { id: "model", title: "Model", lede: "Which chat API writes the paragraph. Without a key the rules run alone and no call is made." },
-  { id: "notifications", title: "Notifications", lede: "Where a decided trade reaches your phone. One topic, one app; nothing is pushed when it is blank." },
-  { id: "cadence", title: "Cadence", lede: "How often the app wakes, and when it is allowed to spend a model call. Changes apply on the next tick — no restart." },
-  { id: "network", title: "Network", lede: "The proxy every outbound request goes through. The password is stored apart from the URL so it can be masked like a key." },
+const TABS: { id: Tab; title: string; card: string; lede: string }[] = [
+  { id: "money", title: "Money", card: "Allowances", lede: "Three purses, each granted monthly and each expiring: long-term stocks, mutual funds, and the short-term book. They never share money." },
+  { id: "risk", title: "Risk limits", card: "Limits", lede: "What a decision may be, per purse. The validator refuses a proposal outside these numbers rather than shrinking it." },
+  { id: "model", title: "Model", card: "Provider", lede: "Which chat API writes the paragraph. Without a key the rules run alone and no call is made." },
+  { id: "notifications", title: "Notifications", card: "ntfy", lede: "Where a decided trade reaches your phone. One topic, one app; nothing is pushed when it is blank." },
+  { id: "cadence", title: "Cadence", card: "Polling", lede: "How often the app wakes, and when it is allowed to spend a model call. Changes apply on the next tick — no restart." },
+  { id: "network", title: "Network", card: "Proxy", lede: "The proxy every outbound request goes through. The password is stored apart from the URL so it can be masked like a key." },
 ];
 
 const tab = computed<Tab>(() => {
@@ -54,7 +57,12 @@ function seedTab(): void {
 
 async function load(): Promise<void> {
   try {
-    data.value = await api.settings();
+    const [s, k] = await Promise.all([
+      api.settings(),
+      api.keys().catch(() => ({ keys: [] })),
+    ]);
+    data.value = s;
+    activeKeys.value = k.keys.filter((x) => !x.revoked_at).length;
     error.value = "";
     seedTab();
   } catch (e) {
@@ -139,32 +147,31 @@ const every = (key: "poll_secs" | "off_hours_secs"): string =>
 <template>
   <div v-if="error" class="error-band">Something failed: {{ error }}</div>
   <template v-else-if="data">
-    <div class="page-head">
-      <div>
-        <h1>Settings</h1>
-        <div class="page-sub">Every value is a database row, applied on the next tick</div>
-      </div>
-      <div class="head-right">
-        <div class="head-row">
-          <div class="figures">
-            <div><span class="lbl">Long-term</span><span class="fig-line"><b class="num">{{ money(data.budget, 0) }}</b></span></div>
-            <div><span class="lbl">Short-term</span><span class="fig-line"><b class="num">{{ money(data.trading_budget, 0) }}</b></span></div>
-            <div><span class="lbl">Free</span><span class="fig-line"><b class="num">{{ money(data.available, 0) }}</b></span></div>
+    <div class="settings-head">
+      <header class="pg-top">
+        <div class="pg-main">
+          <div class="pg-eyebrow">Configuration</div>
+          <h1 class="pg-title">Settings</h1>
+          <div class="pg-sub">Every value is a database row, applied on the next tick</div>
+        </div>
+        <div class="pg-side">
+          <div class="pg-kpis">
+            <div><span>Signed in</span><b>{{ adminName }}</b></div>
+            <div><span>Active keys</span><b class="num">{{ activeKeys }}</b></div>
           </div>
         </div>
-      </div>
+      </header>
     </div>
 
-    <SettingsRail :current="tab" />
+    <div class="settings">
+      <SettingsRail :current="tab" />
 
-    <main class="settings-pane" role="tabpanel" :id="`panel-${tab}`">
-      <div class="pane-head">
-        <h2>{{ spec.title }}</h2>
-        <span v-html="pill(dirty ? 'todo' : 'ok', dirty ? 'unsaved' : 'saved')" />
-      </div>
-      <p class="lede">{{ spec.lede }}</p>
-
-      <form autocomplete="off" @submit.prevent="save">
+      <main class="settings-pane" role="tabpanel" :id="`panel-${tab}`">
+        <form autocomplete="off" @submit.prevent="save">
+          <div class="formcard">
+            <h3>{{ spec.card }}</h3>
+            <p class="lead">{{ spec.lede }}</p>
+            <div class="formgrid">
         <template v-if="tab === 'money'">
           <SettingField id="budget" label="Monthly allowance · long-term stocks" :unit="data.currency" type="number" step="1"
             v-model="values.budget"
@@ -187,7 +194,7 @@ const every = (key: "poll_secs" | "off_hours_secs"): string =>
         </template>
 
         <template v-else-if="tab === 'risk'">
-          <table class="limits-table">
+          <table class="limits-table wide">
             <thead><tr><th scope="col">Limit</th><th scope="col">Long-term limits</th><th scope="col">Short-term limits</th></tr></thead>
             <tbody>
               <tr v-for="[key, label, step, unit] in LIMITS" :key="key">
@@ -199,13 +206,13 @@ const every = (key: "poll_secs" | "off_hours_secs"): string =>
               </tr>
             </tbody>
           </table>
-          <p class="help">
+          <p class="help wide">
             A take-profit below this is rejected, and so is a target above the maximum: no fantasy numbers.
             Percentages are of that pot, so the caps keep their meaning when the budget changes; a stock's own
             profit expectation must fall inside the band, and the band's maximum always wins.
             Amounts are in {{ data.currency }}.
           </p>
-          <p class="help">
+          <p class="help wide">
             A smallest trade below this is not worth its fees; a largest trade caps one fill. One stock may be at
             most its share of the pot.
           </p>
@@ -244,7 +251,7 @@ const every = (key: "poll_secs" | "off_hours_secs"): string =>
             :help="data.ntfy_token_configured
               ? 'Configured. The token is never shown again, here or over the API.'
               : 'Optional. Needed only when the topic requires authentication.'" />
-          <div class="row">
+          <div class="row wide">
             <button class="d-btn d-btn-sm" type="button" @click="testNotify">Send test</button>
             <span class="help" role="status">{{ notifyStatus }}</span>
           </div>
@@ -266,7 +273,7 @@ const every = (key: "poll_secs" | "off_hours_secs"): string =>
             type="number" step="0.5" v-model="values.min_price_move"
             help="Since the last call. A new headline always earns a call regardless." />
 
-          <h3 class="settings-group">What the short-term scan may offer</h3>
+          <h3 class="settings-group wide">What the short-term scan may offer</h3>
           <SettingField id="scan_min_price" label="Price floor" :unit="data.currency" type="number" step="1"
             v-model="values.scan_min_price"
             help="Below this, a single tick is a large part of the move. Micro-caps at ₹1–₹4 are not tradeable at this size." />
@@ -292,20 +299,22 @@ const every = (key: "poll_secs" | "off_hours_secs"): string =>
           <SettingField id="proxy_bypass" label="Bypass for" v-model="values.proxy_bypass"
             placeholder="localhost,127.0.0.1,…"
             help="Comma-separated hosts that skip the proxy. There is no <code>NO_PROXY</code> here, on purpose." />
-          <div class="row">
+          <div class="row wide">
             <button class="d-btn d-btn-sm" type="button" @click="testProxy">Test</button>
             <span class="help" role="status">{{ proxyStatus }}</span>
           </div>
         </template>
 
-        <div class="pane-foot">
-          <span class="note" role="status">{{ status }}</span>
-          <div class="row">
-            <button class="d-btn d-btn-sm d-btn-ghost" type="button" @click="seedTab">Discard</button>
-            <button class="d-btn d-btn-sm" type="submit" :disabled="busy">Save</button>
+            </div>
           </div>
-        </div>
-      </form>
-    </main>
+          <div class="savebar">
+            <span v-html="pill(dirty ? 'todo' : 'ok', dirty ? 'unsaved' : 'saved')" />
+            <span class="hint grow" role="status">{{ status }}</span>
+            <button class="d-btn d-btn-sm d-btn-ghost" type="button" @click="seedTab">Discard</button>
+            <button class="d-btn d-btn-sm d-btn-primary" type="submit" :disabled="busy">Save</button>
+          </div>
+        </form>
+      </main>
+    </div>
   </template>
 </template>
