@@ -462,6 +462,7 @@
   .rail > a {
     display: flex; justify-content: flex-start; align-items: center; gap: 10px;
     padding: 8px var(--space-4); color: var(--ink-secondary); font-size: var(--text-sm);
+    transition: background 120ms ease, color 120ms ease;
     border-left: 2px solid transparent; min-height: var(--row-h-touch);
   }
   .rail > a:hover { background: var(--paper-raised); color: var(--ink); }
