@@ -1464,7 +1464,8 @@ dialog,
 
   @media (max-width: 900px) {
     .topbar { height: 54px; padding: 0 var(--space-4); gap: 10px; }
-    .topnav, .topbar .brand span, .topbar .market-line { display: none; }
+    .topnav, .topbar .market-line { display: none; }
+    .topbar .brand { font-size: 13px; }
     .main { padding: 0 var(--space-4) var(--space-12); }
     .tabbar { display: flex; flex: none; background: var(--paper-raised);
       border-top: 1px solid var(--rule); }
