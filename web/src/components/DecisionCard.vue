@@ -263,7 +263,7 @@ const posted = computed(() => {
                 :aria-expanded="form === 'approve'"
                 @click="open('approve')"
             >
-                {{ plan ? "Approve plan" : "Approve" }}
+                Approve
             </button>
             <button
                 class="d-btn d-btn-xs"
@@ -271,7 +271,7 @@ const posted = computed(() => {
                 :aria-expanded="form === 'reject'"
                 @click="open('reject')"
             >
-                {{ form === "reject" ? "Cancel" : "Reject…" }}
+                {{ form === "reject" ? "Cancel" : "Reject" }}
             </button>
             <span class="hint">{{
                 plan
@@ -281,7 +281,7 @@ const posted = computed(() => {
         </div>
 
         <form v-if="form === 'approve'" class="signoff" @submit.prevent="post">
-            <div class="sfh">Sign off — edit qty or price before posting</div>
+            <div class="sfh">Sign off — edit qty or price</div>
             <div class="fields">
                 <template v-for="l in legs" :key="l.id">
                     <label class="sf">
@@ -321,7 +321,7 @@ const posted = computed(() => {
                 type="submit"
                 :disabled="busy"
             >
-                {{ busy ? "Posting…" : "Approve & post" }}
+                {{ busy ? "Submitting…" : "Submit" }}
             </button>
             <p v-if="failure" class="hint failure" role="alert">
                 {{ failure }}
