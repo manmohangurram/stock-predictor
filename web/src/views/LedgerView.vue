@@ -95,16 +95,29 @@ const net = computed(() =>
 const nameOf = (symbol: string): string =>
     positions.value.find((p) => p.symbol === symbol)?.name ?? symbol;
 
-/** A fill from today reads as a time; an older one needs its date or it lies. */
-function fillWhen(t: Trade): string {
-    const at = new Date(t.traded_at);
+function isToday(iso: string): boolean {
+    const at = new Date(iso);
     const now = new Date();
-    const sameDay =
+    return (
         at.getFullYear() === now.getFullYear() &&
         at.getMonth() === now.getMonth() &&
-        at.getDate() === now.getDate();
-    return sameDay ? clock(t.traded_at) : histDate(t.traded_at);
+        at.getDate() === now.getDate()
+    );
 }
+
+const fillDay = (t: Trade): string =>
+    isToday(t.traded_at) ? "Today" : histDate(t.traded_at);
+
+const fillGroups = computed(() => {
+    const groups: { day: string; rows: Trade[] }[] = [];
+    for (const t of fills.value) {
+        const day = fillDay(t);
+        const last = groups[groups.length - 1];
+        if (last && last.day === day) last.rows.push(t);
+        else groups.push({ day, rows: [t] });
+    }
+    return groups;
+});
 
 const holdingMeta = (p: PositionRow): string =>
     p.class === "stock"
@@ -121,7 +134,8 @@ const holdingPct = (p: PositionRow): number =>
 const sparks = ref<Record<string, number[]>>({});
 const sparkCache = new Map<string, { at: number; points: number[] }>();
 
-function tapePoints(points: number[]): string {
+function tapePoints(points: number[] | undefined): string {
+    if (!points || points.length < 2) return "";
     const lo = Math.min(...points);
     const hi = Math.max(...points);
     const span = hi - lo || lo * 0.02 || 1;
@@ -132,6 +146,18 @@ function tapePoints(points: number[]): string {
             return `${x.toFixed(1)},${y.toFixed(1)}`;
         })
         .join(" ");
+}
+
+const pointsOf = (p: PositionRow): number[] | undefined =>
+    sparks.value[p.symbol];
+
+function dirOf(p: PositionRow): "up" | "down" | "flat" {
+    const pts = pointsOf(p);
+    if (!pts || pts.length < 2) return "flat";
+    const last = pts[pts.length - 1];
+    if (last > pts[0]) return "up";
+    if (last < pts[0]) return "down";
+    return "flat";
 }
 
 async function loadSparks(rows: PositionRow[]): Promise<void> {
@@ -356,7 +382,10 @@ watch(mode, load);
                     </thead>
                     <tbody>
                         <tr v-for="t in fills" :key="t.id">
-                            <td class="num when">{{ fillWhen(t) }}</td>
+                            <td class="num when">
+                                {{ clock(t.traded_at) }}
+                                <small>{{ fillDay(t) }}</small>
+                            </td>
                             <td>
                                 <span
                                     class="pill"
@@ -382,18 +411,26 @@ watch(mode, load);
                     </tbody>
                 </table>
                 <div class="fill-list">
-                    <div v-for="t in fills" :key="t.id" class="fill-row">
-                        <span class="num when">{{ fillWhen(t) }}</span>
-                        <span class="who">
-                            <span
-                                class="pill"
-                                :class="t.side === 'buy' ? 'p-b' : 'p-s'"
-                                >{{ t.side.toUpperCase() }}</span
-                            >
-                            {{ nameOf(t.symbol) }} {{ units(t.qty) }}
-                        </span>
-                        <b class="num">{{ money(t.qty * t.price) }}</b>
-                    </div>
+                    <template v-for="g in fillGroups" :key="g.day">
+                        <div class="fill-day">
+                            <b>{{ g.day }}</b><i></i>
+                        </div>
+                        <div v-for="t in g.rows" :key="t.id" class="fill-row">
+                            <span class="num when">{{
+                                clock(t.traded_at)
+                            }}</span>
+                            <span class="who">
+                                <span
+                                    class="pill"
+                                    :class="t.side === 'buy' ? 'p-b' : 'p-s'"
+                                    >{{ t.side.toUpperCase() }}</span
+                                >
+                                {{ nameOf(t.symbol) }}
+                            </span>
+                            <span class="num qty">{{ units(t.qty) }}</span>
+                            <b class="num">{{ money(t.qty * t.price) }}</b>
+                        </div>
+                    </template>
                 </div>
             </section>
 
@@ -436,7 +473,7 @@ watch(mode, load);
                 >
                     <div class="bk-who">
                         <div class="bk-name">
-                            {{ p.name }}
+                            <span class="bk-title">{{ p.name }}</span>
                             <span
                                 class="tag"
                                 :class="{ fund: p.class !== 'stock' }"
@@ -447,31 +484,55 @@ watch(mode, load);
                         </div>
                         <div class="bk-meta">{{ holdingMeta(p) }}</div>
                     </div>
+                    <span class="bk-tape">
+                        <svg
+                            v-if="pointsOf(p)"
+                            class="bk-spark"
+                            :class="dirOf(p)"
+                            viewBox="0 0 110 30"
+                            preserveAspectRatio="none"
+                            aria-hidden="true"
+                        >
+                            <polyline
+                                :points="tapePoints(pointsOf(p))"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.7"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                vector-effect="non-scaling-stroke"
+                            />
+                        </svg>
+                        <span v-else class="bk-notape" aria-hidden="true">
+                            <i></i>no tape
+                        </span>
+                    </span>
                     <svg
-                        v-if="sparks[p.symbol]"
-                        class="bk-spark"
-                        :class="holdingPnl(p) >= 0 ? 'up' : 'down'"
-                        viewBox="0 0 110 30"
-                        preserveAspectRatio="none"
+                        class="bk-trend"
+                        :class="dirOf(p)"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
                         aria-hidden="true"
                     >
-                        <polyline
-                            :points="tapePoints(sparks[p.symbol])"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.7"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            vector-effect="non-scaling-stroke"
-                        />
+                        <template v-if="dirOf(p) === 'up'">
+                            <path d="M7 17 17 7" />
+                            <path d="M7 7h10v10" />
+                        </template>
+                        <template v-else-if="dirOf(p) === 'down'">
+                            <path d="M7 7l10 10" />
+                            <path d="M17 7v10H7" />
+                        </template>
+                        <path v-else d="M5 12h14" />
                     </svg>
                     <div class="bk-val">
                         <b class="num">{{
                             money(p.value ?? p.qty * p.avg_cost)
                         }}</b>
-                        <template v-if="p.value === null">
-                            <span class="muted">—</span>
-                        </template>
+                        <span v-if="p.value === null" class="muted">—</span>
                         <template v-else>
                             <span
                                 class="num"
@@ -479,7 +540,7 @@ watch(mode, load);
                                 >{{ signed(holdingPnl(p)) }}</span
                             >
                             <span
-                                class="num"
+                                class="num gap"
                                 :class="holdingPnl(p) >= 0 ? 'up' : 'down'"
                                 >{{ signed(holdingPct(p), 1) }}%</span
                             >
@@ -646,6 +707,12 @@ watch(mode, load);
     font-size: 12px;
     color: var(--ink-secondary);
 }
+.fills .when small {
+    display: block;
+    font-family: var(--font-form);
+    font-size: 9.5px;
+    color: var(--ink-tertiary);
+}
 .fills .c-when {
     width: 84px;
 }
@@ -673,17 +740,45 @@ watch(mode, load);
 .fill-list {
     display: none;
 }
+.fill-day {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px 3px;
+}
+.fill-day:first-child {
+    padding-top: 2px;
+}
+.fill-day b {
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+}
+.fill-day i {
+    flex: 1;
+    border-top: 1px solid var(--rule-subtle);
+}
 .fill-row {
     display: grid;
-    grid-template-columns: 58px minmax(0, 1fr) auto;
-    gap: 8px;
+    grid-template-columns: 50px minmax(0, 1fr) 36px 82px;
+    gap: 9px;
     align-items: center;
     padding: 7px 14px;
     border-top: 1px dotted var(--rule-subtle);
     font-size: 11.5px;
 }
-.fill-row:first-child {
+.fill-row > b {
+    text-align: right;
+    white-space: nowrap;
+}
+.fill-day + .fill-row {
     border-top: 0;
+}
+.fill-row .qty {
+    text-align: right;
+    color: var(--ink-secondary);
 }
 .fill-row .who {
     display: flex;
@@ -701,7 +796,7 @@ watch(mode, load);
 /* holdings */
 .bk-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 110px 210px 18px;
+    grid-template-columns: minmax(0, 1.6fr) 120px 158px 18px;
     gap: 18px;
     align-items: center;
     padding: 13px 16px;
@@ -709,15 +804,46 @@ watch(mode, load);
     text-decoration: none;
     color: inherit;
 }
+.bk-tape {
+    display: flex;
+    align-items: center;
+    justify-self: start;
+    width: 110px;
+    height: 30px;
+}
+.bk-notape {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 110px;
+    font-size: 8.5px;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+}
+.bk-notape i {
+    flex: 1;
+    border-top: 1.5px dotted var(--ink-muted);
+    opacity: 0.55;
+}
 .bk-spark {
     width: 110px;
     height: 30px;
 }
-.bk-spark.up {
+.bk-spark.up,
+.bk-trend.up {
     color: var(--green);
 }
-.bk-spark.down {
+.bk-spark.down,
+.bk-trend.down {
     color: var(--stamp-oxide);
+}
+.bk-trend {
+    display: none;
+    width: 16px;
+    height: 16px;
+    color: var(--ink-muted);
 }
 .bk-row:hover,
 .bk-row:focus-visible {
@@ -729,7 +855,9 @@ watch(mode, load);
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
+}
+.bk-title {
+    min-width: 0;
 }
 .bk-meta {
     font-size: 11px;
@@ -738,15 +866,18 @@ watch(mode, load);
 }
 .bk-val {
     text-align: right;
-    display: grid;
-    justify-items: end;
+    white-space: nowrap;
 }
 .bk-val b {
+    display: block;
     font-size: 14px;
     font-weight: 500;
 }
 .bk-val span {
     font-size: 10.5px;
+}
+.bk-val .gap {
+    margin-left: 5px;
 }
 .bk-val .muted {
     color: var(--ink-muted);
@@ -878,18 +1009,25 @@ watch(mode, load);
         display: block;
     }
     .bk-row {
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 10px;
+        grid-template-columns: minmax(0, 1fr) 16px 104px;
+        gap: 8px;
         padding: 11px 14px;
     }
-    .bk-spark {
+    .bk-tape {
         display: none;
+    }
+    .bk-trend {
+        display: block;
     }
     .bk-chev {
         display: none;
     }
     .bk-name {
         font-size: 12.5px;
+        align-items: flex-start;
+    }
+    .bk-name .tag {
+        margin-top: 1px;
     }
 }
 </style>
