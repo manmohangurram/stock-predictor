@@ -1424,12 +1424,11 @@ dialog,
   .topnav a { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
     border-radius: 7px; color: var(--ink-secondary); font-size: 12px; text-decoration: none;
     white-space: nowrap; }
-  .topnav a svg { opacity: .8; }
+  .topnav a svg { color: var(--ink-tertiary); }
   .topnav a:hover { color: var(--ink); }
-  .topnav a:hover svg, .topnav a:focus-visible svg { opacity: 1; }
   .topnav a.on { background: var(--paper-raised); color: var(--ink); font-weight: 650;
     box-shadow: 0 1px 2px rgb(16 23 21 / .08); }
-  .topnav a.on svg { opacity: 1; }
+  .topnav a.on svg { color: var(--ink); }
   .nav-badge { margin-left: 2px; font-family: var(--font-ledger); font-size: 9.5px; color: var(--brand); }
   .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
   .market-line { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-tertiary); white-space: nowrap; }

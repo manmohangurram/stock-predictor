@@ -244,3 +244,22 @@
         }
     }
 }
+
+/* Unlayered on purpose: app.css's base `a { color }` outranks the component layer here. */
+.topnav a {
+    color: var(--ink-tertiary);
+}
+.topnav a svg {
+    opacity: 0.8;
+}
+.topnav a:hover {
+    color: var(--ink-secondary);
+}
+.topnav a.on {
+    color: var(--brand);
+    font-weight: 650;
+}
+.topnav a.on svg {
+    color: var(--brand);
+    opacity: 1;
+}
