@@ -11,6 +11,7 @@ import (
 	"stock-predictor/internal/llm"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/rules"
+	"stock-predictor/internal/tstamp"
 )
 
 func pool(t *testing.T) *sql.DB {
@@ -52,6 +53,44 @@ func mustExec(t *testing.T, p *sql.DB, q string, args ...any) {
 	t.Helper()
 	if _, err := p.Exec(q, args...); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The poll reads the last signal twice before it can decide anything, and both reads have to agree
+// that an id is the UUID it was written as.
+func TestASignalIDStaysTextOnTheWayBack(t *testing.T) {
+	p := pool(t)
+	inst := "01a1f000-0000-7000-8000-000000000031"
+	sig := "01a1f000-0000-7000-8000-000000000032"
+	now := time.Date(2026, 11, 13, 5, 0, 0, 0, time.UTC)
+	mustExec(t, p, `INSERT INTO instruments (id, symbol, class, name, currency, active)
+		VALUES (?, 'X.NS', 'stock', 'X', 'INR', 1)`, inst)
+	mustExec(t, p, `INSERT INTO signals (id, instrument_id, action, entry, valid_until, reason_json,
+		created_at, confidence, mode, kind, status)
+		VALUES (?, ?, 'BUY', 100, ?, '{"rationale":"momentum"}', ?, 'medium', 'long', 'model', 'pending')`,
+		sig, inst, tstamp.From(now.Add(18*time.Hour)), tstamp.From(now))
+
+	prev, err := latestSignal(p, inst)
+	if err != nil {
+		t.Fatalf("latestSignal could not read a text id: %v", err)
+	}
+	if prev.ID != sig {
+		t.Fatalf("id = %q, want %q", prev.ID, sig)
+	}
+
+	reused, err := reuseModelSignal(p, inst, 100.5, 2, now)
+	if err != nil {
+		t.Fatalf("reuseModelSignal could not read a text id: %v", err)
+	}
+	if !reused {
+		t.Fatal("a live model signal inside the band was not reused")
+	}
+	var entry float64
+	if err := p.QueryRow("SELECT entry FROM signals WHERE id = ?", sig).Scan(&entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry != 100.5 {
+		t.Fatalf("entry = %v, want the refreshed price", entry)
 	}
 }
 

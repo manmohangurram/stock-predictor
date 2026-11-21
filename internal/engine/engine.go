@@ -101,7 +101,7 @@ func PollOnce(deps *EngineDeps, now time.Time) (PollReport, error) {
 	fresh := report.Fresh
 	report.Fresh = ""
 	if fresh != "" {
-		ok, err := planBookWith(deps, now, llm.ScopeStock, nil, fresh, true)
+		ok, _, err := planBookWith(deps, now, llm.ScopeStock, nil, fresh, true)
 		switch {
 		case err != nil:
 			report.Errors = append(report.Errors, fmt.Sprintf("band plan: %v", err))
@@ -112,7 +112,7 @@ func PollOnce(deps *EngineDeps, now time.Time) (PollReport, error) {
 
 	// The stock plan is a daily question, not a side effect of a per-stock call: the marker
 	// decides whether it has been asked today, whatever this tick did.
-	if ok, err := planBook(deps, now, llm.ScopeStock, nil); err != nil {
+	if ok, _, err := planBook(deps, now, llm.ScopeStock, nil); err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("plan: %v", err))
 	} else if ok {
 		report.Plans++
@@ -223,19 +223,25 @@ func bandTriggerFires(pool *sql.DB, instrument models.Instrument, reason string,
 
 // One book call: the model sees every holding, the cash and today's list, and may answer with
 // up to three moves that stand or fall together. Returns true only when a plan was stored.
-func planBook(deps *EngineDeps, now time.Time, scope llm.Scope, run *string) (bool, error) {
+// The one line a run says when no model call was made at all.
+func skip(why string) (bool, string, error) { return false, why, nil }
+
+func planBook(deps *EngineDeps, now time.Time, scope llm.Scope, run *string) (bool, string, error) {
 	return planBookWith(deps, now, scope, run, "", false)
 }
 
 // extra is fresh context for this one call — news pulled because a holding left its band.
-func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string, extra string, force bool) (bool, error) {
+//
+// The second return is why nothing was planned: a run that skipped must say so, or the audit page
+// looks like a model that looked and passed.
+func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string, extra string, force bool) (bool, string, error) {
 	manual := run != nil
 	var slot string
 	if scope.IsTrade() {
 		s, ok := schedule.TradeSlot(now)
 		if !ok {
 			if !manual {
-				return false, nil // outside the session: nothing can be done anyway
+				return skip("skipped: outside the trade session") // nothing can be done anyway
 			}
 			slot = ""
 		} else {
@@ -254,16 +260,16 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	if !manual && !force {
 		last, err := getSetting(deps.Pool, marker)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		if last != nil && *last == slot {
 			slog.Debug("plan skipped: already asked this slot", "scope", scope, "slot", slot)
-			return false, nil
+			return skip("skipped: this slot was already asked")
 		}
 	}
 	funds, err := fundSymbols(deps.Pool)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	mode := models.ModeLong
 	if scope.IsTrade() {
@@ -271,7 +277,7 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	}
 	allHoldings, err := loadHoldings(deps.Pool, mode)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	book := []llm.HoldingLine{}
 	for _, h := range allHoldings {
@@ -282,11 +288,11 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	// A stock plan may open the very first position; a fund plan needs the fund book to weigh.
 	if len(book) == 0 && scope.IsFund() {
 		slog.Debug("plan skipped: fund book is empty", "scope", scope)
-		return false, nil
+		return skip("skipped: the fund book is empty")
 	}
 	settings, err := rules.GetSettings(deps.Pool)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	var available float64
 	switch {
@@ -298,16 +304,16 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		available, err = rules.AvailableIn(deps.Pool, models.ModeLong)
 	}
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	calls, err := llm.DailyChatCalls(deps.Pool)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if calls >= int64(deps.Runtime.DailyCap) {
 		slog.Info("daily call cap reached — plan not attempted", "scope", scope, "calls", calls,
 			"cap", deps.Runtime.DailyCap)
-		return false, nil
+		return skip("skipped: the daily call cap was reached")
 	}
 
 	var candidates string
@@ -319,7 +325,7 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	case scope.IsFund():
 		candidates, err = candidatesForPlan(deps.Pool, settings.Currency, scope)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 	default:
 		if deps.DailyList != nil {
@@ -335,7 +341,7 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		}
 	}
 	if scope.IsTrade() && len(book) == 0 && trimSpace(candidates) == "" {
-		return false, nil // nothing held, nothing offered: no call worth paying for
+		return skip("skipped: nothing held and nothing offered") // no call worth paying for
 	}
 	if trimSpace(extra) != "" {
 		candidates = candidates + "\n" + extra + "\n"
@@ -362,15 +368,15 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	rendered, err := llm.RenderPlan(scope, llm.BookBlock(book, settings.Currency),
 		llm.CapLine(available, settings.Currency), limits, candidates, available, settings.Currency)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	model, err := rules.ModelConfigFor(deps.Pool)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if strings.TrimSpace(model.APIKey) == "" {
 		slog.Info("plan skipped: no model key configured", "scope", scope)
-		return false, nil
+		return skip("skipped: no model key is configured")
 	}
 	runID := run
 	if runID == nil {
@@ -383,7 +389,7 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		}
 		id, err := runs.Start(deps.Pool, prompt, runs.TriggerSchedule, nil)
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		runID = &id
 	}
@@ -408,12 +414,12 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		}
 		// A failed call must close its run, or the page shows a spinner that will not stop.
 		_ = runs.Fail(deps.Pool, *runID, err.Error())
-		return false, err
+		return false, "", err
 	}
 
 	if !manual && !force {
 		if err := putSetting(deps.Pool, marker, slot, now); err != nil {
-			return false, err
+			return false, "", err
 		}
 	}
 
@@ -421,16 +427,20 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	if err != nil {
 		slog.Warn("plan reply unreadable", "error", err)
 		_ = runs.Fail(deps.Pool, *runID, fmt.Sprintf("the reply did not parse: %v", err))
-		return false, nil
+		return skip("the reply did not parse")
 	}
 	if answer.Plan == nil {
 		slog.Info("plan passed", "scope", scope, "why", answer.Why)
-		_ = runs.Finish(deps.Pool, *runID, "nothing worth doing — the model passed", &conversation)
+		note := "nothing worth doing — the model passed"
+		if strings.TrimSpace(answer.Why) != "" {
+			note += ": " + answer.Why
+		}
+		_ = runs.Finish(deps.Pool, *runID, note, &conversation)
 		// A trade plan may have looked at twenty tickers to make two moves; the rest are gone.
 		if scope.IsTrade() && deps.SweepGlances != nil {
 			_, _ = deps.SweepGlances(deps.Pool)
 		}
-		return false, nil
+		return false, note, nil
 	}
 	plan := *answer.Plan
 
@@ -451,10 +461,10 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	if err := llm.ValidatePlan(plan, book, cash, limitsFor, settings.Currency, now, funds, scope); err != nil {
 		slog.Warn("plan refused by the validator", "error", err)
 		if err := recordPlanRefusal(deps.Pool, err.Error(), now, &conversation, scope); err != nil {
-			return false, err
+			return false, "", err
 		}
 		_ = runs.Finish(deps.Pool, *runID, "refused: "+err.Error(), &conversation)
-		return false, nil
+		return false, "refused: " + err.Error(), nil
 	}
 
 	var planID *string
@@ -489,18 +499,18 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		if err == sql.ErrNoRows {
 			why := fmt.Sprintf("%s is not in the book, so the plan cannot be stored", m.Symbol)
 			if err := recordPlanRefusal(deps.Pool, why, now, &conversation, scope); err != nil {
-				return false, err
+				return false, "", err
 			}
 			_ = runs.Fail(deps.Pool, *runID, why)
-			return false, nil
+			return false, why, nil
 		}
 		if err != nil {
-			return false, err
+			return false, "", err
 		}
 		// The first leg is its own group: every later leg points at it, and so does it.
 		if planID == nil {
 			if _, err := deps.Pool.Exec("UPDATE signals SET plan_id = ? WHERE id = ?", id, id); err != nil {
-				return false, err
+				return false, "", err
 			}
 			planID = &id
 		}
@@ -517,7 +527,7 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	slog.Info("plan stored", "scope", scope, "moves", len(plan.Moves), "plan_id", *planID,
 		"conversation", conversation)
 	_ = runs.Finish(deps.Pool, *runID, fmt.Sprintf("%d %s stored", len(plan.Moves), noun), &conversation)
-	return true, nil
+	return true, "", nil
 }
 
 // A refused plan is a decision too: it is recorded with the reason, so the ledger can say why
@@ -545,7 +555,7 @@ func recordPlanRefusal(pool *sql.DB, why string, now time.Time, conversationID *
 }
 
 // The stock plan on its own, for a manual run: the same call the poll makes, asked now.
-func PlanStock(deps *EngineDeps, now time.Time, run *string) (bool, error) {
+func PlanStock(deps *EngineDeps, now time.Time, run *string) (bool, string, error) {
 	return planBook(deps, now, llm.ScopeStock, run)
 }
 
@@ -639,15 +649,15 @@ func ExpireTradePositions(pool *sql.DB, now time.Time) ([]string, error) {
 	return out, nil
 }
 
-func PlanTrade(deps *EngineDeps, now time.Time, run *string) (bool, error) {
-	planned, err := planBook(deps, now, llm.ScopeTrade, run)
+func PlanTrade(deps *EngineDeps, now time.Time, run *string) (bool, string, error) {
+	planned, note, err := planBook(deps, now, llm.ScopeTrade, run)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	lines, err := ExpireTradePositions(deps.Pool, now)
 	if err != nil {
 		slog.Warn("expiry sweep failed", "error", err)
-		return planned, nil
+		return planned, note, nil
 	}
 	for _, line := range lines {
 		symbol := firstToken(line)
@@ -663,11 +673,11 @@ func PlanTrade(deps *EngineDeps, now time.Time, run *string) (bool, error) {
 		}
 		slog.Info("trade idea expired", "line", line)
 	}
-	return planned, nil
+	return planned, note, nil
 }
 
 // The fund plan, run once a day after the arithmetic scan has ranked today's funds.
-func PlanFunds(deps *EngineDeps, now time.Time, run *string) (bool, error) {
+func PlanFunds(deps *EngineDeps, now time.Time, run *string) (bool, string, error) {
 	return planBook(deps, now, llm.ScopeFund, run)
 }
 
@@ -1088,7 +1098,7 @@ func pollInstrument(deps *EngineDeps, instrument models.Instrument, now time.Tim
 		} else if pair != nil {
 			report.Signals += 2
 			report.Notes = append(report.Notes, fmt.Sprintf(
-				"%s: swap proposed — sell (decision %d) to fund this (decision %d)",
+				"%s: swap proposed — sell (decision %s) to fund this (decision %s)",
 				instrument.Symbol, pair[0], pair[1]))
 			return nil
 		}
@@ -1455,7 +1465,7 @@ func loadPosition(pool *sql.DB, instrumentID string) (*models.Position, error) {
 // Refresh the entry on the last signal when it is still a live model decision. Returns false
 // when the stored signal was rules-only, has expired, or the price left the band.
 func reuseModelSignal(pool *sql.DB, instrumentID string, price, atr float64, now time.Time) (bool, error) {
-	var id int64
+	var id string
 	var entry sql.NullFloat64
 	var validUntil, reasonJSON sql.NullString
 	err := pool.QueryRow(
@@ -1498,7 +1508,7 @@ func stopRound(v *float64) *int64 {
 }
 
 type lastSignal struct {
-	ID     int64
+	ID     string
 	Action string
 	Entry  *float64
 	Stop   *float64
@@ -1769,7 +1779,7 @@ func loadHoldings(pool *sql.DB, mode models.Mode) ([]llm.HoldingLine, error) {
 }
 
 // Ask for a swap when a buy is right but the cash is not there.
-func rotateForCash(deps *EngineDeps, instrument models.Instrument, candidate models.Candidate, now time.Time) ([]int64, error) {
+func rotateForCash(deps *EngineDeps, instrument models.Instrument, candidate models.Candidate, now time.Time) ([]string, error) {
 	if candidate.Action != models.ActionBuy {
 		return nil, nil
 	}
@@ -1852,7 +1862,7 @@ func rotateForCash(deps *EngineDeps, instrument models.Instrument, candidate mod
 	if sell.Why != nil {
 		why = *sell.Why
 	}
-	var sellID int64
+	var sellID string
 	err = deps.Pool.QueryRow(
 		`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
             created_at, confidence, mode, kind, status)
@@ -1865,7 +1875,7 @@ func rotateForCash(deps *EngineDeps, instrument models.Instrument, candidate mod
 	if err != nil {
 		return nil, err
 	}
-	var buyID int64
+	var buyID string
 	err = deps.Pool.QueryRow(
 		`INSERT INTO signals (id, instrument_id, action, qty, entry, stop, target, valid_until,
             reason_json, created_at, confidence, mode, kind, status, pair_id)
@@ -1880,7 +1890,7 @@ func rotateForCash(deps *EngineDeps, instrument models.Instrument, candidate mod
 	if err != nil {
 		return nil, err
 	}
-	return []int64{sellID, buyID}, nil
+	return []string{sellID, buyID}, nil
 }
 
 // Pos is re-exported so callers can render the ledger without importing ledger directly.
