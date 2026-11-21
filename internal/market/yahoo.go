@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -21,10 +22,18 @@ import (
 )
 
 const (
-	chartURL  = "https://query2.finance.yahoo.com/v8/finance/chart"
-	searchURL = "https://query2.finance.yahoo.com/v1/finance/search"
-	yahooUA   = "Mozilla/5.0 (X11; Linux x86_64) stock-predictor/0.1"
+	chartPath  = "/v8/finance/chart"
+	searchPath = "/v1/finance/search"
+	sparkPath  = "/v8/finance/spark"
+	yahooUA    = "Mozilla/5.0 (X11; Linux x86_64) stock-predictor/0.1"
 )
+
+// Both edges serve the same data; one host taking every poll is what earns the 429.
+var yahooHosts = [...]string{"https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"}
+
+func yahooHost() string { return yahooHosts[rand.IntN(len(yahooHosts))] }
+
+func yahooURL(path string) string { return yahooHost() + path }
 
 // All Yahoo access goes through this module. Endpoint drift touches one file; the client itself
 // comes from httpx so the proxy is decided in one place.
@@ -145,7 +154,7 @@ func ParseYahooNews(body string) ([]models.Headline, error) {
 	return out, nil
 }
 
-func ChartURL(symbol string) string { return chartURL + "/" + symbol }
+func ChartURL(symbol string) string { return yahooURL(chartPath + "/" + symbol) }
 
 // A missing chart is normal for mutual funds, which Yahoo does not carry for India.
 func FetchBars(client *http.Client, symbol string) ([]models.Bar, error) {
@@ -333,10 +342,43 @@ func getYahoo(client *http.Client, url string) (*http.Response, error) {
 	return doRetry(client, req, 3)
 }
 
-func fetchChart(client *http.Client, symbol, interval, rangeStr string) ([]models.Bar, error) {
+// Yahoo wants the window as epoch seconds; every caller speaks ranges, so one maps to the other.
+func rangeSpan(rangeStr string) time.Duration {
+	switch rangeStr {
+	case "1d":
+		return 24 * time.Hour
+	case "5d":
+		return 5 * 24 * time.Hour
+	case "7d":
+		return 7 * 24 * time.Hour
+	case "1mo":
+		return 31 * 24 * time.Hour
+	case "3mo":
+		return 92 * 24 * time.Hour
+	case "6mo":
+		return 183 * 24 * time.Hour
+	case "2y":
+		return 730 * 24 * time.Hour
+	}
+	return 366 * 24 * time.Hour
+}
+
+func chartQuery(interval, rangeStr string, now time.Time) url.Values {
 	q := url.Values{}
-	q.Set("range", rangeStr)
+	q.Set("period1", strconv.FormatInt(now.Add(-rangeSpan(rangeStr)).Unix(), 10))
+	q.Set("period2", strconv.FormatInt(now.Unix(), 10))
 	q.Set("interval", interval)
+	q.Set("includePrePost", "true")
+	q.Set("events", "div|split|earn")
+	q.Set("usePreMarketChartPreviousClose", "true")
+	q.Set("lang", "en-US")
+	q.Set("region", "US")
+	q.Set("source", "cosaic")
+	return q
+}
+
+func fetchChart(client *http.Client, symbol, interval, rangeStr string) ([]models.Bar, error) {
+	q := chartQuery(interval, rangeStr, time.Now())
 	resp, err := getYahoo(client, ChartURL(symbol)+"?"+q.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("chart: request: %w", err)
@@ -375,7 +417,7 @@ func FetchYahooNews(client *http.Client, symbol string) ([]models.Headline, erro
 	q.Set("q", NewsQuery(symbol))
 	q.Set("newsCount", "20")
 	q.Set("quotesCount", "0")
-	resp, err := getYahoo(client, searchURL+"?"+q.Encode())
+	resp, err := getYahoo(client, yahooURL(searchPath)+"?"+q.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("news: request: %w", err)
 	}
@@ -406,7 +448,7 @@ func sparkRequest(client *http.Client, symbols []string) (map[string][]float64, 
 	q.Set("symbols", strings.Join(symbols, ","))
 	q.Set("range", "1mo")
 	q.Set("interval", "1d")
-	resp, err := getYahoo(client, "https://query1.finance.yahoo.com/v8/finance/spark?"+q.Encode())
+	resp, err := getYahoo(client, yahooURL(sparkPath)+"?"+q.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("spark: request: %w", err)
 	}
