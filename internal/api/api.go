@@ -172,6 +172,7 @@ func Router(st *AppState) *gin.Engine {
 	r.PUT("/api/instruments/:symbol/target-profit", func(c *gin.Context) { setTargetProfit(c, st) })
 	r.DELETE("/api/instruments/:symbol", func(c *gin.Context) { archiveInstrument(c, st) })
 	r.POST("/api/instruments/:symbol/restore", func(c *gin.Context) { restoreInstrument(c, st) })
+	r.DELETE("/api/instruments/:symbol/records", func(c *gin.Context) { deleteInstrument(c, st) })
 	r.GET("/api/instruments/:symbol/trades", func(c *gin.Context) { instrumentTrades(c, st) })
 	r.POST("/api/instruments/:symbol/trades", func(c *gin.Context) { recordTrade(c, st) })
 	r.GET("/api/archived", func(c *gin.Context) { archivedInstruments(c, st) })
@@ -203,8 +204,6 @@ func Router(st *AppState) *gin.Engine {
 	r.POST("/api/keys", func(c *gin.Context) { createKey(c, st) })
 	r.DELETE("/api/keys/:id", func(c *gin.Context) { revokeKey(c, st) })
 	r.GET("/api/mcp/calls", func(c *gin.Context) { mcpCalls(c, st) })
-	r.GET("/api/reset/candidates", func(c *gin.Context) { resetCandidates(c, st) })
-	r.POST("/api/reset", func(c *gin.Context) { resetBook(c, st) })
 
 	r.Any("/mcp", gin.WrapH(MCPHandler(st, r)))
 	return r

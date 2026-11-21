@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -84,6 +85,142 @@ func archiveInstrument(c *gin.Context, st *AppState) {
 	}
 	slog.Info("instrument archived", "symbol", symbol, "id", id)
 	c.JSON(http.StatusOK, gin.H{"symbol": symbol, "archived": true, "deleted": false})
+}
+
+// deleteInstrument erases one instrument and everything recorded against it, and returns its cash to the pot.
+func deleteInstrument(c *gin.Context, st *AppState) {
+	symbol := c.Param("symbol")
+	var id, classRaw string
+	err := st.Pool.QueryRow("SELECT id, class FROM instruments WHERE symbol = ?", symbol).
+		Scan(&id, &classRaw)
+	if err == sql.ErrNoRows {
+		respondErr(c, notFound("no instrument "+symbol))
+		return
+	}
+	if err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	var held float64
+	if err := st.Pool.QueryRow(
+		`SELECT CAST(COALESCE(SUM(qty), 0) AS REAL) FROM positions
+         WHERE instrument_id = ? AND state <> 'closed'`, id).Scan(&held); err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	if held > 0 {
+		respondErr(c, badRequest(fmt.Sprintf(
+			"cannot delete %s while %v units are held — sell it first", symbol, held)))
+		return
+	}
+	class, err := models.ParseAssetClass(classRaw)
+	if err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	bucket := rules.BucketFor(class)
+
+	tx, err := st.Pool.Begin()
+	if err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+
+	// Cash rows carry no instrument id, so the fills say how much of the pot this symbol moved.
+	rows, err := tx.Query(
+		`SELECT mode,
+                COALESCE(SUM(CASE WHEN side = 'buy' THEN qty * price ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN side = 'sell' THEN qty * price ELSE 0 END), 0)
+           FROM trades WHERE instrument_id = ? GROUP BY mode`, id)
+	if err != nil {
+		tx.Rollback()
+		respondErr(c, internalErr(err))
+		return
+	}
+	type refund struct {
+		mode   models.Mode
+		amount float64
+	}
+	var refunds []refund
+	var cashChange float64
+	for rows.Next() {
+		var modeRaw string
+		var spent, got float64
+		if err := rows.Scan(&modeRaw, &spent, &got); err != nil {
+			rows.Close()
+			tx.Rollback()
+			respondErr(c, internalErr(err))
+			return
+		}
+		mode, err := models.ParseMode(modeRaw)
+		if err != nil {
+			rows.Close()
+			tx.Rollback()
+			respondErr(c, internalErr(err))
+			return
+		}
+		if amount := spent - got; math.Abs(amount) > 1e-9 {
+			refunds = append(refunds, refund{mode: mode, amount: amount})
+			cashChange += amount
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		tx.Rollback()
+		respondErr(c, internalErr(err))
+		return
+	}
+	for _, r := range refunds {
+		if err := rules.RecordOn(tx, rules.NewCashEntry{
+			Kind: rules.CashAdjust, Amount: r.amount,
+			Reference: "delete " + symbol, Bucket: bucket,
+		}, tstampNow(), r.mode); err != nil {
+			tx.Rollback()
+			respondErr(c, internalErr(err))
+			return
+		}
+	}
+
+	// Notifications and pair legs point at signals, so they go before the signals do.
+	for _, q := range []string{
+		`UPDATE signals SET pair_id = NULL
+           WHERE pair_id IN (SELECT id FROM signals WHERE instrument_id = ?)`,
+		`DELETE FROM notifications
+           WHERE signal_id IN (SELECT id FROM signals WHERE instrument_id = ?)`,
+		"DELETE FROM bars WHERE instrument_id = ?",
+		"DELETE FROM news WHERE instrument_id = ?",
+		"DELETE FROM llm_memos WHERE instrument_id = ?",
+		"DELETE FROM search_results WHERE instrument_id = ?",
+		"DELETE FROM trades WHERE instrument_id = ?",
+		"DELETE FROM positions WHERE instrument_id = ?",
+		"DELETE FROM ipo_applications WHERE instrument_id = ?",
+		"DELETE FROM signals WHERE instrument_id = ?",
+		"DELETE FROM instruments WHERE id = ?",
+	} {
+		if _, err := tx.Exec(q, id); err != nil {
+			tx.Rollback()
+			respondErr(c, internalErr(err))
+			return
+		}
+	}
+	for _, q := range []string{
+		"DELETE FROM trend_candidates WHERE symbol = ?",
+		"DELETE FROM plan_candidates WHERE symbol = ?",
+	} {
+		if _, err := tx.Exec(q, symbol); err != nil {
+			tx.Rollback()
+			respondErr(c, internalErr(err))
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	slog.Info("instrument deleted", "symbol", symbol, "id", id, "cash", cashChange)
+	c.JSON(http.StatusOK, gin.H{
+		"symbol": symbol, "deleted": true, "cash": math.Round(cashChange*100) / 100,
+	})
 }
 
 func restoreInstrument(c *gin.Context, st *AppState) {
