@@ -50,7 +50,8 @@ func Client(rt *rules.Runtime, timeoutSecs int) (*http.Client, error) {
 	return ClientWith(rt, timeoutSecs, "")
 }
 
-// Same, with a browser-ish user agent for the endpoints that expect one.
+// Same, with a browser-ish user agent for the endpoints that expect one. Yahoo answers the Go
+// default with a 429, so a dropped header here is an outage, not a nicety.
 func ClientWith(rt *rules.Runtime, timeoutSecs int, userAgent string) (*http.Client, error) {
 	transport := &http.Transport{Proxy: nil} // no env proxies, ever
 	if rt.Proxy != nil && *rt.Proxy != "" {
@@ -82,9 +83,24 @@ func ClientWith(rt *rules.Runtime, timeoutSecs int, userAgent string) (*http.Cli
 		transport.Proxy = proxyFunc(u, bypass)
 	}
 	return &http.Client{
-		Transport: logTransport{base: transport},
+		Transport: logTransport{base: userAgentTransport{base: transport, ua: userAgent}},
 		Timeout:   time.Duration(timeoutSecs) * time.Second,
 	}, nil
+}
+
+// A request that names its own agent keeps it: the fundamentals call sets one for the same reason.
+type userAgentTransport struct {
+	base http.RoundTripper
+	ua   string
+}
+
+func (t userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.ua == "" || req.Header.Get("User-Agent") != "" {
+		return t.base.RoundTrip(req)
+	}
+	clone := req.Clone(req.Context())
+	clone.Header.Set("User-Agent", t.ua)
+	return t.base.RoundTrip(clone)
 }
 
 func proxyFunc(proxyURL *url.URL, bypass []string) func(*http.Request) (*url.URL, error) {

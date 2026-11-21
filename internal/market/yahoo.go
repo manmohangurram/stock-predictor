@@ -33,8 +33,6 @@ var yahooHosts = [...]string{"https://query1.finance.yahoo.com", "https://query2
 
 func yahooHost() string { return yahooHosts[rand.IntN(len(yahooHosts))] }
 
-func yahooURL(path string) string { return yahooHost() + path }
-
 // All Yahoo access goes through this module. Endpoint drift touches one file; the client itself
 // comes from httpx so the proxy is decided in one place.
 func YahooClient(rt *rules.Runtime) (*http.Client, error) {
@@ -154,8 +152,6 @@ func ParseYahooNews(body string) ([]models.Headline, error) {
 	return out, nil
 }
 
-func ChartURL(symbol string) string { return yahooURL(chartPath + "/" + symbol) }
-
 // A missing chart is normal for mutual funds, which Yahoo does not carry for India.
 func FetchBars(client *http.Client, symbol string) ([]models.Bar, error) {
 	return fetchChart(client, symbol, "1d", "1y")
@@ -197,8 +193,8 @@ var (
 
 var (
 	throttleMu      sync.Mutex
-	throttleUntil   time.Time
-	throttleAt      time.Time
+	throttleUntil   = map[string]time.Time{}
+	throttleAt      = map[string]time.Time{}
 	throttleStrikes int
 )
 
@@ -245,8 +241,9 @@ func DropDailyCache(symbol string) {
 	dailyMu.Unlock()
 }
 
-// noteThrottle remembers a 429 so the next requests fail fast instead of extending the block.
-func noteThrottle(resp *http.Response) {
+// noteThrottle remembers a refusal per edge: query1 saying no must not stop the ask query2 would
+// have answered, which is what made one 429 look like an outage of the whole poll.
+func noteThrottle(host string, resp *http.Response) {
 	throttleMu.Lock()
 	defer throttleMu.Unlock()
 	throttleStrikes++
@@ -261,16 +258,35 @@ func noteThrottle(resp *http.Response) {
 			}
 		}
 	}
-	throttleAt = time.Now()
-	throttleUntil = throttleAt.Add(wait)
-	slog.Warn("yahoo throttled the client; backing off", "for", wait.Round(time.Second),
+	now := time.Now()
+	throttleAt[host] = now
+	throttleUntil[host] = now.Add(wait)
+	slog.Warn("yahoo throttled this edge; backing off", "host", host, "for", wait.Round(time.Second),
 		"strikes", throttleStrikes)
 }
 
-func yahooBlocked() bool {
+func hostBlocked(host string) bool {
 	throttleMu.Lock()
 	defer throttleMu.Unlock()
-	return time.Now().Before(throttleUntil)
+	return time.Now().Before(throttleUntil[host])
+}
+
+// throttleFreeIn is how long until the first edge takes a request again — zero when one is free.
+func throttleFreeIn() time.Duration {
+	throttleMu.Lock()
+	defer throttleMu.Unlock()
+	now := time.Now()
+	free := time.Duration(-1)
+	for _, host := range yahooHosts {
+		left := throttleUntil[host].Sub(now)
+		if left <= 0 {
+			return 0
+		}
+		if free < 0 || left < free {
+			free = left
+		}
+	}
+	return free
 }
 
 // A quiet window is what resets the strike count: a single good reply between two bursts must not
@@ -278,7 +294,13 @@ func yahooBlocked() bool {
 func throttleEnded() {
 	throttleMu.Lock()
 	defer throttleMu.Unlock()
-	if time.Since(throttleAt) > throttleCalm {
+	last := time.Time{}
+	for _, at := range throttleAt {
+		if at.After(last) {
+			last = at
+		}
+	}
+	if time.Since(last) > throttleCalm {
 		throttleStrikes = 0
 	}
 }
@@ -286,9 +308,7 @@ func throttleEnded() {
 // waitOutThrottle sleeps through a block short enough to be worth waiting for, and reports whether
 // it did. The daily sweep can afford this; a poll tick cannot.
 func waitOutThrottle(max time.Duration) bool {
-	throttleMu.Lock()
-	left := time.Until(throttleUntil)
-	throttleMu.Unlock()
+	left := throttleFreeIn()
 	if left <= 0 || left > max {
 		return false
 	}
@@ -296,12 +316,12 @@ func waitOutThrottle(max time.Duration) bool {
 	return true
 }
 
-// doRetry runs a GET, waiting out 429/5xx instead of treating a throttle as "no data". Yahoo
-// rate-limits bursts (a 100-symbol sweep is exactly that), and a skipped chart silently becomes
-// "this name did not rise".
-func doRetry(client *http.Client, req *http.Request, attempts int) (*http.Response, error) {
-	if yahooBlocked() {
-		return nil, fmt.Errorf("yahoo is throttling this client; backing off")
+// doRetry absorbs the connection failures and 5xx a second attempt fixes. A 429 is not one of them:
+// asking a host that just refused is what turned one refusal into a minute of silence.
+func doRetry(client *http.Client, url string, attempts int) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
 	}
 	for i := 0; ; i++ {
 		pace()
@@ -313,12 +333,9 @@ func doRetry(client *http.Client, req *http.Request, attempts int) (*http.Respon
 			time.Sleep(time.Duration(300*(i+1)) * time.Millisecond)
 			continue
 		}
-		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode < 500 {
+		if resp.StatusCode < 500 {
 			throttleEnded()
 			return resp, nil
-		}
-		if resp.StatusCode == http.StatusTooManyRequests {
-			noteThrottle(resp)
 		}
 		if i >= attempts-1 {
 			return resp, nil
@@ -334,12 +351,29 @@ func doRetry(client *http.Client, req *http.Request, attempts int) (*http.Respon
 	}
 }
 
-func getYahoo(client *http.Client, url string) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
+// getYahoo takes a path, not a URL: a refusal from one edge has to be able to hand the same ask to
+// the other before the caller loses its answer.
+func getYahoo(client *http.Client, path string) (*http.Response, error) {
+	first := yahooHost()
+	second := yahooHosts[0]
+	if second == first {
+		second = yahooHosts[1]
 	}
-	return doRetry(client, req, 3)
+	for _, host := range []string{first, second} {
+		if hostBlocked(host) {
+			continue
+		}
+		resp, err := doRetry(client, host+path, 2)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusTooManyRequests {
+			return resp, nil
+		}
+		noteThrottle(host, resp)
+		resp.Body.Close()
+	}
+	return nil, fmt.Errorf("yahoo is throttling this client; backing off")
 }
 
 // Yahoo wants the window as epoch seconds; every caller speaks ranges, so one maps to the other.
@@ -379,7 +413,7 @@ func chartQuery(interval, rangeStr string, now time.Time) url.Values {
 
 func fetchChart(client *http.Client, symbol, interval, rangeStr string) ([]models.Bar, error) {
 	q := chartQuery(interval, rangeStr, time.Now())
-	resp, err := getYahoo(client, ChartURL(symbol)+"?"+q.Encode())
+	resp, err := getYahoo(client, chartPath+"/"+symbol+"?"+q.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("chart: request: %w", err)
 	}
@@ -417,7 +451,7 @@ func FetchYahooNews(client *http.Client, symbol string) ([]models.Headline, erro
 	q.Set("q", NewsQuery(symbol))
 	q.Set("newsCount", "20")
 	q.Set("quotesCount", "0")
-	resp, err := getYahoo(client, yahooURL(searchPath)+"?"+q.Encode())
+	resp, err := getYahoo(client, searchPath+"?"+q.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("news: request: %w", err)
 	}
@@ -448,7 +482,7 @@ func sparkRequest(client *http.Client, symbols []string) (map[string][]float64, 
 	q.Set("symbols", strings.Join(symbols, ","))
 	q.Set("range", "1mo")
 	q.Set("interval", "1d")
-	resp, err := getYahoo(client, yahooURL(sparkPath)+"?"+q.Encode())
+	resp, err := getYahoo(client, sparkPath+"?"+q.Encode())
 	if err != nil {
 		return nil, fmt.Errorf("spark: request: %w", err)
 	}
