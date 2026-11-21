@@ -123,6 +123,8 @@ The rail is a frame: it never scrolls, and only `.main` moves.
 | Refresh (a fund) | Goes to AMFI by scheme code, not the equity feed; a fund with only a Yahoo symbol falls back to Yahoo |
 | Archive (not held) | Arms on the first click with the warning, archives on the second, returns to the ledger |
 | Archive (held) | Disabled, with *cannot be archived — sell it first* |
+| Delete (not held) | Opens a dialog; typing the symbol enables *Delete instrument*, which removes that stock and its records and returns to the ledger |
+| Delete (held) | Disabled, with *cannot be deleted — sell it first* |
 | Decision tabs | `href` carries `?decisions=pending|approved|rejected|all` |
 | Headline links | Open the publisher in a new tab |
 

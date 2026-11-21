@@ -6,15 +6,17 @@
  * what you did, then the exit, the expectation, the rules and the two dangerous buttons.
  */
 import { computed, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { api, type Analysis, type InstrumentDetail, type SignalRow, type Trade } from "../api";
 import { clock, day, money, units } from "../format";
 import { pill, statusPill } from "../components/stamp";
 import { ITEMS, isDecisionFilter, type DecisionFilter } from "../components/decision-filter";
 import DecisionItem from "../components/DecisionItem.vue";
+import DeleteInstrument from "../components/DeleteInstrument.vue";
 import PriceChart from "../components/PriceChart.vue";
 
 const route = useRoute();
+const router = useRouter();
 const analysis = ref<Analysis | null>(null);
 const detail = ref<InstrumentDetail | null>(null);
 const trades = ref<Trade[]>([]);
@@ -216,6 +218,8 @@ async function restore(): Promise<void> {
     manageStatus.value = String(e);
   }
 }
+
+const gone = (): void => void router.push("/");
 </script>
 
 <template>
@@ -225,9 +229,16 @@ async function restore(): Promise<void> {
   <template v-else-if="a && inst">
     <header class="page-head">
       <div class="who">
-        <a class="back" href="/">← Ledger</a>
-        <h1 :title="inst.name">{{ inst.name }}</h1>
-        <div class="page-sub">{{ inst.symbol }} · {{ inst.class.replace("_", " ") }}</div>
+        <a class="back-icon" href="/" aria-label="Back to the ledger" title="Back to the ledger">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor"
+               stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 13L5 8l5-5" />
+          </svg>
+        </a>
+        <div class="who-text">
+          <h1 :title="inst.name">{{ inst.name }}</h1>
+          <div class="page-sub">{{ inst.symbol }} · {{ inst.class.replace("_", " ") }}</div>
+        </div>
       </div>
       <div class="figures">
         <div><span class="lbl">Last</span><b>{{ ltp === null ? "—" : money(ltp) }}</b></div>
@@ -460,6 +471,15 @@ async function restore(): Promise<void> {
                 : "Archiving clears the prices and headlines; the fills and decisions stay on the Archived page.") }}
             </p>
           </template>
+
+          <div class="manage-danger">
+            <DeleteInstrument :symbol="symbol" :name="inst.name" :disabled="!!position" @deleted="gone" />
+            <p class="help">
+              {{ position
+                ? "A stock you hold cannot be deleted — sell it first."
+                : "Deleting removes it and its records for good; the cash its fills moved returns to the pot." }}
+            </p>
+          </div>
         </section>
 
         <section v-if="facts.length && !isFund" class="card">
