@@ -1341,17 +1341,19 @@ const gone = (): void => void router.push("/archived");
 /* Recording a fill is the board's modal: one dialog over the record, not a box inside it. */
 .fill-dialog {
     width: min(560px, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px);
     padding: 0;
     border: 1px solid var(--rule-strong);
     border-radius: var(--radius-lg);
     background: var(--paper-raised);
     color: var(--ink);
+    overflow: auto;
 }
 .fill-dialog::backdrop {
     background: oklch(0.2 0.02 60 / 0.35);
 }
 .fill-dialog[open] {
-    margin-top: 10vh;
+    margin: auto;
 }
 .fill-head {
     display: flex;
@@ -1375,12 +1377,13 @@ const gone = (): void => void router.push("/archived");
     padding: 16px 18px;
 }
 .fill-body .dseg {
-    display: inline-flex;
-    width: max-content;
+    display: flex;
+    width: 100%;
     margin-bottom: 12px;
 }
 .fill-body .dseg button {
-    flex: 0 0 auto;
+    flex: 1;
+    text-align: center;
 }
 .fill-grid {
     display: grid;
