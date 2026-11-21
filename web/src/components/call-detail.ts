@@ -270,3 +270,197 @@ export function renderExchangeDetail(d: CallDetail): string {
   </details>
 </div>`;
 }
+
+/** One answer row: the action, what it is against, and the numbers that make it mean something. */
+function parsedTable(
+  legs: { action: string; symbol: string; qty: number | null; price: number | null; stop: number | null; target: number | null; amount: number | null }[],
+  names: Record<string, string>,
+  fallback: string | null,
+): string {
+  if (!legs.length) return "";
+  const byAmount = legs.some((l) => l.amount !== null);
+  const rows = legs
+    .map(
+      (l) => `<tr>
+        <td>${l.action ? actionStamp(l.action) : "—"}</td>
+        <td>${escapeHtml(names[l.symbol] || l.symbol || fallback || "—")}</td>
+        <td class="r num">${l.amount !== null ? money(l.amount) : l.qty !== null ? units(l.qty) : "—"}</td>
+        <td class="r num">${l.price !== null ? money(l.price) : "—"}</td>
+        <td class="r num hide-compact">${l.stop !== null ? money(l.stop) : "—"}</td>
+        <td class="r num hide-compact">${l.target !== null ? money(l.target) : "—"}</td>
+      </tr>`,
+    )
+    .join("");
+  return `<table class="mtable">
+    <thead><tr>
+      <th>Action</th><th>Instrument</th>
+      <th class="r">${byAmount ? "Amount" : "Qty"}</th>
+      <th class="r">At</th>
+      <th class="r hide-compact">Stop</th>
+      <th class="r hide-compact">Target</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+/** A search's parsed view: what was asked, and what came back, in the order the service ranked it. */
+function parsedSearch(d: CallDetail, compact: boolean): string {
+  const { query } = searchQuery(d.request_json);
+  const results = searchResults(d.response_json);
+  const fields = `<div class="pfield"><span>Query</span><b>${escapeHtml(query || "—")}</b></div>
+    <div class="pfield"><span>Results</span><b>${results.length}</b></div>`;
+  const table = results.length
+    ? `<table class="mtable">
+        <thead><tr><th>Result</th><th>Site</th><th class="r">Date</th></tr></thead>
+        <tbody>${results
+          .map(
+            (r) => `<tr>
+              <td><a href="${escapeHtml(r.url)}" target="_blank" rel="noreferrer">${escapeHtml(r.title || r.url)}</a></td>
+              <td>${escapeHtml(r.site || "—")}</td>
+              <td class="r num">${escapeHtml(r.date ?? "—")}</td>
+            </tr>`,
+          )
+          .join("")}</tbody>
+      </table>`
+    : `<pre class="creply">${escapeHtml(replyText(d.response_json) || "No results stored for this call.")}</pre>`;
+
+  if (compact) {
+    return `<div class="callparsed compact">
+      <h4>${escapeHtml(d.prompt_template ?? firstWord(d.purpose))} · search</h4>
+      <div class="c-label">Prompt</div>
+      <div class="md clamp">${renderMarkdown(query || d.purpose || "")}</div>
+      <div class="c-label c-gap">Result</div>
+      ${table}
+      ${fields}
+    </div>`;
+  }
+  return `<div class="callparsed">
+    <div class="cgrid">
+      <div><div class="c-label">Prompt · rendered</div>
+        <div class="pblock"><div class="md">${renderMarkdown(query || d.purpose || "")}</div></div>
+      </div>
+      <div><div class="c-label">Result · parsed</div>${table}${fields}</div>
+    </div>
+  </div>`;
+}
+
+/** The audit drawer's parsed view: the prompt as prose, the answer as a table and its fields. */
+export function renderParsed(d: CallDetail, compact = false): string {
+  if (d.endpoint === "search" || d.endpoint === "fetch") return parsedSearch(d, compact);
+
+  const reply = replyText(d.response_json);
+  const r = parseReply(reply);
+  const blocks = promptBlocks(d.request_json);
+  const names = d.plan_names ?? {};
+
+  const legs = r.moves.length
+    ? r.moves
+    : r.verdict || r.qty !== null || r.entry !== null
+      ? [
+          {
+            action: r.verdict ?? "",
+            symbol: d.instrument_symbol ?? "",
+            qty: r.qty,
+            price: r.entry,
+            stop: r.stop,
+            target: r.target,
+            amount: null,
+          },
+        ]
+      : [];
+  const table = parsedTable(legs, names, d.instrument_name);
+
+  // A short-term pass answers with candidates, not a trade; that is still a parsed result.
+  const raw = (r.rest as Record<string, unknown> | null)?.candidates;
+  const cands = Array.isArray(raw)
+    ? raw.flatMap((c) => {
+        const rec = c as Record<string, unknown> | null;
+        const symbol = typeof rec?.symbol === "string" ? rec.symbol : "";
+        if (!symbol) return [];
+        return [{ symbol, why: String(rec?.why ?? rec?.reason ?? "") }];
+      })
+    : [];
+  const candTable = cands.length
+    ? `<table class="mtable">
+        <thead><tr><th>Candidate</th><th>Why</th></tr></thead>
+        <tbody>${cands
+          .map(
+            (c) => `<tr><td>${escapeHtml(c.symbol)}</td><td>${escapeHtml(c.why || "—")}</td></tr>`,
+          )
+          .join("")}</tbody>
+      </table>`
+    : "";
+
+  const fields: [string, string][] = [];
+  if (cands.length) fields.push(["Candidates", String(cands.length)]);
+  if (r.verdict) fields.push(["Verdict", r.verdict]);
+  if (r.confidence) fields.push(["Confidence", r.confidence]);
+  if (d.validator_verdict) fields.push(["Review", d.validator_verdict]);
+  fields.push(["Template", d.prompt_template ?? "—"]);
+  fields.push([
+    "Tokens",
+    `${d.prompt_tokens ?? 0} in · ${d.completion_tokens ?? 0} out`,
+  ]);
+  const fieldHtml = fields
+    .map(
+      ([k, v]) =>
+        `<div class="pfield"><span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b></div>`,
+    )
+    .join("");
+  const why = r.rationale
+    ? `<p class="cwhy">${escapeHtml(r.rationale)}</p>`
+    : "";
+
+  const parsed = legs.length > 0 || r.verdict !== null || cands.length > 0;
+  const unparsed = parsed
+    ? ""
+    : `<pre class="creply">${escapeHtml(reply || "No reply stored for this call.")}</pre>`;
+
+  const prompt = blocks.length
+    ? blocks
+        .map(
+          (b) => `<div class="pblock">
+            <div class="c-label">${escapeHtml(titleCase(b.label))}</div>
+            <div class="md">${renderMarkdown(b.text)}</div>
+          </div>`,
+        )
+        .join("")
+    : `<div class="pblock"><div class="md"><p>${escapeHtml(d.purpose ?? "The request body is not a message list.")}</p></div></div>`;
+
+  const title = escapeHtml(d.prompt_template ?? firstWord(d.purpose));
+  const state = parsed ? "parsed" : "unparsed";
+
+  if (compact) {
+    const last = blocks.length ? blocks[blocks.length - 1].text : (d.purpose ?? "");
+    return `<div class="callparsed compact">
+      <h4>${title} · ${state}</h4>
+      <div class="c-label">Prompt</div>
+      <div class="md clamp">${renderMarkdown(last)}</div>
+      <div class="c-label c-gap">Result</div>
+      ${table}${candTable}
+      ${unparsed}
+      ${fieldHtml}
+      ${why}
+    </div>`;
+  }
+
+  return `<div class="callparsed">
+    <div class="cgrid">
+      <div><div class="c-label">Prompt · rendered</div>${prompt}</div>
+      <div><div class="c-label">Result · ${state}</div>${table}${candTable}${unparsed}${fieldHtml}${why}</div>
+    </div>
+    <details class="craw">
+      <summary>Raw request and response</summary>
+      <div class="crawgrid">
+        <div class="crawcol">
+          <div class="c-label">Request <button type="button" class="ccopy">Copy</button></div>
+          <pre>${escapeHtml(pretty(d.request_json))}</pre>
+        </div>
+        <div class="crawcol">
+          <div class="c-label">Response <button type="button" class="ccopy">Copy</button></div>
+          <pre>${escapeHtml(pretty(d.response_json))}</pre>
+        </div>
+      </div>
+    </details>
+  </div>`;
+}

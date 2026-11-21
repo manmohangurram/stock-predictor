@@ -67,6 +67,30 @@ export function today(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/** `2026-11-22` → `22 Nov 2026`: the date as the board writes it. */
+export function longDay(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return Number.isNaN(d.valueOf())
+    ? iso
+    : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+/** One field accepts what a person writes: `22 Nov 2026`, or `2026-11-22`. */
+export function parseDay(text: string): string | null {
+  const raw = text.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const m = raw.match(/^(\d{1,2})[\s/.\-]+([A-Za-z]{3,})[\s/.\-]+(\d{4})$/);
+  if (!m) return null;
+  const month = MONTHS.indexOf(m[2].slice(0, 3).toLowerCase());
+  const day = Number(m[1]);
+  if (month < 0 || day < 1 || day > 31) return null;
+  const iso = `${m[3]}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const d = new Date(iso + "T00:00:00");
+  return d.getMonth() === month && d.getDate() === day ? iso : null;
+}
+
 /** Floored to three decimals, the same rule the ledger applies when it costs a buy. */
 export function floorUnits(n: number): number {
   return Math.floor(n * 1000) / 1000;

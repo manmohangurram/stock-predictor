@@ -252,7 +252,10 @@ export interface Analysis {
   };
   /** The trailing year on the stored series; null when history does not reach back that far. */
   trailing_1y: number | null;
+  /** The last 120 closes, for the chart. */
   bars: BarPoint[];
+  /** Every bar the rules read — more than `bars` once history passes 120. */
+  bar_count: number;
   indicators: {
     sma50: number;
     sma200: number;
@@ -401,6 +404,15 @@ export interface McpCall {
   ms: number;
 }
 
+export interface SessionInfo {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  user_agent: string;
+  /** The token this browser is using right now. */
+  current: boolean;
+}
+
 export interface ApiKey {
   id: string;
   name: string;
@@ -413,10 +425,12 @@ export interface ApiKey {
 }
 
 export const api = {
-  /** The symbols a delete confirmation may name; EMPTY when the book holds nothing. */
-  resetCandidates: () => req<{ symbols: string[] }>("/api/reset/candidates"),
-  resetBook: (symbol: string) =>
-    req<{ deleted: Record<string, number> }>("/api/reset", json({ symbol })),
+  /** Removes the instrument and every record against it; the cash its fills moved returns to the pot. */
+  deleteInstrument: (symbol: string) =>
+    req<{ symbol: string; deleted: boolean; cash: number }>(
+      `/api/instruments/${encodeURIComponent(symbol)}/records`,
+      { method: "DELETE" },
+    ),
   /** Auth: the one door. Setup exists only while no admin does. */
   authStatus: () =>
     req<{ needs_setup: boolean; signed_in?: boolean; username?: string }>("/api/auth/status"),
@@ -427,6 +441,14 @@ export const api = {
   authLogout: () => req<{ signed_out: boolean }>("/api/auth/logout", { method: "POST" }),
   changePassword: (body: { current: string; next: string }) =>
     req<{ changed: boolean; signed_out: boolean }>("/api/auth/password", json(body)),
+  changeUsername: (body: { username: string; password: string }) =>
+    req<{ username: string }>("/api/auth/username", json(body)),
+  me: () => req<{ username: string }>("/api/auth/me"),
+
+  /** The live browser sessions behind the refresh tokens. */
+  sessions: () => req<{ sessions: SessionInfo[] }>("/api/sessions"),
+  revokeAllSessions: () =>
+    req<{ revoked: number; signed_out: boolean }>("/api/sessions/revoke-all", { method: "POST" }),
 
   /** MCP access keys; the plaintext comes back once, from createKey. */
   keys: () => req<{ keys: ApiKey[] }>("/api/keys"),
@@ -435,7 +457,13 @@ export const api = {
   revokeKey: (id: string) => req<{ id: string; revoked: boolean }>(`/api/keys/${id}`, { method: "DELETE" }),
   /** What an assistant asked the book to do, newest first; the server caps it at 5000. */
   mcpCalls: (limit = 200) => req<{ calls: McpCall[] }>(`/api/mcp/calls?limit=${limit}`),
-  dashboard: (mode: Mode = "long") => req<Dashboard>(`/api/dashboard?mode=${mode}`),
+  dashboard: (
+    mode: Mode = "long",
+    decisions: "pending" | "approved" | "rejected" | "all" = "pending",
+  ) =>
+    req<Dashboard>(
+      `/api/dashboard?mode=${mode}${decisions === "pending" ? "" : `&decisions=${decisions}`}`,
+    ),
   settings: () => req<Settings>("/api/settings"),
   testProxy: () =>
     req<{ ok: boolean; status: number | null; millis: number; error: string | null }>(

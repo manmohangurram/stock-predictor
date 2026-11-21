@@ -3,30 +3,21 @@ import { computed, nextTick, ref } from "vue";
 import { api } from "../api";
 import SettingField from "./SettingField.vue";
 
-const emit = defineEmits<{ deleted: [count: number] }>();
+const props = defineProps<{ symbol: string; name: string; disabled?: boolean }>();
+const emit = defineEmits<{ deleted: [symbol: string] }>();
 
 const dialog = ref<HTMLDialogElement | null>(null);
-const symbol = ref("");
-const symbols = ref<string[]>([]);
+const typed = ref("");
 const busy = ref(false);
-const armed = ref(false);
-const note = ref("");
 const error = ref("");
 const field = ref<HTMLElement | null>(null);
 
-const placeholder = computed(() => symbols.value[0] ?? "EMPTY");
+const matches = computed(() => typed.value.trim().toUpperCase() === props.symbol.toUpperCase());
 
 async function open(): Promise<void> {
   error.value = "";
-  note.value = "";
-  armed.value = false;
-  symbol.value = "";
+  typed.value = "";
   dialog.value?.showModal();
-  try {
-    symbols.value = (await api.resetCandidates()).symbols;
-  } catch {
-    symbols.value = [];
-  }
   await nextTick();
   field.value?.querySelector("input")?.focus();
 }
@@ -35,31 +26,17 @@ function close(): void {
   dialog.value?.close();
 }
 
-function matches(): boolean {
-  const typed = symbol.value.trim().toUpperCase();
-  if (!typed) return false;
-  if (symbols.value.length === 0) return typed === "EMPTY";
-  return symbols.value.some((s) => s.toUpperCase() === typed);
-}
-
-async function wipe(): Promise<void> {
-  error.value = "";
-  const typed = symbol.value.trim();
-  if (!matches()) {
-    error.value = typed ? `${typed} is not in this book.` : "Type a symbol from this book.";
-    return;
-  }
-  if (!armed.value) {
-    armed.value = true;
+async function remove(): Promise<void> {
+  if (!matches.value) {
+    error.value = "Type the symbol exactly to confirm.";
     return;
   }
   busy.value = true;
+  error.value = "";
   try {
-    const res = await api.resetBook(typed);
-    const count = Object.values(res.deleted).reduce((n, v) => n + v, 0);
-    note.value = `Deleted ${count} rows.`;
+    await api.deleteInstrument(props.symbol);
     close();
-    emit("deleted", count);
+    emit("deleted", props.symbol);
   } catch (e) {
     error.value = String(e);
   } finally {
@@ -69,38 +46,38 @@ async function wipe(): Promise<void> {
 </script>
 
 <template>
-  <div class="delete-book">
-    <button class="d-btn d-btn-sm delete-open" type="button" aria-haspopup="dialog" @click="open">
-      Delete the book…
+  <div class="delete-instrument">
+    <button class="d-btn d-btn-sm d-btn-ghost delete-open" type="button" aria-haspopup="dialog" :disabled="disabled" @click="open">
+      Delete
     </button>
-    <p v-if="note" class="note" role="status">{{ note }}</p>
 
-    <dialog ref="dialog" class="delete-dialog" @close="armed = false" aria-labelledby="delete-title">
-      <form method="dialog" class="delete-body" @submit.prevent="wipe">
+    <dialog ref="dialog" class="delete-dialog" aria-labelledby="delete-instrument-title">
+      <form method="dialog" class="delete-body" @submit.prevent="remove">
         <header class="delete-head">
           <span class="delete-icon" aria-hidden="true">!</span>
           <div class="delete-words">
-            <h2 id="delete-title">Delete everything</h2>
-            <p class="delete-sub">Clears the book. The admin and your session stay.</p>
+            <h2 id="delete-instrument-title">Delete {{ name }}</h2>
+            <p class="delete-sub">{{ symbol }}</p>
           </div>
           <span class="pill todo">cannot be undone</span>
         </header>
 
         <p class="delete-lede">
-          Instruments, bars, holdings, fills, the cash ledger, decisions, notifications, runs, call
-          records, MCP keys and settings all go. Type the symbol you are willing to lose.
+          Its prices, fills, decisions and headlines go, and the cash those fills moved comes back to
+          the pot. Every other instrument is left alone.
         </p>
 
         <div ref="field" class="delete-field">
-          <SettingField id="delete_symbol" label="Symbol" v-model="symbol" :placeholder="placeholder" />
+          <SettingField id="delete_instrument_symbol" :label="`Type ${symbol} to confirm`"
+                        v-model="typed" :placeholder="symbol" />
         </div>
 
         <div v-if="error" class="error-band" role="alert">{{ error }}</div>
 
         <div class="delete-foot">
           <button class="d-btn d-btn-sm d-btn-ghost" type="button" @click="close">Cancel</button>
-          <button class="d-btn d-btn-sm delete-action" type="submit" :disabled="busy">
-            {{ armed ? "Click again to delete everything" : "Delete everything" }}
+          <button class="d-btn d-btn-sm delete-action" type="submit" :disabled="busy || !matches">
+            {{ busy ? "Deleting…" : "Delete instrument" }}
           </button>
         </div>
       </form>
@@ -109,9 +86,10 @@ async function wipe(): Promise<void> {
 </template>
 
 <style scoped>
-.delete-book { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.delete-open { border-color: var(--stamp-oxide); color: var(--stamp-oxide); background: var(--paper-raised); }
-.delete-open:hover { background: var(--stamp-oxide-bg); }
+.delete-instrument { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.delete-open:not(:disabled) { border-color: var(--stamp-oxide); color: var(--stamp-oxide); background: var(--paper-raised); }
+.delete-open:not(:disabled):hover { background: var(--stamp-oxide-bg); }
+.delete-open:disabled { cursor: not-allowed; }
 
 .delete-dialog {
   width: min(540px, calc(100vw - 32px));
@@ -168,10 +146,19 @@ async function wipe(): Promise<void> {
 .delete-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .delete-action { border-color: var(--stamp-oxide); color: var(--stamp-oxide); background: var(--paper-raised); }
 .delete-action:hover { background: var(--stamp-oxide-bg); }
+.delete-action:disabled { opacity: .6; }
 
 @media (max-width: 480px) {
   .delete-body { padding: var(--space-4); }
-  .delete-head { flex-wrap: wrap; }
-  .delete-head .pill { order: 3; margin-left: 44px; }
+  .delete-head {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: var(--space-2) var(--space-3);
+    align-items: start;
+  }
+  .delete-icon { grid-column: 1; grid-row: 1; }
+  .delete-words { grid-column: 2; grid-row: 1; }
+  .delete-head .pill { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  .delete-words h2 { font-size: var(--text-lg); }
 }
 </style>

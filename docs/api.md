@@ -13,7 +13,8 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | GET | `/api/instruments/{symbol}` | yes | Instrument row with headlines and signals |
 | POST | `/api/instruments/{symbol}/refresh` | yes | Fetch bars and headlines now |
 | PUT | `/api/instruments/{symbol}/target-profit` | yes | That stock's profit floor, inside the pot's band |
-| DELETE | `/api/instruments/{symbol}` | yes | Delete (no history) or archive (has fills); refuses while held |
+| DELETE | `/api/instruments/{symbol}` | yes | Archive: clears prices and headlines, keeps the fills; refuses while held |
+| DELETE | `/api/instruments/{symbol}/records` | yes | Delete the instrument and every record against it; the cash its fills moved returns to the pot; refuses while held |
 | GET | `/api/instruments/{symbol}/analysis` | yes | The overview page in one request: bars, indicators, checks, decisions, fills |
 | GET | `/api/instruments/{symbol}/trades` | yes | Fills for one symbol |
 | POST | `/api/instruments/{symbol}/trades` | yes | Record a fill (backdatable, pot-aware) |
@@ -23,8 +24,6 @@ part of the surface (a script or a curl can use it), not because a page calls it
 | GET | `/api/keys` | yes | Access keys, never their plaintext |
 | POST | `/api/keys` | yes | Mint a key; the only response that carries the token |
 | DELETE | `/api/keys/{id}` | yes | Revoke a key (a timestamp, not a delete) |
-| GET | `/api/reset/candidates` | yes | Symbols a delete confirmation may name |
-| POST | `/api/reset` | yes | Clear the whole book - needs `{"symbol":"INFY.NS"}` or `EMPTY`; admin and session stay |
 | POST | `/mcp` | - | MCP over Streamable HTTP; `Authorization: Bearer` with a key, `401` otherwise |
 | GET | `/api/runs?limit=&latest=1` | yes | Runs: state (`running`/`done`/`failed`), trigger, duration, result |
 | POST | `/api/runs` | yes | Start a run now: `{"prompt": "poll"\|"plan_stock"\|"plan_fund"\|"short"\|"decide", "symbol": "INFY.NS"}` |

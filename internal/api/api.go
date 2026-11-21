@@ -159,6 +159,11 @@ func Router(st *AppState) *gin.Engine {
 	r.GET("/api/auth/status", func(c *gin.Context) { authStatus(c, st) })
 	r.GET("/api/auth/me", func(c *gin.Context) { authMe(c, st) })
 	r.POST("/api/auth/password", func(c *gin.Context) { authPassword(c, st) })
+	r.POST("/api/auth/username", func(c *gin.Context) { authUsername(c, st) })
+
+	// The live sessions behind the refresh tokens, and the one switch that ends them all.
+	r.GET("/api/sessions", func(c *gin.Context) { authSessions(c, st) })
+	r.POST("/api/sessions/revoke-all", func(c *gin.Context) { authSessionsRevokeAll(c, st) })
 
 	r.GET("/api/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
 
@@ -172,6 +177,7 @@ func Router(st *AppState) *gin.Engine {
 	r.PUT("/api/instruments/:symbol/target-profit", func(c *gin.Context) { setTargetProfit(c, st) })
 	r.DELETE("/api/instruments/:symbol", func(c *gin.Context) { archiveInstrument(c, st) })
 	r.POST("/api/instruments/:symbol/restore", func(c *gin.Context) { restoreInstrument(c, st) })
+	r.DELETE("/api/instruments/:symbol/records", func(c *gin.Context) { deleteInstrument(c, st) })
 	r.GET("/api/instruments/:symbol/trades", func(c *gin.Context) { instrumentTrades(c, st) })
 	r.POST("/api/instruments/:symbol/trades", func(c *gin.Context) { recordTrade(c, st) })
 	r.GET("/api/archived", func(c *gin.Context) { archivedInstruments(c, st) })
@@ -203,8 +209,6 @@ func Router(st *AppState) *gin.Engine {
 	r.POST("/api/keys", func(c *gin.Context) { createKey(c, st) })
 	r.DELETE("/api/keys/:id", func(c *gin.Context) { revokeKey(c, st) })
 	r.GET("/api/mcp/calls", func(c *gin.Context) { mcpCalls(c, st) })
-	r.GET("/api/reset/candidates", func(c *gin.Context) { resetCandidates(c, st) })
-	r.POST("/api/reset", func(c *gin.Context) { resetBook(c, st) })
 
 	r.Any("/mcp", gin.WrapH(MCPHandler(st, r)))
 	return r

@@ -7,6 +7,7 @@
  * would be priced in dollars and read here as rupees.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { Plus } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import { api, type Hit } from "../api";
 
@@ -118,7 +119,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
 </script>
 
 <template>
-  <button class="d-btn d-btn-sm d-btn-primary head-action" type="button" aria-haspopup="dialog" @click="show">Add instrument…</button>
+  <button class="d-btn d-btn-xs d-btn-primary" type="button" aria-haspopup="dialog" aria-label="Add instrument" @click="show">
+    <Plus :size="14" :stroke-width="1.75" aria-hidden="true" /><span class="acts-label">Add instrument</span>
+  </button>
   <dialog ref="dialog" class="add-dialog" @close="open = false">
     <div class="add-dialog-body">
       <div class="dlg-search">

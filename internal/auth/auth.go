@@ -34,6 +34,7 @@ var (
 	ErrTokenInvalid = errors.New("token invalid")
 	ErrTokenReused  = errors.New("refresh token reused")
 	ErrShortPass    = errors.New("use at least 10 characters")
+	ErrBadUsername  = errors.New("use a name of 1 to 64 characters")
 )
 
 type Admin struct {
@@ -169,6 +170,27 @@ func ChangePassword(pool *sql.DB, current, next string, now time.Time) error {
 	return tx.Commit()
 }
 
+// Rename changes the sign-in name. The password is asked for because the name is half the door,
+// and this route sits outside the token gate like ChangePassword does.
+func Rename(pool *sql.DB, password, username string) (*Admin, error) {
+	a, err := Current(pool)
+	if err != nil {
+		return nil, err
+	}
+	if bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(password)) != nil {
+		return nil, ErrBadPassword
+	}
+	name := strings.TrimSpace(username)
+	if name == "" || len(name) > 64 {
+		return nil, ErrBadUsername
+	}
+	if _, err := pool.Exec("UPDATE admin SET username = ? WHERE id = ?", name, a.ID); err != nil {
+		return nil, err
+	}
+	a.Username = name
+	return a, nil
+}
+
 // Issue mints the pair. Only the refresh token is stored, and only as a hash.
 func Issue(pool *sql.DB, key []byte, a *Admin, userAgent string, now time.Time) (Tokens, error) {
 	access, err := IssueAccess(key, a.ID, now)
@@ -276,10 +298,51 @@ func Revoke(pool *sql.DB, presented string, now time.Time) error {
 	return err
 }
 
-func RevokeAll(pool *sql.DB, adminID string, now time.Time) error {
-	_, err := pool.Exec("UPDATE refresh_tokens SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL",
+// Session is one live refresh token: a browser that signed in, and when it expires.
+type Session struct {
+	ID        string
+	CreatedAt string
+	ExpiresAt string
+	UserAgent string
+	Current   bool
+}
+
+// Sessions lists the refresh tokens still live, the presented one marked as current.
+func Sessions(pool *sql.DB, adminID, presented string, now time.Time) ([]Session, error) {
+	current := ""
+	if presented != "" {
+		current = hashToken(presented)
+	}
+	rows, err := pool.Query(
+		`SELECT id, token_hash, created_at, expires_at, COALESCE(user_agent, '')
+           FROM refresh_tokens
+          WHERE admin_id = ? AND revoked_at IS NULL AND expires_at > ?
+          ORDER BY created_at DESC LIMIT 50`, adminID, tstamp.From(now))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Session{}
+	for rows.Next() {
+		var s Session
+		var hash string
+		if err := rows.Scan(&s.ID, &hash, &s.CreatedAt, &s.ExpiresAt, &s.UserAgent); err != nil {
+			return nil, err
+		}
+		s.Current = current != "" && hash == current
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// RevokeAllCount ends every live session and says how many it ended.
+func RevokeAllCount(pool *sql.DB, adminID string, now time.Time) (int64, error) {
+	res, err := pool.Exec("UPDATE refresh_tokens SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL",
 		tstamp.From(now), adminID)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func hashToken(token string) string {

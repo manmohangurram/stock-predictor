@@ -9,17 +9,19 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { api, type CallRow, type ScheduledPrompt } from "../api";
-import { dayTime, escapeHtml, humanLabel, titleCase } from "../format";
-import { pill } from "../components/stamp";
+import { ChevronRight, Inbox } from "lucide-vue-next";
+import { api, type CallRow, type RunRow, type ScheduledPrompt } from "../api";
+import { clock, humanLabel, titleCase } from "../format";
+import AppEmpty from "../components/ui/AppEmpty.vue";
+import FilterMenu from "../components/ui/FilterMenu.vue";
 import ScheduleStrip from "../components/ScheduleStrip.vue";
 import CallDrawer from "../components/CallDrawer.vue";
 
 interface Filters {
-  prompt?: string;
-  channel?: string;
-  model?: string;
-  review?: string;
+    prompt?: string;
+    channel?: string;
+    model?: string;
+    review?: string;
 }
 
 const route = useRoute();
@@ -28,274 +30,680 @@ const router = useRouter();
 const prompts = ref<ScheduledPrompt[]>([]);
 const now = ref(new Date().toISOString());
 const rows = ref<CallRow[]>([]);
+const runs = ref<RunRow[]>([]);
 const facets = ref<{ prompts: string[]; calls: string[]; models: string[] }>({
-  prompts: [],
-  calls: [],
-  models: [],
+    prompts: [],
+    calls: [],
+    models: [],
 });
 const total = ref(0);
 const running = ref(0);
 const error = ref("");
-const open = ref<number | null>(null);
+const open = ref<string | null>(null);
 const INTERVALS = [5, 15, 30, 60] as const;
 const every = ref(5);
 const auto = ref(true);
 let timer: number | undefined;
 
 const limit = computed(() => {
-  const n = Number(route.query.limit);
-  return [25, 50, 100].includes(n) ? n : 25;
+    const n = Number(route.query.limit);
+    return [25, 50, 100].includes(n) ? n : 25;
 });
-const offset = computed(() => Math.max(0, Number(route.query.offset ?? 0) || 0));
+const offset = computed(() =>
+    Math.max(0, Number(route.query.offset ?? 0) || 0),
+);
 const filters = computed<Filters>(() => ({
-  prompt: (route.query.prompt as string) || undefined,
-  channel: (route.query.channel as string) || undefined,
-  model: (route.query.model as string) || undefined,
-  review: (route.query.review as string) || undefined,
+    prompt: (route.query.prompt as string) || undefined,
+    channel: (route.query.channel as string) || undefined,
+    model: (route.query.model as string) || undefined,
+    review: (route.query.review as string) || undefined,
 }));
 const filtered = computed(() => Object.values(filters.value).some(Boolean));
 
-const failures = computed(() => rows.value.filter((r) => r.error).length);
 const tokens = computed(() =>
-  rows.value.reduce((n, r) => n + (r.prompt_tokens ?? 0) + (r.completion_tokens ?? 0), 0),
+    rows.value.reduce(
+        (n, r) => n + (r.prompt_tokens ?? 0) + (r.completion_tokens ?? 0),
+        0,
+    ),
 );
+const openReview = computed(
+    () => rows.value.filter((r) => r.decision_status === "pending").length,
+);
+const runsToday = computed(() => {
+    const today = new Date().toDateString();
+    return runs.value.filter(
+        (r) => new Date(r.started_at).toDateString() === today,
+    ).length;
+});
+
+const tokenText = (n: number): string =>
+    n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+
+const rangeText = computed(() => {
+    if (total.value === 0) return "0 of 0";
+    const end = Math.min(offset.value + limit.value, total.value);
+    return `Showing ${offset.value + 1}–${end} of ${total.value}${
+        filtered.value ? " · filtered" : " · newest first"
+    }`;
+});
 
 async function load(): Promise<void> {
-  try {
-    const [schedule, f, list, runs] = await Promise.all([
-      api.schedule(),
-      api.callFacets(),
-      api.calls(offset.value, limit.value, filters.value),
-      api.runs(1),
-    ]);
-    prompts.value = schedule.prompts;
-    now.value = schedule.now;
-    facets.value = f;
-    rows.value = list.rows;
-    total.value = list.total;
-    running.value = runs.running;
-    error.value = "";
-  } catch (e) {
-    error.value = String(e);
-  }
+    try {
+        const [schedule, f, list, log] = await Promise.all([
+            api.schedule(),
+            api.callFacets(),
+            api.calls(offset.value, limit.value, filters.value),
+            api.runs(50),
+        ]);
+        prompts.value = schedule.prompts;
+        now.value = schedule.now;
+        facets.value = f;
+        rows.value = list.rows;
+        total.value = list.total;
+        runs.value = log.runs;
+        running.value = log.running;
+        error.value = "";
+    } catch (e) {
+        error.value = String(e);
+    }
 }
 
 /** Set one filter in the URL, from the top: page 2 of the old filter is not page 2 of the new one. */
 function setFilter(name: keyof Filters, value: string): void {
-  const q = { ...route.query, offset: undefined } as Record<string, string | undefined>;
-  if (value) q[name] = value;
-  else delete q[name];
-  void router.push({ path: "/calls", query: q });
+    const q = { ...route.query, offset: undefined } as Record<
+        string,
+        string | undefined
+    >;
+    if (value) q[name] = value;
+    else delete q[name];
+    void router.push({ path: "/calls", query: q });
+}
+
+function clearFilters(): void {
+    void router.push({ path: "/calls" });
 }
 
 function page(next: number): void {
-  void router.push({ path: "/calls", query: { ...route.query, offset: String(next) } });
+    void router.push({
+        path: "/calls",
+        query: { ...route.query, offset: String(next) },
+    });
 }
 
 function pageSize(size: string): void {
-  void router.push({ path: "/calls", query: { offset: "0", limit: size, ...filters.value } });
+    void router.push({
+        path: "/calls",
+        query: { offset: "0", limit: size, ...filters.value },
+    });
 }
 
-/** The whole row is the control; a link or a button inside it keeps its own job. */
-function toggle(event: MouseEvent, id: number): void {
-  const target = event.target as HTMLElement | null;
-  if (target?.closest("a, button, input, select, textarea, label")) return;
-  open.value = open.value === id ? null : id;
-}
+const toggle = (id: string): void => {
+    open.value = open.value === id ? null : id;
+};
 
 const promptType = (r: CallRow): string => {
-  if (r.endpoint === "search") return "Web search";
-  if (r.endpoint === "fetch") return "Web fetch";
-  const [kind] = (r.purpose ?? "").split(/\s+/);
-  return titleCase(kind || "—");
+    if (r.endpoint === "search") return "Web search";
+    if (r.endpoint === "fetch") return "Web fetch";
+    const [kind] = (r.purpose ?? "").split(/\s+/);
+    return titleCase(kind || "—");
 };
 
-const holding = (r: CallRow): string => {
-  const tool = r.endpoint === "search" || r.endpoint === "fetch";
-  const [kind, ...rest] = (r.purpose ?? "").split(/\s+/);
-  if (!tool && kind === "plan") return "Whole book";
-  if (r.instrument_name) return r.instrument_name;
-  return tool ? (r.purpose ?? "—") : rest.join(" ") || "—";
-};
-const holdingSub = (r: CallRow): string | null => {
-  const [kind] = (r.purpose ?? "").split(/\s+/);
-  if (kind === "plan") return "every holding";
-  return r.instrument_symbol ?? null;
-};
+/** The template that was sent, which is what the Prompt column names. */
+const promptName = (r: CallRow): string => r.model ?? promptType(r);
 
-const reviewBadge = (r: CallRow): { tone: Parameters<typeof pill>[0]; label: string; title: string } => {
-  if (r.error) return { tone: "failed", label: "failed", title: r.error };
-  if (r.decision_action === "BLOCKED") {
-    return {
-      tone: "todo",
-      label: (r.plan_legs ?? 0) > 0 ? "plan · refused" : "blocked",
-      title: r.decision_reason ?? "",
-    };
-  }
-  if (r.decision_action === "PLAN") {
-    const state = r.decision_status ?? "pending";
-    return {
-      tone: state === "approved" ? "ok" : state === "rejected" ? "todo" : "",
-      label: state === "pending" ? "plan · awaiting you" : `plan · ${state}`,
-      title: "",
-    };
-  }
-  if (!r.decision_status) return { tone: "", label: "", title: "" };
-  return {
-    tone: r.decision_status === "approved" ? "ok" : r.decision_status === "rejected" ? "todo" : "",
-    label: r.decision_status === "pending" ? "awaiting you" : r.decision_status,
-    title: r.decision_id ? `decision #${r.decision_id}` : "",
-  };
-};
+/** One line that says what came back, without opening the exchange. */
+function resultText(r: CallRow): string {
+    if (r.error) return "failed";
+    const legs = r.plan_legs ?? 0;
+    if (legs > 0) return `${legs} ${legs === 1 ? "move" : "moves"}`;
+    if (r.decision_action === "BLOCKED") return "blocked";
+    if (r.decision_status) {
+        return r.instrument_name
+            ? `${r.decision_status} · ${r.instrument_name}`
+            : r.decision_status;
+    }
+    return r.instrument_name ?? "no action";
+}
+
+const resultTone = (r: CallRow): string =>
+    r.error || r.decision_action === "BLOCKED" ? "down" : "";
+
+const rowTokens = (r: CallRow): string =>
+    tokenText((r.prompt_tokens ?? 0) + (r.completion_tokens ?? 0));
 
 /** The tick and the interval are the reader's, so they outlive a render. */
 function arm(): void {
-  window.clearInterval(timer);
-  if (!auto.value) return;
-  timer = window.setInterval(() => {
-    if (document.hidden) return;
-    const el = document.activeElement;
-    if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
-      return;
-    }
-    void load();
-  }, every.value * 1000);
+    window.clearInterval(timer);
+    if (!auto.value) return;
+    timer = window.setInterval(() => {
+        if (document.hidden) return;
+        const el = document.activeElement;
+        if (
+            el instanceof HTMLInputElement ||
+            el instanceof HTMLSelectElement ||
+            el instanceof HTMLTextAreaElement
+        ) {
+            return;
+        }
+        void load();
+    }, every.value * 1000);
 }
 
 function remember(): void {
-  window.localStorage.setItem("calls.autoRefresh", auto.value ? "on" : "off");
-  window.localStorage.setItem("calls.autoEvery", String(every.value));
-  arm();
+    window.localStorage.setItem("calls.autoRefresh", auto.value ? "on" : "off");
+    window.localStorage.setItem("calls.autoEvery", String(every.value));
+    arm();
 }
 
 onMounted(async () => {
-  auto.value = window.localStorage.getItem("calls.autoRefresh") !== "off";
-  const stored = Number(window.localStorage.getItem("calls.autoEvery"));
-  every.value = (INTERVALS as readonly number[]).includes(stored) ? stored : 5;
-  arm();
-  await load();
+    auto.value = window.localStorage.getItem("calls.autoRefresh") !== "off";
+    const stored = Number(window.localStorage.getItem("calls.autoEvery"));
+    every.value = (INTERVALS as readonly number[]).includes(stored)
+        ? stored
+        : 5;
+    arm();
+    await load();
 });
 onBeforeUnmount(() => window.clearInterval(timer));
 watch(() => route.fullPath, load);
 </script>
 
 <template>
-  <div v-if="error" class="error-band">Something failed: {{ error }}
-    <button class="d-btn d-btn-sm" @click="load()">Retry</button>
-  </div>
-  <template v-else>
-    <div class="page-head">
-      <div>
-        <h1>Audit</h1>
-        <div class="page-sub">Every outbound model call, newest first</div>
-      </div>
-      <div class="head-right">
-        <div class="head-row">
-          <div class="figures">
-            <div><span class="lbl">Calls</span><span class="fig-line"><b class="num">{{ rows.length }}</b></span></div>
-            <div><span class="lbl">Failures</span><span class="fig-line"><b class="num" :class="failures ? 'neg' : ''">{{ failures }}</b></span></div>
-            <div><span class="lbl">Tokens</span><span class="fig-line"><b class="num">{{ tokens.toLocaleString("en-IN") }}</b></span></div>
-          </div>
-        </div>
-      </div>
+    <div v-if="error" class="error-band">
+        Something failed: {{ error }}
+        <button class="d-btn d-btn-sm" @click="load()">Retry</button>
     </div>
-
-    <ScheduleStrip :prompts="prompts" :now="now" :running="running" @reload="load()" />
-
-    <div class="filter-bar">
-      <label v-for="f in [
-        { name: 'prompt', label: 'Prompt', values: facets.prompts, humanise: true },
-        { name: 'channel', label: 'Call', values: facets.calls, humanise: true },
-        { name: 'model', label: 'Model', values: facets.models, humanise: true },
-        { name: 'review', label: 'Review', values: ['pending', 'approved', 'rejected', 'blocked', 'none'], humanise: false },
-      ]" :key="f.name" class="filter"
-      >
-        <span class="lbl">{{ f.label }}</span>
-        <select :aria-label="f.label" :value="(filters as Record<string, string | undefined>)[f.name] ?? ''"
-                @change="setFilter(f.name as keyof Filters, ($event.target as HTMLSelectElement).value)">
-          <option value="">Any</option>
-          <option v-for="v in f.values" :key="v" :value="v">{{ f.humanise ? humanLabel(v) : v }}</option>
-        </select>
-      </label>
-      <a v-if="filtered" class="d-btn d-btn-sm d-btn-ghost" href="/calls">Clear</a>
-      <div class="tick">
-        <label class="tick-toggle" title="Reload this list on a timer">
-          <input v-model="auto" type="checkbox" @change="remember" />
-          <span class="tick-dot" aria-hidden="true"></span>
-          <span class="tick-word">Auto-refresh</span>
-        </label>
-        <select v-model.number="every" aria-label="Refresh interval" @change="remember">
-          <option v-for="s in INTERVALS" :key="s" :value="s">{{ s === 60 ? "1 min" : `${s} s` }}</option>
-        </select>
-      </div>
-    </div>
-
-    <section class="main-body table-wrap">
-      <table class="blotter">
-        <thead><tr>
-          <th scope="col">Time</th><th scope="col" class="hide-sm">Prompt type</th>
-          <th scope="col" class="hide-sm">Call</th><th scope="col">Holding</th>
-          <th scope="col">Review</th><th scope="col" class="right"><span class="sr-only">Open</span></th>
-        </tr></thead>
-        <tbody>
-          <template v-for="r in rows" :key="r.id">
-            <tr class="row call-row" :class="{ open: open === r.id }" @click="toggle($event, r.id)">
-              <td class="time" :title="r.ts">{{ dayTime(r.ts) }}</td>
-              <td class="hide-sm">{{ promptType(r) }}</td>
-              <td class="hide-sm">{{ titleCase(r.endpoint) }}</td>
-              <td class="holding">
-                <b v-if="holding(r) === 'Whole book'">Whole book</b>
-                <b v-else-if="r.instrument_name">{{ r.instrument_name }}</b>
-                <span v-else class="muted">{{ holding(r) }}</span>
-                <div v-if="holdingSub(r)" class="sub">{{ holdingSub(r) }}</div>
-              </td>
-              <td class="review-td">
-                <div class="review-cell">
-                  <span v-if="reviewBadge(r).label" :title="reviewBadge(r).title"
-                        v-html="pill(reviewBadge(r).tone, reviewBadge(r).label, reviewBadge(r).title)" />
+    <template v-else>
+        <header class="pg-top">
+            <div class="pg-main">
+                <div class="pg-eyebrow">Scheduler · model calls</div>
+                <h1 class="pg-title">Audit</h1>
+                <div class="pg-sub desk-only">
+                    What ran, when it runs next, and what each call answered
                 </div>
-              </td>
-              <td class="right caret-cell">
-                <button class="row-caret" type="button"
-                        :aria-expanded="open === r.id" :aria-controls="`call-${r.id}`"
-                        :aria-label="open === r.id ? `Hide this ${promptType(r)} call` : `Show this ${promptType(r)} call`"
-                        @click.stop="open = open === r.id ? null : r.id">
-                  <span class="caret" :class="{ open: open === r.id }" aria-hidden="true"></span>
-                </button>
-              </td>
-            </tr>
-            <tr v-if="open === r.id" :id="`call-${r.id}`" class="call-detail">
-              <td colspan="6"><CallDrawer :id="r.id" /></td>
-            </tr>
-          </template>
-          <tr v-if="!rows.length">
-            <td colspan="6" class="empty">
-              <span v-if="filtered">No calls match these filters — <a href="/calls">clear them</a>.</span>
-              <span v-else>No calls yet.</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                <div class="pg-sub only-mobile">
+                    {{ runsToday }} runs · {{ total }} calls ·
+                    {{ openReview }} open
+                </div>
+            </div>
+            <div class="pg-side">
+                <div class="pg-kpis">
+                    <div>
+                        <span>Runs today</span
+                        ><b class="num">{{ runsToday }}</b>
+                    </div>
+                    <div>
+                        <span>Calls</span><b class="num">{{ total }}</b>
+                    </div>
+                    <div>
+                        <span>Tokens</span
+                        ><b class="num">{{ tokenText(tokens) }}</b>
+                    </div>
+                    <div>
+                        <span>Open review</span
+                        ><b class="num">{{ openReview }}</b>
+                    </div>
+                </div>
+            </div>
+        </header>
 
-      <div class="pager">
-        <div class="pager-side">
-          <button class="d-btn d-btn-sm" type="button" :disabled="offset === 0"
-                  @click="page(Math.max(0, offset - limit))">‹ Newer</button>
-          <button class="d-btn d-btn-sm" type="button" :disabled="offset + limit >= total"
-                  @click="page(offset + limit)">Older ›</button>
-        </div>
-        <div class="pager-side">
-          <span class="sub">
-            {{ total === 0 ? "0–0 of 0" : `${offset + 1}–${Math.min(offset + limit, total)} of ${total}` }}
-            · page {{ Math.floor(offset / limit) + 1 }} of {{ Math.max(1, Math.ceil(total / limit)) }}
-          </span>
-          <label class="pager-size sub">Show
-            <select :value="String(limit)" aria-label="Calls per page" @change="pageSize(($event.target as HTMLSelectElement).value)">
-              <option v-for="n in [25, 50, 100]" :key="n" :value="n">{{ n }} per page</option>
-            </select>
-          </label>
-        </div>
-      </div>
-    </section>
-  </template>
+        <ScheduleStrip
+            :prompts="prompts"
+            :now="now"
+            :running="running"
+            @reload="load()"
+        />
+
+        <section class="panel">
+            <div class="panel-head">
+                <h2>Calls</h2>
+                <span class="r">{{ rangeText }}</span>
+            </div>
+
+            <div class="filters">
+                <FilterMenu
+                    label="Prompt"
+                    :options="facets.prompts"
+                    :model-value="filters.prompt"
+                    humanise
+                    @update:model-value="setFilter('prompt', $event)"
+                />
+                <FilterMenu
+                    label="Call"
+                    :options="facets.calls"
+                    :model-value="filters.channel"
+                    humanise
+                    @update:model-value="setFilter('channel', $event)"
+                />
+                <FilterMenu
+                    label="Model"
+                    :options="facets.models"
+                    :model-value="filters.model"
+                    humanise
+                    @update:model-value="setFilter('model', $event)"
+                />
+                <FilterMenu
+                    label="Review"
+                    :options="[
+                        'pending',
+                        'approved',
+                        'rejected',
+                        'blocked',
+                        'none',
+                    ]"
+                    :model-value="filters.review"
+                    @update:model-value="setFilter('review', $event)"
+                />
+                <button
+                    v-if="filtered"
+                    class="d-btn d-btn-sm d-btn-ghost"
+                    type="button"
+                    @click="clearFilters()"
+                >
+                    Clear
+                </button>
+                <div class="tick">
+                    <label
+                        class="tick-toggle"
+                        title="Reload this list on a timer"
+                    >
+                        <input
+                            v-model="auto"
+                            type="checkbox"
+                            @change="remember"
+                        />
+                        <span class="tick-dot" aria-hidden="true"></span>
+                        <span class="tick-word">Auto-refresh</span>
+                    </label>
+                    <span class="tick-sep" aria-hidden="true">·</span>
+                    <select
+                        v-model.number="every"
+                        aria-label="Refresh interval"
+                        @change="remember"
+                    >
+                        <option v-for="s in INTERVALS" :key="s" :value="s">
+                            {{ s === 60 ? "1 min" : `${s}s` }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="call-list only-desk">
+                <div class="shead">
+                    <span>Time</span>
+                    <span>Prompt</span>
+                    <span>Call</span>
+                    <span>Result</span>
+                    <span class="r">Tokens</span>
+                    <span><span class="sr-only">Open</span></span>
+                </div>
+                <div
+                    v-for="r in rows"
+                    :key="r.id"
+                    class="audit-call"
+                    :class="{ open: open === r.id }"
+                >
+                    <div
+                        class="srow"
+                        role="button"
+                        tabindex="0"
+                        :aria-expanded="open === r.id"
+                        :aria-label="`${promptType(r)} call at ${clock(r.ts)} — ${
+                            open === r.id ? 'hide' : 'show'
+                        } the exchange`"
+                        @click="toggle(r.id)"
+                        @keydown.enter.prevent="toggle(r.id)"
+                        @keydown.space.prevent="toggle(r.id)"
+                    >
+                        <span class="num when">{{ clock(r.ts) }}</span>
+                        <span class="mono prompt">{{ promptName(r) }}</span>
+                        <span class="sym">{{
+                            titleCase(r.endpoint)
+                        }}</span>
+                        <span class="hint res" :class="resultTone(r)">{{
+                            resultText(r)
+                        }}</span>
+                        <span class="toks">{{ rowTokens(r) }}</span>
+                        <ChevronRight
+                            class="chev"
+                            :class="{ open: open === r.id }"
+                            :size="13"
+                            :stroke-width="1.75"
+                            aria-hidden="true"
+                        />
+                    </div>
+                    <div v-if="open === r.id" class="sdrawer">
+                        <CallDrawer :id="r.id" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="calls-m only-mobile">
+                <div
+                    v-for="r in rows"
+                    :key="r.id"
+                    class="audit-call"
+                    :class="{ open: open === r.id }"
+                >
+                    <div
+                        class="prow"
+                        role="button"
+                        tabindex="0"
+                        :aria-expanded="open === r.id"
+                        :aria-label="`${promptType(r)} call at ${clock(r.ts)} — ${
+                            open === r.id ? 'hide' : 'show'
+                        } the exchange`"
+                        @click="toggle(r.id)"
+                        @keydown.enter.prevent="toggle(r.id)"
+                        @keydown.space.prevent="toggle(r.id)"
+                    >
+                        <div>
+                            <div class="nm mono">{{ promptName(r) }}</div>
+                            <div class="sy">
+                                {{ titleCase(r.endpoint) }} ·
+                                {{ clock(r.ts) }}
+                            </div>
+                        </div>
+                        <div class="right">
+                            <div class="num">{{ rowTokens(r) }}</div>
+                            <div class="hint" :class="resultTone(r)">
+                                {{ resultText(r) }}
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="open === r.id" class="pdrawer">
+                        <CallDrawer :id="r.id" compact />
+                    </div>
+                </div>
+            </div>
+
+            <AppEmpty
+                v-if="!rows.length"
+                :icon="Inbox"
+                :text="
+                    filtered
+                        ? 'No calls match these filters.'
+                        : 'No calls yet. The next scheduled run writes its exchange here.'
+                "
+            >
+                <button
+                    v-if="filtered"
+                    class="d-btn d-btn-sm"
+                    type="button"
+                    @click="clearFilters()"
+                >
+                    Clear filters
+                </button>
+            </AppEmpty>
+
+            <div class="pager">
+                <span>{{ rangeText }}</span>
+                <span class="pg-right">
+                    <label class="pg-size">
+                        Show
+                        <select
+                            :value="String(limit)"
+                            aria-label="Calls per page"
+                            @change="
+                                pageSize(
+                                    ($event.target as HTMLSelectElement).value,
+                                )
+                            "
+                        >
+                            <option
+                                v-for="n in [25, 50, 100]"
+                                :key="n"
+                                :value="n"
+                            >
+                                {{ n }} per page
+                            </option>
+                        </select>
+                    </label>
+                    <button
+                        class="d-btn d-btn-sm"
+                        type="button"
+                        :disabled="offset === 0"
+                        @click="page(Math.max(0, offset - limit))"
+                    >
+                        Previous
+                    </button>
+                    <button
+                        class="d-btn d-btn-sm"
+                        type="button"
+                        :disabled="offset + limit >= total"
+                        @click="page(offset + limit)"
+                    >
+                        Next
+                    </button>
+                </span>
+            </div>
+        </section>
+    </template>
 </template>
+
+<style scoped>
+.desk-only {
+    display: inline;
+}
+.only-mobile {
+    display: none;
+}
+.only-desk {
+    display: block;
+}
+
+.filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--rule-subtle);
+}
+.filters .tick {
+    margin-left: auto;
+}
+
+.call-list {
+    min-width: 0;
+}
+.shead,
+.srow {
+    display: grid;
+    grid-template-columns: 66px 140px 110px minmax(0, 1fr) 90px 22px;
+    gap: 12px;
+    align-items: center;
+}
+.shead {
+    padding: 7px 16px;
+    background: var(--paper-soft);
+    font-size: 9px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-tertiary);
+    font-weight: 700;
+}
+.shead .r {
+    text-align: right;
+}
+.audit-call {
+    border-top: 1px solid var(--rule-subtle);
+}
+.audit-call.open {
+    background: var(--paper-soft);
+}
+.srow {
+    padding: 10px 16px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.srow:hover {
+    background: var(--paper-soft);
+}
+.srow:focus-visible {
+    outline: 2px solid var(--rule-focus);
+    outline-offset: -2px;
+}
+.srow .when {
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+}
+.srow .mono {
+    font-family: var(--font-ledger);
+    font-size: 11.5px;
+}
+.srow .sym {
+    font-family: var(--font-ledger);
+    font-size: 10.5px;
+    color: var(--ink-tertiary);
+}
+.srow .hint {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ink-tertiary);
+}
+.srow .hint.down {
+    color: var(--stamp-oxide);
+}
+.toks {
+    font-family: var(--font-ledger);
+    font-size: 10px;
+    color: var(--ink-tertiary);
+    text-align: right;
+}
+.chev {
+    color: var(--ink-tertiary);
+    transition: transform 120ms ease-out;
+}
+.chev.open {
+    transform: rotate(90deg);
+}
+.sdrawer {
+    padding: 0 16px 12px;
+}
+
+.pager {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    border-top: 1px solid var(--rule-subtle);
+    background: var(--paper-soft);
+    font-size: 11px;
+    color: var(--ink-tertiary);
+}
+.pg-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.pg-size {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 4px;
+}
+.pg-size select {
+    min-height: 28px;
+    padding: 2px 22px 2px 8px;
+    font-family: var(--font-ledger);
+    font-size: 11px;
+    background-size: 10px 10px;
+    background-position: right 6px center;
+}
+
+@media (max-width: 900px) {
+    .desk-only {
+        display: none;
+    }
+    .only-mobile {
+        display: block;
+    }
+    .only-desk {
+        display: none;
+    }
+    .pg-top {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        margin-bottom: 12px;
+    }
+    .pg-side,
+    .pg-eyebrow {
+        display: none;
+    }
+    .pg-title {
+        font-size: 27px;
+    }
+    .pg-sub {
+        font-size: 11px;
+        margin-top: 2px;
+    }
+    .panel-head {
+        padding: 11px 14px 6px;
+        border-bottom: 0;
+    }
+    .panel-head h2 {
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--ink-tertiary);
+    }
+    .panel-head .r {
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+    }
+    .filters {
+        padding: 10px 14px;
+        gap: 6px;
+    }
+    .filters .tick {
+        margin-left: 0;
+    }
+    .prow {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 14px;
+        cursor: pointer;
+    }
+    .prow:focus-visible {
+        outline: 2px solid var(--rule-focus);
+        outline-offset: -2px;
+    }
+    .prow .nm {
+        font-size: 11.5px;
+    }
+    .prow .sy {
+        font-family: var(--font-ledger);
+        font-size: 10px;
+        color: var(--ink-tertiary);
+    }
+    .prow .right {
+        text-align: right;
+    }
+    .prow .hint {
+        font-size: 10.5px;
+        color: var(--ink-tertiary);
+    }
+    .prow .hint.down {
+        color: var(--stamp-oxide);
+    }
+    .pdrawer {
+        margin: 0 12px 10px;
+        padding: 12px;
+        background: var(--paper-raised);
+        border: 1px solid var(--rule-subtle);
+        border-radius: var(--radius-card);
+        box-shadow: var(--shadow-card);
+    }
+    .pager {
+        padding: 10px 14px;
+    }
+}
+</style>

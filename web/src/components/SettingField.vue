@@ -48,6 +48,7 @@ defineEmits<{ "update:modelValue": [string] }>();
         @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)"
       />
       <span v-if="unit" class="unit">{{ unit }}</span>
+      <slot name="trail" />
     </div>
     <p v-if="help" class="help" v-html="help" />
   </div>

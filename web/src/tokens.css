@@ -1,112 +1,186 @@
 @layer tokens, base, components;
 
 @layer tokens {
-  :root {
-    /* paper */
-    --paper: oklch(0.985 0.006 85);
-    --paper-raised: oklch(1 0 0);
-    --paper-inset: oklch(0.965 0.008 85);
-    --paper-settled: oklch(0.955 0.02 155);
-
-    /* ink */
-    --ink: oklch(0.22 0.012 60);
-    --ink-secondary: oklch(0.44 0.012 60);
-    --ink-tertiary: oklch(0.5 0.01 60);
-    --ink-muted: oklch(0.55 0.008 60);
-
-    /* rules */
-    --rule-subtle: oklch(0.22 0.012 60 / 0.08);
-    --rule: oklch(0.22 0.012 60 / 0.14);
-    --rule-strong: oklch(0.22 0.012 60 / 0.24);
-    --rule-focus: oklch(0.42 0.12 262);
-
-    /* stamps — always ink on tint */
-    --stamp-ink: oklch(0.42 0.12 262);
-    --stamp-ink-bg: oklch(0.93 0.03 262);
-    --stamp-oxide: oklch(0.42 0.15 35);
-    --stamp-oxide-bg: oklch(0.93 0.035 35);
-    --stamp-amber: oklch(0.45 0.1 70);
-    --stamp-amber-bg: oklch(0.95 0.05 85);
-    --stamp-graphite: oklch(0.4 0.006 60);
-    --stamp-graphite-bg: oklch(0.94 0.004 60);
-
-    /* settled: a gain, an approval, a run that finished. Same hue as --paper-settled. */
-    --green: oklch(0.45 0.1 155);
-    --green-bg: oklch(0.94 0.04 155);
-
-    --font-form: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
-    --font-ledger: "IBM Plex Mono", ui-monospace, "SF Mono", monospace;
-
-    --text-xs: 0.6875rem;
-    --text-sm: 0.8125rem;
-    --text-base: 0.875rem;
-    --text-md: 1rem;
-    --text-lg: 1.25rem;
-    --text-2xl: 2.125rem;
-
-    --space-1: 4px;
-    --space-2: 8px;
-    --space-3: 12px;
-    --space-4: 16px;
-    --space-6: 24px;
-    --space-8: 32px;
-    --space-12: 48px;
-
-    --radius-sm: 6px;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --radius-pill: 999px;
-    --radius-stamp: 4px;
-    --row-h-touch: 44px;
-
-    color-scheme: light dark;
-  }
-
-  @media (prefers-color-scheme: dark) {
     :root {
-      --paper: oklch(0.16 0.008 85);
-      --paper-raised: oklch(0.2 0.008 85);
-      --paper-inset: oklch(0.13 0.008 85);
-      --paper-settled: oklch(0.22 0.02 155);
-      --green: oklch(0.78 0.1 155);
-      --green-bg: oklch(0.32 0.05 155);
-      --ink: oklch(0.92 0.008 85);
-      --ink-secondary: oklch(0.72 0.008 85);
-      --ink-tertiary: oklch(0.66 0.008 85);
-      --ink-muted: oklch(0.62 0.008 85);
-      --rule-subtle: oklch(1 0 0 / 0.07);
-      --rule: oklch(1 0 0 / 0.12);
-      --rule-strong: oklch(1 0 0 / 0.2);
-      --stamp-ink: oklch(0.78 0.1 262);
-      --stamp-ink-bg: oklch(0.3 0.05 262);
-      --stamp-oxide: oklch(0.76 0.13 35);
-      --stamp-oxide-bg: oklch(0.3 0.05 35);
-      --stamp-amber: oklch(0.82 0.09 70);
-      --stamp-amber-bg: oklch(0.32 0.04 70);
-      --stamp-graphite: oklch(0.8 0.005 60);
-      --stamp-graphite-bg: oklch(0.26 0.004 60);
+        --paper: #f6f5ef;
+        --paper-raised: #ffffff;
+        --paper-inset: #eeefe8;
+        --paper-soft: #fbfbf7;
+        --paper-settled: #dbf4e5;
+        --shell: #0e1512;
+        --shell-ink: #eef2ef;
+        --shell-dim: #9fb0a8;
+
+        --ink: #0e1512;
+        --ink-secondary: #4b5751;
+        --ink-tertiary: #828d87;
+        --ink-muted: #8b958f;
+
+        --rule-subtle: #e3e5de;
+        --rule: #d8dbd4;
+        --rule-strong: #ccd2cb;
+        --rule-focus: #2547ce;
+
+        --brand: #2547ce;
+        --brand-hover: #1e3bb8;
+        --brand-soft: #e8ecfc;
+        --brand-line: #c9d4f7;
+        --brand-ink: #ffffff;
+
+        --stamp-ink: var(--brand);
+        --stamp-ink-bg: var(--brand-soft);
+        --stamp-oxide: #ae2119;
+        --stamp-oxide-bg: #fbe1de;
+        --stamp-amber: #9a6a00;
+        --stamp-amber-bg: #fdf1dd;
+        --stamp-graphite: #6b756f;
+        --stamp-graphite-bg: #ecede8;
+
+        --green: #0e7a45;
+        --green-bg: #dbf4e5;
+
+        --fund: #0e6a5f;
+        --fund-soft: #dcefeb;
+
+        --font-form:
+            "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --font-ledger:
+            ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        --font-display:
+            "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+
+        --text-xs: 0.6875rem;
+        --text-sm: 0.78125rem;
+        --text-base: 0.8125rem;
+        --text-md: 0.875rem;
+        --text-lg: 1.0625rem;
+        --text-2xl: 2.25rem;
+        --text-hero: 2.375rem;
+
+        --space-1: 4px;
+        --space-2: 8px;
+        --space-3: 12px;
+        --space-4: 16px;
+        --space-6: 24px;
+        --space-8: 32px;
+        --space-12: 48px;
+
+        --radius-sm: 6px;
+        --radius: 10px;
+        --radius-lg: 14px;
+        --radius-card: 12px;
+        --radius-pill: 999px;
+        --radius-stamp: 4px;
+        --row-h-touch: 44px;
+
+        --shadow-card:
+            0 1px 2px rgb(16 23 21 / 0.05), 0 10px 26px rgb(16 23 21 / 0.06);
+        --shadow-pop: 0 18px 40px rgb(16 23 21 / 0.2);
+        --scrim: rgb(43 42 39 / 0.35);
+
+        color-scheme: light;
     }
-  }
+
+    :root[data-theme="dark"] {
+        --paper: #0a0f0d;
+        --paper-raised: #111815;
+        --paper-inset: #1a2420;
+        --paper-soft: #151e1a;
+        --paper-settled: #0f2c1d;
+        --shell: #060b09;
+        --shell-ink: #e8eeea;
+        --shell-dim: #8fa097;
+
+        --ink: #e8eeea;
+        --ink-secondary: #a8b4ae;
+        --ink-tertiary: #78857f;
+        --ink-muted: #7e8a84;
+
+        --rule-subtle: #1b2621;
+        --rule: #222e29;
+        --rule-strong: #2f3d37;
+        --rule-focus: #93c5fd;
+
+        --brand: #8ca6ff;
+        --brand-hover: #a3b8ff;
+        --brand-soft: #1a2244;
+        --brand-line: #2e3d72;
+        --brand-ink: #0b1020;
+
+        --stamp-ink: var(--brand);
+        --stamp-ink-bg: var(--brand-soft);
+        --stamp-oxide: #f87171;
+        --stamp-oxide-bg: #371816;
+        --stamp-amber: #f2b55f;
+        --stamp-amber-bg: #2a2012;
+        --stamp-graphite: #8b958f;
+        --stamp-graphite-bg: #1e2924;
+
+        --green: #4ade80;
+        --green-bg: #0f2c1d;
+
+        --fund: #5eead4;
+        --fund-soft: #0c2a26;
+
+        --shadow-card:
+            0 1px 2px rgb(0 0 0 / 0.45), 0 14px 34px rgb(0 0 0 / 0.4);
+        --shadow-pop: 0 22px 50px rgb(0 0 0 / 0.55);
+        --scrim: rgb(0 0 0 / 0.62);
+
+        color-scheme: dark;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+            --paper: #0a0f0d;
+            --paper-raised: #111815;
+            --paper-inset: #1a2420;
+            --paper-soft: #151e1a;
+            --paper-settled: #0f2c1d;
+            --shell: #060b09;
+            --shell-ink: #e8eeea;
+            --shell-dim: #8fa097;
+    
+            --ink: #e8eeea;
+            --ink-secondary: #a8b4ae;
+            --ink-tertiary: #78857f;
+            --ink-muted: #7e8a84;
+
+            --rule-subtle: #1b2621;
+            --rule: #222e29;
+            --rule-strong: #2f3d37;
+            --rule-focus: #93c5fd;
+
+            --brand: #8ca6ff;
+            --brand-hover: #a3b8ff;
+            --brand-soft: #1a2244;
+            --brand-line: #2e3d72;
+            --brand-ink: #0b1020;
+
+            --stamp-ink: var(--brand);
+            --stamp-ink-bg: var(--brand-soft);
+            --stamp-oxide: #f87171;
+            --stamp-oxide-bg: #371816;
+            --stamp-amber: #f2b55f;
+            --stamp-amber-bg: #2a2012;
+            --stamp-graphite: #8b958f;
+            --stamp-graphite-bg: #1e2924;
+
+            --green: #4ade80;
+            --green-bg: #0f2c1d;
+
+            --shadow-card:
+                0 1px 2px rgb(0 0 0 / 0.45), 0 14px 34px rgb(0 0 0 / 0.4);
+            --shadow-pop: 0 22px 50px rgb(0 0 0 / 0.55);
+            --scrim: rgb(0 0 0 / 0.62);
+
+            color-scheme: dark;
+        }
+    }
 }
 
 @layer components {
-  /* The market state's second home: the page column, under the title, on a phone only. */
-  .shell-market { display: none; }
-  @media (max-width: 900px) {
     .shell-market {
-      display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
-      margin: 0 0 var(--space-3); font-size: var(--text-xs); color: var(--ink-tertiary);
+        display: none;
     }
-    .shell-market .lbl {
-      display: inline-flex; align-items: center; gap: var(--space-2);
-      font-size: var(--text-xs); font-weight: 600; letter-spacing: .08em;
-      text-transform: uppercase; color: var(--ink-tertiary);
-    }
-    .shell-market .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-muted); flex: none; }
-    .shell-market[data-state="open"] .lbl { color: var(--green); }
-    .shell-market[data-state="open"] .dot { background: var(--green); }
-    .shell-market[data-state="holiday"] .lbl { color: var(--stamp-oxide); }
-    .shell-market[data-state="holiday"] .dot { background: var(--stamp-oxide); }
-    .shell-market .reason { font-size: var(--text-xs); color: var(--ink-secondary); }
-  }
 }

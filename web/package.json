@@ -19,6 +19,7 @@
     "vitest": "^5.1.0"
   },
   "dependencies": {
+    "lucide-vue-next": "^1.0.0",
     "vue": "^3.5.45",
     "vue-router": "^4.6.5"
   }
