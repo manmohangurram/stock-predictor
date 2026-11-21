@@ -3,7 +3,7 @@
  * One instrument: the tape first, then what the position is worth, then what was done about it.
  * Archive and delete sit at the very end of the record — a thumb cannot reach them by accident.
  */
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { Plus, RefreshCw } from "lucide-vue-next";
 import {
@@ -28,6 +28,12 @@ type Ledger = Analysis & { trades: Trade[] };
 
 const symbol = computed(() => String(route.params.symbol ?? ""));
 
+const media = window.matchMedia("(max-width: 900px)");
+const compact = ref(media.matches);
+const onMedia = (e: MediaQueryListEvent): void => {
+    compact.value = e.matches;
+};
+
 async function load(): Promise<void> {
     try {
         const a = (await api.analysis(symbol.value)) as Ledger;
@@ -40,7 +46,11 @@ async function load(): Promise<void> {
     }
 }
 
-onMounted(load);
+onMounted(() => {
+    media.addEventListener("change", onMedia);
+    void load();
+});
+onBeforeUnmount(() => media.removeEventListener("change", onMedia));
 watch(symbol, load);
 
 const a = computed(() => analysis.value);
@@ -292,8 +302,8 @@ const gone = (): void => void router.push("/archived");
     </div>
 
     <div v-else-if="a && inst" class="pg dossier">
-        <RouterLink v-if="archived" to="/archived" class="back"
-            >← Archived</RouterLink
+        <RouterLink :to="archived ? '/archived' : '/'" class="back"
+            >← {{ archived ? "Archived" : "Book" }}</RouterLink
         >
 
         <header class="pg-top">
@@ -376,7 +386,7 @@ const gone = (): void => void router.push("/archived");
                     {{ isFund ? "units are allotted at NAV" : "daily close" }}
                 </span>
             </div>
-            <PriceChart :analysis="a" />
+            <PriceChart :analysis="a" :compact="compact" />
             <div v-if="facts.length && !isFund" class="facts">
                 <span v-for="[k, v] in facts" :key="k"
                     ><em>{{ k }}</em> <b class="num">{{ v }}</b></span
@@ -1321,11 +1331,8 @@ const gone = (): void => void router.push("/archived");
     .pg-acts {
         display: none;
     }
-    .hero :deep(.chart) {
-        padding: 0 4px;
-    }
-    .hero :deep(.chart text) {
-        display: none;
+    .hero :deep(.spark) {
+        padding: 4px 2px 0;
     }
     .only-desk {
         display: none;
@@ -1333,8 +1340,34 @@ const gone = (): void => void router.push("/archived");
     .only-mobile {
         display: block;
     }
-    .band > div:last-child {
-        display: none;
+    .band {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        background: none;
+        border: 0;
+        box-shadow: none;
+        margin-bottom: 10px;
+    }
+    .band > div {
+        background: var(--paper-raised);
+        border: 1px solid var(--rule-subtle);
+        border-radius: var(--radius-card);
+        box-shadow: var(--shadow-card);
+        padding: 12px 14px;
+    }
+    .band > div + div {
+        border-left: 1px solid var(--rule-subtle);
+    }
+    .band h3 {
+        margin-bottom: 6px;
+    }
+    .kv2 {
+        border-bottom: 1px dotted var(--rule-subtle);
+        padding: 5px 0;
+    }
+    .kv2:last-child {
+        border-bottom: 0;
     }
     .band {
         grid-template-columns: minmax(0, 1fr);
