@@ -109,9 +109,6 @@ const signals = computed<SignalRow[]>(() => detail.value?.signals ?? []);
 const pending = computed(
     () => signals.value.filter((s) => s.status === "pending").length,
 );
-const approved = computed(
-    () => signals.value.filter((s) => s.status === "approved").length,
-);
 
 const expected = computed(() => {
     const p = position.value;
@@ -439,48 +436,15 @@ const gone = (): void => void router.push("/archived");
                         costPct === null ? "—" : pct(costPct)
                     }}</b>
                 </div>
-            </div>
-
-            <div>
-                <h3>The plan</h3>
-                <div class="kv2">
-                    <span>Stop</span
-                    ><b class="num">{{
-                        position?.stop == null ? "—" : money(position.stop)
-                    }}</b>
-                </div>
-                <div class="kv2">
-                    <span>Target</span
-                    ><b class="num">{{
-                        position?.target == null ? "—" : money(position.target)
-                    }}</b>
-                </div>
-                <div class="kv2">
+                <div class="kv2 split">
                     <span>Profit expected</span>
                     <b class="num" :class="tone(expected)">{{
                         expected === null ? "—" : signed(expected)
                     }}</b>
                 </div>
-                <div class="kv2">
-                    <span>Reward : risk</span>
-                    <b class="num">{{
-                        rr === null ? "—" : `${rr.toFixed(1)} : 1`
-                    }}</b>
-                </div>
-                <div class="kv2">
-                    <span>Price data</span
-                    ><b class="num">{{ a.bars.length }} / 200 bars</b>
-                </div>
-                <div class="kv2">
-                    <span>Rule check</span>
-                    <b :class="blocked.length ? 'down' : ''">{{ ruleNote }}</b>
-                </div>
-                <p v-if="blocked.length" class="notice">
-                    <span aria-hidden="true">!</span>{{ blocked[0].detail }}
-                </p>
                 <form class="target" @submit.prevent="saveTarget">
                     <label>
-                        <span>Profit expected</span>
+                        <span>Profit target %</span>
                         <input
                             v-model="target"
                             name="pct"
@@ -500,7 +464,40 @@ const gone = (): void => void router.push("/archived");
             </div>
 
             <div>
-                <h3>The file</h3>
+                <h3>The plan</h3>
+                <div class="kv2">
+                    <span>Stop</span
+                    ><b class="num">{{
+                        position?.stop == null ? "—" : money(position.stop)
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Target</span
+                    ><b class="num">{{
+                        position?.target == null ? "—" : money(position.target)
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Reward : risk</span>
+                    <b class="num">{{
+                        rr === null ? "—" : `${rr.toFixed(1)} : 1`
+                    }}</b>
+                </div>
+                <div class="kv2">
+                    <span>Price data</span
+                    ><b class="num">{{ a.bars.length }} / 200 bars</b>
+                </div>
+                <div class="kv2">
+                    <span>Rule check</span>
+                    <b :class="blocked.length ? 'down' : ''">{{ ruleNote }}</b>
+                </div>
+                <p v-if="blocked.length" class="notice">
+                    <span aria-hidden="true">!</span>{{ blocked[0].detail }}
+                </p>
+            </div>
+
+            <div>
+                <h3>Headlines</h3>
                 <template v-if="(detail?.headlines ?? []).length">
                     <a
                         v-for="h in (detail?.headlines ?? []).slice(0, 4)"
@@ -519,12 +516,6 @@ const gone = (): void => void router.push("/archived");
                 <p v-else class="hint">
                     Nothing stored yet — Refresh fetches headlines.
                 </p>
-                <div class="kv2 filed">
-                    <span>Decisions recorded</span>
-                    <b class="num"
-                        >{{ approved }} approved · {{ pending }} pending</b
-                    >
-                </div>
                 <div v-if="(detail?.headlines ?? []).length > 4" class="hint">
                     +{{ (detail?.headlines ?? []).length - 4 }} more stored
                 </div>
@@ -1011,22 +1002,19 @@ const gone = (): void => void router.push("/archived");
     font-weight: 500;
 }
 
-/* position / plan / file */
+/* position / plan / headlines */
 .band {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+.band > div {
     background: var(--paper-raised);
     border: 1px solid var(--rule-subtle);
     border-radius: var(--radius-card);
     box-shadow: var(--shadow-card);
-    margin-bottom: 14px;
-}
-.band > div {
     padding: 14px 16px;
-}
-.band > div + div {
-    border-left: 1px solid var(--rule-subtle);
 }
 .band h3 {
     margin: 0 0 8px;
@@ -1048,9 +1036,9 @@ const gone = (): void => void router.push("/archived");
     font-weight: 500;
     color: var(--ink);
 }
-.kv2.filed {
-    margin-top: 10px;
-    border-top: 1px dashed var(--rule-subtle);
+.kv2.split {
+    margin-top: 8px;
+    border-top: 1px solid var(--rule-subtle);
     padding-top: 8px;
 }
 .file {
@@ -1362,7 +1350,7 @@ const gone = (): void => void router.push("/archived");
         display: none;
     }
     .hero :deep(.spark) {
-        padding: 4px 2px 0;
+        padding: 4px 16px 0;
     }
     .only-desk {
         display: none;
@@ -1371,23 +1359,12 @@ const gone = (): void => void router.push("/archived");
         display: block;
     }
     .band {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        background: none;
-        border: 0;
-        box-shadow: none;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
         margin-bottom: 10px;
     }
     .band > div {
-        background: var(--paper-raised);
-        border: 1px solid var(--rule-subtle);
-        border-radius: var(--radius-card);
-        box-shadow: var(--shadow-card);
         padding: 12px 14px;
-    }
-    .band > div + div {
-        border-left: 1px solid var(--rule-subtle);
     }
     .band h3 {
         margin-bottom: 6px;
@@ -1399,12 +1376,10 @@ const gone = (): void => void router.push("/archived");
     .kv2:last-child {
         border-bottom: 0;
     }
-    .band {
-        grid-template-columns: minmax(0, 1fr);
-    }
-    .band > div + div {
-        border-left: 0;
-        border-top: 1px solid var(--rule-subtle);
+    .kv2.split {
+        margin-top: 0;
+        border-top: 0;
+        padding-top: 5px;
     }
     .fills .c-when {
         width: 104px;

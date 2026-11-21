@@ -40,7 +40,6 @@ const spark = computed(() => {
 
 const w = 900;
 const h = 196;
-const left = 68;
 const right = 18;
 const top = 12;
 const bottom = 26;
@@ -69,8 +68,12 @@ const geo = computed(() => {
     const lo = rawLo - air;
     const hi = rawHi + air;
     const span = hi - lo || 1;
+    const ticks = [0, 1, 2, 3].map((n) => lo + ((hi - lo) * n) / 3);
+    // The gutter is the widest tick, not a fixed 68 units the stretched card turns into ~88px.
+    const widest = Math.max(...ticks.map((v) => money(v, 0).length));
+    const padLeft = widest * 6 + 14;
     const x = (i: number): number =>
-        left + (i * (w - left - right)) / (closes.length - 1);
+        padLeft + (i * (w - padLeft - right)) / (closes.length - 1);
     const y = (v: number): number =>
         top + ((hi - v) * (h - top - bottom)) / span;
     const path = closes
@@ -79,11 +82,10 @@ const geo = computed(() => {
                 `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(c).toFixed(1)}`,
         )
         .join(" ");
-    const ticks = [0, 1, 2, 3].map((n) => lo + ((hi - lo) * n) / 3);
     const marks = [0, 0.25, 0.5, 0.75, 1].map((f) =>
         Math.round(f * (closes.length - 1)),
     );
-    return { closes, fund, target, x, y, path, ticks, marks };
+    return { closes, fund, target, x, y, path, ticks, marks, padLeft };
 });
 
 const avgCost = computed(() => a.value.position?.avg_cost ?? null);
@@ -197,7 +199,7 @@ const refs = computed(() => {
             </defs>
             <template v-for="(v, n) in geo.ticks" :key="`g${n}`">
                 <line
-                    :x1="left"
+                    :x1="geo.padLeft"
                     :x2="w - right"
                     :y1="geo.y(v).toFixed(1)"
                     :y2="geo.y(v).toFixed(1)"
@@ -205,7 +207,7 @@ const refs = computed(() => {
                     stroke-dasharray="2 4"
                 />
                 <text
-                    :x="left - 8"
+                    :x="geo.padLeft - 8"
                     :y="(geo.y(v) + 3.5).toFixed(1)"
                     text-anchor="end"
                     font-size="10"
@@ -216,21 +218,21 @@ const refs = computed(() => {
                 </text>
             </template>
             <line
-                :x1="left"
+                :x1="geo.padLeft"
                 :x2="w - right"
                 :y1="h - bottom"
                 :y2="h - bottom"
                 stroke="var(--rule)"
             />
             <line
-                :x1="left"
-                :x2="left"
+                :x1="geo.padLeft"
+                :x2="geo.padLeft"
                 :y1="top"
                 :y2="h - bottom"
                 stroke="var(--rule)"
             />
             <path
-                :d="`${geo.path} L${geo.x(geo.closes.length - 1).toFixed(1)},${h - bottom} L${left},${h - bottom} Z`"
+                :d="`${geo.path} L${geo.x(geo.closes.length - 1).toFixed(1)},${h - bottom} L${geo.padLeft},${h - bottom} Z`"
                 fill="url(#chart-fill)"
             />
             <path
@@ -250,7 +252,7 @@ const refs = computed(() => {
             />
             <template v-for="(r, n) in refs" :key="`r${n}`">
                 <line
-                    :x1="left"
+                    :x1="geo.padLeft"
                     :x2="w - right"
                     :y1="r.y"
                     :y2="r.y"
@@ -290,7 +292,10 @@ const refs = computed(() => {
                 </text>
             </template>
         </svg>
-        <figcaption class="chart-cap">
+        <figcaption
+            class="chart-cap"
+            :style="{ paddingLeft: (geo.padLeft / w) * 100 + '%' }"
+        >
             <span><i class="k-line"></i>Close</span>
             <span v-if="avgCost !== null"
                 ><i class="k-dash"></i>avg cost {{ money(avgCost) }}</span
@@ -313,7 +318,7 @@ const refs = computed(() => {
 <style scoped>
 .spark {
     margin: 0;
-    padding: 6px 12px 0;
+    padding: 4px 16px 0;
     position: relative;
 }
 .spark svg {
@@ -323,7 +328,7 @@ const refs = computed(() => {
 }
 .spark-dot {
     position: absolute;
-    right: 10px;
+    right: 14px;
     width: 6px;
     height: 6px;
     border-radius: 50%;
@@ -344,7 +349,7 @@ const refs = computed(() => {
     display: flex;
     flex-wrap: wrap;
     gap: 16px;
-    padding: 6px 18px 10px 68px;
+    padding: 6px 18px 10px 0;
     font-size: 10px;
     color: var(--ink-tertiary);
 }
