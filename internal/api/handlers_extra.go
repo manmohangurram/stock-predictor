@@ -129,6 +129,14 @@ func addInstrument(c *gin.Context, st *AppState) {
 		}
 	} else if body.Name != nil {
 		name = *body.Name
+	} else if hits, serr := market.Search(client, market.NewsQuery(code), nil); serr == nil {
+		// A symbol is not a name: the ledger reads better with the one Yahoo knows.
+		for _, h := range hits {
+			if strings.EqualFold(h.Code, code) && strings.TrimSpace(h.Name) != "" {
+				name = h.Name
+				break
+			}
+		}
 	}
 
 	id, uid, aerr := addOrPromote(st.Pool, code, string(class), name)

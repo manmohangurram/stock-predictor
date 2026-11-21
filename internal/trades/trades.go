@@ -491,7 +491,9 @@ func insertTrade(tx *sql.Tx, instrumentID string, side Side, qty, price float64,
 	return err
 }
 
-func History(pool *sql.DB, instrumentID *string, limit int64) ([]Trade, error) {
+// History is the ledger list. A mode of nil means every book; the dashboard asks for one book, so
+// its recent fills are already the ones the reader is looking at.
+func History(pool *sql.DB, instrumentID *string, mode *models.Mode, limit int64) ([]Trade, error) {
 	const selectSQL = `SELECT t.id AS id, i.symbol AS symbol, t.side AS side, t.qty AS qty,
             t.price AS price, t.realised AS realised, t.traded_at AS traded_at, t.note AS note,
             t.mode AS mode,
@@ -501,13 +503,22 @@ func History(pool *sql.DB, instrumentID *string, limit int64) ([]Trade, error) {
              ORDER BY b.ts DESC LIMIT 1) AS market_close
         FROM trades t JOIN instruments i ON i.id = t.instrument_id`
 
-	var rows *sql.Rows
-	var err error
+	where := []string{}
+	args := []any{}
 	if instrumentID != nil {
-		rows, err = pool.Query(selectSQL+" WHERE t.instrument_id = ? ORDER BY t.traded_at DESC LIMIT ?", *instrumentID, limit)
-	} else {
-		rows, err = pool.Query(selectSQL+" ORDER BY t.traded_at DESC LIMIT ?", limit)
+		where = append(where, "t.instrument_id = ?")
+		args = append(args, *instrumentID)
 	}
+	if mode != nil {
+		where = append(where, "t.mode = ?")
+		args = append(args, string(*mode))
+	}
+	query := selectSQL
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	args = append(args, limit)
+	rows, err := pool.Query(query+" ORDER BY t.traded_at DESC LIMIT ?", args...)
 	if err != nil {
 		return nil, err
 	}

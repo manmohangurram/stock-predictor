@@ -187,9 +187,12 @@ const visit = (symbol: string): void =>
                         @keydown.enter="visit(r.symbol)"
                     >
                         <td class="hold">
-                            <b>{{ r.name }}</b><span class="sym">{{
-                                r.symbol
-                            }}</span>
+                            <b>{{ r.name || r.symbol }}</b
+                            ><span
+                                v-if="r.name && r.name !== r.symbol"
+                                class="sym"
+                                >{{ r.symbol }}</span
+                            >
                         </td>
                         <td>
                             <span
