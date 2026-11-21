@@ -10,7 +10,6 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, type ArchivedInstrument } from "../api";
 import { histDate, money } from "../format";
-import DangerZone from "../components/DangerZone.vue";
 
 const router = useRouter();
 const rows = ref<ArchivedInstrument[]>([]);
@@ -23,16 +22,6 @@ onMounted(async () => {
     error.value = String(e);
   }
 });
-
-const symbols = computed(() => rows.value.map((r) => r.symbol));
-async function reload(): Promise<void> {
-  try {
-    rows.value = await api.archived();
-    error.value = "";
-  } catch (e) {
-    error.value = String(e);
-  }
-}
 
 const total = computed(() => rows.value.reduce((n, r) => n + r.realised, 0));
 const fills = computed(() => rows.value.reduce((n, r) => n + r.fills, 0));
@@ -118,40 +107,5 @@ const visit = (symbol: string): void => void router.push(`/i/${encodeURIComponen
         </table>
       </div>
     </section>
-
-    <DangerZone @deleted="reload" />
   </template>
 </template>
-<style scoped>
-.danger {
-  margin-top: var(--space-8);
-  padding: var(--space-4);
-  border: 1px solid var(--stamp-oxide-bg);
-  border-radius: var(--radius-lg);
-  background: var(--paper-raised);
-}
-.danger-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-.danger h2 {
-  margin: 0;
-  font-family: var(--font-form);
-  font-size: var(--text-lg);
-  color: var(--stamp-oxide);
-}
-.danger .lede { margin: var(--space-2) 0 var(--space-4); max-width: 62ch; }
-.danger-form { display: grid; gap: var(--space-3); }
-.danger-form :deep(.field) { width: 100%; max-width: 420px; }
-.danger-form :deep(.field input) { width: 100%; max-width: none; }
-.danger-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.danger-action {
-  border-color: var(--stamp-oxide);
-  color: var(--stamp-oxide);
-  background: var(--paper-raised);
-}
-.danger-action:hover { background: var(--stamp-oxide-bg); color: var(--stamp-oxide); }
-.danger-action:disabled { opacity: .6; }
-</style>

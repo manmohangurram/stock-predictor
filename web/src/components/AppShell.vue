@@ -8,15 +8,16 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
+import { Archive, BookOpen, ScrollText, Settings } from "lucide-vue-next";
 import { api, type Market } from "../api";
 import { railBadges } from "../stores/rail";
 
 const route = useRoute();
 const links = [
-  { id: "ledger", label: "Ledger", href: "/", group: "work" },
-  { id: "audit", label: "Audit", href: "/calls", group: "work" },
-  { id: "settings", label: "Settings", href: "/settings", group: "setup" },
-  { id: "archived", label: "Archived", href: "/archived", group: "setup" },
+  { id: "ledger", label: "Ledger", href: "/", group: "work", icon: BookOpen },
+  { id: "audit", label: "Audit", href: "/calls", group: "work", icon: ScrollText },
+  { id: "settings", label: "Settings", href: "/settings", group: "setup", icon: Settings },
+  { id: "archived", label: "Archived", href: "/archived", group: "setup", icon: Archive },
 ] as const;
 
 const active = computed(() => {
@@ -92,6 +93,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
           :class="{ on: active === l.id }"
           :aria-current="active === l.id ? 'page' : undefined"
         >
+          <component :is="l.icon" :size="18" :stroke-width="1.75" aria-hidden="true" />
           <span>{{ l.label }}</span>
           <span v-if="badge(l.id)" class="rail-badge">{{ badge(l.id) }}</span>
         </a>
