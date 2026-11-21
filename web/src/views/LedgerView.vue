@@ -6,7 +6,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { ArrowUpRight, ChevronRight, RefreshCw } from "lucide-vue-next";
+import { ChevronRight, RefreshCw } from "lucide-vue-next";
 import {
     api,
     type Dashboard,
@@ -192,32 +192,6 @@ watch(mode, load);
                     </div>
                 </div>
                 <div class="pg-side">
-                    <div class="pg-kpis">
-                        <div>
-                            <span>Value</span>
-                            <b class="num">{{ money(value) }}</b>
-                        </div>
-                        <div>
-                            <span>Invested</span>
-                            <b class="num">{{ money(invested) }}</b>
-                        </div>
-                        <div>
-                            <span>P&amp;L</span>
-                            <b class="num" :class="pnlTone">{{
-                                signed(pnl)
-                            }}</b>
-                        </div>
-                        <RouterLink class="pg-kpi-link" to="/decisions">
-                            <span>Pending</span>
-                            <b class="num"
-                                >{{ pending.count
-                                }}<ArrowUpRight
-                                    :size="14"
-                                    :stroke-width="1.75"
-                                    aria-hidden="true"
-                            /></b>
-                        </RouterLink>
-                    </div>
                     <div class="pg-acts">
                         <button
                             class="d-btn d-btn-xs"
@@ -720,18 +694,18 @@ watch(mode, load);
     color: var(--ink-tertiary);
 }
 
-/* the phone's review strip */
+/* the review queue, in one line under the statement */
 .pending-strip {
-    display: none;
+    display: flex;
     align-items: center;
     gap: 8px;
     margin-bottom: 14px;
-    padding: 10px 12px;
+    padding: 10px 14px;
     background: var(--brand-soft);
     border-radius: var(--radius-sm);
     text-decoration: none;
     color: var(--ink);
-    font-size: 11.5px;
+    font-size: 12px;
 }
 .pending-strip b {
     font-weight: 650;
@@ -748,20 +722,16 @@ watch(mode, load);
 }
 
 @media (max-width: 900px) {
-    /* The header dissolves so its actions can be ordered below the statement. */
-    .pg {
-        display: flex;
+    .pg-top {
+        position: relative;
         flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
     }
-    .pg-top,
     .pg-side {
-        display: contents;
-    }
-    .pg-main {
-        order: 1;
-        border-bottom: 1px solid var(--rule-subtle);
-        padding-bottom: 14px;
-        margin-bottom: 14px;
+        position: absolute;
+        top: 0;
+        right: 0;
     }
     .pg .pg-eyebrow,
     .pg .pg-sub {
@@ -770,9 +740,8 @@ watch(mode, load);
     .pg .pg-title {
         font-size: 26px;
         margin: 0;
+        padding-right: 84px;
     }
-    .pg-kpis,
-    .smeta,
     .only-desk {
         display: none;
     }
@@ -792,14 +761,17 @@ watch(mode, load);
         justify-content: center;
     }
     .pending-strip {
-        order: 4;
-        display: flex;
-    }
-    .panel {
-        order: 5;
+        padding: 10px 12px;
+        font-size: 11.5px;
     }
     .free-mobile {
         display: inline;
+    }
+    .smeta > div {
+        padding: 11px 14px;
+    }
+    .smeta b {
+        font-size: 13.5px;
     }
     .statement {
         grid-template-columns: minmax(0, 1fr);
