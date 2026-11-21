@@ -575,37 +575,78 @@ const posted = computed(() => {
         padding: 12px 14px;
     }
     .dhead {
-        gap: 6px 8px;
+        gap: 6px 7px;
     }
     .dhead > .pill {
         order: 1;
     }
-    .dhead .tag {
-        order: 2;
-    }
     .dhead > b {
+        order: 2;
+        font-size: 12.5px;
+    }
+    .dhead .tag {
         order: 3;
-        flex-basis: 100%;
-        font-size: 13px;
+    }
+    .dhead .when {
+        order: 4;
+        font-size: 10.5px;
     }
     .dhead .planid,
     .dhead .dotsep {
         display: none;
     }
-    .dhead .when {
-        order: 4;
-    }
     .dhead .conf {
         order: 5;
+        margin-left: auto;
     }
     .aside {
         order: 6;
         flex-basis: 100%;
         margin-left: 0;
+        font-size: 10.5px;
+    }
+    .leg {
+        grid-template-columns: 46px minmax(0, 1fr);
+        gap: 8px;
+    }
+    .legtop b {
+        font-size: 12px;
+    }
+    .legtop .qty {
+        font-size: 11.5px;
+    }
+    .legmeta {
+        gap: 0;
+        font-size: 10.5px;
+        margin-top: 3px;
+    }
+    .legmeta span + span::before {
+        content: "·";
+        margin: 0 5px;
+        color: var(--rule-strong);
+    }
+    .why {
+        font-size: 11px;
+        color: var(--ink-tertiary);
+        padding-top: 8px;
+        margin-top: 9px;
+    }
+    .why b {
+        display: none;
+    }
+    .acts {
+        justify-content: flex-end;
+        gap: 6px;
+        margin-top: 10px;
     }
     .acts .hint {
-        margin-left: 0;
-        flex-basis: 100%;
+        display: none;
+    }
+    .acts button:first-of-type {
+        order: 2;
+    }
+    .acts button:nth-of-type(2) {
+        order: 1;
     }
     .signoff {
         grid-template-columns: minmax(0, 1fr);

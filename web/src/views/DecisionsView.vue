@@ -248,5 +248,12 @@ onBeforeUnmount(() => window.clearInterval(timer));
     .filters-note {
         display: none;
     }
+    .pg .pg-eyebrow {
+        display: none;
+    }
+    .pg .pg-title {
+        font-size: 26px;
+        margin: 0;
+    }
 }
 </style>

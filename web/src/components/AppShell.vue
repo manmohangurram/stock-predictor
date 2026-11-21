@@ -24,7 +24,12 @@ import { railBadges } from "../stores/rail";
 const route = useRoute();
 const links = [
     { id: "ledger", label: "Book", href: "/", icon: BookOpen },
-    { id: "decisions", label: "Decisions", href: "/decisions", icon: ListChecks },
+    {
+        id: "decisions",
+        label: "Decisions",
+        href: "/decisions",
+        icon: ListChecks,
+    },
     { id: "archived", label: "Archived", href: "/archived", icon: Archive },
     { id: "audit", label: "Audit", href: "/calls", icon: ScrollText },
     { id: "settings", label: "Settings", href: "/settings", icon: Settings },
@@ -147,7 +152,7 @@ onBeforeUnmount(() => {
                     v-for="l in links"
                     :key="l.id"
                     :href="l.href"
-                :aria-label="l.label"
+                    :aria-label="l.label"
                     :class="{ on: active === l.id }"
                     :aria-current="active === l.id ? 'page' : undefined"
                 >
@@ -241,19 +246,6 @@ onBeforeUnmount(() => {
         </header>
 
         <main id="main" class="main">
-            <div
-                v-if="market"
-                class="shell-market"
-                role="status"
-                aria-live="polite"
-                :data-state="market.state"
-            >
-                <span class="lbl"
-                    ><span class="dot" aria-hidden="true"></span
-                    >{{ marketLabel }}</span
-                >
-                <span class="reason">{{ marketWhen }}</span>
-            </div>
             <slot />
         </main>
 
