@@ -127,16 +127,21 @@ func TestSignInIssuesAPairAndRefreshRotatesIt(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
-	cookie := w.Result().Cookies()
-	if len(cookie) == 0 || cookie[0].Value == "" {
-		t.Fatal("login set no refresh cookie")
+	var cookie *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Path == "/api" && c.Value != "" {
+			cookie = c
+		}
 	}
-	if !cookie[0].HttpOnly {
+	if cookie == nil {
+		t.Fatal("login set no refresh cookie on /api")
+	}
+	if !cookie.HttpOnly {
 		t.Fatal("the refresh cookie is readable by script")
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", nil)
-	req.AddCookie(cookie[0])
+	req.AddCookie(cookie)
 	w2 := httptest.NewRecorder()
 	r.ServeHTTP(w2, req)
 	if w2.Code != http.StatusOK {
@@ -153,7 +158,7 @@ func TestSignInIssuesAPairAndRefreshRotatesIt(t *testing.T) {
 	}
 
 	replay := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", nil)
-	replay.AddCookie(cookie[0])
+	replay.AddCookie(cookie)
 	w3 := httptest.NewRecorder()
 	r.ServeHTTP(w3, replay)
 	if w3.Code != http.StatusUnauthorized {
