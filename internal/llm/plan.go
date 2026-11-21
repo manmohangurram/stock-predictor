@@ -45,19 +45,15 @@ func SessionDeadline(now time.Time, sessions int) time.Time {
 }
 
 type Move struct {
-	Action models.Action `json:"action"`
-	Symbol string        `json:"symbol"`
-	// Units for a stock plan; a fund plan sizes in rupees instead, because units arrive at
-	// NAV.
-	Qty   *float64 `json:"qty"`
-	Price *float64 `json:"price"`
-	// Rupees, for a fund plan. The purse is denominated in money, not units.
-	Amount *float64 `json:"amount"`
-	Stop   *float64 `json:"stop"`
-	Target *float64 `json:"target"`
-	Why    string   `json:"why"`
-	// When the idea goes stale. Required by a trade plan, ignored by the others.
-	ValidUntil *string `json:"valid_until"`
+	Action     models.Action `json:"action"`
+	Symbol     string        `json:"symbol"`
+	Qty        *float64      `json:"qty"`
+	Price      *float64      `json:"price"`
+	Amount     *float64      `json:"amount"`
+	Stop       *float64      `json:"stop"`
+	Target     *float64      `json:"target"`
+	Why        string        `json:"why"`
+	ValidUntil *string       `json:"valid_until"`
 }
 
 type Plan struct {
@@ -66,7 +62,6 @@ type Plan struct {
 }
 
 type Answer struct {
-	// Exactly one of Plan / Pass is set.
 	Plan *Plan
 	Pass bool
 	Why  string

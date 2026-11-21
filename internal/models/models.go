@@ -86,7 +86,6 @@ type Bar struct {
 }
 
 type Headline struct {
-	// Assigned at assembly time (1..=n) so the model can cite a stable id.
 	ID          int64  `json:"id"`
 	Title       string `json:"title"`
 	Publisher   string `json:"publisher"`

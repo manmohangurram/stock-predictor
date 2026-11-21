@@ -22,12 +22,10 @@ const (
 )
 
 type NewCashEntry struct {
-	Kind CashKind
-	// Signed. A budget delta, a negative buy, a positive sell, and so on.
+	Kind      CashKind
 	Amount    float64
 	Reference string
-	// Which purse inside the pot: "mf" for mutual funds, "" for the pot's main one.
-	Bucket string
+	Bucket    string
 }
 
 // The purse a purchase draws on. A fund and a stock in the same pot are different money.

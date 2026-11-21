@@ -17,8 +17,6 @@ const (
 )
 
 type HeadlineRequest struct {
-	// The prompt shows headlines as [id] title and older prompts asked for "id", so both
-	// spellings are accepted. A model that follows the instructions must never be discarded.
 	HeadlineID int64  `json:"headline_id"`
 	Why        string `json:"why"`
 }
@@ -54,8 +52,7 @@ func (m MoreRequest) IsEmpty() bool {
 }
 
 type Proposal struct {
-	Action models.Action
-	// Units the model wants. Optional: absent means "use the rules' sizing".
+	Action     models.Action
 	Qty        *float64
 	Entry      float64
 	Stop       *float64
@@ -67,7 +64,6 @@ type Proposal struct {
 }
 
 type LlmVerdict struct {
-	// Exactly one of Decide, NeedMore, Pass is set.
 	Decide   *Proposal
 	NeedMore *MoreRequest
 	Pass     bool

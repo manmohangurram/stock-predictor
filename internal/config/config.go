@@ -18,8 +18,6 @@ type Config struct {
 	DBPath    string
 	Bind      string
 	PublicURL string
-	// 32 bytes, from SECRET_KEY (64 hex chars or base64). nil falls back to a key file
-	// beside the database, created on first boot.
 	SecretKey []byte
 }
 

@@ -19,54 +19,40 @@ import (
 )
 
 type Settings struct {
-	Budget    float64 `json:"budget"`
-	Committed float64 `json:"committed"`
-	// Serialised too: the UI and the API both need it, and deriving it twice invites drift.
-	Available      float64 `json:"available"`
-	Currency       string  `json:"currency"`
-	CurrencyLocked bool    `json:"currency_locked"`
-	// Only ever a boolean. The key itself is never serialised — this server has no auth,
-	// so anything returned here is readable by anyone on the network.
-	DeepseekConfigured bool `json:"deepseek_configured"`
-	// The second pot. Kept separate on purpose: a swing trade must not starve a long-term buy.
-	TradingBudget    float64 `json:"trading_budget"`
-	TradingAvailable float64 `json:"trading_available"`
-	// Long-term is split: this is the monthly allowance earmarked for mutual funds.
-	MfBudget    float64 `json:"mf_budget"`
-	MfAvailable float64 `json:"mf_available"`
-	// Push channel. The topic is a name the user must be able to read back; the token
-	// never leaves the server.
-	NtfyURL             string `json:"ntfy_url"`
-	NtfyTopic           string `json:"ntfy_topic"`
-	NtfyTokenConfigured bool   `json:"ntfy_token_configured"`
-	// Which chat API decisions come from, and the model name.
-	LlmProvider string `json:"llm_provider"`
-	LlmModel    string `json:"llm_model"`
-	LlmBaseURL  string `json:"llm_base_url"`
-	// True when a key is stored for the selected provider.
-	LlmKeyConfigured bool `json:"llm_key_configured"`
-	// Risk limits, one set per pot.
-	LimitsLong  Limits `json:"limits_long"`
-	LimitsTrade Limits `json:"limits_trade"`
-	// Cadence, gate thresholds and the proxy — read by the scheduler, edited on its own tabs.
-	Runtime View `json:"runtime"`
+	Budget              float64 `json:"budget"`
+	Committed           float64 `json:"committed"`
+	Available           float64 `json:"available"`
+	Currency            string  `json:"currency"`
+	CurrencyLocked      bool    `json:"currency_locked"`
+	DeepseekConfigured  bool    `json:"deepseek_configured"`
+	TradingBudget       float64 `json:"trading_budget"`
+	TradingAvailable    float64 `json:"trading_available"`
+	MfBudget            float64 `json:"mf_budget"`
+	MfAvailable         float64 `json:"mf_available"`
+	NtfyURL             string  `json:"ntfy_url"`
+	NtfyTopic           string  `json:"ntfy_topic"`
+	NtfyTokenConfigured bool    `json:"ntfy_token_configured"`
+	LlmProvider         string  `json:"llm_provider"`
+	LlmModel            string  `json:"llm_model"`
+	LlmBaseURL          string  `json:"llm_base_url"`
+	LlmKeyConfigured    bool    `json:"llm_key_configured"`
+	LimitsLong          Limits  `json:"limits_long"`
+	LimitsTrade         Limits  `json:"limits_trade"`
+	Runtime             View    `json:"runtime"`
 }
 
 type SettingsPatch struct {
-	Budget   *float64 `json:"budget"`
-	Currency *string  `json:"currency"`
-	// Empty or whitespace is ignored rather than clearing: a masked field saves the form
-	// without wiping a working key.
-	DeepseekKey   *string  `json:"deepseek_key"`
-	TradingBudget *float64 `json:"trading_budget"`
-	MfBudget      *float64 `json:"mf_budget"`
-	NtfyURL       *string  `json:"ntfy_url"`
-	NtfyTopic     *string  `json:"ntfy_topic"`
-	NtfyToken     *string  `json:"ntfy_token"`
-	LlmProvider   *string  `json:"llm_provider"`
-	LlmModel      *string  `json:"llm_model"`
-	LlmBaseURL    *string  `json:"llm_base_url"`
-	// Stored under the selected provider's own key name.
+	Budget            *float64 `json:"budget"`
+	Currency          *string  `json:"currency"`
+	DeepseekKey       *string  `json:"deepseek_key"`
+	TradingBudget     *float64 `json:"trading_budget"`
+	MfBudget          *float64 `json:"mf_budget"`
+	NtfyURL           *string  `json:"ntfy_url"`
+	NtfyTopic         *string  `json:"ntfy_topic"`
+	NtfyToken         *string  `json:"ntfy_token"`
+	LlmProvider       *string  `json:"llm_provider"`
+	LlmModel          *string  `json:"llm_model"`
+	LlmBaseURL        *string  `json:"llm_base_url"`
 	LlmKey            *string  `json:"llm_key"`
 	LimitsLong        *Limits  `json:"limits_long"`
 	LimitsTrade       *Limits  `json:"limits_trade"`
@@ -75,16 +61,13 @@ type SettingsPatch struct {
 	PromptWindowHours *uint32  `json:"prompt_window_hours"`
 	MinPriceMove      *float64 `json:"min_price_move"`
 	DailyCap          *uint32  `json:"daily_cap"`
-	// The short-term scan's filters: price floor, turnover floor, locked-band cut-off.
-	ScanMinPrice    *float64 `json:"scan_min_price"`
-	ScanMinTurnover *float64 `json:"scan_min_turnover"`
-	ScanLockedPct   *float64 `json:"scan_locked_pct"`
-	// Empty string clears it; absent leaves it alone.
-	Proxy       *string `json:"proxy"`
-	ProxyBypass *string `json:"proxy_bypass"`
-	ProxyUser   *string `json:"proxy_user"`
-	// Empty or whitespace keeps the stored password, like every other secret field.
-	ProxyPass *string `json:"proxy_pass"`
+	ScanMinPrice      *float64 `json:"scan_min_price"`
+	ScanMinTurnover   *float64 `json:"scan_min_turnover"`
+	ScanLockedPct     *float64 `json:"scan_locked_pct"`
+	Proxy             *string  `json:"proxy"`
+	ProxyBypass       *string  `json:"proxy_bypass"`
+	ProxyUser         *string  `json:"proxy_user"`
+	ProxyPass         *string  `json:"proxy_pass"`
 }
 
 type SettingsErrorCode string

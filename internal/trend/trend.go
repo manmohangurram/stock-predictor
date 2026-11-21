@@ -39,9 +39,7 @@ type Report struct {
 	Examined int
 	Called   int
 	Proposed int
-	// Names the model looked at and refused. A decision with nothing to approve.
-	Passed int
-	// One line per proposal, ready to put in a notification.
+	Passed   int
 	Ideas    []string
 	Notes    []string
 	Notified int
@@ -49,10 +47,8 @@ type Report struct {
 
 // One name on today's list, from whichever of the three sources named it first.
 type candidate struct {
-	// Yahoo form: TRANSWORLD.NS.
-	symbol string
-	source string
-	// One line: why it is on the list. The exchange's sources have none, the search has.
+	symbol        string
+	source        string
 	why           string
 	ltp           *float64
 	changePct     *float64

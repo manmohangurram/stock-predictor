@@ -41,7 +41,6 @@ func Unchanged(pool *sql.DB, instrumentID string, fp string) (bool, error) {
 
 // How the per-instrument call gate decides.
 type CallGate struct {
-	// Below this price move (in the instrument's currency), a call is not worth making.
 	MinMove float64
 }
 

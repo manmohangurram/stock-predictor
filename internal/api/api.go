@@ -31,12 +31,10 @@ type ManualRequest struct {
 }
 
 type AppState struct {
-	Pool *sql.DB
-	Cfg  *config.Config
-	// The channel the API uses to ask the loop to run something.
+	Pool   *sql.DB
+	Cfg    *config.Config
 	Manual chan ManualRequest
 
-	// AMFI's scheme file is ~1.5 MB; it is fetched at most every few hours, not per keystroke.
 	amfiMu   sync.Mutex
 	amfiAt   time.Time
 	amfiText string

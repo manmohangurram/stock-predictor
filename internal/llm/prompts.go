@@ -77,32 +77,25 @@ type RenderedPrompt struct {
 // Everything the model is allowed to see, assembled by the caller. Nothing reaches the
 // prompt that is not in here — which is what keeps article bodies off the wire until asked.
 type PromptContext struct {
-	Instrument    *models.Instrument
-	Ind           *rules.Indicators
-	LastClose     float64
-	CashAvailable float64
-	// The owner's profit expectation for this instrument, if any.
+	Instrument      *models.Instrument
+	Ind             *rules.Indicators
+	LastClose       float64
+	CashAvailable   float64
 	TargetProfitPct *float64
-	// The pot's limits, already rendered.
-	Limits       string
-	Headlines    []models.Headline
-	WindowHours  uint32
-	PriceWindow  string
-	DailyDays    uint32
-	DailySummary string
-	// Revenue, profit and valuation as a few lines; "unavailable" when the source did not
-	// answer.
-	Fundamentals string
-	// The short-horizon card: session clock, RVOL, yesterday's range, momentum.
-	ShortContext string
-	Positions    string
-	RecentTrades string
-	LastDecision string
-	Now          time.Time
-	// Phase 2 only.
-	Extracts []Extract
-	// Phase 2 only: 7-day hourly bars, already clamped.
-	PriceHistory string
+	Limits          string
+	Headlines       []models.Headline
+	WindowHours     uint32
+	PriceWindow     string
+	DailyDays       uint32
+	DailySummary    string
+	Fundamentals    string
+	ShortContext    string
+	Positions       string
+	RecentTrades    string
+	LastDecision    string
+	Now             time.Time
+	Extracts        []Extract
+	PriceHistory    string
 }
 
 type Extract struct {

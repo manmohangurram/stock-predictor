@@ -28,7 +28,6 @@ type Bands struct {
 }
 
 type IndicatorError struct {
-	// "insufficient bars: need 200, got %d" or "non-finite indicator value — bad input series"
 	Msg string
 }
 

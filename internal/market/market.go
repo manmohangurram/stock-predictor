@@ -15,12 +15,9 @@ type Constituent struct {
 type MarketSource interface {
 	Bars(symbol string) ([]models.Bar, error)
 
-	// Intraday tape. Interval/range follow Yahoo's vocabulary (15m/5d, 60m/7d).
 	Intraday(symbol, interval, rangeStr string) ([]models.Bar, error)
 
 	News(symbol string) ([]models.Headline, error)
 
-	// The constituents of the long-term benchmark, as (yahoo symbol, name). Behind the
-	// interface so a test can answer with a list instead of reaching NSE.
 	Constituents() ([]Constituent, error)
 }

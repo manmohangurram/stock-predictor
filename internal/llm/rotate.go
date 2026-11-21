@@ -50,7 +50,6 @@ type Swap struct {
 }
 
 type Rotation struct {
-	// Exactly one of Swap / Pass is set.
 	Swap *Swap
 	Pass bool
 	Why  string

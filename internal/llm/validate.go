@@ -9,28 +9,19 @@ import (
 )
 
 type ValidateCtx struct {
-	// True for the short-term book: a buy there must be high confidence, because the horizon
-	// forces an exit whether the trade is working or not.
 	RequiresHighConfidence bool
-	// Entry must sit inside this band; stop and target are deliberately outside it.
-	Bands           rules.Bands
-	ATR             float64
-	AvailableCash   float64
-	Qty             float64
-	HeldQty         float64
-	SentHeadlineIDs []int64
-	// True when this instrument can actually be exited at a price (stocks). Funds and IPOs
-	// cannot, so requiring an exit from them would be nonsense.
-	RequiresExit bool
-	// The limits for the pot this trade belongs to.
-	Limits rules.Limits
-	// This stock's profit expectation, defaulted to the band's minimum.
-	RequiredProfitPct float64
-	// What this pot has already committed to this instrument.
-	InstrumentExposure float64
-	// The pot's ceiling, which the percentage caps are measured against.
-	Pot float64
-	Now time.Time
+	Bands                  rules.Bands
+	ATR                    float64
+	AvailableCash          float64
+	Qty                    float64
+	HeldQty                float64
+	SentHeadlineIDs        []int64
+	RequiresExit           bool
+	Limits                 rules.Limits
+	RequiredProfitPct      float64
+	InstrumentExposure     float64
+	Pot                    float64
+	Now                    time.Time
 }
 
 func finite(v float64) bool {

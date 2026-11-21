@@ -27,12 +27,10 @@ const Sessions = 5
 const Top = 10
 
 type Pick struct {
-	// Yahoo form: ABB.NS.
 	Symbol string
 	Name   string
 	Close  float64
-	// Five-session return as a fraction: 0.0612 is +6.12%.
-	Ret5 float64
+	Ret5   float64
 }
 
 // The one line the plan prompt reads.
