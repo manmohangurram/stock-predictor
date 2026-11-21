@@ -132,7 +132,7 @@ func Search(client *http.Client, query string, amfiText *string) ([]Hit, error) 
 	q.Set("q", query)
 	q.Set("quotesCount", "10")
 	q.Set("newsCount", "0")
-	resp, err := getYahoo(client, searchURL+"?"+q.Encode())
+	resp, err := getYahoo(client, yahooURL(searchPath)+"?"+q.Encode())
 	if err != nil {
 		return nil, err
 	}

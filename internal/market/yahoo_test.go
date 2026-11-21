@@ -1,8 +1,10 @@
 package market
 
 import (
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 const chartBody = `{"chart":{"result":[{
@@ -48,6 +50,37 @@ func TestAMissingResultIsAnError(t *testing.T) {
 	}
 	if _, err := ParseChart(`{"chart":{}}`); err == nil {
 		t.Fatal("a missing result passed")
+	}
+}
+
+func TestTheChartWindowIsTheRangeAsEpochSeconds(t *testing.T) {
+	now := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	q := chartQuery("1m", "5d", now)
+	if q.Get("interval") != "1m" || q.Get("period2") != strconv.FormatInt(now.Unix(), 10) {
+		t.Fatalf("%v", q)
+	}
+	start, _ := strconv.ParseInt(q.Get("period1"), 10, 64)
+	if now.Unix()-start != int64((5 * 24 * time.Hour).Seconds()) {
+		t.Fatalf("period1 is %d seconds back", now.Unix()-start)
+	}
+	for key, want := range map[string]string{
+		"includePrePost": "true", "events": "div|split|earn",
+		"usePreMarketChartPreviousClose": "true", "lang": "en-US", "region": "US",
+		"source": "cosaic",
+	} {
+		if q.Get(key) != want {
+			t.Fatalf("%s = %q, want %q", key, q.Get(key), want)
+		}
+	}
+}
+
+func TestBothYahooHostsAreUsed(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 200; i++ {
+		seen[yahooHost()] = true
+	}
+	if len(seen) != len(yahooHosts) {
+		t.Fatalf("%d of %d hosts used", len(seen), len(yahooHosts))
 	}
 }
 
