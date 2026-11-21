@@ -70,6 +70,10 @@ const prevClose = computed(() =>
         ? a.value.bars[a.value.bars.length - 2].close
         : null,
 );
+const priceTime = computed(() => {
+    const bars = a.value?.bars ?? [];
+    return bars.length ? clock(bars[bars.length - 1].ts) : "";
+});
 const change = computed(() =>
     ltp.value !== null && prevClose.value !== null
         ? ltp.value - prevClose.value
@@ -151,8 +155,30 @@ const facts = computed(() => {
 
 /* ---- recording a fill ---------------------------------------------------- */
 const recording = ref(false);
+const fillDialog = ref<HTMLDialogElement | null>(null);
 const side = ref<"buy" | "sell">("buy");
 const fill = ref({ qty: "", price: "", at: today(), mode: "long" });
+
+watch(recording, (open) => {
+    const d = fillDialog.value;
+    if (!d) return;
+    if (open) {
+        tradeStatus.value = "";
+        if (!d.open) d.showModal();
+    } else if (d.open) {
+        d.close();
+    }
+});
+
+const heldQty = computed(() => position.value?.qty ?? 0);
+const oversell = computed(
+    () => side.value === "sell" && Number(fill.value.qty) > heldQty.value,
+);
+const fillValue = computed(() => {
+    const qty = Number(fill.value.qty);
+    const price = Number(fill.value.price);
+    return qty > 0 && price > 0 ? qty * price : null;
+});
 const tradeStatus = ref("");
 
 async function record(): Promise<void> {
@@ -319,30 +345,31 @@ const gone = (): void => void router.push("/archived");
                 <div class="pg-sub">
                     <span class="sym">{{ inst.symbol }}</span>
                     <template v-if="position">
-                        · {{ units(position.qty) }} @
+                        · {{ units(position.qty) }}
+                        {{ isFund ? "units" : "shares" }} · average
                         {{ money(position.avg_cost) }}</template
                     >
-                    <template v-if="ltp !== null">
-                        · last price {{ money(ltp) }}</template
+                    <template v-if="priceTime">
+                        · {{ isFund ? "last NAV" : "last price" }}
+                        {{ priceTime }} IST</template
                     >
                 </div>
             </div>
             <div class="pg-side">
                 <div class="price">
                     <b class="num">{{ ltp === null ? "—" : money(ltp) }}</b>
-                    <span
-                        v-if="change !== null"
-                        class="num"
-                        :class="tone(change)"
-                    >
-                        {{ signed(change) }} <em>today</em>
+                    <span class="delta">
+                        <span
+                            v-if="change !== null"
+                            class="num"
+                            :class="tone(change)"
+                        >
+                            {{ signed(change) }} <em>today</em>
+                        </span>
+                        <span v-if="costPct !== null" class="num hint"
+                            >{{ pct(costPct) }} on cost</span
+                        >
                     </span>
-                    <span
-                        v-if="costPct !== null"
-                        class="num"
-                        :class="tone(costPct)"
-                        >{{ pct(costPct) }} on cost</span
-                    >
                 </div>
                 <div class="pg-acts">
                     <button
@@ -503,7 +530,7 @@ const gone = (): void => void router.push("/archived");
                 <h3>Headlines</h3>
                 <template v-if="(detail?.headlines ?? []).length">
                     <a
-                        v-for="h in (detail?.headlines ?? []).slice(0, 4)"
+                        v-for="h in (detail?.headlines ?? []).slice(0, 5)"
                         :key="h.id"
                         class="file"
                         :href="h.url"
@@ -519,8 +546,8 @@ const gone = (): void => void router.push("/archived");
                 <p v-else class="hint">
                     Nothing stored yet — Refresh fetches headlines.
                 </p>
-                <div v-if="(detail?.headlines ?? []).length > 4" class="hint">
-                    +{{ (detail?.headlines ?? []).length - 4 }} more stored
+                <div v-if="(detail?.headlines ?? []).length > 5" class="hint">
+                    +{{ (detail?.headlines ?? []).length - 5 }} more stored
                 </div>
             </div>
         </section>
@@ -538,80 +565,6 @@ const gone = (): void => void router.push("/archived");
                     }}
                 </span>
             </div>
-
-            <form v-if="recording" class="fill-form" @submit.prevent="record">
-                <div class="dseg" role="radiogroup" aria-label="Buy or sell">
-                    <button
-                        type="button"
-                        :class="{ on: side === 'buy' }"
-                        :aria-pressed="side === 'buy'"
-                        @click="side = 'buy'"
-                    >
-                        Buy
-                    </button>
-                    <button
-                        type="button"
-                        :class="{ on: side === 'sell' }"
-                        :aria-pressed="side === 'sell'"
-                        @click="side = 'sell'"
-                    >
-                        Sell
-                    </button>
-                </div>
-                <label class="fld">
-                    <span>{{ isFund ? "Units" : "Quantity" }}</span>
-                    <input
-                        v-model="fill.qty"
-                        name="qty"
-                        type="number"
-                        min="0"
-                        step="any"
-                        required
-                        :placeholder="
-                            position
-                                ? `held ${units(position.qty)}`
-                                : isFund
-                                  ? 'Units'
-                                  : 'Qty'
-                        "
-                    />
-                </label>
-                <label class="fld">
-                    <span>{{ isFund ? "NAV" : "Price" }}</span>
-                    <input
-                        v-model="fill.price"
-                        name="price"
-                        type="number"
-                        min="0"
-                        step="any"
-                        required
-                        :placeholder="isFund ? 'NAV' : 'Price'"
-                    />
-                </label>
-                <label class="fld">
-                    <span>Date</span>
-                    <input
-                        v-model="fill.at"
-                        name="at"
-                        type="date"
-                        :max="today()"
-                    />
-                </label>
-                <label v-if="klass === 'stock'" class="fld">
-                    <span>Book</span>
-                    <select v-model="fill.mode" name="mode">
-                        <option value="long">Long-term</option>
-                        <option value="trade">Short-term</option>
-                    </select>
-                </label>
-                <button class="d-btn d-btn-xs d-btn-primary" type="submit">
-                    Record a fill
-                </button>
-                <p class="hint wide" role="status">
-                    {{ tradeStatus }} A buy is limited by cash; a sell by what
-                    you hold.
-                </p>
-            </form>
 
             <table v-if="trades.length" class="fills only-desk">
                 <thead>
@@ -903,6 +856,153 @@ const gone = (): void => void router.push("/archived");
             </p>
         </section>
 
+        <dialog
+            ref="fillDialog"
+            class="fill-dialog"
+            aria-labelledby="fill-title"
+            @close="recording = false"
+        >
+            <form class="fill-sheet" @submit.prevent="record">
+                <header class="fill-head">
+                    <div>
+                        <h2 id="fill-title">Record a fill</h2>
+                        <p>
+                            {{ symbol }} · {{ inst.name }} ·
+                            {{
+                                position
+                                    ? `you hold ${units(position.qty)} ${isFund ? "units" : "shares"}`
+                                    : "nothing held"
+                            }}
+                        </p>
+                    </div>
+                    <span class="kbd">esc</span>
+                </header>
+                <div class="fill-body">
+                    <div
+                        class="dseg"
+                        role="radiogroup"
+                        aria-label="Buy or sell"
+                    >
+                        <button
+                            type="button"
+                            :class="{ on: side === 'buy' }"
+                            :aria-pressed="side === 'buy'"
+                            @click="side = 'buy'"
+                        >
+                            Buy
+                        </button>
+                        <button
+                            type="button"
+                            :class="{ on: side === 'sell' }"
+                            :aria-pressed="side === 'sell'"
+                            @click="side = 'sell'"
+                        >
+                            Sell
+                        </button>
+                    </div>
+                    <div class="fill-grid">
+                        <label class="fld">
+                            <span>{{ isFund ? "Units" : "Quantity" }}</span>
+                            <input
+                                v-model="fill.qty"
+                                name="qty"
+                                type="number"
+                                min="0"
+                                step="any"
+                                required
+                                :placeholder="
+                                    position
+                                        ? `held ${units(position.qty)}`
+                                        : isFund
+                                          ? 'Units'
+                                          : 'Qty'
+                                "
+                            />
+                            <em
+                                v-if="side === 'sell' && position"
+                                class="fld-hint"
+                                >max {{ units(position.qty) }}
+                                {{ isFund ? "units" : "shares" }}</em
+                            >
+                        </label>
+                        <label class="fld">
+                            <span>{{ isFund ? "NAV" : "Price" }}</span>
+                            <input
+                                v-model="fill.price"
+                                name="price"
+                                type="number"
+                                min="0"
+                                step="any"
+                                required
+                                :placeholder="isFund ? 'NAV' : 'Price'"
+                            />
+                        </label>
+                        <label class="fld">
+                            <span>Date</span>
+                            <input
+                                v-model="fill.at"
+                                name="at"
+                                type="date"
+                                :max="today()"
+                            />
+                        </label>
+                        <label v-if="klass === 'stock'" class="fld">
+                            <span>Book</span>
+                            <select v-model="fill.mode" name="mode">
+                                <option value="long">Long-term</option>
+                                <option value="trade">Short-term</option>
+                            </select>
+                        </label>
+                    </div>
+                    <p v-if="oversell" class="fill-err" role="alert">
+                        <span aria-hidden="true">!</span>
+                        You hold {{ units(position?.qty ?? 0) }}
+                        {{ isFund ? "units" : "shares" }} — a sell cannot be
+                        more than that.
+                    </p>
+                    <p v-if="fillValue !== null" class="fill-sum">
+                        <template v-if="side === 'sell' && position">
+                            <span>Available</span>
+                            <b>{{ units(position.qty) }}</b>
+                            <span>·</span>
+                            <span
+                                >Proceeds at
+                                {{ money(Number(fill.price)) }}</span
+                            >
+                        </template>
+                        <template v-else>
+                            <span>Cost at {{ money(Number(fill.price)) }}</span>
+                        </template>
+                        <b>{{ money(fillValue) }}</b>
+                    </p>
+                </div>
+                <footer class="fill-foot">
+                    <span class="hint" role="status"
+                        >{{ tradeStatus }} The trade row and the cash ledger
+                        move together.</span
+                    >
+                    <button
+                        class="d-btn d-btn-sm d-btn-ghost"
+                        type="button"
+                        @click="recording = false"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        class="d-btn d-btn-sm d-btn-primary"
+                        type="submit"
+                        :disabled="oversell || !fill.qty || !fill.price"
+                    >
+                        {{
+                            tradeStatus === "Recording…"
+                                ? "Recording…"
+                                : "Record fill"
+                        }}
+                    </button>
+                </footer>
+            </form>
+        </dialog>
+
         <div class="actbar">
             <button
                 class="d-btn d-btn-xs"
@@ -947,11 +1047,9 @@ const gone = (): void => void router.push("/archived");
     color: var(--brand);
 }
 .price {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    display: grid;
+    justify-items: end;
+    gap: 2px;
 }
 .price b {
     font-family: var(--font-ledger);
@@ -962,6 +1060,16 @@ const gone = (): void => void router.push("/archived");
 }
 .price span {
     font-size: 12px;
+}
+.price .delta {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+}
+.price .hint {
+    font-size: 11.5px;
+    color: var(--ink-tertiary);
 }
 .price em {
     font-style: normal;
@@ -1046,21 +1154,21 @@ const gone = (): void => void router.push("/archived");
 }
 .file {
     display: block;
-    padding: 5px 0;
-    border-bottom: 1px solid var(--rule-subtle);
-    font-size: 11.5px;
+    padding: 7px 0;
+    border-bottom: 1px dotted var(--rule-subtle);
+    font-size: 12px;
     color: var(--ink);
     text-decoration: none;
-    line-height: 1.35;
+    line-height: 1.4;
 }
 .file:hover {
     color: var(--brand);
 }
 .file .src {
     display: block;
-    font-size: 10px;
+    font-size: 9.5px;
+    font-family: var(--font-ledger);
     color: var(--ink-tertiary);
-    margin-top: 2px;
 }
 .target {
     display: flex;
@@ -1223,19 +1331,118 @@ const gone = (): void => void router.push("/archived");
 .link:hover {
     text-decoration: underline;
 }
-.fill-form,
 .edit-form {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     align-items: end;
-    padding: 12px 16px;
+    padding: 4px 0 8px;
+}
+
+/* Recording a fill is the board's modal: one dialog over the record, not a box inside it. */
+.fill-dialog {
+    width: min(560px, calc(100vw - 32px));
+    padding: 0;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius-lg);
+    background: var(--paper-raised);
+    color: var(--ink);
+}
+.fill-dialog::backdrop {
+    background: oklch(0.2 0.02 60 / 0.35);
+}
+.fill-dialog[open] {
+    margin-top: 10vh;
+}
+.fill-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--rule-subtle);
+}
+.fill-head h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 650;
+}
+.fill-head p {
+    margin: 2px 0 0;
+    font-size: 11.5px;
+    color: var(--ink-tertiary);
+}
+.fill-body {
+    padding: 16px 18px;
+}
+.fill-body .dseg {
+    margin-bottom: 12px;
+}
+.fill-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+.fill-grid .fld {
+    flex: none;
+    width: auto;
+}
+.fld-hint {
+    font-size: 10px;
+    font-style: normal;
+    color: var(--ink-tertiary);
+}
+.fill-err {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin: 10px 0 0;
+    font-size: 11.5px;
+    color: var(--stamp-oxide);
+}
+.fill-err span {
+    font-weight: 700;
+}
+.fill-sum {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 12px 0 0;
+    padding-top: 11px;
+    border-top: 1px dashed var(--rule-subtle);
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+}
+.fill-sum b {
+    font-family: var(--font-ledger);
+    font-weight: 500;
+    color: var(--ink);
+}
+.fill-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 18px;
     border-top: 1px solid var(--rule-subtle);
     background: var(--paper);
 }
-.edit-form {
-    border-top: 0;
-    padding: 4px 0 8px;
+.fill-foot .hint {
+    margin: 0 auto 0 0;
+    max-width: 34ch;
+    font-size: 10.5px;
+}
+@media (max-width: 520px) {
+    .fill-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .fill-foot {
+        flex-wrap: wrap;
+    }
+    .fill-foot .hint {
+        flex-basis: 100%;
+        max-width: none;
+        margin: 0 0 4px;
+    }
 }
 .fld {
     display: grid;
