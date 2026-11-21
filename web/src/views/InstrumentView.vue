@@ -63,6 +63,10 @@ watch(symbol, load);
 
 const a = computed(() => analysis.value);
 const inst = computed(() => a.value?.instrument);
+// The name is the title; the symbol follows it, once.
+const showSymbol = computed(
+    () => !!inst.value?.name && inst.value.name !== inst.value.symbol,
+);
 const position = computed(() => a.value?.position ?? null);
 const klass = computed(() => inst.value?.class ?? "stock");
 const isFund = computed(() => klass.value === "mutual_fund");
@@ -354,16 +358,20 @@ const gone = (): void => void router.push("/archived");
                     {{ isFund ? "Fund · AMFI" : "Stock · NSE"
                     }}{{ archived ? " · archived" : "" }}
                 </div>
-                <h1 class="pg-title">{{ inst.name }}</h1>
+                <h1 class="pg-title">{{ inst.name || inst.symbol }}</h1>
                 <div class="pg-sub">
-                    <span class="sym">{{ inst.symbol }}</span>
+                    <span v-if="showSymbol" class="sym">{{
+                        inst.symbol
+                    }}</span>
                     <template v-if="position">
-                        · {{ units(position.qty) }}
+                        <span v-if="showSymbol"> · </span
+                        >{{ units(position.qty) }}
                         {{ isFund ? "units" : "shares" }} · average
                         {{ money(position.avg_cost) }}</template
                     >
                     <template v-if="priceTime">
-                        · {{ isFund ? "last NAV" : "last price" }}
+                        <span v-if="showSymbol || position"> · </span
+                        >{{ isFund ? "last NAV" : "last price" }}
                         {{ priceTime }} IST</template
                     >
                 </div>
@@ -887,7 +895,7 @@ const gone = (): void => void router.push("/archived");
                     <div>
                         <h2 id="fill-title">Record a fill</h2>
                         <p>
-                            {{ symbol }} · {{ inst.name }} ·
+                            {{ showSymbol ? `${inst.name} · ${symbol}` : symbol }} ·
                             {{
                                 position
                                     ? `you hold ${units(position.qty)} ${isFund ? "units" : "shares"}`

@@ -120,10 +120,12 @@ const fillGroups = computed(() => {
     return groups;
 });
 
-const holdingMeta = (p: PositionRow): string =>
-    p.class === "stock"
-        ? `${p.symbol} · ${units(p.qty)} shares @ ${money(p.avg_cost)}`
+const holdingMeta = (p: PositionRow): string => {
+    const named = p.name && p.name !== p.symbol;
+    return p.class === "stock"
+        ? `${named ? `${p.symbol} · ` : ""}${units(p.qty)} shares @ ${money(p.avg_cost)}`
         : `${units(p.qty)} units · NAV ${money(p.avg_cost)}`;
+};
 
 const holdingPnl = (p: PositionRow): number =>
     (p.value ?? p.qty * p.avg_cost) - p.qty * p.avg_cost;
@@ -378,7 +380,6 @@ watch(mode, load);
                             <th scope="col" class="r c-qty">Qty</th>
                             <th scope="col" class="r c-price">Price</th>
                             <th scope="col" class="r c-value">Value</th>
-                            <th scope="col" class="r c-mode">Book</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -396,18 +397,15 @@ watch(mode, load);
                             </td>
                             <td>
                                 <b>{{ nameOf(t.symbol) }}</b>
-                                <span class="sym">{{ t.symbol }}</span>
+                                <span
+                                    v-if="nameOf(t.symbol) !== t.symbol"
+                                    class="sym"
+                                    >{{ t.symbol }}</span
+                                >
                             </td>
                             <td class="r num">{{ units(t.qty) }}</td>
                             <td class="r num">{{ money(t.price) }}</td>
                             <td class="r num">{{ money(t.qty * t.price) }}</td>
-                            <td class="r hint">
-                                {{
-                                    t.mode === "trade"
-                                        ? "short-term"
-                                        : "long-term"
-                                }}
-                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -474,7 +472,9 @@ watch(mode, load);
                 >
                     <div class="bk-who">
                         <div class="bk-name">
-                            <span class="bk-title">{{ p.name }}</span>
+                            <span class="bk-title">{{
+                                p.name || p.symbol
+                            }}</span>
                             <span
                                 class="tag"
                                 :class="{ fund: p.class !== 'stock' }"
@@ -731,9 +731,6 @@ watch(mode, load);
 }
 .fills .c-value {
     width: 126px;
-}
-.fills .c-mode {
-    width: 96px;
 }
 .sym {
     font-family: var(--font-ledger);

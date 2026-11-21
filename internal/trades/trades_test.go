@@ -53,7 +53,7 @@ func TestASellDownToZeroKeepsTheRowVisible(t *testing.T) {
 		t.Fatalf("state %q", rows[0].State)
 	}
 
-	hist, err := History(pool, nil, 10)
+	hist, err := History(pool, nil, nil, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

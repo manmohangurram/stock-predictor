@@ -101,7 +101,7 @@ func dashboardHandler(c *gin.Context, st *AppState) {
 		c.Status(http.StatusNotModified)
 		return
 	}
-	recent, err8 := trades.History(st.Pool, nil, 20)
+	recent, err8 := trades.History(st.Pool, nil, &mode, 20)
 	if err8 != nil {
 		respondErr(c, internalErr(err8))
 		return
@@ -338,7 +338,7 @@ func buildAnalysis(c *gin.Context, st *AppState, symbol string, full bool) (*Ana
 	for _, b := range bars[start:] {
 		out.Bars = append(out.Bars, BarPoint{Ts: b.Ts, Close: b.Close})
 	}
-	tradeRows, err := trades.History(st.Pool, &inst.ID, 200)
+	tradeRows, err := trades.History(st.Pool, &inst.ID, nil, 200)
 	if err != nil {
 		return nil, internalErr(err)
 	}
@@ -580,7 +580,7 @@ func archivedInstruments(c *gin.Context, st *AppState) {
 }
 
 func allTrades(c *gin.Context, st *AppState) {
-	rows, err := trades.History(st.Pool, nil, 200)
+	rows, err := trades.History(st.Pool, nil, nil, 200)
 	if err != nil {
 		respondErr(c, internalErr(err))
 		return
@@ -594,7 +594,7 @@ func instrumentTrades(c *gin.Context, st *AppState) {
 		respondErr(c, err)
 		return
 	}
-	rows, err2 := trades.History(st.Pool, &id, 200)
+	rows, err2 := trades.History(st.Pool, &id, nil, 200)
 	if err2 != nil {
 		respondErr(c, internalErr(err2))
 		return
