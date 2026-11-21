@@ -113,6 +113,12 @@ const approved = computed(
     () => signals.value.filter((s) => s.status === "approved").length,
 );
 
+const expected = computed(() => {
+    const p = position.value;
+    if (!p || p.target === null) return null;
+    return (p.target - p.avg_cost) * p.qty;
+});
+
 const rr = computed(() => {
     const p = position.value;
     if (!p || p.stop === null || p.target === null || ltp.value === null)
@@ -450,6 +456,12 @@ const gone = (): void => void router.push("/archived");
                     }}</b>
                 </div>
                 <div class="kv2">
+                    <span>Profit expected</span>
+                    <b class="num" :class="tone(expected)">{{
+                        expected === null ? "—" : signed(expected)
+                    }}</b>
+                </div>
+                <div class="kv2">
                     <span>Reward : risk</span>
                     <b class="num">{{
                         rr === null ? "—" : `${rr.toFixed(1)} : 1`
@@ -460,9 +472,12 @@ const gone = (): void => void router.push("/archived");
                     ><b class="num">{{ a.bars.length }} / 200 bars</b>
                 </div>
                 <div class="kv2">
-                    <span>Rule check</span
-                    ><b :class="blocked.length ? 'down' : ''">{{ ruleNote }}</b>
+                    <span>Rule check</span>
+                    <b :class="blocked.length ? 'down' : ''">{{ ruleNote }}</b>
                 </div>
+                <p v-if="blocked.length" class="notice">
+                    <span aria-hidden="true">!</span>{{ blocked[0].detail }}
+                </p>
                 <form class="target" @submit.prevent="saveTarget">
                     <label>
                         <span>Profit expected</span>
@@ -1073,6 +1088,21 @@ const gone = (): void => void router.push("/archived");
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--ink-tertiary);
+    font-weight: 700;
+}
+.notice {
+    display: flex;
+    gap: 7px;
+    align-items: flex-start;
+    margin: 9px 0 0;
+    padding: 8px 10px;
+    background: var(--stamp-oxide-bg);
+    color: var(--stamp-oxide);
+    border-radius: var(--radius-sm);
+    font-size: 10.5px;
+    line-height: 1.4;
+}
+.notice span {
     font-weight: 700;
 }
 .target input {

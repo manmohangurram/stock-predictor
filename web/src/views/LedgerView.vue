@@ -84,7 +84,7 @@ const pending = computed(() => {
     return { count: groups.size, needed };
 });
 
-const fills = computed(() => (data.value?.recent_trades ?? []).slice(0, 4));
+const fills = computed(() => (data.value?.recent_trades ?? []).slice(0, 5));
 const net = computed(() =>
     fills.value.reduce(
         (n, t) => n + (t.side === "sell" ? 1 : -1) * t.qty * t.price,
@@ -116,11 +116,52 @@ const holdingPnl = (p: PositionRow): number =>
 const holdingPct = (p: PositionRow): number =>
     p.qty * p.avg_cost > 0 ? (holdingPnl(p) / (p.qty * p.avg_cost)) * 100 : 0;
 
+/* The dashboard carries no price history, so each row's tape is one analysis read, cached for
+   five minutes and capped at eight rows. */
+const sparks = ref<Record<string, number[]>>({});
+const sparkCache = new Map<string, { at: number; points: number[] }>();
+
+function tapePoints(points: number[]): string {
+    const lo = Math.min(...points);
+    const hi = Math.max(...points);
+    const span = hi - lo || lo * 0.02 || 1;
+    return points
+        .map((v, i) => {
+            const x = (i * 110) / (points.length - 1);
+            const y = 28 - ((v - lo) / span) * 26;
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        })
+        .join(" ");
+}
+
+async function loadSparks(rows: PositionRow[]): Promise<void> {
+    const now = Date.now();
+    await Promise.all(
+        rows.slice(0, 8).map(async (p) => {
+            const hit = sparkCache.get(p.symbol);
+            if (hit && now - hit.at < 5 * 60_000) {
+                sparks.value = { ...sparks.value, [p.symbol]: hit.points };
+                return;
+            }
+            try {
+                const a = await api.analysis(p.symbol);
+                const points = a.bars.slice(-60).map((b) => b.close);
+                if (points.length < 2) return;
+                sparkCache.set(p.symbol, { at: now, points });
+                sparks.value = { ...sparks.value, [p.symbol]: points };
+            } catch {
+                /* a row without a tape is still a usable row */
+            }
+        }),
+    );
+}
+
 async function load(): Promise<void> {
     busy.value = true;
     try {
         data.value = await api.dashboard(mode.value);
         error.value = "";
+        void loadSparks(data.value.positions);
     } catch (e) {
         error.value = String(e);
     } finally {
@@ -291,11 +332,14 @@ watch(mode, load);
 
             <section v-if="fills.length" class="panel">
                 <div class="panel-head">
-                    <h2>Recent fills</h2>
+                    <h2>Recent<span class="desk-only"> fills</span></h2>
                     <span class="r"
                         >{{ fills.length }}
-                        {{ fills.length === 1 ? "fill" : "fills" }} · net
-                        <span class="num">{{ signed(net) }}</span></span
+                        {{ fills.length === 1 ? "fill" : "fills"
+                        }}<span class="desk-only">
+                            · net
+                            <span class="num">{{ signed(net) }}</span></span
+                        ></span
                     >
                 </div>
                 <table class="fills only-desk">
@@ -403,6 +447,24 @@ watch(mode, load);
                         </div>
                         <div class="bk-meta">{{ holdingMeta(p) }}</div>
                     </div>
+                    <svg
+                        v-if="sparks[p.symbol]"
+                        class="bk-spark"
+                        :class="holdingPnl(p) >= 0 ? 'up' : 'down'"
+                        viewBox="0 0 110 30"
+                        preserveAspectRatio="none"
+                        aria-hidden="true"
+                    >
+                        <polyline
+                            :points="tapePoints(sparks[p.symbol])"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.7"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            vector-effect="non-scaling-stroke"
+                        />
+                    </svg>
                     <div class="bk-val">
                         <b class="num">{{
                             money(p.value ?? p.qty * p.avg_cost)
@@ -616,8 +678,8 @@ watch(mode, load);
     grid-template-columns: 58px minmax(0, 1fr) auto;
     gap: 8px;
     align-items: center;
-    padding: 9px 14px;
-    border-top: 1px solid var(--rule-subtle);
+    padding: 7px 14px;
+    border-top: 1px dotted var(--rule-subtle);
     font-size: 11.5px;
 }
 .fill-row:first-child {
@@ -639,13 +701,23 @@ watch(mode, load);
 /* holdings */
 .bk-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 210px 18px;
+    grid-template-columns: minmax(0, 1fr) 110px 210px 18px;
     gap: 18px;
     align-items: center;
     padding: 13px 16px;
     border-top: 1px solid var(--rule-subtle);
     text-decoration: none;
     color: inherit;
+}
+.bk-spark {
+    width: 110px;
+    height: 30px;
+}
+.bk-spark.up {
+    color: var(--green);
+}
+.bk-spark.down {
+    color: var(--stamp-oxide);
 }
 .bk-row:hover,
 .bk-row:focus-visible {
@@ -718,6 +790,9 @@ watch(mode, load);
 .free-mobile {
     display: none;
 }
+.desk-only {
+    display: inline;
+}
 
 @media (max-width: 900px) {
     .pg-top {
@@ -741,6 +816,9 @@ watch(mode, load);
         padding-right: 84px;
     }
     .only-desk {
+        display: none;
+    }
+    .desk-only {
         display: none;
     }
     .statement {
@@ -803,6 +881,9 @@ watch(mode, load);
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 10px;
         padding: 11px 14px;
+    }
+    .bk-spark {
+        display: none;
     }
     .bk-chev {
         display: none;
