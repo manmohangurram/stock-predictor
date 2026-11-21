@@ -156,7 +156,7 @@
         display: inline-flex;
         gap: 2px;
         background: var(--paper-inset);
-        border-radius: 8px;
+        border-radius: var(--radius-pill);
         padding: 3px;
     }
     .dseg button {
@@ -164,7 +164,7 @@
         font-size: 12px;
         padding: 5px 16px;
         border: 0;
-        border-radius: 6px;
+        border-radius: var(--radius-pill);
         background: none;
         color: var(--ink-secondary);
         cursor: pointer;
@@ -185,7 +185,7 @@
         display: flex;
         gap: 2px;
         background: var(--paper-inset);
-        border-radius: 7px;
+        border-radius: var(--radius-pill);
         padding: 2px;
     }
     .mseg button {
@@ -193,7 +193,7 @@
         font-size: 10px;
         padding: 3px 8px;
         border: 0;
-        border-radius: 5px;
+        border-radius: var(--radius-pill);
         background: none;
         color: var(--ink-secondary);
         cursor: pointer;

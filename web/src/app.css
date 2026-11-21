@@ -1347,23 +1347,27 @@
   .rcard-add .run-now-btn { justify-self: start; }
 }
 
-/* Radius follows the size of the thing: a 28px caret cannot carry a 12px corner, and a card should
-   not wear the same corner as a chip. Four steps, and a stamp keeps its printed edge. */
+/* A button is a pill; a field is not, and a stamp keeps its printed edge. */
 .btn,
 .d-btn,
+.d-btn-xs,
+.d-btn-sm,
+.d-btn-lg,
+.d-btn-square,
+.icon-btn,
+.row-caret,
+.seg-filter a,
+.decision-actions button {
+  border-radius: var(--radius-pill);
+}
+
 input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {
   border-radius: var(--radius);
 }
 
-.icon-btn,
-.row-caret,
-.tick-toggle,
-.d-btn-square,
-.d-btn-xs,
-.seg-filter a,
-.decision-actions button {
+.tick-toggle {
   border-radius: var(--radius-sm);
 }
 
@@ -1454,7 +1458,7 @@ dialog,
   .acct-menu .who b { display: block; font-size: 12.5px; }
   .acct-menu .who span { font-size: 11px; color: var(--ink-tertiary); }
   .acct-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px;
-    border: 0; border-radius: 7px; background: none; color: var(--stamp-oxide); font: inherit;
+    border: 0; border-radius: var(--radius-pill); background: none; color: var(--stamp-oxide); font: inherit;
     font-size: 12.5px; cursor: pointer; text-align: left; }
   .acct-menu button:hover { background: var(--paper-inset); }
   .main { flex: 1; height: auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;

@@ -49,20 +49,23 @@ someone else's currency?* If a styling decision only works because it is dramati
 
 Four levels, and nothing else. A fifth grey is a design decision nobody recorded.
 
-### Radius â€” four steps, chosen by size
+### Radius — chosen by role, not size
 
 | Token | Value | On |
 |---|---|---|
-| `--radius-sm` | 6px | a compact control: icon button, row caret, tick, square button, a segment inside a group, an approve/reject button |
-| `--radius` | 8px | a normal control: button, input, select, textarea |
-| `--radius-lg` | 12px | a surface: card, dialog, panel, decision box, error band, table wrapper, settings tab |
-| `--radius-pill` | 999px | a filter or a status pill, and the group that holds segments |
-| `--radius-stamp` | 4px | a stamp (`BUY`, `SELL`, `DONE`) â€” it is a printed mark, not a button |
+| `--radius-sm` | 6px | a tick (`tick-toggle`), an inline chip |
+| `--radius` | 10px | a field: input, select, textarea |
+| `--radius-card` | 12px | a surface: card, panel, decision box, error band, table wrapper, settings tab |
+| `--radius-lg` | 14px | a large surface: a dialog, a drawer |
+| `--radius-pill` | 999px | **every button, at every size** — `d-btn`, `icon-btn`, `row-caret`, a segment and the group that holds it — plus a filter or a status pill |
+| `--radius-stamp` | 4px | a stamp (`BUY`, `SELL`, `DONE`) — it is a printed mark, not a button |
 
-**A control's corner follows its height.** One radius for everything makes a 28px caret look like a
-blob and a 40px button look under-rounded; the four steps above are the whole scale, and a fifth
-radius is a design decision nobody recorded. Never round a table's own corners â€” the wrapper is what
-holds a radius.
+**A button is a pill; a field is not.** Radius follows the control's role, not its height: every
+action control wears `--radius-pill` at every size, so a 28px `d-btn-xs` and a 40px `d-btn` share one
+silhouette — `Refresh`, `Save`, `Approve`, `Archive`, the icon buttons, and a segmented control whose
+group and segments are both pills. An input keeps `--radius`, a stamp keeps its printed edge, and a
+text action (`Edit`, `Sign out`) has no shape at all. Never round a table's own corners — the wrapper
+is what holds a radius.
 
 ### Rules
 
@@ -112,8 +115,9 @@ A number is monospace. A word is not. That is the whole rule, and it is why colu
 
 ### Shape
 
-`--radius: 3px` for controls and cards, `--radius-stamp: 2px` for a stamp. `--row-h-touch: 44px` is
-the smallest a tappable row may be on a phone.
+Radius comes from the table above: pills on buttons, `--radius` on fields, `--radius-card` on
+surfaces, `--radius-stamp` on a stamp. `--row-h-touch: 44px` is the smallest a tappable row may be on
+a phone.
 
 ---
 
@@ -140,7 +144,7 @@ The kit lives in `src/components/`; `ui/` holds the primitives.
 
 | Component | Rule |
 |---|---|
-| `ui/AppButton` | the one button shape; `primary` for the action a page exists for, `ghost` for everything else. A page never hand-writes a `.btn` or a `d-btn` shape. |
+| `ui/AppButton` | the one button shape, a pill at every size; `primary` for the action a page exists for, `ghost` for everything else. A page never hand-writes a `.btn` or a `d-btn` shape. |
 | `ui/AppStamp` | a word in a tinted box; colour never carries meaning alone |
 | `ui/AppEmpty` | one sentence about what is absent, never a shrug |
 | `SettingField` | label, control, unit, help — in that order, always |
@@ -197,3 +201,5 @@ preflight is off so nothing resets the app's own base.
 7. **The money is visible.** Whatever else is on the page, the figure that decides affordability is on
    screen without scrolling.
 8. **`docs/testing/flows.md` is green** for the pages this change touched.
+9. **Buttons are pills.** Every action control — `d-btn` at any size, `icon-btn`, `row-caret`, a
+   segmented group and its segments — measures `999px`; an input does not.

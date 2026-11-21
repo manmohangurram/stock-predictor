@@ -202,7 +202,7 @@ const visit = (symbol: string): void =>
   display: inline-flex;
   gap: 2px;
   background: var(--paper-inset);
-  border-radius: 9px;
+  border-radius: var(--radius-pill);
   padding: 3px;
   margin-bottom: var(--space-3);
 }
@@ -213,7 +213,7 @@ const visit = (symbol: string): void =>
   font-size: 12px;
   color: var(--ink-secondary);
   padding: 5px 11px;
-  border-radius: 7px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
 }
 .arch-filter button.on {
