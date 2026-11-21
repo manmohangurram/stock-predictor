@@ -19,7 +19,6 @@ import {
     User,
 } from "lucide-vue-next";
 import { api, auth, type Market } from "../api";
-import { railBadges } from "../stores/rail";
 
 const route = useRoute();
 const links = [
@@ -43,9 +42,6 @@ const active = computed(() => {
     if (p.startsWith("/decisions")) return "decisions";
     return "ledger";
 });
-
-const badge = (id: string): string =>
-    id === "ledger" ? railBadges.ledger : "";
 
 const market = ref<Market | null>(null);
 let timer: number | undefined;
@@ -163,9 +159,6 @@ onBeforeUnmount(() => {
                         aria-hidden="true"
                     />
                     <span>{{ l.label }}</span>
-                    <span v-if="badge(l.id)" class="nav-badge">{{
-                        badge(l.id)
-                    }}</span>
                 </a>
             </nav>
             <div class="topbar-right">

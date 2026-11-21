@@ -1429,7 +1429,6 @@ dialog,
   .topnav a.on { background: var(--paper-raised); color: var(--ink); font-weight: 650;
     box-shadow: 0 1px 2px rgb(16 23 21 / .08); }
   .topnav a.on svg { color: var(--ink); }
-  .nav-badge { margin-left: 2px; font-family: var(--font-ledger); font-size: 9.5px; color: var(--brand); }
   .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
   .market-line { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-tertiary); white-space: nowrap; }
   .market-line .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-muted); }

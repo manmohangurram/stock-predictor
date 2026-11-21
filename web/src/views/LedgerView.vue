@@ -15,7 +15,6 @@ import {
     type Trade,
 } from "../api";
 import { clock, histDate, money, units } from "../format";
-import { railBadges } from "../stores/rail";
 import { debitOf } from "../lib/decision";
 import AddInstrument from "../components/AddInstrument.vue";
 
@@ -121,7 +120,6 @@ async function load(): Promise<void> {
     busy.value = true;
     try {
         data.value = await api.dashboard(mode.value);
-        railBadges.ledger = String(data.value.positions.length);
         error.value = "";
     } catch (e) {
         error.value = String(e);
