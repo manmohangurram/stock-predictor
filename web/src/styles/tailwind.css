@@ -28,16 +28,16 @@
   --color-base-300: var(--paper-inset);
   --color-base-content: var(--ink);
 
-  --color-primary: var(--stamp-ink);
+  --color-primary: var(--brand);
   --color-primary-content: var(--paper-raised);
   --color-secondary: var(--ink-secondary);
   --color-secondary-content: var(--paper-raised);
-  --color-accent: var(--stamp-ink);
+  --color-accent: var(--brand);
   --color-accent-content: var(--paper-raised);
   --color-neutral: var(--ink);
   --color-neutral-content: var(--paper-raised);
 
-  --color-info: var(--stamp-ink);
+  --color-info: var(--brand);
   --color-info-content: var(--paper-raised);
   --color-success: var(--green);
   --color-success-content: var(--paper-raised);
@@ -46,9 +46,9 @@
   --color-error: var(--stamp-oxide);
   --color-error-content: var(--paper-raised);
 
-  --radius-selector: 4px;
-  --radius-field: 4px;
-  --radius-box: 6px;
+  --radius-selector: 6px;
+  --radius-field: 6px;
+  --radius-box: 10px;
   --border: 1px;
   --depth: 0;
   --noise: 0;
@@ -56,6 +56,46 @@
 
 /* daisyUI's defaults assume a looser page; these keep it in the app's rhythm. */
 @layer components {
-  .d-btn { font-family: var(--font-form); text-transform: none; letter-spacing: 0; }
+  .d-btn { font-family: var(--font-form); text-transform: none; letter-spacing: 0; border-radius: var(--radius-pill); }
   .d-btn.d-btn-xs { height: 28px; min-height: 28px; }
+}
+
+/* daisyUI components follow the document theme, not only the light preset. */
+[data-theme="dark"] {
+  --color-base-100: var(--paper-raised);
+  --color-base-200: var(--paper);
+  --color-base-300: var(--paper-inset);
+  --color-base-content: var(--ink);
+  --color-primary: var(--brand);
+  --color-primary-content: var(--brand-ink);
+  --color-secondary: var(--ink-secondary);
+  --color-accent: var(--brand);
+  --color-accent-content: var(--brand-ink);
+  --color-neutral: var(--ink);
+  --color-neutral-content: var(--paper-raised);
+  --color-info: var(--brand);
+  --color-info-content: var(--brand-ink);
+  --color-success: var(--green);
+  --color-warning: var(--stamp-amber);
+  --color-error: var(--stamp-oxide);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-base-100: var(--paper-raised);
+    --color-base-200: var(--paper);
+    --color-base-300: var(--paper-inset);
+    --color-base-content: var(--ink);
+    --color-primary: var(--brand);
+    --color-primary-content: var(--brand-ink);
+    --color-secondary: var(--ink-secondary);
+    --color-accent: var(--brand);
+    --color-accent-content: var(--brand-ink);
+    --color-neutral: var(--ink);
+    --color-neutral-content: var(--paper-raised);
+    --color-info: var(--brand);
+    --color-info-content: var(--brand-ink);
+    --color-success: var(--green);
+    --color-warning: var(--stamp-amber);
+    --color-error: var(--stamp-oxide);
+  }
 }

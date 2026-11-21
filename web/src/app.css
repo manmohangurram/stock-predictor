@@ -1408,3 +1408,83 @@ dialog,
   /* The h1 would otherwise keep its UA margin on top of the frame padding. */
   .page-head h1 { margin-block: 0; }
 }
+
+@layer components {
+  /* The shell after the redesign: a top bar, a scrolling page, and a phone tab bar. */
+  .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+  .topbar {
+    height: 60px; flex: none; display: flex; align-items: center; gap: var(--space-3);
+    padding: 0 var(--space-4) 0 20px; background: var(--paper-raised);
+    border-bottom: 1px solid var(--rule); position: relative; z-index: 20;
+  }
+  .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink);
+    font-size: 13.5px; font-weight: 650; text-decoration: none; letter-spacing: -.01em; }
+  .brand img { width: 30px; height: 30px; border-radius: 9px; }
+  .topnav { display: flex; gap: 2px; background: var(--paper-inset); border-radius: 9px; padding: 3px; }
+  .topnav a { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+    border-radius: 7px; color: var(--ink-secondary); font-size: 12px; text-decoration: none;
+    white-space: nowrap; }
+  .topnav a svg { color: var(--ink-tertiary); }
+  .topnav a:hover { color: var(--ink); }
+  .topnav a.on { background: var(--paper-raised); color: var(--ink); font-weight: 650;
+    box-shadow: 0 1px 2px rgb(16 23 21 / .08); }
+  .topnav a.on svg { color: var(--ink); }
+  .nav-badge { margin-left: 2px; font-family: var(--font-ledger); font-size: 9.5px; color: var(--brand); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .market-line { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-tertiary); white-space: nowrap; }
+  .market-line .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-muted); }
+  .market-line[data-state="open"] .dot { background: var(--green); }
+  .market-line[data-state="holiday"] .dot { background: var(--stamp-oxide); }
+  .icon-btn { width: 34px; height: 34px; border: 1px solid var(--rule); border-radius: 50%;
+    background: var(--paper-raised); display: grid; place-items: center; color: var(--ink-secondary);
+    cursor: pointer; }
+  .icon-btn:hover { color: var(--ink); border-color: var(--rule-strong); }
+  .acct { position: relative; }
+  .acct-btn { display: flex; align-items: center; gap: 7px; padding: 3px 6px 3px 3px;
+    border: 1px solid var(--rule); border-radius: 999px; background: var(--paper-raised);
+    color: var(--ink-tertiary); cursor: pointer; }
+  .acct-btn:hover { border-color: var(--rule-strong); }
+  .acct-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--ink);
+    color: var(--paper-raised); display: grid; place-items: center; }
+  [data-theme="dark"] .acct-avatar { background: var(--paper-inset); color: var(--ink);
+    border: 1px solid var(--rule-strong); }
+  .acct-menu { position: absolute; right: 0; top: 44px; width: 230px; background: var(--paper-raised);
+    border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--shadow-pop);
+    padding: 6px; z-index: 30; }
+  .acct-menu .who { padding: 9px 10px 11px; border-bottom: 1px solid var(--rule); margin-bottom: 6px; }
+  .acct-menu .who b { display: block; font-size: 12.5px; }
+  .acct-menu .who span { font-size: 11px; color: var(--ink-tertiary); }
+  .acct-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px;
+    border: 0; border-radius: 7px; background: none; color: var(--stamp-oxide); font: inherit;
+    font-size: 12.5px; cursor: pointer; text-align: left; }
+  .acct-menu button:hover { background: var(--paper-inset); }
+  .main { flex: 1; height: auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: 0 var(--space-8) var(--space-12); }
+  .tabbar { display: none; }
+
+  @media (max-width: 900px) {
+    .topbar { height: 54px; padding: 0 var(--space-4); gap: 10px; }
+    .topnav, .topbar .brand span, .topbar .market-line { display: none; }
+    .main { padding: 0 var(--space-4) var(--space-12); }
+    .tabbar { display: flex; flex: none; background: var(--paper-raised);
+      border-top: 1px solid var(--rule); }
+    .tabbar a { flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 8px 0 10px; color: var(--ink-tertiary); text-decoration: none; min-height: 54px; }
+    .tabbar a.on { color: var(--brand); }
+    .tabbar a.on svg { background: var(--brand-soft); border-radius: 9px; padding: 5px;
+      box-sizing: content-box; }
+    .tabbar a span { display: none; }
+  }
+}
+
+@layer components {
+  .main { order: 1; padding: 24px var(--space-8) var(--space-12); }
+  .tabbar { order: 2; }
+  @media (max-width: 900px) {
+    .main { padding: 16px var(--space-4) var(--space-12); }
+  }
+}
+
+@layer components {
+  .main > * { max-width: 1180px; margin-inline: auto; }
+}
