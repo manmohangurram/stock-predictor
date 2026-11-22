@@ -1,3 +1,17 @@
+## v1.0.5
+
+The recent fills are one list at every width: a date header, then a row per fill, with the
+instrument's name on the left and its ticker on the right. The desktop table is gone.
+
+### Changed
+
+- **Recent fills is grouped by day on the desktop too.** The rows the phone already had — time,
+  side, name, symbol, price, qty, value — replace the table, so the eye follows one pattern at
+  every width. The phone keeps its narrower row: no price column and no ticker, because the name
+  needs the room.
+- **A fill carries its instrument's name.** `trades.History` returns `name` with each row, so a
+  fill for something already sold still reads as a company rather than a ticker.
+
 ## v1.0.4
 
 A refused Yahoo series used to take the instrument with it: nothing stored, nothing decided, the
