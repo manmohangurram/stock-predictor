@@ -36,6 +36,7 @@ func ParseSide(s string) (Side, error) {
 type Trade struct {
 	ID          string   `json:"id"`
 	Symbol      string   `json:"symbol"`
+	Name        string   `json:"name"`
 	Side        string   `json:"side"`
 	Qty         float64  `json:"qty"`
 	Price       float64  `json:"price"`
@@ -494,9 +495,9 @@ func insertTrade(tx *sql.Tx, instrumentID string, side Side, qty, price float64,
 // History is the ledger list. A mode of nil means every book; the dashboard asks for one book, so
 // its recent fills are already the ones the reader is looking at.
 func History(pool *sql.DB, instrumentID *string, mode *models.Mode, limit int64) ([]Trade, error) {
-	const selectSQL = `SELECT t.id AS id, i.symbol AS symbol, t.side AS side, t.qty AS qty,
-            t.price AS price, t.realised AS realised, t.traded_at AS traded_at, t.note AS note,
-            t.mode AS mode,
+	const selectSQL = `SELECT t.id AS id, i.symbol AS symbol, i.name AS name, t.side AS side,
+            t.qty AS qty, t.price AS price, t.realised AS realised, t.traded_at AS traded_at,
+            t.note AS note, t.mode AS mode,
             (SELECT b.close FROM bars b
              WHERE b.instrument_id = t.instrument_id
                AND substr(b.ts, 1, 10) = substr(t.traded_at, 1, 10)
@@ -529,7 +530,7 @@ func History(pool *sql.DB, instrumentID *string, mode *models.Mode, limit int64)
 		var t Trade
 		var realised, marketClose sql.NullFloat64
 		var note sql.NullString
-		if err := rows.Scan(&t.ID, &t.Symbol, &t.Side, &t.Qty, &t.Price, &realised,
+		if err := rows.Scan(&t.ID, &t.Symbol, &t.Name, &t.Side, &t.Qty, &t.Price, &realised,
 			&t.TradedAt, &note, &t.Mode, &marketClose); err != nil {
 			return nil, err
 		}
