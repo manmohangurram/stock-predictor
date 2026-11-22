@@ -7,7 +7,7 @@ import type { Settings } from "./api";
 
 export type Tab = "money" | "risk" | "model" | "notifications" | "cadence" | "network";
 
-const CRORE = 10_000_000;
+const LAKH = 100_000;
 
 const num = (v: string | undefined): number => Number(v ?? 0);
 const text = (v: string | undefined): string => String(v ?? "").trim();
@@ -61,9 +61,9 @@ export function patchFor(tab: Tab, values: Record<string, string>): PatchResult 
       };
     }
     case "cadence": {
-      const cr = num(values.scan_min_turnover);
-      if (!Number.isInteger(cr)) {
-        return { error: "Turnover floor: enter a whole number of crore (1 crore is 1,00,00,000)." };
+      const lakh = num(values.scan_min_turnover);
+      if (!Number.isInteger(lakh)) {
+        return { error: "Turnover floor: enter a whole number of lakh (1 lakh is 1,00,000; 100 lakh is 1 crore)." };
       }
       return {
         patch: {
@@ -73,7 +73,7 @@ export function patchFor(tab: Tab, values: Record<string, string>): PatchResult 
           daily_cap: num(values.daily_cap),
           min_price_move: num(values.min_price_move),
           scan_min_price: num(values.scan_min_price),
-          scan_min_turnover: Math.round(cr * CRORE),
+          scan_min_turnover: Math.round(lakh * LAKH),
           scan_locked_pct: num(values.scan_locked_pct),
         },
       };
@@ -125,7 +125,7 @@ export function seed(tab: Tab, s: Settings): Record<string, string> {
         daily_cap: String(s.runtime.daily_cap),
         min_price_move: String(s.runtime.min_price_move),
         scan_min_price: String(s.runtime.scan_min_price),
-        scan_min_turnover: String(s.runtime.scan_min_turnover / 10_000_000),
+        scan_min_turnover: String(s.runtime.scan_min_turnover / LAKH),
         scan_locked_pct: String(s.runtime.scan_locked_pct),
       };
     case "network":

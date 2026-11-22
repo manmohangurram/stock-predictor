@@ -30,6 +30,7 @@ const router = useRouter();
 const prompts = ref<ScheduledPrompt[]>([]);
 const now = ref(new Date().toISOString());
 const rows = ref<CallRow[]>([]);
+const loadedAt = ref<Date | null>(null);
 const runs = ref<RunRow[]>([]);
 const facets = ref<{ prompts: string[]; calls: string[]; models: string[] }>({
     prompts: [],
@@ -102,6 +103,7 @@ async function load(): Promise<void> {
         total.value = list.total;
         runs.value = log.runs;
         running.value = log.running;
+        loadedAt.value = new Date();
         error.value = "";
     } catch (e) {
         error.value = String(e);
@@ -195,6 +197,10 @@ function remember(): void {
     arm();
 }
 
+function onVisible(): void {
+    if (!document.hidden) void load();
+}
+
 onMounted(async () => {
     auto.value = window.localStorage.getItem("calls.autoRefresh") !== "off";
     const stored = Number(window.localStorage.getItem("calls.autoEvery"));
@@ -202,9 +208,13 @@ onMounted(async () => {
         ? stored
         : 5;
     arm();
+    document.addEventListener("visibilitychange", onVisible);
     await load();
 });
-onBeforeUnmount(() => window.clearInterval(timer));
+onBeforeUnmount(() => {
+    window.clearInterval(timer);
+    document.removeEventListener("visibilitychange", onVisible);
+});
 watch(() => route.fullPath, load);
 </script>
 
@@ -257,7 +267,10 @@ watch(() => route.fullPath, load);
         <section class="panel">
             <div class="panel-head">
                 <h2>Calls</h2>
-                <span class="r">{{ rangeText }}</span>
+                <span class="r"
+                    >{{ rangeText }} · updated
+                    {{ loadedAt ? clock(loadedAt.toISOString()) : "—" }}</span
+                >
             </div>
 
             <div class="filters">

@@ -47,6 +47,23 @@ const statusOf = (p: ScheduledPrompt): string =>
 const resultOf = (p: ScheduledPrompt): string =>
     p.last?.error ?? p.last?.summary ?? "—";
 
+const untilFinished = async (what: string): Promise<void> => {
+    for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        try {
+            const s = await api.schedule();
+            const p = s.prompts.find((x) => x.prompt === what);
+            if (p?.last && p.last.status !== "running") {
+                status.value = "";
+                emit("reload");
+                return;
+            }
+        } catch {
+            return;
+        }
+    }
+};
+
 const runningWhat = ref("");
 const prompt = ref("plan_stock");
 const symbol = ref("");
@@ -63,6 +80,7 @@ async function start(what: string): Promise<void> {
         );
         status.value = `${what.replace("_", " ")} started`;
         emit("reload");
+        void untilFinished(what);
     } catch (e) {
         status.value = String(e);
     } finally {

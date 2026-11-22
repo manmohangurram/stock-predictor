@@ -57,17 +57,29 @@ type candidate struct {
 }
 
 // What the scan may offer, before the model is asked anything. Three numbers from Settings: a
-// price floor, a turnover floor, and the locked-band cut-off.
-func worthOffering(c candidate, minPrice, minTurnover, lockedPct float64) bool {
-	// A name with no exchange price yet is left to the model: it has no numbers to judge by here.
+// price floor, a turnover floor, and the locked-band cut-off. Empty means the name is offered; a
+// refusal says which numbers failed and what they were, because "left out" alone says nothing.
+func whyNotOffered(c candidate, minPrice, minTurnover, lockedPct float64) string {
 	if c.ltp == nil || c.turnover == nil || c.changePct == nil {
-		return true
+		return ""
 	}
-	change := *c.changePct
-	if change < 0 {
-		change = -change
+	reasons := []string{}
+	if *c.ltp < minPrice {
+		reasons = append(reasons, fmt.Sprintf("price %.2f is under the %.2f floor", *c.ltp, minPrice))
 	}
-	return *c.ltp >= minPrice && *c.turnover >= minTurnover && change < lockedPct
+	if *c.turnover < minTurnover {
+		reasons = append(reasons, fmt.Sprintf("turnover %.1f crore is under the %.1f crore floor",
+			*c.turnover/1e7, minTurnover/1e7))
+	}
+	if change := abs(*c.changePct); change >= lockedPct {
+		reasons = append(reasons, fmt.Sprintf("the %.1f%% move is at or past the %.1f%% band",
+			change, lockedPct))
+	}
+	return strings.Join(reasons, ", ")
+}
+
+func worthOffering(c candidate, minPrice, minTurnover, lockedPct float64) bool {
+	return whyNotOffered(c, minPrice, minTurnover, lockedPct) == ""
 }
 
 func fromGainer(g market.Gainer, source string) candidate {
@@ -196,11 +208,8 @@ func CandidateBlock(pool *sql.DB, m market.MarketSource, transport llm.Transport
 	kept := []candidate{}
 	held := tradeState(pool)
 	for _, c := range list {
-		keep := worthOffering(c, filters.ScanMinPrice, filters.ScanMinTurnover, filters.ScanLockedPct)
-		if !keep {
-			report.Notes = append(report.Notes, fmt.Sprintf(
-				"%s left out: under %.0f rupees, under %.0f turnover, or locked at the band",
-				c.symbol, filters.ScanMinPrice, filters.ScanMinTurnover))
+		if why := whyNotOffered(c, filters.ScanMinPrice, filters.ScanMinTurnover, filters.ScanLockedPct); why != "" {
+			report.Notes = append(report.Notes, c.symbol+" left out: "+why)
 			continue
 		}
 		// A name already held, or already waiting to be bought, is not a new idea. Offering it
