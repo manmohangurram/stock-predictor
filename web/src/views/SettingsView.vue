@@ -277,9 +277,9 @@ const every = (key: "poll_secs" | "off_hours_secs"): string =>
           <SettingField id="scan_min_price" label="Price floor" :unit="data.currency" type="number" step="1"
             v-model="values.scan_min_price"
             help="Below this, a single tick is a large part of the move. Micro-caps at ₹1–₹4 are not tradeable at this size." />
-          <SettingField id="scan_min_turnover" label="Turnover floor, per day" unit="crore" type="number" step="1"
+          <SettingField id="scan_min_turnover" label="Turnover floor, per day" unit="lakh" type="number" step="1"
             v-model="values.scan_min_turnover"
-            help="The day's traded value a candidate must reach, in whole crore — 1 crore is 1,00,00,000. An order from this purse has to be a rounding error against it." />
+            help="The day's traded value a candidate must reach, in whole lakh — 1 lakh is 1,00,000, so 100 lakh is 1 crore. Ten lakh is a thin small cap; a thousand crore is a handful of names a day." />
           <SettingField id="scan_locked_pct" label="Locked at the circuit at" unit="% up" type="number" step="0.5"
             v-model="values.scan_locked_pct"
             help="A stock this far up is pinned at its 20% band: no fill is available at any price you name." />
