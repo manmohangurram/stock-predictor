@@ -1,3 +1,21 @@
+## v1.0.6
+
+The audit keeps itself current, and the short-term scan says which floor a name missed — with the
+turnover floor entered in lakh, where ten lakh is expressible.
+
+### Changed
+
+- **The audit refreshes itself.** A run card used to reload once, while the run was still going,
+  and then wait for the five-second timer, which a hidden tab throttles. It now waits for the run
+  to finish and reloads then; coming back to the tab reloads at once; and the calls panel says
+  `· updated 14:15`, so the age of what is on screen is visible.
+- **A left-out candidate names the number.** "under 5 rupees, under 10000000000 turnover, or
+  locked at the band" is replaced by the floors that actually failed, with their values — in the
+  log and in the block the trade plan reads.
+- **The turnover floor is entered in lakh.** Whole crore could not express ten lakh; the field,
+  its conversion and its validation speak lakh now (1 lakh is 1,00,000; 100 lakh is 1 crore). The
+  stored value is unchanged, still rupees.
+
 ## v1.0.5
 
 The recent fills are one list at every width: a date header, then a row per fill, with the
