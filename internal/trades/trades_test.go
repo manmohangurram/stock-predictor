@@ -60,6 +60,9 @@ func TestASellDownToZeroKeepsTheRowVisible(t *testing.T) {
 	if len(hist) != 2 {
 		t.Fatalf("both fills stay in the history: %+v", hist)
 	}
+	if hist[0].Name != "Infosys" {
+		t.Fatalf("the fill carries its instrument's name: %+v", hist[0])
+	}
 
 	// Archiving is what removes it from the ledger.
 	if _, err := pool.Exec("UPDATE instruments SET active = 0, archived_at = '2026-11-16T00:00:00Z' WHERE id = ?", id); err != nil {

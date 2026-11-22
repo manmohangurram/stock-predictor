@@ -67,6 +67,7 @@ export interface Dashboard {
 export interface Trade {
   id: string;
   symbol: string;
+  name: string;
   side: "buy" | "sell";
   mode: Mode;
   qty: number;

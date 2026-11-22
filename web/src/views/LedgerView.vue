@@ -93,9 +93,6 @@ const net = computed(() =>
     ),
 );
 
-const nameOf = (symbol: string): string =>
-    positions.value.find((p) => p.symbol === symbol)?.name ?? symbol;
-
 function isToday(iso: string): boolean {
     const at = new Date(iso);
     const now = new Date();
@@ -371,44 +368,6 @@ watch(mode, load);
                         ></span
                     >
                 </div>
-                <table class="fills only-desk">
-                    <thead>
-                        <tr>
-                            <th scope="col" class="c-when">When</th>
-                            <th scope="col" class="c-side">Side</th>
-                            <th scope="col">Instrument</th>
-                            <th scope="col" class="r c-qty">Qty</th>
-                            <th scope="col" class="r c-price">Price</th>
-                            <th scope="col" class="r c-value">Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="t in fills" :key="t.id">
-                            <td class="num when">
-                                {{ clock(t.traded_at) }}
-                                <small>{{ fillDay(t) }}</small>
-                            </td>
-                            <td>
-                                <span
-                                    class="pill"
-                                    :class="t.side === 'buy' ? 'p-b' : 'p-s'"
-                                    >{{ t.side.toUpperCase() }}</span
-                                >
-                            </td>
-                            <td>
-                                <b>{{ nameOf(t.symbol) }}</b>
-                                <span
-                                    v-if="nameOf(t.symbol) !== t.symbol"
-                                    class="sym"
-                                    >{{ t.symbol }}</span
-                                >
-                            </td>
-                            <td class="r num">{{ units(t.qty) }}</td>
-                            <td class="r num">{{ money(t.price) }}</td>
-                            <td class="r num">{{ money(t.qty * t.price) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
                 <div class="fill-list">
                     <template v-for="g in fillGroups" :key="g.day">
                         <div class="fill-day">
@@ -424,8 +383,16 @@ watch(mode, load);
                                     :class="t.side === 'buy' ? 'p-b' : 'p-s'"
                                     >{{ t.side.toUpperCase() }}</span
                                 >
-                                {{ nameOf(t.symbol) }}
+                                <span class="fill-name">{{
+                                    t.name || t.symbol
+                                }}</span>
+                                <span
+                                    v-if="t.name && t.name !== t.symbol"
+                                    class="sym"
+                                    >{{ t.symbol }}</span
+                                >
                             </span>
+                            <span class="num price">{{ money(t.price) }}</span>
                             <span class="num qty">{{ units(t.qty) }}</span>
                             <b class="num">{{ money(t.qty * t.price) }}</b>
                         </div>
@@ -678,68 +645,11 @@ watch(mode, load);
 }
 
 /* recent fills */
-.fills {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12.5px;
-    table-layout: fixed;
-}
-.fills th {
-    font-size: 9.5px;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--ink-tertiary);
-    text-align: left;
-    padding: 8px 16px;
-    background: var(--paper-soft);
-    font-weight: 700;
-    border-top: 1px solid var(--rule-subtle);
-}
-.fills td {
-    padding: 10px 16px;
-    border-top: 1px solid var(--rule-subtle);
-    vertical-align: middle;
-    overflow-wrap: anywhere;
-}
-.fills tbody tr:hover {
-    background: var(--paper-soft);
-}
-.fills .r {
-    text-align: right;
-}
-.fills .when {
-    font-size: 12px;
-    color: var(--ink-secondary);
-}
-.fills .when small {
-    display: block;
-    font-family: var(--font-form);
-    font-size: 9.5px;
-    color: var(--ink-tertiary);
-}
-.fills .c-when {
-    width: 84px;
-}
-.fills .c-side {
-    width: 78px;
-}
-.fills .c-qty {
-    width: 74px;
-}
-.fills .c-price {
-    width: 108px;
-}
-.fills .c-value {
-    width: 126px;
-}
 .sym {
     font-family: var(--font-ledger);
     font-size: 10.5px;
     color: var(--ink-tertiary);
     margin-left: 6px;
-}
-.fill-list {
-    display: none;
 }
 .fill-day {
     display: flex;
@@ -774,6 +684,9 @@ watch(mode, load);
     text-align: right;
     white-space: nowrap;
 }
+.fill-row .price {
+    display: none;
+}
 .fill-day + .fill-row {
     border-top: 0;
 }
@@ -786,9 +699,14 @@ watch(mode, load);
     align-items: center;
     gap: 6px;
     min-width: 0;
+}
+.fill-row .fill-name {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+}
+.fill-row .who .sym {
+    margin-left: auto;
 }
 .fill-row .when {
     color: var(--ink-tertiary);
@@ -926,7 +844,30 @@ watch(mode, load);
     display: inline;
 }
 
+@media (min-width: 901px) {
+    .fill-day {
+        padding: 16px 18px 5px;
+    }
+    .fill-row {
+        grid-template-columns: 64px minmax(0, 1fr) 110px 92px 132px;
+        gap: 14px;
+        padding: 11px 18px;
+        font-size: 13px;
+    }
+    .fill-row .price {
+        display: block;
+        text-align: right;
+        color: var(--ink-secondary);
+    }
+    .fill-row:hover {
+        background: var(--paper-soft);
+    }
+}
+
 @media (max-width: 900px) {
+    .fill-row .who .sym {
+        display: none;
+    }
     .pg-top {
         position: relative;
         flex-direction: column;
