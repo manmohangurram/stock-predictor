@@ -44,6 +44,8 @@ type SignalRow struct {
 	PlanRationale *string  `json:"plan_rationale"`
 	PlanScope     *string  `json:"plan_scope"`
 	Amount        *float64 `json:"amount"`
+	// Set when a model call wrote this decision; the rules-only ones carry none.
+	ConversationID *string `json:"conversation_id"`
 }
 
 type Dashboard struct {
@@ -432,7 +434,8 @@ func loadSignals(pool *sql.DB, mode models.Mode, status string) ([]SignalRow, er
 	rows, err := pool.Query(
 		`SELECT s.id, i.symbol, i.name, i.class, s.action, s.qty, s.confidence, s.entry, s.stop,
                 s.target, s.valid_until, s.reason_json, s.created_at, s.status, s.status_reason,
-                s.filled_qty, s.filled_price, (SELECT p.id FROM signals p WHERE p.id = s.plan_id)
+                s.filled_qty, s.filled_price, (SELECT p.id FROM signals p WHERE p.id = s.plan_id),
+                s.conversation_id
          FROM signals s JOIN instruments i ON i.id = s.instrument_id
          WHERE `+predicate+` AND s.mode = ? ORDER BY s.id DESC LIMIT 50`, string(mode))
 	if err != nil {
@@ -446,9 +449,10 @@ func loadSignals(pool *sql.DB, mode models.Mode, status string) ([]SignalRow, er
 		var qty, entry, stop, target, filledQty, filledPrice sql.NullFloat64
 		var confidence, validUntil, reasonJSON, statusReason sql.NullString
 		var planID sql.NullString
+		var conversationID sql.NullString
 		if err := rows.Scan(&r.ID, &r.Symbol, &r.Name, &classRaw, &action, &qty, &confidence,
 			&entry, &stop, &target, &validUntil, &reasonJSON, &createdAt, &statusValue,
-			&statusReason, &filledQty, &filledPrice, &planID); err != nil {
+			&statusReason, &filledQty, &filledPrice, &planID, &conversationID); err != nil {
 			return nil, internalErr(err)
 		}
 		class, _ := models.ParseAssetClass(classRaw)
@@ -490,6 +494,9 @@ func loadSignals(pool *sql.DB, mode models.Mode, status string) ([]SignalRow, er
 		}
 		if planID.Valid {
 			r.PlanID = &planID.String
+		}
+		if conversationID.Valid {
+			r.ConversationID = &conversationID.String
 		}
 		r.Reasons = []string{}
 		if list, ok := reason["reasons"].([]any); ok {

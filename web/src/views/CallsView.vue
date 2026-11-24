@@ -22,6 +22,7 @@ interface Filters {
     channel?: string;
     model?: string;
     review?: string;
+    conversation?: string;
 }
 
 const route = useRoute();
@@ -58,6 +59,7 @@ const filters = computed<Filters>(() => ({
     channel: (route.query.channel as string) || undefined,
     model: (route.query.model as string) || undefined,
     review: (route.query.review as string) || undefined,
+    conversation: (route.query.conversation as string) || undefined,
 }));
 const filtered = computed(() => Object.values(filters.value).some(Boolean));
 

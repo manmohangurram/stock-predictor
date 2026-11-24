@@ -21,6 +21,8 @@ export interface SignalRow {
   status_reason: string | null;
   filled_qty: number | null;
   filled_price: number | null;
+  /** The model call that wrote this decision; null when the rules wrote it alone. */
+  conversation_id: string | null;
   /** Set when this row is one leg of a plan; every leg shares the first leg's id. */
   plan_id: string | null;
   /** The sentence that explains the whole plan, carried on every leg. */
@@ -488,7 +490,7 @@ export const api = {
   calls: async (
     offset = 0,
     limit = 25,
-    filters: { prompt?: string; channel?: string; model?: string; review?: string } = {},
+    filters: { prompt?: string; channel?: string; model?: string; review?: string; conversation?: string } = {},
   ) => {
     const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
     for (const [k, v] of Object.entries(filters)) {

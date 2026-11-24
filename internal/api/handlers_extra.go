@@ -358,6 +358,12 @@ func calls(c *gin.Context, st *AppState) {
 			bind *string
 		}{" AND a.endpoint = ?", v})
 	}
+	if v := given("conversation"); v != nil {
+		filters = append(filters, struct {
+			sql  string
+			bind *string
+		}{" AND a.conversation_id = ?", v})
+	}
 	if v := given("model"); v != nil {
 		filters = append(filters, struct {
 			sql  string
