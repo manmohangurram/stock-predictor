@@ -1,3 +1,33 @@
+## v1.0.7
+
+A manual run closes once, a decision says which call wrote it, and the settings cards stop
+overhanging the page rule.
+
+### Added
+
+- **A decision points at its call.** Signals carry their conversation, the audit accepts
+  `?conversation=`, and each card says `see the call` — a link to that call, filtered — or
+  `rules only` when no model call wrote it.
+
+### Changed
+
+- **The audit's time column carries the date.** `22 Nov 09:20` instead of `09:20`.
+
+### Fixed
+
+- **A manual run is closed once.** `planBookWith` finished the run with the model's note and
+  `runManual` finished the same run again, so every manual plan printed two `run finished`
+  lines with one id. The engine now closes a run only when it opened it, and `runs.Attach`
+  keeps the conversation on the run so the caller's finish does not clear it.
+- **The tool-call table is straight.** Its header band floated inside the card and auto layout
+  squeezed `WHEN`, `KEY` and `TOOL` until dates and tool names broke mid-word. The band runs
+  edge to edge like the audit's, the time carries its clock, and those columns no longer wrap.
+- **The settings cards sit on the page rule.** The title's hairline ran 26px past the cards at
+  a desk, because the rail and the card were a fixed 990px inside a 1016px column; the pane
+  takes the rest of the row, so the rule, the KPIs and every card share one right edge.
+- **A select no longer fills half a card.** The provider picker asked for a whole column to
+  show four short words.
+
 ## v1.0.6
 
 The audit keeps itself current, and the short-term scan says which floor a name missed — with the
