@@ -11,7 +11,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ChevronRight, Inbox } from "lucide-vue-next";
 import { api, type CallRow, type RunRow, type ScheduledPrompt } from "../api";
-import { clock, humanLabel, titleCase } from "../format";
+import { clock, dayTime, humanLabel, titleCase } from "../format";
 import AppEmpty from "../components/ui/AppEmpty.vue";
 import FilterMenu from "../components/ui/FilterMenu.vue";
 import ScheduleStrip from "../components/ScheduleStrip.vue";
@@ -361,14 +361,14 @@ watch(() => route.fullPath, load);
                         role="button"
                         tabindex="0"
                         :aria-expanded="open === r.id"
-                        :aria-label="`${promptType(r)} call at ${clock(r.ts)} — ${
+                        :aria-label="`${promptType(r)} call at ${dayTime(r.ts)} — ${
                             open === r.id ? 'hide' : 'show'
                         } the exchange`"
                         @click="toggle(r.id)"
                         @keydown.enter.prevent="toggle(r.id)"
                         @keydown.space.prevent="toggle(r.id)"
                     >
-                        <span class="num when">{{ clock(r.ts) }}</span>
+                        <span class="num when">{{ dayTime(r.ts) }}</span>
                         <span class="mono prompt">{{ promptName(r) }}</span>
                         <span class="sym">{{
                             titleCase(r.endpoint)
@@ -403,7 +403,7 @@ watch(() => route.fullPath, load);
                         role="button"
                         tabindex="0"
                         :aria-expanded="open === r.id"
-                        :aria-label="`${promptType(r)} call at ${clock(r.ts)} — ${
+                        :aria-label="`${promptType(r)} call at ${dayTime(r.ts)} — ${
                             open === r.id ? 'hide' : 'show'
                         } the exchange`"
                         @click="toggle(r.id)"
@@ -414,7 +414,7 @@ watch(() => route.fullPath, load);
                             <div class="nm mono">{{ promptName(r) }}</div>
                             <div class="sy">
                                 {{ titleCase(r.endpoint) }} ·
-                                {{ clock(r.ts) }}
+                                {{ dayTime(r.ts) }}
                             </div>
                         </div>
                         <div class="right">
@@ -523,7 +523,7 @@ watch(() => route.fullPath, load);
 .shead,
 .srow {
     display: grid;
-    grid-template-columns: 66px 140px 110px minmax(0, 1fr) 90px 22px;
+    grid-template-columns: 104px 132px 108px minmax(0, 1fr) 90px 22px;
     gap: 12px;
     align-items: center;
 }
