@@ -77,6 +77,13 @@ func Start(pool *sql.DB, prompt Prompt, trigger Trigger, symbol *string) (string
 	return id, err
 }
 
+// Attach points a run at the conversation its call used, so the run and the call can be found
+// from each other and Finish's nil does not clear it.
+func Attach(pool *sql.DB, id, conversationID string) error {
+	_, err := pool.Exec("UPDATE runs SET conversation_id = ? WHERE id = ?", conversationID, id)
+	return err
+}
+
 // Close a run with one line a person can read.
 func Finish(pool *sql.DB, id string, summary string, conversationID *string) error {
 	_, err := pool.Exec(

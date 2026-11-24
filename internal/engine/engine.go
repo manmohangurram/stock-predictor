@@ -380,6 +380,9 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		runID = &id
 	}
 	conversation := fmt.Sprintf("plan-%d", now.UnixMilli())
+	if err := runs.Attach(deps.Pool, *runID, conversation); err != nil {
+		return false, "", err
+	}
 	trigger := fmt.Sprintf("%s plan: %d holdings, %.2f %s free — looked for moves that fit together",
 		scope.PurseName(), len(book), available, settings.Currency)
 	slog.Info("plan call", "scope", scope, "holdings", len(book), "available", available,
@@ -399,7 +402,9 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 			_, _ = deps.SweepGlances(deps.Pool)
 		}
 		// A failed call must close its run, or the page shows a spinner that will not stop.
-		_ = runs.Fail(deps.Pool, *runID, err.Error())
+		if !manual {
+			_ = runs.Fail(deps.Pool, *runID, err.Error())
+		}
 		return false, "", err
 	}
 
@@ -412,7 +417,9 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	answer, err := llm.ParsePlan(reply.Content)
 	if err != nil {
 		slog.Warn("plan reply unreadable", "error", err)
-		_ = runs.Fail(deps.Pool, *runID, fmt.Sprintf("the reply did not parse: %v", err))
+		if !manual {
+			_ = runs.Fail(deps.Pool, *runID, fmt.Sprintf("the reply did not parse: %v", err))
+		}
 		return skip("the reply did not parse")
 	}
 	if answer.Plan == nil {
@@ -421,7 +428,9 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		if strings.TrimSpace(answer.Why) != "" {
 			note += ": " + answer.Why
 		}
-		_ = runs.Finish(deps.Pool, *runID, note, &conversation)
+		if !manual {
+			_ = runs.Finish(deps.Pool, *runID, note, &conversation)
+		}
 		// A trade plan may have looked at twenty tickers to make two moves; the rest are gone.
 		if scope.IsTrade() && deps.SweepGlances != nil {
 			_, _ = deps.SweepGlances(deps.Pool)
@@ -449,7 +458,9 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		if err := recordPlanRefusal(deps.Pool, err.Error(), now, &conversation, scope); err != nil {
 			return false, "", err
 		}
-		_ = runs.Finish(deps.Pool, *runID, "refused: "+err.Error(), &conversation)
+		if !manual {
+			_ = runs.Finish(deps.Pool, *runID, "refused: "+err.Error(), &conversation)
+		}
 		return false, "refused: " + err.Error(), nil
 	}
 
@@ -487,7 +498,9 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 			if err := recordPlanRefusal(deps.Pool, why, now, &conversation, scope); err != nil {
 				return false, "", err
 			}
-			_ = runs.Fail(deps.Pool, *runID, why)
+			if !manual {
+				_ = runs.Fail(deps.Pool, *runID, why)
+			}
 			return false, why, nil
 		}
 		if err != nil {
@@ -512,7 +525,9 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 	}
 	slog.Info("plan stored", "scope", scope, "moves", len(plan.Moves), "plan_id", *planID,
 		"conversation", conversation)
-	_ = runs.Finish(deps.Pool, *runID, fmt.Sprintf("%d %s stored", len(plan.Moves), noun), &conversation)
+	if !manual {
+		_ = runs.Finish(deps.Pool, *runID, fmt.Sprintf("%d %s stored", len(plan.Moves), noun), &conversation)
+	}
 	return true, "", nil
 }
 
