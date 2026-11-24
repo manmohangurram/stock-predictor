@@ -93,6 +93,27 @@ func TestAnAverageNeedsAFullWindow(t *testing.T) {
 	}
 }
 
+func TestTheSteadySliceIsNamesThatAreNotMoving(t *testing.T) {
+	d50, d200 := 100.0, 100.0
+	mk := func(sym string, close float64) Pick {
+		fifty := d50
+		return Pick{Symbol: sym, Name: sym, Close: close, Ret5: 0.01, DMA50: &fifty, DMA200: &d200}
+	}
+	measured := []Pick{
+		mk("CALM.NS", 101),   // 1% above the 200-day: steady
+		mk("EDGE.NS", 104),   // 4% above: already extended
+		mk("CHASE.NS", 160),  // 60% above: the vertical run the prompt refuses
+		mk("SAGGING.NS", 95), // below its 50-day
+	}
+	out := SteadyList(measured, map[string]bool{}, 5)
+	if len(out) != 1 || out[0].Symbol != "CALM.NS" {
+		t.Fatalf("%+v", out)
+	}
+	if got := SteadyList(measured, map[string]bool{"CALM.NS": true}, 5); len(got) != 0 {
+		t.Fatalf("a name already offered as a mover is not offered twice: %+v", got)
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

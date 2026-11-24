@@ -38,8 +38,10 @@ For each name you hold, ask in this order:
 
 ## How to judge a candidate
 
-- **The move must still have room.** A stock already up 15–20% today on a rumour is on its way back
-  down. Say `pass` and let the next slot find another.
+- **The move must still have room.** A stock up 15–20% today needs a dated catalyst — a rumour or a
+  quote page is not one. The band filter already removed the names at the circuit, so do not reject a
+  name for its move alone: reject it when the catalyst is thin or the band is close. Otherwise take
+  the trade and let the stop do the rest.
 - **The reason must be dated.** Use only the headlines and web results given, and cite them by
   number. An undated page is a quote page, not a catalyst. A transcript from months ago is
   background.

@@ -26,6 +26,12 @@ const Sessions = 5
 // How many names the plan is offered.
 const Top = 10
 
+// How many names that are barely moving are offered beside the movers.
+const Steady = 5
+
+// Within this much of the 200-day average is "not moving".
+const SteadyBand = 0.03
+
 type Pick struct {
 	Symbol string
 	Name   string
@@ -33,6 +39,7 @@ type Pick struct {
 	Ret5   float64
 	DMA50  *float64
 	DMA200 *float64
+	Slice  string
 }
 
 // The one line the plan prompt reads. The averages are what the prompt's "confirmed trend"
@@ -138,6 +145,42 @@ func pickFrom(symbol, name string, closes []float64) (Pick, bool) {
 	return p, true
 }
 
+// The names that are not extended: above the 50-day and within a few percent of the 200-day,
+// closest to the line first. The long-term prompt demands a confirmed trend and refuses a vertical
+// run, so a list made only of the week's movers leaves it nothing it is allowed to buy.
+func SteadyList(measured []Pick, exclude map[string]bool, n int) []Pick {
+	out := []Pick{}
+	for _, p := range measured {
+		if exclude[p.Symbol] || p.DMA50 == nil || p.DMA200 == nil || *p.DMA200 <= 0 {
+			continue
+		}
+		if p.Close <= *p.DMA50 {
+			continue
+		}
+		if gapFrom(p.Close, *p.DMA200) <= SteadyBand {
+			out = append(out, p)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return gapFrom(out[i].Close, *out[i].DMA200) < gapFrom(out[j].Close, *out[j].DMA200)
+	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
+
+func gapFrom(price, level float64) float64 {
+	if level <= 0 {
+		return 1
+	}
+	d := (price - level) / level
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
 // Positive first, then ranked, then cut to top.
 func Rank(picks []Pick, top int) []Pick {
 	kept := []Pick{}
@@ -219,6 +262,15 @@ func DailyList(pool *sql.DB, m market.MarketSource, now time.Time) ([]Pick, erro
 		return nil, fmt.Errorf("no price history for any of the %d constituents — the price source is throttling or unavailable", len(constituents))
 	}
 	picks := Rank(measured, Top)
+	taken := map[string]bool{}
+	for i := range picks {
+		picks[i].Slice = "momentum"
+		taken[picks[i].Symbol] = true
+	}
+	for _, p := range SteadyList(measured, taken, Steady) {
+		p.Slice = "steady"
+		picks = append(picks, p)
+	}
 	for _, p := range picks {
 		if err := store(pool, day, p, now); err != nil {
 			return nil, err
@@ -243,7 +295,7 @@ func getMarker(pool *sql.DB) string {
 
 func load(pool *sql.DB, day string) ([]Pick, error) {
 	rows, err := pool.Query(
-		"SELECT symbol, name, close, ret5, dma50, dma200 FROM plan_candidates WHERE day = ? ORDER BY ret5 DESC", day)
+		"SELECT symbol, name, close, ret5, dma50, dma200, slice FROM plan_candidates WHERE day = ? ORDER BY slice, ret5 DESC", day)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +304,7 @@ func load(pool *sql.DB, day string) ([]Pick, error) {
 	for rows.Next() {
 		var p Pick
 		var dma50, dma200 sql.NullFloat64
-		if err := rows.Scan(&p.Symbol, &p.Name, &p.Close, &p.Ret5, &dma50, &dma200); err != nil {
+		if err := rows.Scan(&p.Symbol, &p.Name, &p.Close, &p.Ret5, &dma50, &dma200, &p.Slice); err != nil {
 			return nil, err
 		}
 		if dma50.Valid {
@@ -268,12 +320,19 @@ func load(pool *sql.DB, day string) ([]Pick, error) {
 
 func store(pool *sql.DB, day string, p Pick, now time.Time) error {
 	_, err := pool.Exec(
-		`INSERT INTO plan_candidates (day, symbol, name, close, ret5, dma50, dma200, added_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO plan_candidates (day, symbol, name, close, ret5, dma50, dma200, slice, added_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(day, symbol) DO NOTHING`,
-		day, p.Symbol, p.Name, p.Close, p.Ret5, p.DMA50, p.DMA200, tstamp.From(now),
+		day, p.Symbol, p.Name, p.Close, p.Ret5, p.DMA50, p.DMA200, sliceOf(p), tstamp.From(now),
 	)
 	return err
+}
+
+func sliceOf(p Pick) string {
+	if p.Slice == "" {
+		return "momentum"
+	}
+	return p.Slice
 }
 
 func setMarker(pool *sql.DB, day string, now time.Time) error {

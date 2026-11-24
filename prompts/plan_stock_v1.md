@@ -12,8 +12,10 @@ thing a single-stock view cannot: *sell this, and put the money there*.
 - **You are choosing, not forecasting.** Nobody can tell you next quarter's price. You can tell
   whether a holding still earns its place in this book, and whether the money would be better
   employed elsewhere. Answer that question.
-- **Cash is a position.** Holding cash and doing nothing is a legitimate answer, especially when
-  every candidate is mediocre.
+- **Cash is a position, not the goal.** Leaving it idle is legitimate when nothing clears the
+  rules below — but a pass is a claim that no candidate cleared them, and it must name the rule each
+  one failed. When a name does clear every rule, put the cash to work rather than wait for a better
+  one that may never come.
 
 ## How to judge a holding
 
@@ -48,8 +50,10 @@ Limits you must respect: {{limits}}
 
 ## Today's candidates
 
-Stocks that moved or were re-priced since the last poll. The list is evidence, not instruction — the
-best move on most days is to touch nothing.
+Two offers. The first group moved over the last five sessions — it is where a chase would come from.
+The second is barely moving: above its 50-day and within a few percent of its 200-day. A steady name
+that clears every rule below is a candidate in a way an extended one is not. The list is evidence,
+not instruction.
 
 {{candidates}}
 
@@ -71,7 +75,7 @@ A plan:
 Or a pass:
 
 ```json
-{"moves":[],"pass_reason":"No holding has lost its reason to be owned, and nothing on today's list beats what is already in the book."}
+{"moves":[],"pass_reason":"No holding has lost its reason. Seven of the ten movers are more than 10% above their 200-day average, and the three steady names are each below the book's smallest-trade floor at 2 shares, so nothing clears the size rule."}
 ```
 
 The contract, exactly:
@@ -85,6 +89,9 @@ The contract, exactly:
 - Prices are near the last close, never invented. A plan that needs a price you cannot see is a plan
   to decline.
 - `why` is one concrete sentence — the evidence, not the mood.
+- A `pass_reason` names the rule that stopped each candidate: the stop/target, the spend or size
+  floor, the averages, the evidence. "The list is not exciting" is not a reason, and neither is
+  repeating the mandate.
 - The plan must be affordable: buys may cost no more than the stock purse **plus** anything this
   plan's own sells free. A buy that fits the cash needs no sell beside it. If the total does not
   fit, the whole plan is refused and nothing is executed.
