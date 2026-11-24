@@ -8,7 +8,7 @@
 import { onMounted, ref } from "vue";
 import { Terminal } from "lucide-vue-next";
 import { api, type McpCall } from "../api";
-import { histDate } from "../format";
+import { dayTime } from "../format";
 import SettingsRail from "../components/SettingsRail.vue";
 import AppEmpty from "../components/ui/AppEmpty.vue";
 import { useAdmin } from "../admin";
@@ -56,9 +56,8 @@ onMounted(load);
           <div>
             <h3>Tool calls</h3>
             <p class="lead">
-              Everything an MCP client asked the book to do, newest first, with
-              the key it used. Arguments are stored with secrets already
-              redacted.
+              Newest first, with the key it used. Arguments are stored with
+              secrets already redacted.
             </p>
           </div>
           <label class="note">
@@ -80,25 +79,27 @@ onMounted(load);
         <table class="logs-table">
           <thead>
             <tr>
-              <th scope="col">When</th>
-              <th scope="col">Key</th>
-              <th scope="col" class="hide-narrow">Tool</th>
-              <th scope="col" class="hide-narrow">Arguments</th>
+              <th scope="col" class="when">When</th>
+              <th scope="col" class="key">Key</th>
+              <th scope="col" class="tool hide-narrow">Tool</th>
+              <th scope="col" class="args hide-narrow">Arguments</th>
               <th scope="col">Result</th>
-              <th scope="col" class="r">ms</th>
+              <th scope="col" class="r ms">ms</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="call in calls" :key="call.id">
-              <td class="mono">{{ histDate(call.ts) }}</td>
-              <td>{{ call.key_name || call.prefix || "removed key" }}</td>
-              <td class="mono hide-narrow">{{ call.tool }}</td>
-              <td class="mono hide-narrow args">{{ call.args_json }}</td>
+              <td class="mono when">{{ dayTime(call.ts) }}</td>
+              <td class="key">
+                {{ call.key_name || call.prefix || "removed key" }}
+              </td>
+              <td class="mono tool hide-narrow">{{ call.tool }}</td>
+              <td class="mono args hide-narrow">{{ call.args_json }}</td>
               <td>
                 <span v-if="call.status === 'ok'" class="ok">ok</span>
                 <span v-else class="bad">{{ call.error || "error" }}</span>
               </td>
-              <td class="r mono">{{ call.ms }}</td>
+              <td class="r mono ms">{{ call.ms }}</td>
             </tr>
             <tr v-if="calls.length === 0">
               <td colspan="6">
@@ -118,10 +119,10 @@ onMounted(load);
 
 <style scoped>
 .logs-table {
-  width: 100%;
+  width: calc(100% + 44px);
   border-collapse: collapse;
   font-size: 12px;
-  margin-top: 14px;
+  margin: 14px -22px 0;
 }
 .logs-table th {
   font-size: 8.5px;
@@ -129,28 +130,35 @@ onMounted(load);
   text-transform: uppercase;
   color: var(--ink-tertiary);
   text-align: left;
-  padding: 7px 8px;
+  padding: 7px 10px;
   background: var(--paper-soft);
   font-weight: 700;
   white-space: nowrap;
 }
 .logs-table td {
-  padding: 9px 8px;
+  padding: 9px 10px;
   border-top: 1px solid var(--rule-subtle);
   vertical-align: top;
   overflow-wrap: anywhere;
 }
 .logs-table th:first-child,
 .logs-table td:first-child {
-  padding-left: 0;
+  padding-left: 22px;
 }
 .logs-table th:last-child,
 .logs-table td:last-child {
-  padding-right: 0;
+  padding-right: 22px;
 }
 .logs-table th.r,
 .logs-table td.r {
   text-align: right;
+}
+.logs-table .when,
+.logs-table .key,
+.logs-table .tool,
+.logs-table .ms {
+  width: 1%;
+  white-space: nowrap;
 }
 .logs-table .args {
   font-size: 10.5px;
@@ -171,9 +179,23 @@ onMounted(load);
 .cardhead .lead {
   margin-bottom: 0;
 }
-@media (max-width: 760px) {
+@media (max-width: 1080px) {
   .hide-narrow {
     display: none;
+  }
+}
+@media (max-width: 900px) {
+  .logs-table {
+    width: calc(100% + 32px);
+    margin: 12px -16px 0;
+  }
+  .logs-table th:first-child,
+  .logs-table td:first-child {
+    padding-left: 16px;
+  }
+  .logs-table th:last-child,
+  .logs-table td:last-child {
+    padding-right: 16px;
   }
 }
 </style>

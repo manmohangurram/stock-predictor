@@ -183,6 +183,13 @@ const posted = computed(() => {
                 >·</span
             >
             <span class="when">{{ dayTime(first.created_at) }}</span>
+            <RouterLink
+                v-if="first.conversation_id"
+                class="call"
+                :to="`/calls?conversation=${encodeURIComponent(first.conversation_id)}`"
+                >see the call</RouterLink
+            >
+            <span v-else class="call rules">rules only</span>
             <span
                 v-if="pending && first.confidence"
                 class="conf"
@@ -392,6 +399,20 @@ const posted = computed(() => {
 }
 .dotsep {
     color: var(--rule-strong);
+}
+.dhead .call {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--brand);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+}
+.dhead .call:hover {
+    border-bottom-color: var(--brand);
+}
+.dhead .call.rules {
+    color: var(--ink-tertiary);
 }
 .aside {
     margin-left: auto;
