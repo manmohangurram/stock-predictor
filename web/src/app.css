@@ -936,7 +936,8 @@ dialog,
     border-bottom: 1px solid var(--rule); position: relative; z-index: 20;
   }
   .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink);
-    font-size: 13.5px; font-weight: 650; text-decoration: none; letter-spacing: -.01em; }
+    font-size: 13.5px; font-weight: 650; text-decoration: none; letter-spacing: -.01em;
+    white-space: nowrap; }
   .brand img { width: 30px; height: 30px; border-radius: 9px; }
   .topnav { display: flex; gap: 2px; background: var(--paper-inset); border-radius: 9px; padding: 3px; }
   .topnav a { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
@@ -1072,7 +1073,7 @@ dialog,
 
 /* Settings: a rail of tabs and one column of cards, as the board draws it. */
 .settings-head { max-width: 1080px; margin: 0 auto; padding: 26px 32px 0; }
-.settings { display: grid; grid-template-columns: 236px minmax(0, 720px); gap: 34px;
+.settings { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 34px;
   max-width: 1080px; margin: 0 auto; padding: 0 32px 30px; align-items: start; }
 .settings .settings-pane { padding-top: 0; max-width: none; }
 .tabs { background: var(--paper-raised); border: 1px solid var(--rule-subtle);
@@ -1094,6 +1095,7 @@ dialog,
   gap: 16px 18px; }
 .formgrid .wide { grid-column: 1 / -1; }
 .formcard .field input, .formcard .field select { max-width: none; width: 100%; }
+.formcard .field select { max-width: 240px; }
 .formcard .field { gap: 5px; }
 .formcard .settings-group { margin: 6px 0 0; padding-top: 14px;
   border-top: 1px solid var(--rule-subtle); font-size: 12.5px; font-weight: 650; }
