@@ -209,8 +209,12 @@ func bandTriggerFires(pool *sql.DB, instrument models.Instrument, reason string,
 
 // One book call: the model sees every holding, the cash and today's list, and may answer with
 // up to three moves that stand or fall together. Returns true only when a plan was stored.
-// The one line a run says when no model call was made at all.
-func skip(why string) (bool, string, error) { return false, why, nil }
+// The one line a run says when no model call was made at all. Said at info: a day that produces
+// no plan must say why in the log, or "nothing happened" is indistinguishable from a bug.
+func skip(why string) (bool, string, error) {
+	slog.Info("plan skipped", "reason", why)
+	return false, why, nil
+}
 
 func planBook(deps *EngineDeps, now time.Time, scope llm.Scope, run *string) (bool, string, error) {
 	return planBookWith(deps, now, scope, run, "", false)
@@ -234,7 +238,14 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 			slot = s
 		}
 	} else {
-		slot = schedule.ISTDay(now)
+		s, ok := schedule.DailySlot(now)
+		if !ok {
+			if !manual {
+				return skip("skipped: the daily slot has not opened yet")
+			}
+			s = schedule.ISTDay(now)
+		}
+		slot = s
 	}
 	marker := "stock_plan_last"
 	switch scope {
@@ -714,6 +725,8 @@ func candidatesForPlan(pool *sql.DB, currency string, scope llm.Scope) (string, 
                  ORDER BY b.ts DESC LIMIT 1 OFFSET 1) AS prev
          FROM instruments i
          WHERE i.active = 1 AND (i.class = 'mutual_fund') = ?
+           AND NOT EXISTS (SELECT 1 FROM positions p
+                           WHERE p.instrument_id = i.id AND p.state = 'open')
          ORDER BY i.symbol`, fund,
 	)
 	if err != nil {
@@ -723,19 +736,23 @@ func candidatesForPlan(pool *sql.DB, currency string, scope llm.Scope) (string, 
 	out := ""
 	for rows.Next() {
 		var symbol, name string
-		var last float64
-		var prev sql.NullFloat64
+		var last, prev sql.NullFloat64
 		if err := rows.Scan(&symbol, &name, &last, &prev); err != nil {
 			return "", err
 		}
+		// An instrument with no price yet cannot be judged, and a NULL close must not fail the
+		// whole list: one unpriced name would otherwise cancel the fund plan.
+		if !last.Valid || last.Float64 <= 0 {
+			continue
+		}
 		change := "no prior close"
 		if prev.Valid && prev.Float64 > 0 {
-			change = fmt.Sprintf("%+.2f%% today", (last-prev.Float64)/prev.Float64*100)
+			change = fmt.Sprintf("%+.2f%% today", (last.Float64-prev.Float64)/prev.Float64*100)
 		}
-		out += fmt.Sprintf("%s %s at %.2f %s, %s\n", symbol, name, last, currency, change)
+		out += fmt.Sprintf("%s %s at %.2f %s, %s\n", symbol, name, last.Float64, currency, change)
 	}
 	if out == "" {
-		out = "nothing on offer today\n"
+		out = "nothing new on offer today — every name you would be shown is already held\n"
 	}
 	return out, rows.Err()
 }

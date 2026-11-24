@@ -26,17 +26,36 @@ const Sessions = 5
 // How many names the plan is offered.
 const Top = 10
 
+// How many names that are barely moving are offered beside the movers.
+const Steady = 5
+
+// Within this much of the 200-day average is "not moving".
+const SteadyBand = 0.03
+
 type Pick struct {
 	Symbol string
 	Name   string
 	Close  float64
 	Ret5   float64
+	DMA50  *float64
+	DMA200 *float64
+	Slice  string
 }
 
-// The one line the plan prompt reads.
+// The one line the plan prompt reads. The averages are what the prompt's "confirmed trend"
+// test needs; a series too short to have them is offered without them rather than with a zero.
 func (p Pick) Line(currency string) string {
-	return fmt.Sprintf("%s %s at %.2f %s, %+.2f%% over %d sessions",
+	line := fmt.Sprintf("%s %s at %.2f %s, %+.2f%% over %d sessions",
 		p.Symbol, p.Name, p.Close, currency, p.Ret5*100.0, Sessions)
+	if p.DMA50 != nil && *p.DMA50 > 0 && p.DMA200 != nil && *p.DMA200 > 0 {
+		return line + fmt.Sprintf(", %+.1f%% against its 50-day and %+.1f%% against its 200-day",
+			(p.Close-*p.DMA50) / *p.DMA50 * 100, (p.Close-*p.DMA200) / *p.DMA200 * 100)
+	}
+	if p.DMA200 != nil && *p.DMA200 > 0 {
+		return line + fmt.Sprintf(", %+.1f%% against its 200-day",
+			(p.Close-*p.DMA200) / *p.DMA200 * 100)
+	}
+	return line
 }
 
 // Company Name,Industry,Symbol,Series,ISIN Code — the symbol is bare (ABB), Yahoo wants .NS.
@@ -91,11 +110,75 @@ func Measure(m market.MarketSource, symbol, name string) (Pick, bool) {
 	for i, b := range bars {
 		closes[i] = b.Close
 	}
+	return pickFrom(symbol, name, closes)
+}
+
+// The mean of the last n closes, or false when the series does not reach that far.
+func average(closes []float64, n int) (float64, bool) {
+	if n <= 0 || len(closes) < n {
+		return 0, false
+	}
+	sum := 0.0
+	for _, c := range closes[len(closes)-n:] {
+		if isNaN(c) || isInf(c) || c <= 0 {
+			return 0, false
+		}
+		sum += c
+	}
+	return sum / float64(n), true
+}
+
+// One pick from a series: the five-session return and the two averages. Both averages come from
+// closes already in hand, so they cost no extra request.
+func pickFrom(symbol, name string, closes []float64) (Pick, bool) {
 	ret, ok := ReturnOver(closes, Sessions)
 	if !ok {
 		return Pick{}, false
 	}
-	return Pick{Symbol: symbol, Name: name, Close: closes[len(closes)-1], Ret5: ret}, true
+	p := Pick{Symbol: symbol, Name: name, Close: closes[len(closes)-1], Ret5: ret}
+	if v, ok := average(closes, 50); ok {
+		p.DMA50 = &v
+	}
+	if v, ok := average(closes, 200); ok {
+		p.DMA200 = &v
+	}
+	return p, true
+}
+
+// The names that are not extended: above the 50-day and within a few percent of the 200-day,
+// closest to the line first. The long-term prompt demands a confirmed trend and refuses a vertical
+// run, so a list made only of the week's movers leaves it nothing it is allowed to buy.
+func SteadyList(measured []Pick, exclude map[string]bool, n int) []Pick {
+	out := []Pick{}
+	for _, p := range measured {
+		if exclude[p.Symbol] || p.DMA50 == nil || p.DMA200 == nil || *p.DMA200 <= 0 {
+			continue
+		}
+		if p.Close <= *p.DMA50 {
+			continue
+		}
+		if gapFrom(p.Close, *p.DMA200) <= SteadyBand {
+			out = append(out, p)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return gapFrom(out[i].Close, *out[i].DMA200) < gapFrom(out[j].Close, *out[j].DMA200)
+	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
+
+func gapFrom(price, level float64) float64 {
+	if level <= 0 {
+		return 1
+	}
+	d := (price - level) / level
+	if d < 0 {
+		return -d
+	}
+	return d
 }
 
 // Positive first, then ranked, then cut to top.
@@ -157,15 +240,9 @@ func DailyList(pool *sql.DB, m market.MarketSource, now time.Time) ([]Pick, erro
 			return nil, err
 		}
 		for _, c := range constituents {
-			series := closes[c.Symbol]
-			ret, ok := ReturnOver(series, Sessions)
-			if !ok {
-				continue
+			if p, ok := pickFrom(c.Symbol, c.Name, closes[c.Symbol]); ok {
+				measured = append(measured, p)
 			}
-			measured = append(measured, Pick{
-				Symbol: c.Symbol, Name: c.Name,
-				Close: series[len(series)-1], Ret5: ret,
-			})
 		}
 	} else {
 		for i, c := range constituents {
@@ -185,6 +262,15 @@ func DailyList(pool *sql.DB, m market.MarketSource, now time.Time) ([]Pick, erro
 		return nil, fmt.Errorf("no price history for any of the %d constituents — the price source is throttling or unavailable", len(constituents))
 	}
 	picks := Rank(measured, Top)
+	taken := map[string]bool{}
+	for i := range picks {
+		picks[i].Slice = "momentum"
+		taken[picks[i].Symbol] = true
+	}
+	for _, p := range SteadyList(measured, taken, Steady) {
+		p.Slice = "steady"
+		picks = append(picks, p)
+	}
 	for _, p := range picks {
 		if err := store(pool, day, p, now); err != nil {
 			return nil, err
@@ -209,7 +295,7 @@ func getMarker(pool *sql.DB) string {
 
 func load(pool *sql.DB, day string) ([]Pick, error) {
 	rows, err := pool.Query(
-		"SELECT symbol, name, close, ret5 FROM plan_candidates WHERE day = ? ORDER BY ret5 DESC", day)
+		"SELECT symbol, name, close, ret5, dma50, dma200, slice FROM plan_candidates WHERE day = ? ORDER BY slice, ret5 DESC", day)
 	if err != nil {
 		return nil, err
 	}
@@ -217,8 +303,15 @@ func load(pool *sql.DB, day string) ([]Pick, error) {
 	out := []Pick{}
 	for rows.Next() {
 		var p Pick
-		if err := rows.Scan(&p.Symbol, &p.Name, &p.Close, &p.Ret5); err != nil {
+		var dma50, dma200 sql.NullFloat64
+		if err := rows.Scan(&p.Symbol, &p.Name, &p.Close, &p.Ret5, &dma50, &dma200, &p.Slice); err != nil {
 			return nil, err
+		}
+		if dma50.Valid {
+			p.DMA50 = &dma50.Float64
+		}
+		if dma200.Valid {
+			p.DMA200 = &dma200.Float64
 		}
 		out = append(out, p)
 	}
@@ -227,12 +320,19 @@ func load(pool *sql.DB, day string) ([]Pick, error) {
 
 func store(pool *sql.DB, day string, p Pick, now time.Time) error {
 	_, err := pool.Exec(
-		`INSERT INTO plan_candidates (day, symbol, name, close, ret5, added_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+		`INSERT INTO plan_candidates (day, symbol, name, close, ret5, dma50, dma200, slice, added_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(day, symbol) DO NOTHING`,
-		day, p.Symbol, p.Name, p.Close, p.Ret5, tstamp.From(now),
+		day, p.Symbol, p.Name, p.Close, p.Ret5, p.DMA50, p.DMA200, sliceOf(p), tstamp.From(now),
 	)
 	return err
+}
+
+func sliceOf(p Pick) string {
+	if p.Slice == "" {
+		return "momentum"
+	}
+	return p.Slice
 }
 
 func setMarker(pool *sql.DB, day string, now time.Time) error {

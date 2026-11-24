@@ -720,14 +720,11 @@ func scheduleView(c *gin.Context, st *AppState) {
 		return nil
 	}
 	dailyNext := func(ranToday bool) *string {
-		if !ranToday {
+		if _, open := schedule.DailySlot(now); open && !ranToday {
 			s := tstamp.From(now)
 			return &s
 		}
-		ist := now.Add(330 * time.Minute)
-		nextMidnight := time.Date(ist.Year(), ist.Month(), ist.Day(), 0, 5, 0, 0,
-			time.FixedZone("IST", 330*60)).AddDate(0, 0, 1)
-		s := tstamp.From(nextMidnight.UTC())
+		s := tstamp.From(schedule.NextDailySlot(now).UTC())
 		return &s
 	}
 	stockRan := marker("stock_plan_last") != nil && *marker("stock_plan_last") == today
@@ -750,11 +747,10 @@ func scheduleView(c *gin.Context, st *AppState) {
 	c.JSON(http.StatusOK, gin.H{
 		"now": tstamp.From(now),
 		"prompts": []gin.H{
-			entry("plan_stock", "Stock plan", "once a day, first tick after midnight IST",
-				dailyNext(stockRan)),
-			entry("plan_fund", "Fund plan", "once a day, after the fund scan", dailyNext(fundRan)),
+			entry("plan_stock", "Stock plan", "once a day, at 09:05 IST", dailyNext(stockRan)),
+			entry("plan_fund", "Fund plan", "once a day, at 09:05 IST", dailyNext(fundRan)),
 			entry("plan_trade", "Trade plan",
-				"every two hours in session — 09:15, 11:15, 13:15 IST", tradeNext(now)),
+				"in session — 09:05, 11:15, 13:15 IST", tradeNext(now)),
 		},
 	})
 }

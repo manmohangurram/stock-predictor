@@ -348,16 +348,28 @@ func buildDeps(pool *sql.DB, cfg *config.Config) (*engine.EngineDeps, error) {
 		if err != nil {
 			return "", err
 		}
-		if len(picks) == 0 {
-			return "no candidate cleared a positive five-session return today\n", nil
-		}
 		settings, err := rules.GetSettings(pool)
 		if err != nil {
 			return "", err
 		}
-		out := ""
+		movers, steady := []string{}, []string{}
 		for _, p := range picks {
-			out += p.Line(settings.Currency) + "\n"
+			if p.Slice == "steady" {
+				steady = append(steady, p.Line(settings.Currency))
+			} else {
+				movers = append(movers, p.Line(settings.Currency))
+			}
+		}
+		out := ""
+		if len(movers) > 0 {
+			out += "Moved over the last five sessions:\n" + strings.Join(movers, "\n") + "\n"
+		}
+		if len(steady) > 0 {
+			out += "\nNot moving — above the 50-day and within 3% of the 200-day:\n" +
+				strings.Join(steady, "\n") + "\n"
+		}
+		if out == "" {
+			out = "no candidate cleared the five-session filter today\n"
 		}
 		return out, nil
 	}
@@ -443,7 +455,7 @@ func pollLoop(ctx context.Context, pool *sql.DB, cfg *config.Config, manual <-ch
 			secs = 60
 		}
 		// Wake on the slot boundary rather than wherever a 15-minute interval lands: the trade
-		// plan is due at 09:15, 11:15 and 13:15 IST, not 09:22.
+		// plan is due at 09:05, 11:15 and 13:15 IST, not 09:22.
 		wait := time.Duration(secs) * time.Second
 		reason := "interval"
 		if d := schedule.UntilNextSlot(time.Now().UTC()); d > 0 && d < wait {
