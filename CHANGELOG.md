@@ -1,3 +1,36 @@
+## v1.0.8
+
+The daily plans ask at 09:05 instead of at midnight, and the model is handed lists it is allowed
+to buy rather than lists its own mandate says to refuse.
+
+### Added
+
+- **A steady half of the long-term list.** The stock plan was offered only the week's ten biggest
+  movers, while its mandate says not to chase a vertical run. Beside them it now gets up to five
+  names above their 50-day and within 3% of their 200-day average — the boring case the mandate
+  asks for.
+- **The averages the prompt already demanded.** Every candidate line now ends with its distance
+  from the 50- and 200-day average, computed from the year of closes the sweep fetches anyway.
+
+### Changed
+
+- **The daily plans ask at the open, not at midnight.** `stock_plan_last` and `mf_plan_last` were
+  gated on the IST day alone, so the first tick after midnight asked the model with the exchange
+  shut. Both now wait for 09:05 IST, and the first trade slot moved from 09:15 to 09:05 so the
+  loop wakes for it. The audit's run cards say `once a day, at 09:05 IST`.
+- **A skipped plan says why.** Every early return logs `plan skipped` with its reason at info
+  level; before, a skip wrote nothing, so a quiet day and a broken scheduler looked identical.
+- **`plan_stock_v1` asks for deployment.** Cash is a position, not the goal: a pass must name the
+  rule each candidate failed, and a name that clears every rule should be bought rather than
+  waited on.
+- **`plan_trade_v1` stops rejecting a move for being a move.** A 15–20% day needs a dated
+  catalyst; the band filter already removes the names at the circuit.
+
+### Fixed
+
+- **The fund plan no longer re-offers funds you already hold**, and an instrument with no NAV is
+  skipped instead of failing the whole list.
+
 ## v1.0.7
 
 A manual run closes once, a decision says which call wrote it, and the settings cards stop
