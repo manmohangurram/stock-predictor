@@ -69,6 +69,30 @@ func TestTheLineTheModelReadsNamesTheWindow(t *testing.T) {
 	}
 }
 
+func TestTheLineCarriesBothAveragesThePromptAsksFor(t *testing.T) {
+	d50, d200 := 100.0, 80.0
+	line := Pick{Symbol: "ABB.NS", Name: "ABB India", Close: 110, Ret5: 0.02, DMA50: &d50, DMA200: &d200}.Line("INR")
+	if !contains(line, "+10.0% against its 50-day") || !contains(line, "+37.5% against its 200-day") {
+		t.Fatalf("%q", line)
+	}
+	if got := (Pick{Symbol: "S.NS", Name: "S", Close: 110, Ret5: 0.02}).Line("INR"); contains(got, "day") {
+		t.Fatalf("a short series must not invent an average: %q", got)
+	}
+}
+
+func TestAnAverageNeedsAFullWindow(t *testing.T) {
+	full := make([]float64, 200)
+	for i := range full {
+		full[i] = 100
+	}
+	if got, ok := average(full, 200); !ok || got != 100 {
+		t.Fatalf("%v %v", got, ok)
+	}
+	if _, ok := average(full[:199], 200); ok {
+		t.Fatal("199 closes is not a 200-day average")
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

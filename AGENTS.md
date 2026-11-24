@@ -93,9 +93,9 @@ files directly when you need exact wording.
 - Prompt files: `prompts/{decide_v1,escalate_v1,rotate_v1,trend_v1,short_v1,plan_stock_v1,plan_mf_v1}.md`.
   Two book calls, two books, two purses: `plan_stock_v1` (whole stock book, 0–3 moves, every buy
   carries a stop and target, stored as one `plan_id` group) and `plan_mf_v1` (fund book only, 0–2
-  moves sized in rupees, no stops — a fund has no price to stop at). The fund plan is asked on the
-  first tick of each IST day (`mf_plan_last`), whether or not the scan ran that tick — so a restart
-  at noon still asks. **Both** plans are once-a-day book decisions (`stock_plan_last` /
+  moves sized in rupees, no stops — a fund has no price to stop at). Both daily plans are asked on
+  the first tick at or after 09:05 IST (`stock_plan_last` / `mf_plan_last`), whether or not the scan
+  ran that tick — so a restart at noon still asks. **Both** plans are once-a-day book decisions (`stock_plan_last` /
   `mf_plan_last`); per-stock calls cover the intraday. `plan_v1` still resolves to the stock prompt
   for old audit rows.
 - The short-term list is asked once per IST day (`trend_list_last`) and stored in

@@ -443,7 +443,7 @@ func pollLoop(ctx context.Context, pool *sql.DB, cfg *config.Config, manual <-ch
 			secs = 60
 		}
 		// Wake on the slot boundary rather than wherever a 15-minute interval lands: the trade
-		// plan is due at 09:15, 11:15 and 13:15 IST, not 09:22.
+		// plan is due at 09:05, 11:15 and 13:15 IST, not 09:22.
 		wait := time.Duration(secs) * time.Second
 		reason := "interval"
 		if d := schedule.UntilNextSlot(time.Now().UTC()); d > 0 && d < wait {

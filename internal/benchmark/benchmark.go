@@ -31,12 +31,24 @@ type Pick struct {
 	Name   string
 	Close  float64
 	Ret5   float64
+	DMA50  *float64
+	DMA200 *float64
 }
 
-// The one line the plan prompt reads.
+// The one line the plan prompt reads. The averages are what the prompt's "confirmed trend"
+// test needs; a series too short to have them is offered without them rather than with a zero.
 func (p Pick) Line(currency string) string {
-	return fmt.Sprintf("%s %s at %.2f %s, %+.2f%% over %d sessions",
+	line := fmt.Sprintf("%s %s at %.2f %s, %+.2f%% over %d sessions",
 		p.Symbol, p.Name, p.Close, currency, p.Ret5*100.0, Sessions)
+	if p.DMA50 != nil && *p.DMA50 > 0 && p.DMA200 != nil && *p.DMA200 > 0 {
+		return line + fmt.Sprintf(", %+.1f%% against its 50-day and %+.1f%% against its 200-day",
+			(p.Close-*p.DMA50) / *p.DMA50 * 100, (p.Close-*p.DMA200) / *p.DMA200 * 100)
+	}
+	if p.DMA200 != nil && *p.DMA200 > 0 {
+		return line + fmt.Sprintf(", %+.1f%% against its 200-day",
+			(p.Close-*p.DMA200) / *p.DMA200 * 100)
+	}
+	return line
 }
 
 // Company Name,Industry,Symbol,Series,ISIN Code — the symbol is bare (ABB), Yahoo wants .NS.
@@ -91,11 +103,39 @@ func Measure(m market.MarketSource, symbol, name string) (Pick, bool) {
 	for i, b := range bars {
 		closes[i] = b.Close
 	}
+	return pickFrom(symbol, name, closes)
+}
+
+// The mean of the last n closes, or false when the series does not reach that far.
+func average(closes []float64, n int) (float64, bool) {
+	if n <= 0 || len(closes) < n {
+		return 0, false
+	}
+	sum := 0.0
+	for _, c := range closes[len(closes)-n:] {
+		if isNaN(c) || isInf(c) || c <= 0 {
+			return 0, false
+		}
+		sum += c
+	}
+	return sum / float64(n), true
+}
+
+// One pick from a series: the five-session return and the two averages. Both averages come from
+// closes already in hand, so they cost no extra request.
+func pickFrom(symbol, name string, closes []float64) (Pick, bool) {
 	ret, ok := ReturnOver(closes, Sessions)
 	if !ok {
 		return Pick{}, false
 	}
-	return Pick{Symbol: symbol, Name: name, Close: closes[len(closes)-1], Ret5: ret}, true
+	p := Pick{Symbol: symbol, Name: name, Close: closes[len(closes)-1], Ret5: ret}
+	if v, ok := average(closes, 50); ok {
+		p.DMA50 = &v
+	}
+	if v, ok := average(closes, 200); ok {
+		p.DMA200 = &v
+	}
+	return p, true
 }
 
 // Positive first, then ranked, then cut to top.
@@ -157,15 +197,9 @@ func DailyList(pool *sql.DB, m market.MarketSource, now time.Time) ([]Pick, erro
 			return nil, err
 		}
 		for _, c := range constituents {
-			series := closes[c.Symbol]
-			ret, ok := ReturnOver(series, Sessions)
-			if !ok {
-				continue
+			if p, ok := pickFrom(c.Symbol, c.Name, closes[c.Symbol]); ok {
+				measured = append(measured, p)
 			}
-			measured = append(measured, Pick{
-				Symbol: c.Symbol, Name: c.Name,
-				Close: series[len(series)-1], Ret5: ret,
-			})
 		}
 	} else {
 		for i, c := range constituents {
@@ -209,7 +243,7 @@ func getMarker(pool *sql.DB) string {
 
 func load(pool *sql.DB, day string) ([]Pick, error) {
 	rows, err := pool.Query(
-		"SELECT symbol, name, close, ret5 FROM plan_candidates WHERE day = ? ORDER BY ret5 DESC", day)
+		"SELECT symbol, name, close, ret5, dma50, dma200 FROM plan_candidates WHERE day = ? ORDER BY ret5 DESC", day)
 	if err != nil {
 		return nil, err
 	}
@@ -217,8 +251,15 @@ func load(pool *sql.DB, day string) ([]Pick, error) {
 	out := []Pick{}
 	for rows.Next() {
 		var p Pick
-		if err := rows.Scan(&p.Symbol, &p.Name, &p.Close, &p.Ret5); err != nil {
+		var dma50, dma200 sql.NullFloat64
+		if err := rows.Scan(&p.Symbol, &p.Name, &p.Close, &p.Ret5, &dma50, &dma200); err != nil {
 			return nil, err
+		}
+		if dma50.Valid {
+			p.DMA50 = &dma50.Float64
+		}
+		if dma200.Valid {
+			p.DMA200 = &dma200.Float64
 		}
 		out = append(out, p)
 	}
@@ -227,10 +268,10 @@ func load(pool *sql.DB, day string) ([]Pick, error) {
 
 func store(pool *sql.DB, day string, p Pick, now time.Time) error {
 	_, err := pool.Exec(
-		`INSERT INTO plan_candidates (day, symbol, name, close, ret5, added_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+		`INSERT INTO plan_candidates (day, symbol, name, close, ret5, dma50, dma200, added_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(day, symbol) DO NOTHING`,
-		day, p.Symbol, p.Name, p.Close, p.Ret5, tstamp.From(now),
+		day, p.Symbol, p.Name, p.Close, p.Ret5, p.DMA50, p.DMA200, tstamp.From(now),
 	)
 	return err
 }
