@@ -13,6 +13,17 @@ const BandMult = 1.0
 
 const MinBars = 200
 
+// The series that is kept in full, and the fold that carries everything older.
+//
+// 200-70 = 10 x 13 and 252-70 = 14 x 13: with these two numbers both long windows end exactly on a
+// bucket boundary, so a folded series gives the same 200-day mean and the same 52-week range as the
+// dense one, instead of a mean that includes part of a bucket it cannot see inside.
+const (
+	DailyFloor     = 70
+	BucketSessions = 13
+	BucketKeep     = 20
+)
+
 type Indicators struct {
 	SMA50  float64 `json:"sma50"`
 	SMA200 float64 `json:"sma200"`
@@ -60,6 +71,102 @@ func ComputeIndicators(bars []models.Bar) (Indicators, error) {
 		return Indicators{}, IndicatorError{Msg: "non-finite indicator value — bad input series"}
 	}
 	return ind, nil
+}
+
+// ComputeIndicatorsFrom is ComputeIndicators over the folded series: the newest daily rows, then
+// buckets for everything older. The short indicators can only come from daily rows — RSI and ATR
+// need individual sessions, not means — while the 200-day mean and the 52-week range walk both.
+func ComputeIndicatorsFrom(daily []models.Bar, buckets []models.Bucket) (Indicators, error) {
+	if len(daily) < 50 {
+		return Indicators{}, IndicatorError{Msg: fmt.Sprintf("insufficient daily bars: need 50, got %d", len(daily))}
+	}
+	ind := Indicators{
+		SMA50: meanCloses(daily, len(daily)-50, len(daily)),
+		RSI14: rsi(daily, 14),
+		ATR14: atr(daily, 14),
+	}
+	sma200, ok := windowMean(daily, buckets, 200)
+	if !ok {
+		return Indicators{}, IndicatorError{Msg: "insufficient history for the 200-day mean"}
+	}
+	ind.SMA200 = sma200
+	high, low, ok := windowRange(daily, buckets, 252)
+	if !ok {
+		return Indicators{}, IndicatorError{Msg: "insufficient history for the 52-week range"}
+	}
+	ind.High52, ind.Low52 = high, low
+	if !isFinite(ind.SMA50) || !isFinite(ind.SMA200) || !isFinite(ind.RSI14) ||
+		!isFinite(ind.ATR14) || !isFinite(ind.High52) || !isFinite(ind.Low52) {
+		return Indicators{}, IndicatorError{Msg: "non-finite indicator value — bad input series"}
+	}
+	return ind, nil
+}
+
+// The newest sessions, newest first: daily rows one at a time, then the buckets, oldest bucket last.
+type sessionRun struct {
+	sessions int
+	mean     float64
+	high     float64
+	low      float64
+}
+
+func newestFirst(daily []models.Bar, buckets []models.Bucket) []sessionRun {
+	out := make([]sessionRun, 0, len(daily)+len(buckets))
+	for i := len(daily) - 1; i >= 0; i-- {
+		out = append(out, sessionRun{1, daily[i].Close, daily[i].High, daily[i].Low})
+	}
+	for i := len(buckets) - 1; i >= 0; i-- {
+		out = append(out, sessionRun{buckets[i].Sessions, buckets[i].Mean, buckets[i].High, buckets[i].Low})
+	}
+	return out
+}
+
+// The mean of the newest window sessions. A window that ends inside a bucket uses the bucket's mean
+// for the sessions it takes — the fold cannot see inside — which is why the sizes are chosen so that
+// a full series never lands there.
+func windowMean(daily []models.Bar, buckets []models.Bucket, window int) (float64, bool) {
+	sum, count := 0.0, 0
+	for _, r := range newestFirst(daily, buckets) {
+		if count >= window {
+			break
+		}
+		take := r.sessions
+		if count+take > window {
+			take = window - count
+		}
+		sum += r.mean * float64(take)
+		count += take
+	}
+	if count < window {
+		return 0, false
+	}
+	return sum / float64(count), true
+}
+
+// The highest high and lowest low over the newest window sessions. A window that starts inside a
+// bucket stops at the last whole run rather than counting a high from a session outside the window,
+// so the range can be short but never overstated.
+func windowRange(daily []models.Bar, buckets []models.Bucket, window int) (float64, float64, bool) {
+	high, low, count := math.Inf(-1), math.Inf(1), 0
+	for _, r := range newestFirst(daily, buckets) {
+		if count >= window {
+			break
+		}
+		if r.sessions > window-count {
+			break
+		}
+		if r.high > high {
+			high = r.high
+		}
+		if r.low < low {
+			low = r.low
+		}
+		count += r.sessions
+	}
+	if count == 0 {
+		return 0, 0, false
+	}
+	return high, low, true
 }
 
 func ATRBands(lastClose, atr14 float64) Bands {

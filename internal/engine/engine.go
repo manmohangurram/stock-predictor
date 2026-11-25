@@ -802,7 +802,7 @@ func gather(deps *EngineDeps, instrument models.Instrument, now time.Time) (*gat
 	if err := store.Bars(deps.Pool, instrument.ID, bars); err != nil {
 		return nil, err
 	}
-	ind, err := rules.ComputeIndicators(bars)
+	ind, err := indicatorsFor(deps, instrument, bars, staleDaily)
 	indOK := err == nil
 	if err != nil {
 		slog.Debug("not enough history for indicators", "symbol", instrument.Symbol, "bars", len(bars))
@@ -891,6 +891,19 @@ func priceOnlyExit(deps *EngineDeps, instrument models.Instrument, g *gathered, 
 		sizing: sizing{available: g.available},
 		now:    now,
 	}, report)
+}
+
+// A refused fetch falls back to the stored series, which may be folded into buckets. The indicators
+// then come from the same walk the dense series gives; with no buckets nothing changes.
+func indicatorsFor(deps *EngineDeps, instrument models.Instrument, bars []models.Bar, stale bool) (rules.Indicators, error) {
+	if !stale {
+		return rules.ComputeIndicators(bars)
+	}
+	daily, buckets, err := store.DailyWithBuckets(deps.Pool, instrument.ID, rules.DailyFloor, rules.BucketKeep)
+	if err != nil || len(buckets) == 0 {
+		return rules.ComputeIndicators(bars)
+	}
+	return rules.ComputeIndicatorsFrom(daily, buckets)
 }
 
 // A refused daily fetch falls back to the stored series: the price is the tape's, the indicators lag.
