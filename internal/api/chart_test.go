@@ -69,3 +69,23 @@ func TestTheChartRangePicksTheRightSeries(t *testing.T) {
 		t.Fatal("no message")
 	}
 }
+
+// A short window wants intraday bars, longer ones daily — except a fund, which has no intraday at all.
+func TestACustomWindowAsksForTheIntervalItsSpanDeserves(t *testing.T) {
+	for _, tc := range []struct {
+		span time.Duration
+		fund bool
+		want string
+	}{
+		{24 * time.Hour, false, "15m"},
+		{48 * time.Hour, false, "15m"},
+		{72 * time.Hour, false, "60m"},
+		{14 * 24 * time.Hour, false, "60m"},
+		{90 * 24 * time.Hour, false, "1d"},
+		{3 * 24 * time.Hour, true, "1d"},
+	} {
+		if got := customInterval(tc.span, tc.fund); got != tc.want {
+			t.Fatalf("%v fund=%v: %s, wanted %s", tc.span, tc.fund, got, tc.want)
+		}
+	}
+}
