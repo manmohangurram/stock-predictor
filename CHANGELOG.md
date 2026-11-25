@@ -1,3 +1,46 @@
+## v1.1.0
+
+The stored tape is a fraction of its old size: history folds into wide buckets, the chart draws a
+range on demand, and both lists are ordered by the time they show.
+
+### Added
+
+- **A range control on the instrument chart.** 1D · 1W · 1M · 3M · 6M · 1Y sits under the
+  Price/NAV panel: a day and a week come live from the exchange, a month and three months from the
+  daily rows, six months and a year from the buckets. A fund offers only the four daily ranges,
+  because it publishes one NAV a day and has no intraday series at all. The header note names the
+  series actually drawn — `70 points · daily`, `25 points · 15-minute` — instead of always saying
+  "daily close".
+- **`GET /api/instruments/:symbol/chart?range=…`** answers one range at the resolution that fits
+  it, and a `custom` window (`from`, `to`) live at the interval its span deserves.
+- **A stored plan pushes once.** A plan that writes moves sends one notification (`trade plan · 1
+  move waiting`), high priority when it sells, deduped on the plan id so a retry does not buzz
+  twice. Before this, only per-stock decisions and trade expiries were pushed, so a book that had
+  moved to plans was silent.
+
+### Changed
+
+- **History is stored in tiers, not one dense row per session.** `bars` keeps the newest 70 daily
+  rows; everything older folds into 13-session buckets — open from the first session, high the
+  max, low the min, close from the last, volume summed — and only the newest 20 buckets are kept.
+  90 rows where there used to be ~400, with the 200-day mean and the 52-week high/low unchanged to
+  `1e-9`, because both windows end on a bucket boundary. A database written before this release
+  converts itself on the first daily write.
+- **The tape asks for one day, not five.** The prompt reads four hours (`PROMPT_WINDOW_HOURS`) and
+  the tape is never stored, so the five-day request was four days of bytes nobody read on every
+  poll. Same tape, a fifth of the payload.
+- **"Last ran" and the dashboard's version tag follow the clock.** Both were keyed on `id`, and
+  ids written before the uuid rewrite are random, so a schedule card could keep showing an older
+  run and a changed page could answer `304`.
+
+### Fixed
+
+- **The audit and the decisions are ordered by the time they show**, with the id as the tiebreak
+  inside one instant. Both were ordered by a primary key that is not chronological for rows
+  written before the uuid migration.
+- **A custom chart window on a fund asks for daily bars**, not hourly: a fund has one NAV a day,
+  and the intraday request answered 404.
+
 ## v1.0.8
 
 The daily plans ask at 09:05 instead of at midnight, and the model is handed lists it is allowed
