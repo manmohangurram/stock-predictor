@@ -248,10 +248,10 @@ func dashboardETag(pool *sql.DB, mode models.Mode) (string, error) {
 	var pending, instruments int64
 	var signals, trades, ledger, positions, settings string
 	err := pool.QueryRow(
-		`SELECT (SELECT COALESCE(MAX(id),'') FROM signals WHERE mode = ?) AS signals,
+		`SELECT (SELECT COALESCE(MAX(created_at),'') FROM signals WHERE mode = ?) AS signals,
                 (SELECT COUNT(*) FROM signals WHERE mode = ? AND status = 'pending') AS pending,
-                (SELECT COALESCE(MAX(id),'') FROM trades WHERE mode = ?) AS trades,
-                (SELECT COALESCE(MAX(id),'') FROM cash_ledger WHERE mode = ?) AS ledger,
+                (SELECT COALESCE(MAX(traded_at),'') FROM trades WHERE mode = ?) AS trades,
+                (SELECT COALESCE(MAX(ts),'') FROM cash_ledger WHERE mode = ?) AS ledger,
                 (SELECT COALESCE(group_concat(id || ':' || qty || ':' || avg_cost || ':'
                          || COALESCE(stop, '') || ':' || COALESCE(target, '') || ':' || state), '')
                    FROM positions WHERE mode = ?) AS positions,

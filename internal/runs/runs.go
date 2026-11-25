@@ -129,7 +129,7 @@ func Recent(pool *sql.DB, limit int64) ([]Run, error) {
 	rows, err := pool.Query(
 		`SELECT id, prompt, trigger, status, started_at, finished_at, summary,
                 conversation_id, error
-         FROM runs ORDER BY id DESC LIMIT ?`, limit,
+         FROM runs ORDER BY started_at DESC, id DESC LIMIT ?`, limit,
 	)
 	if err != nil {
 		return nil, err
@@ -138,12 +138,16 @@ func Recent(pool *sql.DB, limit int64) ([]Run, error) {
 }
 
 // The most recent run of each prompt — one row per scheduled kind, however long ago it ran.
+//
+// By started_at, not by MAX(id): the uuid rewrite gave every older run a random id, so the key
+// was not a clock and "last ran" kept showing an older run after a successful one.
 func LatestByPrompt(pool *sql.DB) ([]Run, error) {
 	rows, err := pool.Query(
 		`SELECT id, prompt, trigger, status, started_at, finished_at, summary,
                 conversation_id, error
          FROM runs r
-         WHERE r.id = (SELECT MAX(id) FROM runs x WHERE x.prompt = r.prompt)
+         WHERE r.id = (SELECT x.id FROM runs x WHERE x.prompt = r.prompt
+                       ORDER BY x.started_at DESC, x.id DESC LIMIT 1)
          ORDER BY r.prompt`,
 	)
 	if err != nil {

@@ -530,6 +530,7 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 			slog.Info("trade plan swept its glances", "dropped", dropped)
 		}
 	}
+	notifyPlan(deps, scope, plan, planID, settings.Currency)
 	noun := "moves"
 	if len(plan.Moves) == 1 {
 		noun = "move"
@@ -691,6 +692,71 @@ func PlanTrade(deps *EngineDeps, now time.Time, run *string) (bool, string, erro
 // The fund plan, run once a day after the arithmetic scan has ranked today's funds.
 func PlanFunds(deps *EngineDeps, now time.Time, run *string) (bool, string, error) {
 	return planBook(deps, now, llm.ScopeFund, run)
+}
+
+// A stored plan is the one decision that arrives without a per-stock call, so without this it
+// would reach the queue silently. One push per plan: the legs are one decision, not three.
+func notifyPlan(deps *EngineDeps, scope llm.Scope, plan llm.Plan, planID *string, currency string) {
+	if deps.Notifier == nil || planID == nil || len(plan.Moves) == 0 {
+		return
+	}
+	lines := make([]string, 0, len(plan.Moves))
+	high := false
+	symbol := ""
+	for _, m := range plan.Moves {
+		name := m.Symbol
+		if got, err := instrumentName(deps.Pool, m.Symbol); err == nil && got != "" {
+			name = got
+		}
+		qty, price := 0.0, 0.0
+		if m.Qty != nil {
+			qty = *m.Qty
+		}
+		if m.Price != nil {
+			price = *m.Price
+		}
+		units := m.Amount != nil && *m.Amount > 0
+		switch {
+		case m.Action == models.ActionSell && units:
+			lines = append(lines, fmt.Sprintf("SELL %s · %.0f %s", name, *m.Amount, currency))
+		case m.Action == models.ActionSell:
+			lines = append(lines, fmt.Sprintf("SELL %s · %.0f units", name, qty))
+		case units:
+			lines = append(lines, fmt.Sprintf("BUY %s · %.0f %s", name, *m.Amount, currency))
+		default:
+			lines = append(lines, fmt.Sprintf("BUY %s · %.0f units at %.2f", name, qty, price))
+		}
+		if m.Action == models.ActionSell {
+			high = true
+		}
+		if symbol == "" {
+			symbol = m.Symbol
+		}
+	}
+	noun := "moves"
+	if len(plan.Moves) == 1 {
+		noun = "move"
+	}
+	priority := notify.PriorityDefault
+	if high {
+		priority = notify.PriorityHigh
+	}
+	_, err := notify.Dispatch(deps.Pool, deps.Notifier, notify.Notification{
+		Title:     fmt.Sprintf("%s plan · %d %s waiting", scope.PurseName(), len(plan.Moves), noun),
+		Body:      strings.Join(lines, " · "),
+		Priority:  priority,
+		DedupeKey: "plan-" + *planID,
+		Symbol:    symbol,
+	})
+	if err != nil {
+		slog.Warn("plan push failed", "error", err)
+	}
+}
+
+func instrumentName(pool *sql.DB, symbol string) (string, error) {
+	var name string
+	err := pool.QueryRow("SELECT name FROM instruments WHERE symbol = ?", symbol).Scan(&name)
+	return name, err
 }
 
 // The symbols that are mutual funds, so the plan's money can be counted per purse.
