@@ -46,7 +46,37 @@ func TestASymbolNamedTwiceIsOneRowAndTheExchangeKeepsIt(t *testing.T) {
 		t.Fatalf("the row with a price wins: %+v", tata)
 	}
 	if out[0].symbol != "TATAMOTORS.NS" {
-		t.Fatal("ranked by change, unpriced last")
+		t.Fatal("ranked by the money moved, unpriced last")
+	}
+}
+
+// One real session: three names up 10-11% on small money, and the two biggest turnovers up 3-4%.
+// The list and its evidence budget follow the rupees, not the percentage.
+func TestTheListFollowsTheMoneyNotThePercentage(t *testing.T) {
+	moved := func(symbol string, pct, turnover float64) candidate {
+		return candidate{
+			symbol:        symbol,
+			source:        "gainers",
+			ltp:           f64(100),
+			changePct:     f64(pct),
+			previousClose: f64(99),
+			turnover:      f64(turnover),
+		}
+	}
+	out := dedupe([]candidate{
+		moved("SCPL.NS", 11.25, 125_800_000),
+		moved("ITI.NS", 11.12, 13_480_300_000),
+		moved("SAMBHV.NS", 10.69, 4_000_600_000),
+		moved("ABINFRA.NS", 10.32, 35_600_000),
+		moved("TCS.NS", 3.53, 18_189_000_000),
+	})
+	got := []string{}
+	for _, c := range out {
+		got = append(got, c.symbol)
+	}
+	want := "ITI.NS TCS.NS SAMBHV.NS SCPL.NS ABINFRA.NS"
+	if strings.Join(got, " ") != want {
+		t.Fatalf("%v, wanted %s", got, want)
 	}
 }
 
