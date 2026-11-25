@@ -1,22 +1,33 @@
 <script setup lang="ts">
 /** Daily close with real axes: price down the left, dates along the bottom, averages where they belong. */
 import { computed } from "vue";
-import type { Analysis } from "../api";
+import type { Analysis, BarPoint } from "../api";
 import { day, money } from "../format";
 import { LineChart } from "lucide-vue-next";
 import AppEmpty from "./ui/AppEmpty.vue";
 
 const props = withDefaults(
-    defineProps<{ analysis: Analysis; compact?: boolean }>(),
+    defineProps<{
+        analysis: Analysis;
+        bars?: BarPoint[];
+        empty?: string;
+        compact?: boolean;
+    }>(),
     {
         compact: false,
     },
 );
 const a = computed(() => props.analysis);
+const series = computed(() => props.bars ?? a.value.bars);
+const emptyText = computed(
+    () =>
+        props.empty ??
+        "No price history stored yet — open this instrument once the next poll has run.",
+);
 
 /** The phone's tape: the shape of the move, no axes, stretched to the card. */
 const spark = computed(() => {
-    const bars = a.value.bars;
+    const bars = series.value;
     if (bars.length < 2) return null;
     const closes = bars.map((b) => b.close);
     const lo = Math.min(...closes);
@@ -47,7 +58,7 @@ const top = 12;
 const bottom = 26;
 
 const geo = computed(() => {
-    const closes = a.value.bars.map((b) => b.close);
+    const closes = series.value.map((b) => b.close);
     if (closes.length < 2) return null;
     const fund = a.value.instrument.class === "mutual_fund";
     // A fund's exit is a NAV: the return the owner asked for, on what they paid.
@@ -129,12 +140,7 @@ const refs = computed(() => {
 </script>
 
 <template>
-    <AppEmpty
-        v-if="!geo"
-        compact
-        :icon="LineChart"
-        text="No price history stored yet — open this instrument once the next poll has run."
-    />
+    <AppEmpty v-if="!geo" compact :icon="LineChart" :text="emptyText" />
     <figure v-else-if="compact && spark" class="spark">
         <svg
             viewBox="0 0 1000 240"
@@ -292,7 +298,7 @@ const refs = computed(() => {
                     font-family="var(--font-ledger)"
                     fill="var(--ink-tertiary)"
                 >
-                    {{ day(a.bars[i].ts) }}
+                    {{ day(series[i].ts) }}
                 </text>
             </template>
         </svg>
