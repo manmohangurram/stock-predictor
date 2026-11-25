@@ -411,6 +411,30 @@ func chartQuery(interval, rangeStr string, now time.Time) url.Values {
 	return q
 }
 
+// A window asked for explicitly, rather than a shorthand span: what a custom chart range needs.
+func fetchChartBetween(client *http.Client, symbol, interval string, from, to time.Time) ([]models.Bar, error) {
+	q := chartQuery(interval, "1d", to)
+	q.Set("period1", strconv.FormatInt(from.Unix(), 10))
+	q.Set("period2", strconv.FormatInt(to.Unix(), 10))
+	resp, err := getYahoo(client, chartPath+"/"+symbol+"?"+q.Encode())
+	if err != nil {
+		return nil, fmt.Errorf("chart: request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("chart: http status %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("chart: read body: %w", err)
+	}
+	bars, err := ParseChart(string(body))
+	if err != nil {
+		return nil, fmt.Errorf("chart: parse %s: %w", symbol, err)
+	}
+	return bars, nil
+}
+
 func fetchChart(client *http.Client, symbol, interval, rangeStr string) ([]models.Bar, error) {
 	q := chartQuery(interval, rangeStr, time.Now())
 	resp, err := getYahoo(client, chartPath+"/"+symbol+"?"+q.Encode())
@@ -575,6 +599,11 @@ func (y *YahooSource) Bars(symbol string) ([]models.Bar, error) {
 
 func (y *YahooSource) Intraday(symbol, interval, rangeStr string) ([]models.Bar, error) {
 	return FetchIntraday(y.client, symbol, interval, rangeStr)
+}
+
+// A window from the chart's custom range: live, never stored.
+func (y *YahooSource) Between(symbol, interval string, from, to time.Time) ([]models.Bar, error) {
+	return fetchChartBetween(y.client, symbol, interval, from, to)
 }
 
 func (y *YahooSource) News(symbol string) ([]models.Headline, error) {

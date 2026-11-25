@@ -172,6 +172,7 @@ func Router(st *AppState) *gin.Engine {
 
 	r.GET("/api/instruments/:symbol", func(c *gin.Context) { instrumentDetail(c, st) })
 	r.GET("/api/instruments/:symbol/analysis", func(c *gin.Context) { analysisHandler(c, st) })
+	r.GET("/api/instruments/:symbol/chart", func(c *gin.Context) { chartHandler(c, st) })
 	r.PUT("/api/instruments/:symbol/target-profit", func(c *gin.Context) { setTargetProfit(c, st) })
 	r.DELETE("/api/instruments/:symbol", func(c *gin.Context) { archiveInstrument(c, st) })
 	r.POST("/api/instruments/:symbol/restore", func(c *gin.Context) { restoreInstrument(c, st) })
