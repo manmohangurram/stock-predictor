@@ -1,3 +1,21 @@
+## v1.1.1
+
+The short-term list is ordered by the money that moved, so the evidence a plan reads goes to the
+liquid names rather than the biggest percentage on the smallest turnover.
+
+### Fixed
+
+- **The trade list ranks by rupees moved, not percentage.** It was ordered by `change_pct`, so a
+  micro cap up 11% on ₹12 crore outranked a large name up 3.5% on ₹1,819 crore — and because only
+  the first four kept names get tape, headlines and a web search, the evidence went to the vertical
+  runs the prompt's own mandate says not to chase. The key is now `turnover × change`: in the
+  session that exposed it, ITI (₹1.50 bn moved) and TCS (₹642 m) lead, and SCPL (₹14 m) drops to
+  fourth of five.
+- **A stored list keeps that order.** `trend_candidates` was read back with the same
+  `ORDER BY change_pct DESC`, so every call after the day's first would have served the old
+  ranking. The stored rows now go through the same sort, and the query's `ORDER BY` is only a
+  deterministic pre-sort.
+
 ## v1.1.0
 
 The stored tape is a fraction of its old size: history folds into wide buckets, the chart draws a
