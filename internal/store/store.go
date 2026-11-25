@@ -17,6 +17,26 @@ const upsertBar = `INSERT INTO bars (instrument_id, ts, open, high, low, close, 
 	   open = excluded.open, high = excluded.high, low = excluded.low,
 	   close = excluded.close, volume = excluded.volume, resolution = excluded.resolution`
 
+// ChartSeries is one resolution as a plain series, oldest first: a bucket presents its mean as the
+// close and its extremes as the range, so the chart draws it like any other row.
+func ChartSeries(pool *sql.DB, instrumentID, resolution string, limit int) ([]models.Bar, error) {
+	if resolution != "bucket" {
+		return barsAt(pool, instrumentID, resolution, limit)
+	}
+	buckets, err := bucketsOf(pool, instrumentID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]models.Bar, 0, len(buckets))
+	for _, b := range buckets {
+		out = append(out, models.Bar{
+			Ts: b.EndsOn, Open: b.Mean, High: b.High, Low: b.Low, Close: b.Mean,
+			Volume: int64(b.Sessions),
+		})
+	}
+	return out, nil
+}
+
 // The folded series a stored fallback needs: the newest daily rows in full, and the buckets that
 // carry everything older, oldest first.
 //

@@ -13,10 +13,12 @@ import (
 
 	"stock-predictor/internal/ledger"
 	"stock-predictor/internal/llm"
+	"stock-predictor/internal/market"
 	"stock-predictor/internal/models"
 	"stock-predictor/internal/rules"
 	"stock-predictor/internal/runs"
 	"stock-predictor/internal/schedule"
+	"stock-predictor/internal/store"
 	"stock-predictor/internal/trades"
 )
 
@@ -234,6 +236,87 @@ func analysisHandler(c *gin.Context, st *AppState) {
 		return
 	}
 	c.JSON(http.StatusOK, a)
+}
+
+// The chart's ranges. A day or a week comes live from the exchange and is never stored; a month or
+// more comes from the tiers — daily rows, then buckets. A custom window goes live at the interval
+// its span deserves.
+func chartHandler(c *gin.Context, st *AppState) {
+	symbol := c.Param("symbol")
+	var id string
+	if err := st.Pool.QueryRow(
+		"SELECT id FROM instruments WHERE symbol = ?", symbol).Scan(&id); err != nil {
+		respondErr(c, notFound("no such instrument"))
+		return
+	}
+	bars, resolution, err := chartSeries(st, id, symbol, c.DefaultQuery("range", "3m"),
+		c.Query("from"), c.Query("to"))
+	if err != nil {
+		respondErr(c, internalErr(err))
+		return
+	}
+	if bars == nil {
+		bars = []models.Bar{}
+	}
+	c.JSON(http.StatusOK, gin.H{"resolution": resolution, "bars": bars})
+}
+
+func chartSeries(st *AppState, id, symbol, rng, from, to string) ([]models.Bar, string, error) {
+	stored := func(resolution string, limit int) ([]models.Bar, string, error) {
+		bars, err := store.ChartSeries(st.Pool, id, resolution, limit)
+		return bars, resolution, err
+	}
+	switch rng {
+	case "1d":
+		bars, err := liveBars(st, symbol, "15m", "1d", time.Time{}, time.Time{})
+		return bars, "15m", err
+	case "1w":
+		bars, err := liveBars(st, symbol, "60m", "5d", time.Time{}, time.Time{})
+		return bars, "60m", err
+	case "1m":
+		return stored("daily", 30)
+	case "3m":
+		return stored("daily", models.DailyFloor)
+	case "6m":
+		if bars, err := store.ChartSeries(st.Pool, id, "bucket", 12); err == nil && len(bars) > 0 {
+			return bars, "bucket", nil
+		}
+		return stored("daily", models.DailyFloor)
+	case "1y":
+		if bars, err := store.ChartSeries(st.Pool, id, "bucket", models.BucketKeep); err == nil && len(bars) > 0 {
+			return bars, "bucket", nil
+		}
+		return stored("daily", models.DailyFloor)
+	}
+	start, startErr := time.Parse("2006-01-02", from)
+	end, endErr := time.Parse("2006-01-02", to)
+	if startErr != nil || endErr != nil || !end.After(start) {
+		return nil, "", fmt.Errorf("chart: a custom range needs from and to as YYYY-MM-DD")
+	}
+	interval := "1d"
+	switch span := end.Sub(start); {
+	case span <= 48*time.Hour:
+		interval = "15m"
+	case span <= 14*24*time.Hour:
+		interval = "60m"
+	}
+	bars, err := liveBars(st, symbol, interval, "1d", start, end.Add(24*time.Hour))
+	return bars, interval, err
+}
+
+func liveBars(st *AppState, symbol, interval, span string, from, to time.Time) ([]models.Bar, error) {
+	rt, err := rules.LoadRuntime(st.Pool)
+	if err != nil {
+		return nil, err
+	}
+	source, err := market.NewYahooSource(&rt)
+	if err != nil {
+		return nil, err
+	}
+	if from.IsZero() {
+		return source.Intraday(symbol, interval, span)
+	}
+	return source.Between(symbol, interval, from, to)
 }
 
 func instrumentDetail(c *gin.Context, st *AppState) {
