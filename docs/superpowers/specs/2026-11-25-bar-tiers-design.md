@@ -11,9 +11,10 @@ anything reads.
 
 Measured today:
 
-- **Stored per instrument:** up to 400 daily closes, plus 5 days of 15-minute bars — and those 5
-  days are re-fetched and re-written **on every poll** (`Intraday(symbol, "15m", "5d")`,
-  `engine.go:860`). About **525 rows**, of which the useful ones are the newest 25.
+- **Stored per instrument:** up to 400 daily closes, never pruned. No intraday row is stored:
+  the tape is fetched on every poll (`Intraday(symbol, "15m", "5d")`, `gather`) and thrown away
+  once the prompt is rendered. So the table grows in one direction only, and every one of those 400
+  rows is fetched from a year-long request.
 - **Read by the model:** the per-stock decision reads **16 tape lines** (4 hours of 15-minute
   bars), **10 daily closes**, and **six indicator numbers**. The plan prompts read no series at
   all.
@@ -31,13 +32,14 @@ per period — never a dense copy beside a bucketed one.
 
 | tier | rows | what |
 |---|---|---|
-| today | 25 | 15-minute bars, 09:15–15:30 IST |
-| last week | 31 | 60-minute bars, five sessions (Yahoo has no 2-hour interval) |
 | last ~3 months | 70 | daily closes, exact |
 | months 3–12 | 20 | **buckets of 13 sessions**: mean close, highest high, lowest low, session count |
 
-**146 rows per instrument** instead of ~525. A bucket row stores the session count so a weighted
-mean is exact, not an average of averages.
+Intraday stays out of the table entirely. The tape is a transient read for the prompt, and the
+chart's intraday ranges come from a live fetch, not from storage.
+
+**90 rows per instrument** instead of up to 400. A bucket row stores the session count so a
+weighted mean is exact, not an average of averages.
 
 **Why 70 and 13.** Both indicator windows must land exactly on a bucket boundary, or the 200-day
 mean includes part of a bucket it cannot see inside: 200 − 70 = 130 = 10 × 13, and 252 − 70 = 182 =
@@ -60,11 +62,13 @@ produce the same six numbers as `ComputeIndicators` on the dense series (float t
 
 ## What is fetched
 
-| window | query | cadence |
-|---|---|---|
-| the session | `interval=15m`, `period1` = today's 09:15 IST, `period2` = now | every poll |
-| the week | `interval=60m`, last 5 days | once per IST day |
-| the year | `interval=1d`, last 400 days | once per IST day (already cached per symbol per IST day) |
+| window | query | cadence | stored? |
+|---|---|---|---|
+| the session | `interval=15m`, `period1` = today's 09:15 IST, `period2` = now | every poll | no — the prompt's tape |
+| the year | `interval=1d`, last 400 days | once per IST day (already cached per symbol per IST day) | yes — 70 daily + 20 buckets |
+
+The 5-day, 15-minute fetch that runs on every poll today shrinks to today's session: same tape for
+the prompt, a fraction of the bytes.
 
 Yahoo accepts `period1`/`period2` and the client already sends them (`chartQuery`); only the span
 is a shorthand today.
@@ -73,7 +77,6 @@ is a shorthand today.
 
 | rows | keep | why |
 |---|---|---|
-| 15m, 60m | 10 days | the tape window is 4 hours; ten days covers a long weekend and a holiday week |
 | daily | 70 | SMA50, RSI14, ATR14 need the individual closes |
 | bucket | 20 | 260 sessions, so SMA200 and the 52-week range survive |
 
@@ -89,8 +92,9 @@ For each instrument, once:
 1. keep the newest 70 daily rows as they are;
 2. collapse the rest of the daily series into 13-session buckets (`mean`, `max(high)`, `min(low)`,
    `count`), up to 20 buckets;
-3. delete the collapsed daily rows;
-4. keep only the newest 10 days of intraday rows.
+3. delete the collapsed daily rows.
+
+There is no intraday retention to enforce, because none is stored.
 
 After the migration there is exactly one representation of each period. A second run finds nothing
 to do.
