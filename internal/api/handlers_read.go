@@ -243,13 +243,13 @@ func analysisHandler(c *gin.Context, st *AppState) {
 // its span deserves.
 func chartHandler(c *gin.Context, st *AppState) {
 	symbol := c.Param("symbol")
-	var id string
+	var id, class string
 	if err := st.Pool.QueryRow(
-		"SELECT id FROM instruments WHERE symbol = ?", symbol).Scan(&id); err != nil {
+		"SELECT id, class FROM instruments WHERE symbol = ?", symbol).Scan(&id, &class); err != nil {
 		respondErr(c, notFound("no such instrument"))
 		return
 	}
-	bars, resolution, err := chartSeries(st, id, symbol, c.DefaultQuery("range", "3m"),
+	bars, resolution, err := chartSeries(st, id, symbol, class, c.DefaultQuery("range", "3m"),
 		c.Query("from"), c.Query("to"))
 	if err != nil {
 		respondErr(c, internalErr(err))
@@ -261,7 +261,7 @@ func chartHandler(c *gin.Context, st *AppState) {
 	c.JSON(http.StatusOK, gin.H{"resolution": resolution, "bars": bars})
 }
 
-func chartSeries(st *AppState, id, symbol, rng, from, to string) ([]models.Bar, string, error) {
+func chartSeries(st *AppState, id, symbol, class, rng, from, to string) ([]models.Bar, string, error) {
 	stored := func(resolution string, limit int) ([]models.Bar, string, error) {
 		bars, err := store.ChartSeries(st.Pool, id, resolution, limit)
 		return bars, resolution, err
@@ -293,15 +293,22 @@ func chartSeries(st *AppState, id, symbol, rng, from, to string) ([]models.Bar, 
 	if startErr != nil || endErr != nil || !end.After(start) {
 		return nil, "", fmt.Errorf("chart: a custom range needs from and to as YYYY-MM-DD")
 	}
-	interval := "1d"
-	switch span := end.Sub(start); {
-	case span <= 48*time.Hour:
-		interval = "15m"
-	case span <= 14*24*time.Hour:
-		interval = "60m"
-	}
+	interval := customInterval(end.Sub(start), class == "mutual_fund")
 	bars, err := liveBars(st, symbol, interval, "1d", start, end.Add(24*time.Hour))
 	return bars, interval, err
+}
+
+// A fund publishes one NAV a day, so a short custom window still asks for daily bars.
+func customInterval(span time.Duration, fund bool) string {
+	switch {
+	case fund:
+		return "1d"
+	case span <= 48*time.Hour:
+		return "15m"
+	case span <= 14*24*time.Hour:
+		return "60m"
+	}
+	return "1d"
 }
 
 func liveBars(st *AppState, symbol, interval, span string, from, to time.Time) ([]models.Bar, error) {

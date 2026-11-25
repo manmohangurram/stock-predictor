@@ -15,6 +15,7 @@ import {
 import {
     api,
     type Analysis,
+    type BarPoint,
     type InstrumentDetail,
     type SignalRow,
     type Trade,
@@ -24,6 +25,7 @@ import DeleteInstrument from "../components/DeleteInstrument.vue";
 import PriceChart from "../components/PriceChart.vue";
 import AppDateField from "../components/ui/AppDateField.vue";
 import AppEmpty from "../components/ui/AppEmpty.vue";
+import AppSegment from "../components/ui/AppSegment.vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -31,6 +33,11 @@ const analysis = ref<Analysis | null>(null);
 const detail = ref<InstrumentDetail | null>(null);
 const trades = ref<Trade[]>([]);
 const error = ref("");
+
+const range = ref("3m");
+const chart = ref<BarPoint[] | null>(null);
+const chartResolution = ref("");
+const chartNote = ref("");
 
 type Ledger = Analysis & { trades: Trade[] };
 
@@ -49,6 +56,9 @@ async function load(): Promise<void> {
         detail.value = a as unknown as InstrumentDetail;
         trades.value = a.trades ?? [];
         error.value = "";
+        if (!ranges.value.some((o) => o.value === range.value))
+            range.value = "3m";
+        await loadChart();
     } catch (e) {
         error.value = String(e);
     }
@@ -59,7 +69,10 @@ onMounted(() => {
     void load();
 });
 onBeforeUnmount(() => media.removeEventListener("change", onMedia));
-watch(symbol, load);
+watch(symbol, () => {
+    chart.value = null;
+    void load();
+});
 
 const a = computed(() => analysis.value);
 const inst = computed(() => a.value?.instrument);
@@ -71,6 +84,57 @@ const position = computed(() => a.value?.position ?? null);
 const klass = computed(() => inst.value?.class ?? "stock");
 const isFund = computed(() => klass.value === "mutual_fund");
 const archived = computed(() => !inst.value?.active);
+
+const rangeOptions = [
+    { value: "1d", label: "1D" },
+    { value: "1w", label: "1W" },
+    { value: "1m", label: "1M" },
+    { value: "3m", label: "3M" },
+    { value: "6m", label: "6M" },
+    { value: "1y", label: "1Y" },
+];
+// A fund publishes one NAV a day, so there is no day or week of intraday to ask for.
+const ranges = computed(() =>
+    isFund.value ? rangeOptions.slice(2) : rangeOptions,
+);
+
+const resolutionText = computed(() => {
+    switch (chartResolution.value) {
+        case "15m":
+            return "15-minute";
+        case "60m":
+            return "hourly";
+        case "bucket":
+            return "13-session average";
+        default:
+            return "daily";
+    }
+});
+
+const shown = computed(() => chart.value ?? a.value?.bars ?? []);
+const seriesNote = computed(() => {
+    const n = shown.value.length;
+    const points = `${n} ${n === 1 ? "point" : "points"}`;
+    return isFund.value
+        ? `${points} · NAV`
+        : `${points} · ${resolutionText.value}`;
+});
+
+async function loadChart(): Promise<void> {
+    if (!a.value) return;
+    try {
+        const r = await api.chart(symbol.value, range.value);
+        chart.value = r.bars;
+        chartResolution.value = r.resolution;
+        chartNote.value = "";
+    } catch (e) {
+        chart.value = [];
+        chartResolution.value = "";
+        chartNote.value = String(e);
+    }
+}
+
+watch(range, () => void loadChart());
 
 const ltp = computed(() =>
     a.value?.bars.length
@@ -431,13 +495,28 @@ const gone = (): void => void router.push("/archived");
         <section class="panel hero">
             <div class="panel-head">
                 <h2>{{ isFund ? "NAV" : "Price" }}</h2>
-                <span class="r">
-                    {{ a.bars.length }}
-                    {{ isFund ? "NAV points" : "sessions" }} ·
-                    {{ isFund ? "units are allotted at NAV" : "daily close" }}
-                </span>
+                <span class="r">{{ seriesNote }}</span>
             </div>
-            <PriceChart :analysis="a" :compact="compact" />
+            <PriceChart
+                :analysis="a"
+                :bars="chart ?? undefined"
+                :compact="compact"
+                :empty="
+                    chart
+                        ? 'No bars for this range — the exchange returned none.'
+                        : undefined
+                "
+            />
+            <div class="ranges">
+                <AppSegment
+                    v-model="range"
+                    :options="ranges"
+                    :label="`${isFund ? 'NAV' : 'Price'} history`"
+                />
+            </div>
+            <p v-if="chartNote" class="ranges-note" role="status">
+                {{ chartNote }}
+            </p>
             <div v-if="facts.length && !isFund" class="facts">
                 <span v-for="[k, v] in facts" :key="k"
                     ><em>{{ k }}</em> <b class="num">{{ v }}</b></span
@@ -1104,6 +1183,20 @@ const gone = (): void => void router.push("/archived");
 .hero {
     margin-top: 4px;
 }
+.ranges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px 14px;
+}
+.ranges-note {
+    margin: 0;
+    padding: 0 16px 8px;
+    font-size: 11.5px;
+    color: var(--ink-tertiary);
+}
 .hero :deep(.chart) {
     margin: 0;
     padding: 4px 8px 0;
@@ -1591,6 +1684,9 @@ const gone = (): void => void router.push("/archived");
     }
     .hero :deep(.spark) {
         padding: 4px 16px 0;
+    }
+    .ranges {
+        padding: 8px 16px 12px;
     }
     .only-desk {
         display: none;

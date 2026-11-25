@@ -551,6 +551,15 @@ export const api = {
     req<Trade[]>(`/api/instruments/${encodeURIComponent(symbol)}/trades`),
   analysis: (symbol: string) =>
     req<Analysis>(`/api/instruments/${encodeURIComponent(symbol)}/analysis`),
+  /** One range: a day or a week live from the exchange, a month and beyond from the stored tiers. */
+  chart: (symbol: string, range: string, from?: string, to?: string) => {
+    const q = new URLSearchParams({ range });
+    if (from) q.set("from", from);
+    if (to) q.set("to", to);
+    return req<{ resolution: string; bars: BarPoint[] }>(
+      `/api/instruments/${encodeURIComponent(symbol)}/chart?${q}`,
+    );
+  },
   search: (q: string) => req<Hit[]>(`/api/search?q=${encodeURIComponent(q)}`),
   setTargetProfit: (symbol: string, pct: number | null) =>
     req<{ symbol: string; target_profit_pct: number | null }>(
