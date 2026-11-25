@@ -13,15 +13,11 @@ const BandMult = 1.0
 
 const MinBars = 200
 
-// The series that is kept in full, and the fold that carries everything older.
-//
-// 200-70 = 10 x 13 and 252-70 = 14 x 13: with these two numbers both long windows end exactly on a
-// bucket boundary, so a folded series gives the same 200-day mean and the same 52-week range as the
-// dense one, instead of a mean that includes part of a bucket it cannot see inside.
+// The tier sizes live in models, because the writer needs them too; the reader names them here.
 const (
-	DailyFloor     = 70
-	BucketSessions = 13
-	BucketKeep     = 20
+	DailyFloor     = models.DailyFloor
+	BucketSessions = models.BucketSessions
+	BucketKeep     = models.BucketKeep
 )
 
 type Indicators struct {

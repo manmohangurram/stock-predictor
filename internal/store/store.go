@@ -126,7 +126,139 @@ func BarsAt(pool *sql.DB, instrumentID, resolution string, bars []models.Bar) er
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// A daily write is the only moment the series grows, so it is the only place the fold has to
+	// run: the dense tail is trimmed and everything older becomes a bucket.
+	if resolution == "daily" {
+		if _, _, err := FoldBars(pool, instrumentID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// FoldBars keeps the newest models.DailyFloor daily rows and folds everything older into buckets of
+// models.BucketSessions, so the table holds one shape per period. Idempotent: a second run finds
+// nothing above the floor and writes nothing.
+func FoldBars(pool *sql.DB, instrumentID string) (kept, folded int, err error) {
+	all, err := barsAt(pool, instrumentID, "daily", 1_000_000)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(all) <= models.DailyFloor {
+		return len(all), 0, nil
+	}
+	keepFrom := len(all) - models.DailyFloor
+	older := all[:keepFrom]
+	cut := all[keepFrom].Ts
+
+	// Groups are taken from the newest end of the folded run, so the boundary next to the daily rows
+	// is aligned; the remainder at the oldest end is one short bucket, far outside the windows.
+	buckets := []models.Bucket{}
+	for end := len(older); end > 0; {
+		start := end - models.BucketSessions
+		if start < 0 {
+			start = 0
+		}
+		buckets = append(buckets, bucketOf(older[start:end]))
+		end = start
+	}
+
+	tx, err := pool.Begin()
+	if err != nil {
+		return 0, 0, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		"DELETE FROM bars WHERE instrument_id = ? AND resolution = 'daily' AND ts < ?",
+		instrumentID, cut,
+	); err != nil {
+		return 0, 0, err
+	}
+	for _, b := range buckets {
+		if _, err := tx.Exec(upsertBar,
+			instrumentID, b.EndsOn, b.Mean, b.High, b.Low, b.Mean, float64(b.Sessions), "bucket",
+		); err != nil {
+			return 0, 0, err
+		}
+	}
+	if err := pruneBuckets(tx, instrumentID); err != nil {
+		return 0, 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, err
+	}
+	slog.Debug("bars folded", "instrument", instrumentID, "kept", models.DailyFloor,
+		"buckets", len(buckets))
+	return models.DailyFloor, len(older), nil
+}
+
+// FoldAll runs FoldBars over every instrument that has a series, so a database written before the
+// tiers existed is converted in place: nothing is kept twice.
+func FoldAll(pool *sql.DB) (int, error) {
+	rows, err := pool.Query("SELECT DISTINCT instrument_id FROM bars WHERE resolution = 'daily'")
+	if err != nil {
+		return 0, err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	folded := 0
+	for _, id := range ids {
+		if _, _, err := FoldBars(pool, id); err != nil {
+			return folded, err
+		}
+		folded++
+	}
+	return folded, nil
+}
+
+func bucketOf(run []models.Bar) models.Bucket {
+	mean, high, low := 0.0, 0.0, 0.0
+	for i, b := range run {
+		mean += b.Close
+		if i == 0 || b.High > high {
+			high = b.High
+		}
+		if i == 0 || b.Low < low {
+			low = b.Low
+		}
+	}
+	return models.Bucket{
+		EndsOn: run[len(run)-1].Ts, Sessions: len(run),
+		Mean: mean / float64(len(run)), High: high, Low: low,
+	}
+}
+
+func pruneBuckets(tx *sql.Tx, instrumentID string) error {
+	var cut string
+	err := tx.QueryRow(
+		`SELECT ts FROM bars WHERE instrument_id = ? AND resolution = 'bucket'
+         ORDER BY ts DESC LIMIT 1 OFFSET ?`, instrumentID, models.BucketKeep-1,
+	).Scan(&cut)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(
+		"DELETE FROM bars WHERE instrument_id = ? AND resolution = 'bucket' AND ts < ?",
+		instrumentID, cut,
+	)
+	return err
 }
 
 // Headlines older than days. The prompt reads a recent window; the rest is dead weight.
