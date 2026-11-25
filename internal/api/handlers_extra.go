@@ -429,7 +429,9 @@ func calls(c *gin.Context, st *AppState) {
 	for _, f := range filters {
 		page.WriteString(f.sql)
 	}
-	page.WriteString(" ORDER BY a.id DESC LIMIT ? OFFSET ?")
+	// By the time the row shows, not by its key: the uuid rewrite gave every older call a random
+	// id, so ordering on it shuffled the audit. The id only breaks ties inside one instant.
+	page.WriteString(" ORDER BY a.ts DESC, a.id DESC LIMIT ? OFFSET ?")
 	pageArgs = append(pageArgs, limit, offset)
 
 	rows, err := st.Pool.Query(page.String(), pageArgs...)

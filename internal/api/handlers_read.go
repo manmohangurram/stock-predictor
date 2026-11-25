@@ -437,7 +437,7 @@ func loadSignals(pool *sql.DB, mode models.Mode, status string) ([]SignalRow, er
                 s.filled_qty, s.filled_price, (SELECT p.id FROM signals p WHERE p.id = s.plan_id),
                 s.conversation_id
          FROM signals s JOIN instruments i ON i.id = s.instrument_id
-         WHERE `+predicate+` AND s.mode = ? ORDER BY s.id DESC LIMIT 50`, string(mode))
+         WHERE `+predicate+` AND s.mode = ? ORDER BY s.created_at DESC, s.id DESC LIMIT 50`, string(mode))
 	if err != nil {
 		return nil, internalErr(err)
 	}
