@@ -791,7 +791,8 @@ func gather(deps *EngineDeps, instrument models.Instrument, now time.Time) (*gat
 	}
 	priceWindow := "(intraday tape unavailable)"
 	tape := []models.Bar{}
-	if t, err := deps.Market.Intraday(instrument.Symbol, "15m", "5d"); err == nil {
+	// One day, not five: the prompt only reads the last four hours, and the tape is never stored.
+	if t, err := deps.Market.Intraday(instrument.Symbol, "15m", "1d"); err == nil {
 		tape = t
 		priceWindow = formatWindow(tape, deps.Runtime.PromptWindowHours, now)
 	} else {
