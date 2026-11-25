@@ -294,7 +294,7 @@ func dailyList(pool *sql.DB, client *http.Client, now time.Time, report *Report)
 		return nil, err
 	}
 	if len(stored) > 0 {
-		return stored, nil
+		return dedupe(stored), nil
 	}
 
 	out := []candidate{}
@@ -337,7 +337,7 @@ func dedupe(rows []candidate) []candidate {
 		out = append(out, c)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		return changeOf(out[i]) > changeOf(out[j])
+		return rupeesMoved(out[i]) > rupeesMoved(out[j])
 	})
 	if len(out) > TopN*3 {
 		out = out[:TopN*3]
@@ -345,11 +345,13 @@ func dedupe(rows []candidate) []candidate {
 	return out
 }
 
-func changeOf(c candidate) float64 {
-	if c.changePct == nil {
-		return -999.0
+// The rupees the session actually moved: a large name up 3% moves more money than a micro cap up
+// 11%, and the evidence budget should follow the money rather than the percentage.
+func rupeesMoved(c candidate) float64 {
+	if c.turnover == nil || c.changePct == nil {
+		return -1
 	}
-	return *c.changePct
+	return *c.turnover * *c.changePct / 100
 }
 
 // tradeState is the set of symbols the trade book already holds, or already has a pending BUY
@@ -477,7 +479,7 @@ func loadCandidates(pool *sql.DB, day string) ([]candidate, error) {
 	rows, err := pool.Query(
 		`SELECT symbol, source, why, ltp, change_pct, previous_close, turnover
          FROM trend_candidates WHERE day = ?
-         ORDER BY COALESCE(change_pct, -999) DESC, symbol`, day)
+         ORDER BY symbol`, day)
 	if err != nil {
 		return nil, err
 	}
