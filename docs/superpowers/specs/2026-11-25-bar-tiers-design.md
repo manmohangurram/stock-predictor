@@ -57,8 +57,10 @@ this was asked for.
 - **High52 / Low52** — the same walk over 252 sessions; the bucket's high and low are the extremes
   of its sessions, so the maximum of bucket highs is the true high.
 
-The acceptance test is equality: for a series that has both shapes, the tiered computation must
-produce the same six numbers as `ComputeIndicators` on the dense series (float tolerance).
+The acceptance test is equality for the two long windows — the 200-day mean and the 52-week range
+come out bit-identical, because both end on a bucket boundary. RSI14 and ATR14 are Wilder-smoothed
+from the start of the series, so a folded past leaves a residue under 0.6% (the seed's weight is
+(13/14)^70); the test pins them to within 1%.
 
 ## What is fetched
 
