@@ -5,6 +5,7 @@
   "singleQuote": false,
   "trailingComma": "all",
   "vueIndentScriptAndStyle": false,
+  "endOfLine": "auto",
   "overrides": [
     {
       "files": ["*.ts", "*.js", "*.mjs", "*.json"],

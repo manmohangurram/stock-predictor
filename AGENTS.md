@@ -177,21 +177,20 @@ are one action, and it happens only when the user asks for it in that turn ("rel
 "give me a release now"). Merging a PR is not consent. A green CI is not consent. "It is ready" is not
 consent. If the work is finished, say it is finished and stop; the next release is the user's call.
 
-**A feature that touches more than one layer is a stack, built with the `gh stack` extension.** A
-schema change plus an API plus a page is three PRs, not one: install `gh extension install
-github/gh-stack` once, then `gh stack init`, `gh stack add`, `gh stack push`, `gh stack submit`. The
-bottom PR targets `main` and each one above it targets the branch below. One large PR for a
-multi-layer feature is a policy violation, not a shortcut. A stack merges bottom-up; a red step
-blocks everything above it.
+**One change is one pull request, and the release rides in it.** The GitHub Actions minutes on
+this repo are the free tier, and every PR is a full CI run — so a fix that touches Go and Vue is one
+PR with two commits, not a stack, and the CHANGELOG entry for the version that fix earns is a third
+commit in the same PR. The tag is cut on the merge commit afterwards, which costs no CI. A small
+change therefore costs one CI run, not two.
 
 **Never commit straight to `main`.** Every piece of work — a fix, a page, a migration — lands as a
 pull request that passes the gates below. Open the PR as soon as the first commit exists, so CI runs
 early rather than after the whole thing is written.
 
-**A big feature is a stack of small PRs, not one large one.** Each branch is based on the one before
-it, each PR targets that previous branch, the bottom one targets `main`, and the stack merges
-bottom-up. Every step stays independently green and reviewable; if a step cannot be explained in one
-sentence, split it. Use GitHub's stack extension — reference:
+**A stack is for a large feature, and only when each slice can be reviewed alone** — a schema
+rebuild followed by a page that depends on it, not a two-file fix. Three slices is the usual ceiling;
+if a slice cannot be explained in one sentence, fold it back into its neighbour. The tool is
+`gh extension install github/gh-stack`, and the reference is
 [`docs/reference/github-stacked-prs.md`](docs/reference/github-stacked-prs.md).
 
 ```sh
@@ -206,13 +205,12 @@ gh stack view                           # order, PR links, statuses
 ```
 
 Without the extension, the same chain by hand: branch from the previous branch and
-`gh pr create --base <previous-branch>`; the bottom PR targets `main`.
+`gh pr create --base <previous-branch>`; the bottom PR targets `main`, and a stack merges bottom-up.
 
 - Branches: `<type>/<short-topic>` — `feat/`, `fix/`, `chore/`, `docs/`.
 - A PR says what changed, why, which spec/task it serves, and how it was verified (commands, flows
   walked); a stacked PR also says its position ("1/3").
-- Refactors and behaviour changes are separate PRs; so are dependency bumps.
-- A stack is never merged top-down, and a red step blocks the ones above it.
+- Unrelated work does not ride along: a dependency bump and a behaviour change are separate PRs.
 
 ## Quality gates
 
