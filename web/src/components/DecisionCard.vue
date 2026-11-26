@@ -22,7 +22,9 @@ const emit = defineEmits<{ reload: [] }>();
 const first = computed(() => props.legs[0]);
 const pending = computed(() => first.value.status === "pending");
 const approved = computed(() => first.value.status === "approved");
-const isFund = computed(() => first.value.plan_scope === "fund");
+const isFund = computed(
+    () => first.value.plan_scope === "fund" || first.value.class === "mutual_fund",
+);
 const title = computed(() =>
     !props.plan
         ? `${first.value.name || first.value.symbol} · 1 move`

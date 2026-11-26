@@ -131,6 +131,23 @@ func Run(pool *sql.DB, rt *rules.Runtime, client *http.Client, now time.Time) (R
 		return report, nil
 	}
 
+	// A fund is sized in rupees, and a proposal the owner cannot post is not a proposal. The size
+	// is the free money in the fund purse, which is what the earmark still has unspent.
+	available, err := rules.AvailableMF(pool)
+	if err != nil {
+		return report, err
+	}
+	settings, err := rules.GetSettings(pool)
+	if err != nil {
+		return report, err
+	}
+	if available < settings.LimitsLong.MinTradeAmount {
+		report.Notes = append(report.Notes, fmt.Sprintf(
+			"the fund purse holds %.2f, under the %.2f minimum — the scan is not proposing",
+			available, settings.LimitsLong.MinTradeAmount))
+		return report, nil
+	}
+
 	heldCategories := []string{}
 	catRows, err := pool.Query(
 		`SELECT i.name FROM positions p JOIN instruments i ON i.id = p.instrument_id
@@ -185,7 +202,7 @@ func Run(pool *sql.DB, rt *rules.Runtime, client *http.Client, now time.Time) (R
 		if err != nil {
 			return report, err
 		}
-		if err := storeSignal(pool, id, h.name, h.code, nav, h.score, now); err != nil {
+		if err := storeSignal(pool, id, h.name, h.code, nav, h.score, available, now); err != nil {
 			return report, err
 		}
 		report.Proposed++
@@ -256,18 +273,19 @@ func NAVBars(h market.FundHistory) []models.Bar {
 	return out
 }
 
-func storeSignal(pool *sql.DB, instrumentID string, name, code string, nav, score float64, now time.Time) error {
+func storeSignal(pool *sql.DB, instrumentID, name, code string, nav, score, amount float64, now time.Time) error {
 	reason := mustJSON(map[string]any{
 		"reasons":     []string{fmt.Sprintf("%s returned +%.1f%% over the trailing window", name, score)},
 		"rationale":   "A six-month-plus commitment: judged on trailing returns, with the fund earmark in mind.",
 		"source":      "mfapi",
 		"scheme_code": code,
+		"amount":      amount,
 	})
 	_, err := pool.Exec(
 		`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
             created_at, confidence, mode, kind, status)
-         VALUES (?, ?, 'BUY', ?, ?, ?, ?, ?, NULL, 'long', 'fundscan', 'pending')`,
-		ids.New(), instrumentID, 0.0, nav, tstamp.From(now.AddDate(0, 0, 7)), reason, tstamp.From(now),
+         VALUES (?, ?, 'BUY', NULL, ?, ?, ?, ?, NULL, 'long', 'fundscan', 'pending')`,
+		ids.New(), instrumentID, nav, tstamp.From(now.AddDate(0, 0, 7)), reason, tstamp.From(now),
 	)
 	return err
 }

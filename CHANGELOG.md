@@ -1,3 +1,23 @@
+## v1.1.3
+
+A fund decision you can act on: the daily fund scan names the money it would put in, so the card
+shows a rupee amount and approving it posts a fill instead of refusing a zero.
+
+### Fixed
+
+- **A fund proposal carries a size.** The scan stored `qty 0` and no amount, and a fund is sized in
+  rupees — so the card read "size on approval", the approve box opened on `0`, and the API refused
+  the attempt with "quantity is required". The proposal now names the free money in the fund purse,
+  floored at the long book's minimum trade amount, with a note instead of a proposal when there is
+  less than that. It carries no unit count at all until the NAV turns rupees into units.
+- **A fund decision is recognised by its instrument, not only by its plan.** Both decision cards
+  decided "this is sized in rupees" from `plan_scope === "fund"`; a scan decision has no plan, so it
+  was treated as a stock. They now also key off the instrument's class, which is how a fund decision
+  gets the amount field and the NAV conversion on approval.
+- **Prettier keeps the checkout's line endings.** `endOfLine: "auto"` in `web/.prettierrc.json` —
+  the default `lf` rewrote every file on Windows, where `core.autocrlf` checks the tree out as CRLF,
+  so `npm run format:check` failed on all 41 files for a reason that had nothing to do with style.
+
 ## v1.1.2
 
 A stock you bought is in the book, whatever else the app knew about it first — and the front end
@@ -53,7 +73,7 @@ range on demand, and both lists are ordered by the time they show.
 - **`GET /api/instruments/:symbol/chart?range=…`** answers one range at the resolution that fits
   it, and a `custom` window (`from`, `to`) live at the interval its span deserves.
 - **A stored plan pushes once.** A plan that writes moves sends one notification (`trade plan · 1
-  move waiting`), high priority when it sells, deduped on the plan id so a retry does not buzz
+move waiting`), high priority when it sells, deduped on the plan id so a retry does not buzz
   twice. Before this, only per-stock decisions and trade expiries were pushed, so a book that had
   moved to plans was silent.
 
@@ -327,12 +347,11 @@ write, the same append-only ledger.
 
 ## v0.35.0
 
-
 ### Added
 
 - **The MCP history, on Settings → Access.** Every tool call a client made, newest first, with the
   key it used, the arguments it sent (secrets already redacted) and the outcome. `GET
-  /api/mcp/calls?limit=` serves it.
+/api/mcp/calls?limit=` serves it.
 
 ### Retention
 
@@ -341,10 +360,9 @@ write, the same append-only ledger.
 
 ## v0.34.2
 
-
 ### Added
 
-- **Change the password, from the app.** Settings â†’ Access gains a *Password* section beside the MCP
+- **Change the password, from the app.** Settings â†’ Access gains a _Password_ section beside the MCP
   keys: current, new, and new again. A wrong current password is refused with a reason; a successful
   change ends every signed-in session and returns to the sign-in page, because the old refresh
   tokens are revoked in the same transaction.
@@ -356,7 +374,6 @@ write, the same append-only ledger.
   keeps the session, sign-out, and the password change.
 
 ## v0.34.1
-
 
 ### Fixed
 
@@ -381,10 +398,9 @@ write, the same append-only ledger.
 
 ## v0.34.0
 
-
 **The app has a door.** One admin account, created on first run, and everything behind it.
 
-- **First run** shows *Set up the admin*: choose a username and a password. Once that row exists the
+- **First run** shows _Set up the admin_: choose a username and a password. Once that row exists the
   same page is a sign-in, and the setup call answers `409` from then on.
 - **Sign-in issues a pair**: an HS256 access JWT good for fifteen minutes (key derived from
   `SECRET_KEY`) and a refresh token good for thirty days in an HttpOnly cookie, stored only as a
@@ -392,7 +408,7 @@ write, the same append-only ledger.
 - **The gate**: every `/api/...` route except health and the auth endpoints requires the access
   token. The SPA keeps it in memory, refreshes once on a `401`, and falls back to `/login`.
 - **Sign out** lives in the settings rail; changing the password ends every session.
-- **Backward compatible**: migration `0030` only *adds* `admin` and `refresh_tokens` and fills
+- **Backward compatible**: migration `0030` only _adds_ `admin` and `refresh_tokens` and fills
   `api_keys.user_id`. An existing database keeps every row and stops at the setup screen once.
 - **MCP is unchanged**: keys still open `/mcp`, now owned by the admin.
 
@@ -410,7 +426,6 @@ recover it — that is the point — so put it somewhere safe.
   tool loses its title, its example or its hint.
 
 ## v0.33.0
-
 
 **The book is reachable by an assistant.** `POST /mcp` is an MCP server speaking Streamable HTTP
 in stateless JSON mode, authenticated by a key you mint in Settings -> Access.
@@ -437,14 +452,13 @@ and the proxy password -- written, never returned.
 
 - **Upgrading a database that has ever sent a push.** `0027` drops `signals` while
   `notifications.signal_id` still points at it, and SQLite refuses that drop with foreign keys on.
-  Any database with a notification row stopped there with *FOREIGN KEY constraint failed*, left
-  `signals_new` behind, and every retry after that reported *table signals_new already exists*.
+  Any database with a notification row stopped there with _FOREIGN KEY constraint failed_, left
+  `signals_new` behind, and every retry after that reported _table signals_new already exists_.
   `0027` and `0028` now switch the pragma off for the rewrite, run the whole rewrite in one
   transaction so a failure leaves the old tables intact, and clear a leftover `*_new` table first,
   so a database already stuck in that state recovers by booting, with no manual SQL.
 
 ## v0.32.0
-
 
 **The database is keyed by UUIDs.** Every table's identity is a UUIDv7 in text (`internal/ids`, a
 thin wrap over `google/uuid`), and every foreign key is that text — a plan's `plan_id`, a fill's
@@ -585,7 +599,6 @@ Headlines moved off the model and onto Google News' own feed: English, India edi
 real publishers, and free — no API key, no search call. The short-term scan keeps its two searches,
 which is where the web is actually doing work.
 
-
 ### Headlines come from Google News, not a general web search
 
 The DeepSeek search answered a company query with quote pages, prize ceremonies and tax columns —
@@ -631,12 +644,11 @@ can actually be approved. The audit and the headlines took on a three-month hori
 growing for ever. And a long-term holding now defends itself — its stop follows the price up — while
 the plan is asked when it runs past the pot's ceiling.
 
-
 ### A fund plan could not be approved
 
 `approve_plan` checked the balance against `budget::available_in`, which reads the pot's **main**
 purse. A fund plan spends the fund purse, so on a book whose stock purse was empty the approval
-was refused with *"cash is 0.00"* however much the fund purse held. It now reads the purse that
+was refused with _"cash is 0.00"_ however much the fund purse held. It now reads the purse that
 belongs to the plan's own asset class.
 
 Found while making the fill form honest: a fund is bought with rupees at a NAV, so the form now
@@ -645,7 +657,7 @@ asks for **Amount ₹** and **NAV** and divides, instead of asking for units the
 ### A fund plan was filed under Stocks
 
 The decisions box tagged every plan as a stock plan, so a `plan_mf_v1` result sat under the
-**Stocks** heading. Plans now carry their own scope, and the fund heading reads *Funds* when a
+**Stocks** heading. Plans now carry their own scope, and the fund heading reads _Funds_ when a
 plan and a scan row share it.
 
 ### The commentary is gone
@@ -656,15 +668,15 @@ commentary beside code.
 
 ### A fund decision asks for rupees too
 
-The fund plan's fill was fixed to ask Amount and NAV; the fund *scan* row still asked for a
+The fund plan's fill was fixed to ask Amount and NAV; the fund _scan_ row still asked for a
 quantity the scan never proposed (`0 units`) and left you to work out the units yourself. It asks
-Amount ₹ and NAV now, prefills the NAV it knows, and says *size on approval*. The units are
+Amount ₹ and NAV now, prefills the NAV it knows, and says _size on approval_. The units are
 divided on submit.
 
 ### The ceiling trigger searches before it asks
 
 It was passing four numbers and the morning's headlines. It now runs its own dated search for that
-holding and hands the fresh hits to the plan — *"instead of the morning ones"*, which was the point.
+holding and hands the fresh hits to the plan — _"instead of the morning ones"_, which was the point.
 
 The band decision moved into `rules::evaluate::band_reason`, a pure function with its own test, so
 the edge logic is provable without driving a whole poll.
@@ -703,7 +715,7 @@ positions the rules had already decided, so the trigger was narrowed to the case
 `news` had the same shape as the audit: `INSERT OR IGNORE` by url, never pruned. It is swept with
 the same 90-day cutoff, in the same tick as `api_calls`.
 
-Worth knowing what that sweep is *not* bounding: every active instrument's news is fetched on every
+Worth knowing what that sweep is _not_ bounding: every active instrument's news is fetched on every
 poll tick — held or merely watched, ~28 requests per name per session day at the default cadence. A
 scheme-code fund is skipped entirely; a fund added by a Yahoo symbol goes through the stock path,
 news included, because that is the "add the Yahoo code to get advice" case.
@@ -713,7 +725,7 @@ news included, because that is the "add the Yahoo code to get advice" case.
 Refresh always fetched **and stored**, so pressing it on an archived instrument re-created the
 bars archiving had deliberately cleared — the archive was undone by a button that promised to
 price nothing. It now fetches and stores only when the instrument is in the book (`cached: true`);
-on an archived one it reads the source and reports *archived, so nothing was stored*, leaving the
+on an archived one it reads the source and reports _archived, so nothing was stored_, leaving the
 bar count at zero. Restoring puts it back in the book and caching resumes.
 
 ### The audit keeps three months
@@ -772,8 +784,8 @@ The chart draws the **target NAV** — what the owner asked for on what they pai
 ### A fund's page is a fund's page
 
 The instrument page was built for a stock: the NAV chart was headed **Price**, the sidebar carried
-*What the rules see* (RSI, SMA200, ATR — computed on a NAV series that no fund decision consults)
-and *Indicators*, and the fill form asked for a **Price**. A fund now shows **NAV**, keeps the
+_What the rules see_ (RSI, SMA200, ATR — computed on a NAV series that no fund decision consults)
+and _Indicators_, and the fill form asked for a **Price**. A fund now shows **NAV**, keeps the
 stock rule-check and indicators off the page, and records a fill in **units at a NAV**, long-term
 only.
 
@@ -790,9 +802,9 @@ Found by the flow gate. The dialog filtered foreign listings — a NYSE ADR woul
 dollars and read as rupees — but it did so **after** slicing to six and numbering the rows. So:
 
 - clicking the second result added the **first**;
-- if the first six hits were all foreign, the dialog said *Nothing matches that* while Indian
+- if the first six hits were all foreign, the dialog said _Nothing matches that_ while Indian
   listings sat just past the slice;
-- the *"N more"* hint counted the foreign ones you cannot pick.
+- the _"N more"_ hint counted the foreign ones you cannot pick.
 
 The filter now runs first, and the slice, the row numbers and the selection all index the same
 list. Typing `wipro` offers WIPRO.NS and WIPRO.BO, and picking the second adds `.BO`.
@@ -803,7 +815,7 @@ list. Typing `wipro` offers WIPRO.NS and WIPRO.BO, and picking the second adds `
 
 The plan card reads the reply, which names moves by symbol — so a fund appeared as `0P0000XV5C.BO`.
 The call detail now carries the names of the symbols that call actually moved, and the card prints
-*Axis ELSS Tax Saver*.
+_Axis ELSS Tax Saver_.
 
 ### The ledger's touch targets were under 40px on a phone
 
@@ -854,7 +866,7 @@ a line per move, then the purse, then one paragraph, then the approve and reject
 
 ### The Archived page's empty state was 490px wide
 
-`.blotter td` is `nowrap`, so the sentence *"Nothing archived yet…"* set that column's floor and
+`.blotter td` is `nowrap`, so the sentence _"Nothing archived yet…"_ set that column's floor and
 the table ran off a 390px page. An empty state is prose, not a figure; it wraps now.
 
 Swept at a real 390px viewport — Holdings, Short-term, Archived, Audit, a call drawer, and both
@@ -909,7 +921,7 @@ BUY   GABRIEL.NS         Qty 27  At 1,519.00  Stop 1,450.00  Target 1,700.00  Ti
 
 `v0.27.5` tightened the audit table for a phone and it still came up 16px short. The cause was not
 padding: the Holding cell had no `.holding` class, so it inherited the blotter's `nowrap` and the
-longest company name on the page — *Tata Consultancy Services* — set that column's floor. The ledger
+longest company name on the page — _Tata Consultancy Services_ — set that column's floor. The ledger
 has always wrapped it; the audit never got the same class.
 
 With it, a 390px viewport measures table 358 in a 358 slot, no horizontal scroll, and the Show
@@ -947,7 +959,7 @@ version bump does not change `recipe.json` — it replayed with an empty `target
 step then re-downloaded and recompiled every dependency. Measured on the v0.27.3 run: `cook`
 0.1s, `build` **114.4s**. The same pair on v0.27.1, without the mounts, was 88s and 26.5s.
 
-The layer *is* the cache here — `cache-to: type=registry,mode=max` preserves it across builds and
+The layer _is_ the cache here — `cache-to: type=registry,mode=max` preserves it across builds and
 a mount does not. The mounts are gone; a dependency rebuild now happens only when `Cargo.toml` or
 `Cargo.lock` actually changes.
 
@@ -957,20 +969,20 @@ a mount does not. The mounts are gone; a dependency rebuild now happens only whe
 
 A live `plan_trade_v1` call was refused whole — `plan_refused` — on a name with a clean, dated
 catalyst. The expiry it named, Tuesday 17 Nov's close, is the **second** session after that Friday.
-The validator added three *calendar* days to the clock instead, and three days from Friday evening
+The validator added three _calendar_ days to the clock instead, and three days from Friday evening
 is Monday, so Tuesday read as "more than 3 sessions out".
 
 - The deadline is now the close of the third **trading** day, weekends skipped. Exchange holidays
   are not modelled, which only ever makes it stricter, never looser.
-- `plan_trade_v1` carried two expiry rules that could not both hold — *"tomorrow's close at the
-  latest"* and *"never more than three sessions"* — so the model was guessing which one the app
+- `plan_trade_v1` carried two expiry rules that could not both hold — _"tomorrow's close at the
+  latest"_ and _"never more than three sessions"_ — so the model was guessing which one the app
   meant. It is one rule now, spelled with the stamp format.
 
 ### Hotfix: the audit printed `plan_refused` instead of the reason
 
 A refused plan keeps its sentence in `reasons`, not `detail`, and `blocked_reason` only looked for
-`detail` — so the call viewer printed the bare key. It reads *"BONFIG.NS: expiry is more than 3
-sessions out — that is not this book's trade"* now.
+`detail` — so the call viewer printed the bare key. It reads _"BONFIG.NS: expiry is more than 3
+sessions out — that is not this book's trade"_ now.
 
 ### Hotfix: a refused plan said "awaiting you"
 
@@ -1010,9 +1022,9 @@ ledger now does too, so a closed position leaves the book the moment it is sold.
 ### The short-term list has floors
 
 The scan was offering ₹0.73–₹3.85 micro-caps pinned at their circuit band, and every plan came back
-*"nothing clears costs"* — correctly, because you cannot buy a locked band or trade a stock whose
+_"nothing clears costs"_ — correctly, because you cannot buy a locked band or trade a stock whose
 whole move is three ticks. Three floors now decide what the model is even offered, and all three are
-**settings** (Settings → Cadence → *What the short-term scan may offer*):
+**settings** (Settings → Cadence → _What the short-term scan may offer_):
 
 - **Price floor ₹10** — below that a single tick is a large part of the move.
 - **Turnover floor, one crore a day** — an order from this purse has to be a rounding error. Typed in
@@ -1030,10 +1042,10 @@ database, with real replies read back. No prompt carried an unfilled placeholder
 nothing failed to parse. Three bugs fell out:
 
 - **A trade SELL was refused for having no expiry.** An exit has no shelf life; the expiry is a
-  BUY's contract. That refusal threw away a perfectly good *"take the profit now"*.
+  BUY's contract. That refusal threw away a perfectly good _"take the profit now"_.
 - **A refused plan was filed in the long purse** whatever purse asked.
 - **`plan_trade_v1` invited a placeholder second leg** — the model emitted `qty: 0, why:
-  "placeholder"` to fill the slot and the whole plan was refused. The prompt now says one move is a
+"placeholder"` to fill the slot and the whole plan was refused. The prompt now says one move is a
   plan, and that a leg you would not place refuses the plan whole.
 
 Removed as unreachable: `prompts/trend_v1.md`, `prompts/short_v1.md`, `render_trend` and
@@ -1079,7 +1091,7 @@ first, ten names.
 ### The trade purse gets a book call every two hours
 
 `plan_trade_v1` — **0–2 moves that only make sense together**, at **09:15, 11:15, 13:15 IST**. It
-replaced the per-stock short-term pass, which could never say *"sell A to fund B"* because each call
+replaced the per-stock short-term pass, which could never say _"sell A to fund B"_ because each call
 knew only its own candidate.
 
 - Delivery, T+1: nothing can be sold the session it was bought, and the first exit is the next open.
@@ -1110,8 +1122,8 @@ push and never written.
 `INSERT OR IGNORE` honoured the row the scan had already created for a discovered name — which is
 `active = 0` — so the record appeared to be created and then vanished from the ledger (whose
 holdings query filters `i.active = 1`) while the instrument page offered **Restore** for something
-never archived. Adding promotes the row; a genuinely archived name is refused with *restore it from
-its own page*.
+never archived. Adding promotes the row; a genuinely archived name is refused with _restore it from
+its own page_.
 
 ### A browser flow suite, and the bugs it found
 
@@ -1120,10 +1132,10 @@ DevTools MCP against a throwaway database. **A release is not cut until it is gr
 run it; it needs a browser.
 
 Walking it found: a NYSE ADR could be added and its dollars read as rupees (**+11,674%** "vs close");
-the refresh button printed *undefined headlines* (client read `news`, server sends `headlines`);
+the refresh button printed _undefined headlines_ (client read `news`, server sends `headlines`);
 Archive used a native `confirm()` unlike every other two-step control; the reject form's submit
 duplicated the opener's label and could reject a decision by accident; the currency select looked
-editable while locked; and a filtered audit page with no matches said *No calls yet*.
+editable while locked; and a filtered audit page with no matches said _No calls yet_.
 
 ### Removed
 
@@ -1135,7 +1147,7 @@ the per-stock short-term pass with its run kind and manual path (old audit rows 
 
 ### Hotfix: the Archived page showed everything the scan had ever noticed
 
-Discovery and archiving both wrote `instruments.active = 0`, so the page that lists what *you*
+Discovery and archiving both wrote `instruments.active = 0`, so the page that lists what _you_
 archived was listing **every ticker the short-term scan mentioned** — in a demo database, twenty
 rows of names that were never in the book, one of which was the owner's.
 
@@ -1189,8 +1201,8 @@ It is a live log while a run is happening and a static record otherwise, so the 
 ### A price in prose is not a price
 
 A real prompt came back with a `pass` on CHOLAFIN, and it was right: the candidate line said
-*"Up 3.82% to ₹1604.2"* while our own tape said **₹1790.80** on 09 Nov. That ₹1604.20 was our own
-close from **29 October**, carried in the `why` line written by the *previous* scan's model from a
+_"Up 3.82% to ₹1604.2"_ while our own tape said **₹1790.80** on 09 Nov. That ₹1604.20 was our own
+close from **29 October**, carried in the `why` line written by the _previous_ scan's model from a
 web snippet — and we pasted it into the next call as a fact. Two prices from two worlds; a
 contradiction, and a contradiction is a `pass`.
 
@@ -1198,8 +1210,8 @@ contradiction, and a contradiction is a `pass`.
   from it"**, and the prompt says the tape is our own data and the only record of what the stock
   traded at. An idea that only works at a feed's number is a `pass`.
 - **Feed versus tape is compared here, not by the model**: more than 5% apart and the line says so —
-  *"the feed says 1604.20 while our last close was 1790.80 (−10.4%) — one of the two is stale; trust
-  the tape"*.
+  _"the feed says 1604.20 while our last close was 1790.80 (−10.4%) — one of the two is stale; trust
+  the tape"_.
 - A candidate with no exchange price says **"no exchange price for it, so the tape below is the
   price"**, instead of "price read from the tape", which sounded like a measurement.
 
@@ -1214,8 +1226,8 @@ The Search API has **no date filter** — `query`, `count`, `ori_question`, `loc
 - The same window applies to the daily trending scan, so a March earnings transcript cannot land on
   today's list.
 - A result with **no title** is dropped for the same reason: it renders as a bare URL.
-- When the search finds things but none inside the window, the prompt says *"nothing dated in the
-  last three days — treat the move as having no known catalyst"*, and the run notes record how many
+- When the search finds things but none inside the window, the prompt says _"nothing dated in the
+  last three days — treat the move as having no known catalyst"_, and the run notes record how many
   hits were dropped.
 
 ## v0.23.0
@@ -1254,7 +1266,7 @@ The Search API has **no date filter** — `query`, `count`, `ori_question`, `loc
   empty topic and pointed at the service root, so every decision that produced a signal failed its
   push — and, worse, reported the failure against the decision. A notifier with no topic now reports
   `configured() == false`; nothing is sent, no `notifications` row is written, and the run says
-  *"recorded without a push"* instead of silently doing nothing.
+  _"recorded without a push"_ instead of silently doing nothing.
 - A push that **fails** is still an error in the run report, and still retried on the next tick,
   because the dedupe row is only written after a successful send.
 - A **live test** now exists for the question "is a notification actually arriving":
@@ -1272,7 +1284,7 @@ The Search API has **no date filter** — `query`, `count`, `ori_question`, `loc
   already written and audited in `src/llm/deepseek.rs`; nothing called them until now.
 - **Deduplicated by symbol**, the exchange's row winning because it carries a price, and stored in
   `trend_candidates` (migration `0019`) for the IST day. A tick reads the list instead of buying it
-  again; *Run again* clears it (`trend::forget_today`).
+  again; _Run again_ clears it (`trend::forget_today`).
 - **Each name is analysed with today's web**: one search per candidate, numbered results passed as
   `{{web}}`, cites still indices so the validator and the audit drawer keep working.
 - The short-term prompt is now explicitly Indian: NSE/BSE delivery, **T+1 so the earliest exit is
@@ -1288,7 +1300,7 @@ The Search API has **no date filter** — `query`, `count`, `ori_question`, `loc
   `<pre>` dump, and it **scrolls in its own column** so the drawer is the height of the answer, not
   the question.
 - The **duplicate JSON under the verdict is gone**: the card is the answer, and the raw bodies stay
-  one click away under *Raw request and response*.
+  one click away under _Raw request and response_.
 
 # Changelog
 
@@ -1301,10 +1313,10 @@ here and records what changed for a reader of the software, not for a reader of 
 
 - **One card per scheduled prompt** — Stock plan, Fund plan, Short-term pass — each showing the
   **time it last ran**, what came of it, **when it is due next**, and its cadence in words
-  (*"once a day, first tick after midnight IST"*). `GET /api/schedule` computes that from the same
+  (_"once a day, first tick after midnight IST"_). `GET /api/schedule` computes that from the same
   markers the scheduler uses, so the page never re-implements the rules.
 - **`Run again` now runs.** A manual run used to be silently refused by the once-a-day gate and
-  reported as *"nothing worth doing"*; it now skips that gate (the daily call cap still applies)
+  reported as _"nothing worth doing"_; it now skips that gate (the daily call cap still applies)
   and writes the day marker.
 - **Scheduled polls stop writing run rows** — ninety-six "nothing happened" rows a day that no
   screen showed, while the calls they made are already the history table. Migration `0018` deletes
@@ -1320,10 +1332,10 @@ here and records what changed for a reader of the software, not for a reader of 
 ### Market state
 
 - **`GET /api/market`** reads the clock and the data: weekend, before the open, after the close,
-  open — or, on a weekday inside session hours with nothing priced today, *probably a holiday*, and
+  open — or, on a weekday inside session hours with nothing priced today, _probably a holiday_, and
   it says probably. There is no holiday calendar in this app, and the tooltip says so.
 - Shown **at the foot of the rail**: a dot for colour, the status in words, and the one date that
-  matters — *"Opens 11 Nov 09:15"*, or *"Closes 15:30"* when it is open.
+  matters — _"Opens 11 Nov 09:15"_, or _"Closes 15:30"_ when it is open.
 
 ### The frame
 
@@ -1364,7 +1376,7 @@ here and records what changed for a reader of the software, not for a reader of 
 ### Interface
 
 - `--green` and `--green-bg` were used in five rules and **defined nowhere**, so every gain, PASS
-  and DONE rendered as plain ink. Defined, light and dark: status now reads as colour *and* word.
+  and DONE rendered as plain ink. Defined, light and dark: status now reads as colour _and_ word.
 - **One alignment rule**: tables default to text-left, numbers opt in with `.num`. Every table's
   headers share their cells' edges — measured, not eyeballed.
 - A zero no longer wears a plus sign (`Unrealised +0` → `0`).
@@ -1374,7 +1386,7 @@ here and records what changed for a reader of the software, not for a reader of 
   wraps its count, and touch targets are 40px.
 - **Button copy**: `Add instrument…`, `Post fill` / `Post fills`, `Record fill`, `Save`,
   `Delete fill`, `Refresh`, `Archive`, `Restore`, `Open`, `Send test`, `Test proxy`, `Discard`.
-  *"Sell it before archiving"* was a sentence wearing a button — the control is a disabled
+  _"Sell it before archiving"_ was a sentence wearing a button — the control is a disabled
   `Archive` and the sentence is help text.
 
 ### Dependencies
@@ -1388,7 +1400,7 @@ here and records what changed for a reader of the software, not for a reader of 
 ### The book
 
 - **The model sees the whole book.** Every prompt carries the holdings and one plain sentence —
-  *you may spend at most ₹12,45,570 in this purse; a buy costing more is refused, not shrunk* — so a
+  _you may spend at most ₹12,45,570 in this purse; a buy costing more is refused, not shrunk_ — so a
   proposal can no longer be sized against money that does not exist.
 - **Two plans, two prompts, two purses.** `plan_stock_v1` sees the stock book, sizes in units, and
   every buy must carry a stop and a target. `plan_mf_v1` sees the fund book only, sizes in rupees,
@@ -1411,12 +1423,12 @@ here and records what changed for a reader of the software, not for a reader of 
 ### Audit
 
 - The page shows **runs** — poll, stock plan, fund plan, short-term pass — opened before the work
-  and closed after it, so *running* is visible while it happens. Orphans are closed at boot.
+  and closed after it, so _running_ is visible while it happens. Orphans are closed at boot.
 - **Run now** executes the same code the scheduler does, through the poll loop that owns the
   clients. A manual run is one run, not a run plus a tick.
 - The calls table pages with `offset`/`limit` and a page-size selector; the total travels in a
   header.
-- A quiet tick says why it was quiet: *0 decisions · 2 not asked: INFY.NS, HDFCBANK.NS*.
+- A quiet tick says why it was quiet: _0 decisions · 2 not asked: INFY.NS, HDFCBANK.NS_.
 - Decisions lead with the holding's **name**; a fund shows its scheme name, not `0P0000XV5C.BO`.
 - Blocked proposals no longer sit in the decisions box — that box is for decisions. The refusal
   stays on the instrument's record and in the audit.
