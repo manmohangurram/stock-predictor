@@ -33,9 +33,7 @@ const touched = ref(false);
 const native = ref<HTMLInputElement | null>(null);
 
 const iso = computed(() => parseDay(text.value));
-const invalid = computed(
-    () => iso.value === null || (!!props.max && iso.value > props.max),
-);
+const invalid = computed(() => iso.value === null || (!!props.max && iso.value > props.max));
 
 watch(
     () => props.modelValue,

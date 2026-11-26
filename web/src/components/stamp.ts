@@ -22,9 +22,12 @@ export const pill = (
   tone: "ok" | "todo" | "running" | "done" | "failed" | "graphite" | "",
   label: string,
   title = "",
-): string =>
-  `<span class="pill ${tone}"${title ? ` title="${title}"` : ""}>${label}</span>`;
+): string => `<span class="pill ${tone}"${title ? ` title="${title}"` : ""}>${label}</span>`;
 
 /** Approved reads as done, rejected as a to-do, pending as plain. */
 export const statusPill = (status: string): string =>
-  status === "approved" ? pill("ok", "approved") : status === "rejected" ? pill("todo", "rejected") : pill("", "pending");
+  status === "approved"
+    ? pill("ok", "approved")
+    : status === "rejected"
+      ? pill("todo", "rejected")
+      : pill("", "pending");

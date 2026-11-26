@@ -1,8 +1,7 @@
 import type { SignalRow } from "../api";
 
 /** What one leg costs: a fund move is sized in rupees, a stock leg in units at its entry. */
-export const legValue = (l: SignalRow): number =>
-  l.amount ?? (l.qty ?? 0) * (l.entry ?? 0);
+export const legValue = (l: SignalRow): number => l.amount ?? (l.qty ?? 0) * (l.entry ?? 0);
 
 const isBuy = (l: SignalRow): boolean => l.action !== "SELL";
 

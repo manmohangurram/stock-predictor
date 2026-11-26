@@ -98,8 +98,7 @@ function onSystemTheme(): void {
 }
 
 function onDocumentClick(event: MouseEvent): void {
-    if (!(event.target as Element | null)?.closest(".acct"))
-        menuOpen.value = false;
+    if (!(event.target as Element | null)?.closest(".acct")) menuOpen.value = false;
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -136,13 +135,7 @@ onBeforeUnmount(() => {
     <div class="app">
         <header class="topbar">
             <a class="brand" href="/" aria-label="Stock Predictor, Book">
-                <img
-                    src="/favicon.svg"
-                    width="30"
-                    height="30"
-                    alt=""
-                    aria-hidden="true"
-                />
+                <img src="/favicon.svg" width="30" height="30" alt="" aria-hidden="true" />
                 <span>Stock Predictor</span>
             </a>
             <nav class="topnav" aria-label="Sections">
@@ -154,12 +147,7 @@ onBeforeUnmount(() => {
                     :class="{ on: active === l.id }"
                     :aria-current="active === l.id ? 'page' : undefined"
                 >
-                    <component
-                        :is="l.icon"
-                        :size="15"
-                        :stroke-width="1.75"
-                        aria-hidden="true"
-                    />
+                    <component :is="l.icon" :size="15" :stroke-width="1.75" aria-hidden="true" />
                     <span>{{ l.label }}</span>
                 </a>
             </nav>
@@ -178,25 +166,11 @@ onBeforeUnmount(() => {
                 <button
                     class="icon-btn"
                     type="button"
-                    :aria-label="
-                        dark
-                            ? 'Switch to the light theme'
-                            : 'Switch to the dark theme'
-                    "
+                    :aria-label="dark ? 'Switch to the light theme' : 'Switch to the dark theme'"
                     @click="toggleTheme"
                 >
-                    <Sun
-                        v-if="dark"
-                        :size="16"
-                        :stroke-width="1.75"
-                        aria-hidden="true"
-                    />
-                    <Moon
-                        v-else
-                        :size="16"
-                        :stroke-width="1.75"
-                        aria-hidden="true"
-                    />
+                    <Sun v-if="dark" :size="16" :stroke-width="1.75" aria-hidden="true" />
+                    <Moon v-else :size="16" :stroke-width="1.75" aria-hidden="true" />
                 </button>
                 <div class="acct">
                     <button
@@ -207,33 +181,16 @@ onBeforeUnmount(() => {
                         @click.stop="menuOpen = !menuOpen"
                     >
                         <span class="acct-avatar"
-                            ><User
-                                :size="14"
-                                :stroke-width="1.75"
-                                aria-hidden="true"
+                            ><User :size="14" :stroke-width="1.75" aria-hidden="true"
                         /></span>
-                        <ChevronDown
-                            :size="14"
-                            :stroke-width="1.75"
-                            aria-hidden="true"
-                        />
+                        <ChevronDown :size="14" :stroke-width="1.75" aria-hidden="true" />
                     </button>
-                    <div
-                        v-if="menuOpen"
-                        class="acct-menu"
-                        role="menu"
-                        aria-label="Account"
-                    >
+                    <div v-if="menuOpen" class="acct-menu" role="menu" aria-label="Account">
                         <div class="who">
-                            <b>{{ adminName }}</b
-                            ><span>Signed in · local session</span>
+                            <b>{{ adminName }}</b><span>Signed in · local session</span>
                         </div>
                         <button type="button" role="menuitem" @click="signOut">
-                            <LogOut
-                                :size="14"
-                                :stroke-width="1.75"
-                                aria-hidden="true"
-                            />
+                            <LogOut :size="14" :stroke-width="1.75" aria-hidden="true" />
                             Sign out
                         </button>
                     </div>
@@ -255,12 +212,7 @@ onBeforeUnmount(() => {
                 :aria-current="active === l.id ? 'page' : undefined"
             >
                 <span class="tab-icon">
-                    <component
-                        :is="l.icon"
-                        :size="19"
-                        :stroke-width="1.75"
-                        aria-hidden="true"
-                    />
+                    <component :is="l.icon" :size="19" :stroke-width="1.75" aria-hidden="true" />
                 </span>
                 <span>{{ l.label }}</span>
             </a>

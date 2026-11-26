@@ -14,22 +14,23 @@ const limits = (over: Partial<Limits> = {}): Limits => ({
   ...over,
 });
 
-const position = (over: Partial<PositionRow> = {}): PositionRow => ({
-  target_profit_pct: null,
-  id: 1,
-  symbol: "INFY.NS",
-  name: "Infosys",
-  class: "stock",
-  qty: 17,
-  avg_cost: 1163,
-  ltp: 1200,
-  value: 20_400,
-  stop: 1104.85,
-  target: 1279.3,
-  state: "open",
-  timing_note: "limit order, intraday or next open",
-  ...over,
-} as PositionRow);
+const position = (over: Partial<PositionRow> = {}): PositionRow =>
+  ({
+    target_profit_pct: null,
+    id: 1,
+    symbol: "INFY.NS",
+    name: "Infosys",
+    class: "stock",
+    qty: 17,
+    avg_cost: 1163,
+    ltp: 1200,
+    value: 20_400,
+    stop: 1104.85,
+    target: 1279.3,
+    state: "open",
+    timing_note: "limit order, intraday or next open",
+    ...over,
+  }) as PositionRow;
 
 const signal = (over: Partial<SignalRow> = {}): SignalRow => ({
   id: 1,
@@ -71,10 +72,6 @@ const dashboard = (over: Partial<Dashboard> = {}): Dashboard => ({
   recent_trades: [],
   ...over,
 });
-
-
-
-
 
 describe("history dates", () => {
   test("includes the year once the fill is not from the current one", async () => {
@@ -127,8 +124,14 @@ describe("reading a reply as a decision", () => {
       JSON.stringify({
         action: "decide",
         signal: {
-          action: "SELL", qty: 24, entry: 1171.6, stop: 1080, target: 1420,
-          confidence: "medium", rationale: "structure broke", cites: [1, 2],
+          action: "SELL",
+          qty: 24,
+          entry: 1171.6,
+          stop: 1080,
+          target: 1420,
+          confidence: "medium",
+          rationale: "structure broke",
+          cites: [1, 2],
         },
       }),
     );
@@ -150,7 +153,10 @@ describe("reading a reply as a decision", () => {
   test("need_more says what it wants", async () => {
     const { parseReply } = await import("./components/call-viewer");
     const r = parseReply(
-      JSON.stringify({ action: "need_more", need_more: { headlines: [3, 7], price_history: true } }),
+      JSON.stringify({
+        action: "need_more",
+        need_more: { headlines: [3, 7], price_history: true },
+      }),
     );
     expect(r.verdict).toBe("NEED_MORE");
     expect(r.wantsHeadlines).toEqual([3, 7]);
@@ -219,7 +225,9 @@ describe("markdown in the audit drawer", () => {
   test("keeps a fenced JSON example verbatim", () => {
     const html = renderMarkdown('```json\n{"action":"pass"}\n```');
     // Escaped for HTML, so it renders as the text it is.
-    expect(html).toContain('<pre class="md-code"><code>{&quot;action&quot;:&quot;pass&quot;}</code></pre>');
+    expect(html).toContain(
+      '<pre class="md-code"><code>{&quot;action&quot;:&quot;pass&quot;}</code></pre>',
+    );
   });
 });
 
@@ -240,7 +248,9 @@ describe("markdown numbering", () => {
 describe("markdown reflow", () => {
   test("a hard-wrapped paragraph reflows instead of keeping the source's line breaks", () => {
     const html = renderMarkdown("a setup that needs a\nweek to pay is not this book's trade");
-    expect(html).toBe("<p>a setup that needs a week to pay is not this book&#39;s trade</p>".replace("&#39;", "'"));
+    expect(html).toBe(
+      "<p>a setup that needs a week to pay is not this book&#39;s trade</p>".replace("&#39;", "'"),
+    );
   });
 });
 
@@ -272,11 +282,22 @@ describe("a search call is shown as a question and its results", () => {
 
   test("the drawer shows what was searched and what came back, not a chat exchange", () => {
     const html = renderExchangeDetail({
-      id: 1, ts: "2026-11-10T14:05:00Z", endpoint: "search", purpose: "search DLF.NS",
-      round: 1, trigger: null, decision_reason: null, instrument_name: "DLF Ltd",
-      instrument_symbol: "DLF.NS", prompt_template: null, completion_tokens: null,
-      request_json: request, response_json: response, prompt_tokens: null,
-      validator_verdict: null, error: null,
+      id: 1,
+      ts: "2026-11-10T14:05:00Z",
+      endpoint: "search",
+      purpose: "search DLF.NS",
+      round: 1,
+      trigger: null,
+      decision_reason: null,
+      instrument_name: "DLF Ltd",
+      instrument_symbol: "DLF.NS",
+      prompt_template: null,
+      completion_tokens: null,
+      request_json: request,
+      response_json: response,
+      prompt_tokens: null,
+      validator_verdict: null,
+      error: null,
     });
     expect(html).toContain("DLF news today");
     expect(html).toContain("Hindustan Times");

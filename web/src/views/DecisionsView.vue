@@ -44,8 +44,7 @@ function group(rows: SignalRow[], mode: Mode): Decision[] {
     const sorted = [...rows].sort((a, b) => (a.id < b.id ? 1 : -1));
     const plans = new Map<string, SignalRow[]>();
     for (const s of sorted) {
-        if (s.plan_id)
-            plans.set(s.plan_id, [...(plans.get(s.plan_id) ?? []), s]);
+        if (s.plan_id) plans.set(s.plan_id, [...(plans.get(s.plan_id) ?? []), s]);
     }
     const out: Decision[] = [];
     const seen = new Set<string>();
@@ -54,9 +53,7 @@ function group(rows: SignalRow[], mode: Mode): Decision[] {
             if (seen.has(s.plan_id)) continue;
             seen.add(s.plan_id);
             const legs = [...plans.get(s.plan_id)!].sort(
-                (a, b) =>
-                    (a.action === "SELL" ? -1 : 1) -
-                    (b.action === "SELL" ? -1 : 1),
+                (a, b) => (a.action === "SELL" ? -1 : 1) - (b.action === "SELL" ? -1 : 1),
             );
             out.push({ key: s.plan_id, legs, mode, plan: true });
             continue;
@@ -75,9 +72,7 @@ const all = computed<Decision[]>(() => {
 });
 
 const inHorizon = computed(() =>
-    horizon.value === "all"
-        ? all.value
-        : all.value.filter((d) => d.mode === horizon.value),
+    horizon.value === "all" ? all.value : all.value.filter((d) => d.mode === horizon.value),
 );
 
 const counts = computed(() => {
@@ -86,9 +81,7 @@ const counts = computed(() => {
     return c;
 });
 
-const shown = computed(() =>
-    inHorizon.value.filter((d) => d.legs[0].status === status.value),
-);
+const shown = computed(() => inHorizon.value.filter((d) => d.legs[0].status === status.value));
 
 const waiting = computed(() =>
     inHorizon.value
@@ -107,9 +100,7 @@ const FILTERS: { id: Status; label: string }[] = [
 const sub = computed(() => {
     if (!loaded.value) return "Reading the queue…";
     const n = counts.value.pending;
-    return n === 0
-        ? "Nothing is waiting on you"
-        : `${n} waiting · ${money(waiting.value)} needed`;
+    return n === 0 ? "Nothing is waiting on you" : `${n} waiting · ${money(waiting.value)} needed`;
 });
 
 const emptyText = computed(() =>
@@ -147,9 +138,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
     <div class="pg">
         <div v-if="error" class="error-band">
             Something failed: {{ error }}
-            <button class="d-btn d-btn-xs" type="button" @click="load()">
-                Retry
-            </button>
+            <button class="d-btn d-btn-xs" type="button" @click="load()">Retry</button>
         </div>
 
         <header class="pg-top">
@@ -187,9 +176,7 @@ onBeforeUnmount(() => window.clearInterval(timer));
                     {{ f.label }} {{ counts[f.id] }}
                 </button>
             </div>
-            <span class="filters-note"
-                >A plan is one decision; every leg posts together</span
-            >
+            <span class="filters-note">A plan is one decision; every leg posts together</span>
         </div>
 
         <DecisionCard

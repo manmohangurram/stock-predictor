@@ -269,7 +269,13 @@ export interface Analysis {
   } | null;
   checks: CheckRow[];
   position: PositionRow | null;
-  headlines: { id: string; title: string; publisher: string | null; published_at: string; url: string }[];
+  headlines: {
+    id: string;
+    title: string;
+    publisher: string | null;
+    published_at: string;
+    url: string;
+  }[];
   signals: SignalRow[];
   trades: Trade[];
 }
@@ -286,7 +292,13 @@ export interface InstrumentDetail {
     /** False when archived: the page offers a way back instead of another archive. */
     active: boolean;
   };
-  headlines: { id: string; title: string; publisher: string | null; published_at: string; url: string }[];
+  headlines: {
+    id: string;
+    title: string;
+    publisher: string | null;
+    published_at: string;
+    url: string;
+  }[];
   signals: SignalRow[];
 }
 
@@ -318,7 +330,6 @@ export const auth = {
     return refreshing;
   },
 };
-
 
 /** A request with the access token on it, refreshed once if the server says the token expired. */
 async function sendRaw(path: string, init: RequestInit, retry = true): Promise<Response> {
@@ -457,7 +468,8 @@ export const api = {
   keys: () => req<{ keys: ApiKey[] }>("/api/keys"),
   createKey: (body: { name: string; scope: "read" | "write"; days: number | null }) =>
     req<{ key: ApiKey; token: string }>("/api/keys", json(body)),
-  revokeKey: (id: string) => req<{ id: string; revoked: boolean }>(`/api/keys/${id}`, { method: "DELETE" }),
+  revokeKey: (id: string) =>
+    req<{ id: string; revoked: boolean }>(`/api/keys/${id}`, { method: "DELETE" }),
   /** What an assistant asked the book to do, newest first; the server caps it at 5000. */
   mcpCalls: (limit = 200) => req<{ calls: McpCall[] }>(`/api/mcp/calls?limit=${limit}`),
   dashboard: (
@@ -474,13 +486,11 @@ export const api = {
       { method: "POST" },
     ),
   /** Runs: what the scheduler started, opened before the work and closed after it. */
-  runs: (limit = 25) =>
-    req<{ runs: RunRow[]; running: number }>(`/api/runs?limit=${limit}`),
+  runs: (limit = 25) => req<{ runs: RunRow[]; running: number }>(`/api/runs?limit=${limit}`),
   /** Whether the exchange is trading right now, and why. */
   market: () => req<Market>("/api/market"),
   /** The schedule: each prompt's last run and when it is next due, computed by the server. */
-  schedule: () =>
-    req<{ now: string; prompts: ScheduledPrompt[] }>("/api/schedule"),
+  schedule: () => req<{ now: string; prompts: ScheduledPrompt[] }>("/api/schedule"),
   runNow: (prompt: string, symbol?: string) =>
     req<{ id: string; status: string }>("/api/runs", json({ prompt, symbol })),
   /** The values the audit filters offer, straight from the record. */
@@ -490,7 +500,13 @@ export const api = {
   calls: async (
     offset = 0,
     limit = 25,
-    filters: { prompt?: string; channel?: string; model?: string; review?: string; conversation?: string } = {},
+    filters: {
+      prompt?: string;
+      channel?: string;
+      model?: string;
+      review?: string;
+      conversation?: string;
+    } = {},
   ) => {
     const q = new URLSearchParams({ offset: String(offset), limit: String(limit) });
     for (const [k, v] of Object.entries(filters)) {
@@ -539,10 +555,9 @@ export const api = {
       { method: "POST" },
     ),
   archiveInstrument: (symbol: string) =>
-    req<{ symbol: string; archived: boolean }>(
-      `/api/instruments/${encodeURIComponent(symbol)}`,
-      { method: "DELETE" },
-    ),
+    req<{ symbol: string; archived: boolean }>(`/api/instruments/${encodeURIComponent(symbol)}`, {
+      method: "DELETE",
+    }),
   callDetail: (id: string) => req<CallDetail>(`/api/calls/${id}`),
   trades: () => req<Trade[]>("/api/trades"),
   instrument: (symbol: string) =>
@@ -564,7 +579,11 @@ export const api = {
   setTargetProfit: (symbol: string, pct: number | null) =>
     req<{ symbol: string; target_profit_pct: number | null }>(
       `/api/instruments/${encodeURIComponent(symbol)}/target-profit`,
-      { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ target_profit_pct: pct }) },
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ target_profit_pct: pct }),
+      },
     ),
   testNotify: async () => {
     const r = await sendRaw("/api/notify/test", { method: "POST" });
@@ -586,7 +605,18 @@ export const api = {
     ),
   putSettings: async (
     patch: Partial<
-      Pick<Settings, "budget" | "currency" | "trading_budget" | "mf_budget" | "ntfy_url" | "ntfy_topic" | "llm_base_url" | "llm_model" | "llm_provider">
+      Pick<
+        Settings,
+        | "budget"
+        | "currency"
+        | "trading_budget"
+        | "mf_budget"
+        | "ntfy_url"
+        | "ntfy_topic"
+        | "llm_base_url"
+        | "llm_model"
+        | "llm_provider"
+      >
     > & {
       deepseek_key?: string;
       ntfy_token?: string;

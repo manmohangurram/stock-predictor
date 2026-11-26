@@ -7,13 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { ChevronRight, RefreshCw, Wallet } from "lucide-vue-next";
-import {
-    api,
-    type Dashboard,
-    type PositionRow,
-    type SignalRow,
-    type Trade,
-} from "../api";
+import { api, type Dashboard, type PositionRow, type SignalRow, type Trade } from "../api";
 import { clock, histDate, money, units } from "../format";
 import { debitOf } from "../lib/decision";
 import AddInstrument from "../components/AddInstrument.vue";
@@ -30,12 +24,8 @@ const mode = computed(() => (route.query.mode === "trade" ? "trade" : "long"));
 const isTrade = computed(() => mode.value === "trade");
 
 const positions = computed(() => data.value?.positions ?? []);
-const stocks = computed(() =>
-    positions.value.filter((p) => p.class === "stock"),
-);
-const funds = computed(() =>
-    positions.value.filter((p) => p.class !== "stock"),
-);
+const stocks = computed(() => positions.value.filter((p) => p.class === "stock"));
+const funds = computed(() => positions.value.filter((p) => p.class !== "stock"));
 const shown = computed(() =>
     filter.value === "all"
         ? positions.value
@@ -46,31 +36,22 @@ const shown = computed(() =>
 
 const worth = (rows: PositionRow[]): number =>
     rows.reduce((n, p) => n + (p.value ?? p.qty * p.avg_cost), 0);
-const cost = (rows: PositionRow[]): number =>
-    rows.reduce((n, p) => n + p.qty * p.avg_cost, 0);
+const cost = (rows: PositionRow[]): number => rows.reduce((n, p) => n + p.qty * p.avg_cost, 0);
 
 const invested = computed(() => cost(positions.value));
 const value = computed(() => worth(positions.value));
 const whole = computed(() => money(Math.trunc(value.value), 0));
 const cents = computed(() => {
-    const part = Math.round(
-        Math.abs(value.value - Math.trunc(value.value)) * 100,
-    );
+    const part = Math.round(Math.abs(value.value - Math.trunc(value.value)) * 100);
     return String(part).padStart(2, "0");
 });
 const pnl = computed(() => value.value - invested.value);
-const pnlPct = computed(() =>
-    invested.value > 0 ? (pnl.value / invested.value) * 100 : 0,
-);
-const stockPct = computed(() =>
-    value.value > 0 ? (worth(stocks.value) / value.value) * 100 : 0,
-);
+const pnlPct = computed(() => (invested.value > 0 ? (pnl.value / invested.value) * 100 : 0));
+const stockPct = computed(() => (value.value > 0 ? (worth(stocks.value) / value.value) * 100 : 0));
 
 const signed = (n: number, decimals = 2): string =>
     `${n > 0 ? "+" : n < 0 ? "−" : ""}${money(Math.abs(n), decimals)}`;
-const pnlTone = computed(() =>
-    pnl.value > 0 ? "up" : pnl.value < 0 ? "down" : "",
-);
+const pnlTone = computed(() => (pnl.value > 0 ? "up" : pnl.value < 0 ? "down" : ""));
 
 /** A plan is one decision whatever its legs; the money it needs is the net of those legs. */
 const pending = computed(() => {
@@ -87,10 +68,7 @@ const pending = computed(() => {
 
 const fills = computed(() => (data.value?.recent_trades ?? []).slice(0, 5));
 const net = computed(() =>
-    fills.value.reduce(
-        (n, t) => n + (t.side === "sell" ? 1 : -1) * t.qty * t.price,
-        0,
-    ),
+    fills.value.reduce((n, t) => n + (t.side === "sell" ? 1 : -1) * t.qty * t.price, 0),
 );
 
 function isToday(iso: string): boolean {
@@ -103,8 +81,7 @@ function isToday(iso: string): boolean {
     );
 }
 
-const fillDay = (t: Trade): string =>
-    isToday(t.traded_at) ? "Today" : histDate(t.traded_at);
+const fillDay = (t: Trade): string => (isToday(t.traded_at) ? "Today" : histDate(t.traded_at));
 
 const fillGroups = computed(() => {
     const groups: { day: string; rows: Trade[] }[] = [];
@@ -124,8 +101,7 @@ const holdingMeta = (p: PositionRow): string => {
         : `${units(p.qty)} units · NAV ${money(p.avg_cost)}`;
 };
 
-const holdingPnl = (p: PositionRow): number =>
-    (p.value ?? p.qty * p.avg_cost) - p.qty * p.avg_cost;
+const holdingPnl = (p: PositionRow): number => (p.value ?? p.qty * p.avg_cost) - p.qty * p.avg_cost;
 const holdingPct = (p: PositionRow): number =>
     p.qty * p.avg_cost > 0 ? (holdingPnl(p) / (p.qty * p.avg_cost)) * 100 : 0;
 
@@ -148,8 +124,7 @@ function tapePoints(points: number[] | undefined): string {
         .join(" ");
 }
 
-const pointsOf = (p: PositionRow): number[] | undefined =>
-    sparks.value[p.symbol];
+const pointsOf = (p: PositionRow): number[] | undefined => sparks.value[p.symbol];
 
 function dirOf(p: PositionRow): "up" | "down" | "flat" {
     const pts = pointsOf(p);
@@ -212,20 +187,14 @@ watch(mode, load);
     <div class="pg">
         <div v-if="error" class="error-band">
             Something failed: {{ error }}
-            <button class="d-btn d-btn-xs" type="button" @click="load()">
-                Retry
-            </button>
+            <button class="d-btn d-btn-xs" type="button" @click="load()">Retry</button>
         </div>
 
         <template v-else-if="data">
             <header class="pg-top">
                 <div class="pg-main">
                     <div class="pg-eyebrow">
-                        {{
-                            isTrade
-                                ? "Short-term book · separate purse"
-                                : "Personal book · NSE"
-                        }}
+                        {{ isTrade ? "Short-term book · separate purse" : "Personal book · NSE" }}
                     </div>
                     <h1 class="pg-title">Book</h1>
                     <div class="pg-sub">
@@ -265,14 +234,8 @@ watch(mode, load);
                             aria-label="Refresh"
                             @click="load()"
                         >
-                            <RefreshCw
-                                :size="14"
-                                :stroke-width="1.75"
-                                aria-hidden="true"
-                            />
-                            <span class="acts-label">{{
-                                busy ? "Refreshing…" : "Refresh"
-                            }}</span>
+                            <RefreshCw :size="14" :stroke-width="1.75" aria-hidden="true" />
+                            <span class="acts-label">{{ busy ? "Refreshing…" : "Refresh" }}</span>
                         </button>
                         <AddInstrument />
                     </div>
@@ -288,8 +251,7 @@ watch(mode, load);
                     <div class="delta" :class="pnlTone">
                         {{ signed(pnl) }}
                         <span class="hint"
-                            >{{ signed(pnlPct, 1) }}% on
-                            {{ money(invested) }} invested</span
+                            >{{ signed(pnlPct, 1) }}% on {{ money(invested) }} invested</span
                         >
                     </div>
                     <div
@@ -297,14 +259,8 @@ watch(mode, load);
                         role="img"
                         :aria-label="`${stockPct.toFixed(0)}% stocks, ${(100 - stockPct).toFixed(0)}% funds`"
                     >
-                        <i
-                            class="stocks"
-                            :style="{ width: `${stockPct}%` }"
-                        ></i>
-                        <i
-                            class="funds"
-                            :style="{ width: `${100 - stockPct}%` }"
-                        ></i>
+                        <i class="stocks" :style="{ width: `${stockPct}%` }"></i>
+                        <i class="funds" :style="{ width: `${100 - stockPct}%` }"></i>
                     </div>
                     <div class="legend">
                         <span
@@ -316,23 +272,19 @@ watch(mode, load);
                             <b class="num">{{ money(worth(funds)) }}</b></span
                         >
                         <span class="free-mobile"
-                            >Free
-                            <b class="num">{{ money(data.available) }}</b></span
+                            >Free <b class="num">{{ money(data.available) }}</b></span
                         >
                     </div>
                 </div>
                 <div class="smeta">
                     <div>
-                        <span>Cost basis</span
-                        ><b class="num">{{ money(invested) }}</b>
+                        <span>Cost basis</span><b class="num">{{ money(invested) }}</b>
                     </div>
                     <div>
-                        <span>Free to deploy</span
-                        ><b class="num">{{ money(data.available) }}</b>
+                        <span>Free to deploy</span><b class="num">{{ money(data.available) }}</b>
                     </div>
                     <div>
-                        <span>Positions</span
-                        ><b class="num">{{ positions.length }}</b>
+                        <span>Positions</span><b class="num">{{ positions.length }}</b>
                     </div>
                     <div>
                         <span>Book P&amp;L</span
@@ -349,19 +301,14 @@ watch(mode, load);
                     waiting</b
                 >
                 <span class="num hint">{{ money(pending.needed) }}</span>
-                <ChevronRight
-                    :size="14"
-                    :stroke-width="1.75"
-                    aria-hidden="true"
-                />
+                <ChevronRight :size="14" :stroke-width="1.75" aria-hidden="true" />
             </RouterLink>
 
             <section v-if="fills.length" class="panel">
                 <div class="panel-head">
                     <h2>Recent<span class="desk-only"> fills</span></h2>
                     <span class="r"
-                        >{{ fills.length }}
-                        {{ fills.length === 1 ? "fill" : "fills"
+                        >{{ fills.length }} {{ fills.length === 1 ? "fill" : "fills"
                         }}<span class="desk-only">
                             · net
                             <span class="num">{{ signed(net) }}</span></span
@@ -374,23 +321,15 @@ watch(mode, load);
                             <b>{{ g.day }}</b><i></i>
                         </div>
                         <div v-for="t in g.rows" :key="t.id" class="fill-row">
-                            <span class="num when">{{
-                                clock(t.traded_at)
-                            }}</span>
+                            <span class="num when">{{ clock(t.traded_at) }}</span>
                             <span class="who">
-                                <span
-                                    class="pill"
-                                    :class="t.side === 'buy' ? 'p-b' : 'p-s'"
-                                    >{{ t.side.toUpperCase() }}</span
-                                >
-                                <span class="fill-name">{{
-                                    t.name || t.symbol
+                                <span class="pill" :class="t.side === 'buy' ? 'p-b' : 'p-s'">{{
+                                    t.side.toUpperCase()
                                 }}</span>
-                                <span
-                                    v-if="t.name && t.name !== t.symbol"
-                                    class="sym"
-                                    >{{ t.symbol }}</span
-                                >
+                                <span class="fill-name">{{ t.name || t.symbol }}</span>
+                                <span v-if="t.name && t.name !== t.symbol" class="sym">{{
+                                    t.symbol
+                                }}</span>
                             </span>
                             <span class="num price">{{ money(t.price) }}</span>
                             <span class="num qty">{{ units(t.qty) }}</span>
@@ -439,16 +378,10 @@ watch(mode, load);
                 >
                     <div class="bk-who">
                         <div class="bk-name">
-                            <span class="bk-title">{{
-                                p.name || p.symbol
+                            <span class="bk-title">{{ p.name || p.symbol }}</span>
+                            <span class="tag" :class="{ fund: p.class !== 'stock' }">{{
+                                p.class === "stock" ? "STOCK" : "FUND"
                             }}</span>
-                            <span
-                                class="tag"
-                                :class="{ fund: p.class !== 'stock' }"
-                                >{{
-                                    p.class === "stock" ? "STOCK" : "FUND"
-                                }}</span
-                            >
                         </div>
                         <div class="bk-meta">{{ holdingMeta(p) }}</div>
                     </div>
@@ -471,9 +404,7 @@ watch(mode, load);
                                 vector-effect="non-scaling-stroke"
                             />
                         </svg>
-                        <span v-else class="bk-notape" aria-hidden="true">
-                            <i></i>no tape
-                        </span>
+                        <span v-else class="bk-notape" aria-hidden="true"> <i></i>no tape </span>
                     </span>
                     <svg
                         class="bk-trend"
@@ -497,19 +428,13 @@ watch(mode, load);
                         <path v-else d="M5 12h14" />
                     </svg>
                     <div class="bk-val">
-                        <b class="num">{{
-                            money(p.value ?? p.qty * p.avg_cost)
-                        }}</b>
+                        <b class="num">{{ money(p.value ?? p.qty * p.avg_cost) }}</b>
                         <span v-if="p.value === null" class="muted">—</span>
                         <template v-else>
-                            <span
-                                class="num"
-                                :class="holdingPnl(p) >= 0 ? 'up' : 'down'"
-                                >{{ signed(holdingPnl(p)) }}</span
-                            >
-                            <span
-                                class="num gap"
-                                :class="holdingPnl(p) >= 0 ? 'up' : 'down'"
+                            <span class="num" :class="holdingPnl(p) >= 0 ? 'up' : 'down'">{{
+                                signed(holdingPnl(p))
+                            }}</span>
+                            <span class="num gap" :class="holdingPnl(p) >= 0 ? 'up' : 'down'"
                                 >{{ signed(holdingPct(p), 1) }}%</span
                             >
                         </template>

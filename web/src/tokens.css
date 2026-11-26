@@ -42,12 +42,9 @@
         --fund: #0e6a5f;
         --fund-soft: #dcefeb;
 
-        --font-form:
-            "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-        --font-ledger:
-            ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-        --font-display:
-            "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+        --font-form: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --font-ledger: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+        --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
 
         --text-xs: 0.6875rem;
         --text-sm: 0.78125rem;
@@ -73,8 +70,7 @@
         --radius-stamp: 4px;
         --row-h-touch: 44px;
 
-        --shadow-card:
-            0 1px 2px rgb(16 23 21 / 0.05), 0 10px 26px rgb(16 23 21 / 0.06);
+        --shadow-card: 0 1px 2px rgb(16 23 21 / 0.05), 0 10px 26px rgb(16 23 21 / 0.06);
         --shadow-pop: 0 18px 40px rgb(16 23 21 / 0.2);
         --scrim: rgb(43 42 39 / 0.35);
 
@@ -122,8 +118,7 @@
         --fund: #5eead4;
         --fund-soft: #0c2a26;
 
-        --shadow-card:
-            0 1px 2px rgb(0 0 0 / 0.45), 0 14px 34px rgb(0 0 0 / 0.4);
+        --shadow-card: 0 1px 2px rgb(0 0 0 / 0.45), 0 14px 34px rgb(0 0 0 / 0.4);
         --shadow-pop: 0 22px 50px rgb(0 0 0 / 0.55);
         --scrim: rgb(0 0 0 / 0.62);
 
@@ -140,7 +135,7 @@
             --shell: #060b09;
             --shell-ink: #e8eeea;
             --shell-dim: #8fa097;
-    
+
             --ink: #e8eeea;
             --ink-secondary: #a8b4ae;
             --ink-tertiary: #78857f;
@@ -169,8 +164,7 @@
             --green: #4ade80;
             --green-bg: #0f2c1d;
 
-            --shadow-card:
-                0 1px 2px rgb(0 0 0 / 0.45), 0 14px 34px rgb(0 0 0 / 0.4);
+            --shadow-card: 0 1px 2px rgb(0 0 0 / 0.45), 0 14px 34px rgb(0 0 0 / 0.4);
             --shadow-pop: 0 22px 50px rgb(0 0 0 / 0.55);
             --scrim: rgb(0 0 0 / 0.62);
 

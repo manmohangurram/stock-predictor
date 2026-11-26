@@ -7,13 +7,7 @@
  */
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import {
-    api,
-    auth,
-    type ApiKey,
-    type SessionInfo,
-    type Settings,
-} from "../api";
+import { api, auth, type ApiKey, type SessionInfo, type Settings } from "../api";
 import SettingsRail from "../components/SettingsRail.vue";
 import SettingField from "../components/SettingField.vue";
 import { KeyRound, LogOut, User } from "lucide-vue-next";
@@ -40,9 +34,7 @@ const passwordDialog = ref<HTMLDialogElement | null>(null);
 const nameDialog = ref<HTMLDialogElement | null>(null);
 const { username: adminName, setName } = useAdmin();
 
-const activeKeys = computed(
-    () => keys.value.filter((k) => !k.revoked_at).length,
-);
+const activeKeys = computed(() => keys.value.filter((k) => !k.revoked_at).length);
 
 const lifetimes = computed(() => [
     { value: "1", label: "1 day" },
@@ -209,15 +201,12 @@ async function changePassword(): Promise<void> {
         current.value = "";
         next.value = "";
         again.value = "";
-        passwordNote.value =
-            "Password changed. Sign in again with the new one.";
+        passwordNote.value = "Password changed. Sign in again with the new one.";
         auth.set(null);
         setTimeout(() => void router.push("/login"), 1800);
     } catch (e) {
         const text = String(e);
-        passwordError.value = text.includes("403")
-            ? "That is not the current password."
-            : text;
+        passwordError.value = text.includes("403") ? "That is not the current password." : text;
     }
 }
 
@@ -265,9 +254,7 @@ async function renameUser(): Promise<void> {
         nameNote.value = "Signed in as " + res.username + " from now on.";
     } catch (e) {
         const text = String(e);
-        nameError.value = text.includes("403")
-            ? "That is not the current password."
-            : text;
+        nameError.value = text.includes("403") ? "That is not the current password." : text;
     } finally {
         busyName.value = false;
     }
@@ -285,16 +272,15 @@ onMounted(async () => {
             <div class="pg-main">
                 <div class="pg-eyebrow">Configuration</div>
                 <h1 class="pg-title">Settings</h1>
-                <div class="pg-sub">
-                    Keys that open /mcp, and the session on this browser
-                </div>
+                <div class="pg-sub">Keys that open /mcp, and the session on this browser</div>
             </div>
             <div class="pg-side">
                 <div class="pg-kpis">
-                    <div><span>Signed in</span><b>{{ adminName }}</b></div>
                     <div>
-                        <span>Active keys</span
-                        ><b class="num">{{ activeKeys }}</b>
+                        <span>Signed in</span><b>{{ adminName }}</b>
+                    </div>
+                    <div>
+                        <span>Active keys</span><b class="num">{{ activeKeys }}</b>
                     </div>
                 </div>
             </div>
@@ -308,21 +294,16 @@ onMounted(async () => {
             <div class="formcard">
                 <h3>Session</h3>
                 <p class="lead">
-                    This browser is signed in as {{ adminName }}. Signing out
-                    ends every live session below, on every device.
+                    This browser is signed in as {{ adminName }}. Signing out ends every live
+                    session below, on every device.
                 </p>
                 <div class="sess">
                     <div class="who">
                         <span class="avatar">
-                            <User
-                                :size="15"
-                                :stroke-width="1.75"
-                                aria-hidden="true"
-                            />
+                            <User :size="15" :stroke-width="1.75" aria-hidden="true" />
                         </span>
                         <div>
-                            <b>{{ adminName }}</b
-                            ><span class="hint">local session</span>
+                            <b>{{ adminName }}</b><span class="hint">local session</span>
                         </div>
                     </div>
                     <button
@@ -331,30 +312,18 @@ onMounted(async () => {
                         :disabled="busySessions"
                         @click="signOutAll"
                     >
-                        <LogOut
-                            :size="14"
-                            :stroke-width="1.75"
-                            aria-hidden="true"
-                        />
+                        <LogOut :size="14" :stroke-width="1.75" aria-hidden="true" />
                         {{ busySessions ? "Signing out…" : "Sign out all" }}
                     </button>
                 </div>
                 <ul class="sesslist">
                     <li v-for="s in sessions" :key="s.id">
                         <span class="dev">{{ device(s.user_agent) }}</span>
-                        <span class="meta"
-                            >signed in {{ histDate(s.created_at) }}</span
-                        >
-                        <span v-if="s.current" class="tag current"
-                            >this device</span
-                        >
-                        <span v-else class="meta right"
-                            >expires {{ histDate(s.expires_at) }}</span
-                        >
+                        <span class="meta">signed in {{ histDate(s.created_at) }}</span>
+                        <span v-if="s.current" class="tag current">this device</span>
+                        <span v-else class="meta right">expires {{ histDate(s.expires_at) }}</span>
                     </li>
-                    <li v-if="!sessions.length" class="meta">
-                        No live sessions.
-                    </li>
+                    <li v-if="!sessions.length" class="meta">No live sessions.</li>
                 </ul>
             </div>
 
@@ -363,17 +332,12 @@ onMounted(async () => {
                     <div>
                         <h3>API keys</h3>
                         <p class="lead">
-                            A key is shown once, at creation. The table keeps a
-                            prefix so two keys stay distinguishable. A
-                            <b>read</b> key sees the book; a <b>write</b> key
-                            can also act on it.
+                            A key is shown once, at creation. The table keeps a prefix so two keys
+                            stay distinguishable. A
+                            <b>read</b> key sees the book; a <b>write</b> key can also act on it.
                         </p>
                     </div>
-                    <button
-                        class="d-btn d-btn-sm d-btn-primary"
-                        type="button"
-                        @click="openCreate"
-                    >
+                    <button class="d-btn d-btn-sm d-btn-primary" type="button" @click="openCreate">
                         Create a key
                     </button>
                 </div>
@@ -384,18 +348,13 @@ onMounted(async () => {
 
                 <div v-if="revealed" class="error-band token" role="status">
                     <p>
-                        <b>{{ revealed.key.name }}</b> — copy this now. It is
-                        not shown again.
+                        <b>{{ revealed.key.name }}</b> — copy this now. It is not shown again.
                     </p>
                     <p>
                         <code>{{ revealed.token }}</code>
                     </p>
                     <div class="row wide">
-                        <button
-                            class="d-btn d-btn-sm"
-                            type="button"
-                            @click="copy"
-                        >
+                        <button class="d-btn d-btn-sm" type="button" @click="copy">
                             {{ copied ? "Copied" : "Copy" }}
                         </button>
                         <button
@@ -421,11 +380,7 @@ onMounted(async () => {
                         </tr>
                     </thead>
                     <tbody>
-                        <tr
-                            v-for="k in keys"
-                            :key="k.id"
-                            :class="{ revoked: k.revoked_at }"
-                        >
+                        <tr v-for="k in keys" :key="k.id" :class="{ revoked: k.revoked_at }">
                             <td>
                                 <b>{{ k.name }}</b>
                             </td>
@@ -435,9 +390,7 @@ onMounted(async () => {
                             <td class="mono">{{ k.prefix }}…</td>
                             <td class="mono">{{ expires(k) }}</td>
                             <td class="r">
-                                <span v-if="k.revoked_at" class="muted"
-                                    >revoked</span
-                                >
+                                <span v-if="k.revoked_at" class="muted">revoked</span>
                                 <button
                                     v-else
                                     class="d-btn d-btn-xs d-btn-ghost"
@@ -445,11 +398,7 @@ onMounted(async () => {
                                     :class="{ danger: armed === k.id }"
                                     @click="revoke(k)"
                                 >
-                                    {{
-                                        armed === k.id
-                                            ? "Click again to revoke"
-                                            : "Revoke"
-                                    }}
+                                    {{ armed === k.id ? "Click again to revoke" : "Revoke" }}
                                 </button>
                             </td>
                         </tr>
@@ -472,38 +421,26 @@ onMounted(async () => {
             <div class="formcard">
                 <h3>Secrets at rest</h3>
                 <p class="lead">
-                    Provider keys, the ntfy token and the proxy password are
-                    stored encrypted with the
+                    Provider keys, the ntfy token and the proxy password are stored encrypted with
+                    the
                     <span class="mono">enc:v1</span> prefix. Losing
                     <span class="mono">SECRET_KEY</span> means re-entering them.
                 </p>
                 <div class="kv2">
                     <span>Provider key</span>
-                    <b>{{
-                        config?.llm_key_configured
-                            ? "enc:v1 · stored"
-                            : "not set"
-                    }}</b>
+                    <b>{{ config?.llm_key_configured ? "enc:v1 · stored" : "not set" }}</b>
                 </div>
                 <div class="kv2">
                     <span>ntfy token</span>
-                    <b>{{
-                        config?.ntfy_token_configured
-                            ? "enc:v1 · stored"
-                            : "not set"
-                    }}</b>
+                    <b>{{ config?.ntfy_token_configured ? "enc:v1 · stored" : "not set" }}</b>
                 </div>
                 <div class="kv2">
                     <span>Proxy password</span>
                     <b>{{
-                        config?.runtime.proxy_pass_configured
-                            ? "enc:v1 · stored"
-                            : "not set"
+                        config?.runtime.proxy_pass_configured ? "enc:v1 · stored" : "not set"
                     }}</b>
                 </div>
-                <div class="kv2">
-                    <span>Everything else</span><b>a settings row</b>
-                </div>
+                <div class="kv2"><span>Everything else</span><b>a settings row</b></div>
             </div>
 
             <div class="formcard">
@@ -511,15 +448,11 @@ onMounted(async () => {
                     <div>
                         <h3>Sign-in name</h3>
                         <p class="lead">
-                            The name you type at the door. There is one admin,
-                            so this is the only name the book knows.
+                            The name you type at the door. There is one admin, so this is the only
+                            name the book knows.
                         </p>
                     </div>
-                    <button
-                        class="d-btn d-btn-sm"
-                        type="button"
-                        @click="openName"
-                    >
+                    <button class="d-btn d-btn-sm" type="button" @click="openName">
                         Change username
                     </button>
                 </div>
@@ -533,16 +466,12 @@ onMounted(async () => {
                     <div>
                         <h3>Password</h3>
                         <p class="lead">
-                            Changing it ends every signed-in session, including
-                            the one you are using. There is no reset by email;
-                            if it is lost, it is replaced on the server.
+                            Changing it ends every signed-in session, including the one you are
+                            using. There is no reset by email; if it is lost, it is replaced on the
+                            server.
                         </p>
                     </div>
-                    <button
-                        class="d-btn d-btn-sm"
-                        type="button"
-                        @click="openPassword"
-                    >
+                    <button class="d-btn d-btn-sm" type="button" @click="openPassword">
                         Change password
                     </button>
                 </div>
@@ -550,11 +479,7 @@ onMounted(async () => {
         </main>
     </div>
 
-    <dialog
-        ref="createDialog"
-        class="appmodal"
-        aria-labelledby="create-key-title"
-    >
+    <dialog ref="createDialog" class="appmodal" aria-labelledby="create-key-title">
         <form autocomplete="off" @submit.prevent="create">
             <header class="appmodal-head">
                 <div>
@@ -585,11 +510,7 @@ onMounted(async () => {
                     <label class="field">
                         <span class="lbl">Lifetime</span>
                         <select v-model="days" aria-label="Key lifetime">
-                            <option
-                                v-for="l in lifetimes"
-                                :key="l.value"
-                                :value="l.value"
-                            >
+                            <option v-for="l in lifetimes" :key="l.value" :value="l.value">
                                 {{ l.label }}
                             </option>
                         </select>
@@ -598,29 +519,17 @@ onMounted(async () => {
                 <p v-if="error" class="error-band" role="alert">{{ error }}</p>
             </div>
             <footer class="appmodal-foot">
-                <button
-                    class="d-btn d-btn-sm d-btn-ghost"
-                    type="button"
-                    @click="closeCreate"
-                >
+                <button class="d-btn d-btn-sm d-btn-ghost" type="button" @click="closeCreate">
                     Cancel
                 </button>
-                <button
-                    class="d-btn d-btn-sm d-btn-primary"
-                    type="submit"
-                    :disabled="busy"
-                >
+                <button class="d-btn d-btn-sm d-btn-primary" type="submit" :disabled="busy">
                     {{ busy ? "Creating…" : "Create a key" }}
                 </button>
             </footer>
         </form>
     </dialog>
 
-    <dialog
-        ref="passwordDialog"
-        class="appmodal"
-        aria-labelledby="password-title"
-    >
+    <dialog ref="passwordDialog" class="appmodal" aria-labelledby="password-title">
         <form autocomplete="off" @submit.prevent="changePassword">
             <header class="appmodal-head">
                 <div>
@@ -662,25 +571,15 @@ onMounted(async () => {
                 </p>
             </div>
             <footer class="appmodal-foot">
-                <button
-                    class="d-btn d-btn-sm d-btn-ghost"
-                    type="button"
-                    @click="closePassword"
-                >
+                <button class="d-btn d-btn-sm d-btn-ghost" type="button" @click="closePassword">
                     Cancel
                 </button>
-                <button class="d-btn d-btn-sm d-btn-primary" type="submit">
-                    Change password
-                </button>
+                <button class="d-btn d-btn-sm d-btn-primary" type="submit">Change password</button>
             </footer>
         </form>
     </dialog>
 
-    <dialog
-        ref="nameDialog"
-        class="appmodal"
-        aria-labelledby="name-title"
-    >
+    <dialog ref="nameDialog" class="appmodal" aria-labelledby="name-title">
         <form autocomplete="off" @submit.prevent="renameUser">
             <header class="appmodal-head">
                 <div>
@@ -713,18 +612,10 @@ onMounted(async () => {
                 </p>
             </div>
             <footer class="appmodal-foot">
-                <button
-                    class="d-btn d-btn-sm d-btn-ghost"
-                    type="button"
-                    @click="closeName"
-                >
+                <button class="d-btn d-btn-sm d-btn-ghost" type="button" @click="closeName">
                     Cancel
                 </button>
-                <button
-                    class="d-btn d-btn-sm d-btn-primary"
-                    type="submit"
-                    :disabled="busyName"
-                >
+                <button class="d-btn d-btn-sm d-btn-primary" type="submit" :disabled="busyName">
                     {{ busyName ? "Changing…" : "Change username" }}
                 </button>
             </footer>

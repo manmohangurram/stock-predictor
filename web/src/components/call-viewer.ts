@@ -106,7 +106,9 @@ export function declaredTools(requestJson: string | null): string[] {
 export function pretty(raw: string | null, max = 20000): string {
   const value = parse(raw);
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  return text.length > max ? `${text.slice(0, max)}\n… truncated in the view; the database has it all` : text;
+  return text.length > max
+    ? `${text.slice(0, max)}\n… truncated in the view; the database has it all`
+    : text;
 }
 
 /** The model's answer, once its JSON is understood. */
@@ -149,9 +151,19 @@ const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? 
 /** `{"action":"decide","signal":{…}}` and its bare variants, from one parser. */
 export function parseReply(content: string): Reply {
   const empty: Reply = {
-    verdict: null, entry: null, stop: null, target: null, qty: null, confidence: null,
-    rationale: null, why: null, wantsHeadlines: [], wantsHistory: false, cites: [],
-    moves: [], rest: null,
+    verdict: null,
+    entry: null,
+    stop: null,
+    target: null,
+    qty: null,
+    confidence: null,
+    rationale: null,
+    why: null,
+    wantsHeadlines: [],
+    wantsHistory: false,
+    cites: [],
+    moves: [],
+    rest: null,
   };
   let body: unknown;
   try {
@@ -163,8 +175,7 @@ export function parseReply(content: string): Reply {
   if (!outer) return empty;
   const decision = asRecord(outer.signal) ?? outer;
   const action = str(decision.action) ?? str(outer.action);
-  const verdict =
-    action === null ? null : action === "decide" ? "DECIDE" : action.toUpperCase();
+  const verdict = action === null ? null : action === "decide" ? "DECIDE" : action.toUpperCase();
   const confidence = asRecord(decision.confidence) ? null : str(decision.confidence);
   const more = asRecord(decision.need_more) ?? asRecord(outer.need_more) ?? asRecord(outer.more);
   const headlines = more?.headlines ?? decision.headlines;

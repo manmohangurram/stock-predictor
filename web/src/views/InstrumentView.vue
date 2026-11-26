@@ -5,13 +5,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import {
-    ClipboardList,
-    Newspaper,
-    Plus,
-    ReceiptText,
-    RefreshCw,
-} from "lucide-vue-next";
+import { ClipboardList, Newspaper, Plus, ReceiptText, RefreshCw } from "lucide-vue-next";
 import {
     api,
     type Analysis,
@@ -56,8 +50,7 @@ async function load(): Promise<void> {
         detail.value = a as unknown as InstrumentDetail;
         trades.value = a.trades ?? [];
         error.value = "";
-        if (!ranges.value.some((o) => o.value === range.value))
-            range.value = "3m";
+        if (!ranges.value.some((o) => o.value === range.value)) range.value = "3m";
         await loadChart();
     } catch (e) {
         error.value = String(e);
@@ -77,9 +70,7 @@ watch(symbol, () => {
 const a = computed(() => analysis.value);
 const inst = computed(() => a.value?.instrument);
 // The name is the title; the symbol follows it, once.
-const showSymbol = computed(
-    () => !!inst.value?.name && inst.value.name !== inst.value.symbol,
-);
+const showSymbol = computed(() => !!inst.value?.name && inst.value.name !== inst.value.symbol);
 const position = computed(() => a.value?.position ?? null);
 const klass = computed(() => inst.value?.class ?? "stock");
 const isFund = computed(() => klass.value === "mutual_fund");
@@ -94,9 +85,7 @@ const rangeOptions = [
     { value: "1y", label: "1Y" },
 ];
 // A fund publishes one NAV a day, so there is no day or week of intraday to ask for.
-const ranges = computed(() =>
-    isFund.value ? rangeOptions.slice(2) : rangeOptions,
-);
+const ranges = computed(() => (isFund.value ? rangeOptions.slice(2) : rangeOptions));
 
 const resolutionText = computed(() => {
     switch (chartResolution.value) {
@@ -115,9 +104,7 @@ const shown = computed(() => chart.value ?? a.value?.bars ?? []);
 const seriesNote = computed(() => {
     const n = shown.value.length;
     const points = `${n} ${n === 1 ? "point" : "points"}`;
-    return isFund.value
-        ? `${points} · NAV`
-        : `${points} · ${resolutionText.value}`;
+    return isFund.value ? `${points} · NAV` : `${points} · ${resolutionText.value}`;
 });
 
 async function loadChart(): Promise<void> {
@@ -142,53 +129,36 @@ const ltp = computed(() =>
         : (position.value?.avg_cost ?? null),
 );
 const prevClose = computed(() =>
-    a.value && a.value.bars.length > 1
-        ? a.value.bars[a.value.bars.length - 2].close
-        : null,
+    a.value && a.value.bars.length > 1 ? a.value.bars[a.value.bars.length - 2].close : null,
 );
 const priceTime = computed(() => {
     const bars = a.value?.bars ?? [];
     return bars.length ? clock(bars[bars.length - 1].ts) : "";
 });
 const change = computed(() =>
-    ltp.value !== null && prevClose.value !== null
-        ? ltp.value - prevClose.value
-        : null,
+    ltp.value !== null && prevClose.value !== null ? ltp.value - prevClose.value : null,
 );
 const invested = computed(() =>
     position.value ? position.value.qty * position.value.avg_cost : null,
 );
 const value = computed(() =>
-    position.value && ltp.value !== null
-        ? position.value.qty * ltp.value
-        : null,
+    position.value && ltp.value !== null ? position.value.qty * ltp.value : null,
 );
 const unrealised = computed(() =>
-    invested.value !== null && value.value !== null
-        ? value.value - invested.value
-        : null,
+    invested.value !== null && value.value !== null ? value.value - invested.value : null,
 );
 const costPct = computed(() =>
-    unrealised.value !== null && invested.value
-        ? (unrealised.value / invested.value) * 100
-        : null,
+    unrealised.value !== null && invested.value ? (unrealised.value / invested.value) * 100 : null,
 );
-const realised = computed(() =>
-    trades.value.reduce((n, t) => n + (t.realised ?? 0), 0),
-);
-const closedOut = computed(
-    () => trades.value.length > 0 && realised.value !== 0,
-);
+const realised = computed(() => trades.value.reduce((n, t) => n + (t.realised ?? 0), 0));
+const closedOut = computed(() => trades.value.length > 0 && realised.value !== 0);
 const sign = (n: number): string => (n >= 0 ? "+" : "−");
 const signed = (n: number): string => `${sign(n)}${money(Math.abs(n))}`;
 const pct = (n: number): string => `${sign(n)}${Math.abs(n).toFixed(1)}%`;
-const tone = (n: number | null): string =>
-    n === null || n === 0 ? "" : n > 0 ? "up" : "down";
+const tone = (n: number | null): string => (n === null || n === 0 ? "" : n > 0 ? "up" : "down");
 
 const signals = computed<SignalRow[]>(() => detail.value?.signals ?? []);
-const pending = computed(
-    () => signals.value.filter((s) => s.status === "pending").length,
-);
+const pending = computed(() => signals.value.filter((s) => s.status === "pending").length);
 
 const expected = computed(() => {
     const p = position.value;
@@ -198,16 +168,13 @@ const expected = computed(() => {
 
 const rr = computed(() => {
     const p = position.value;
-    if (!p || p.stop === null || p.target === null || ltp.value === null)
-        return null;
+    if (!p || p.stop === null || p.target === null || ltp.value === null) return null;
     const risk = ltp.value - p.stop;
     if (risk <= 0) return null;
     return (p.target - ltp.value) / risk;
 });
 
-const blocked = computed(() =>
-    (a.value?.checks ?? []).filter((c) => !c.passed),
-);
+const blocked = computed(() => (a.value?.checks ?? []).filter((c) => !c.passed));
 const ruleNote = computed(() =>
     !a.value?.checks.length
         ? "no rule check yet"
@@ -251,9 +218,7 @@ watch(recording, (open) => {
 });
 
 const heldQty = computed(() => position.value?.qty ?? 0);
-const oversell = computed(
-    () => side.value === "sell" && Number(fill.value.qty) > heldQty.value,
-);
+const oversell = computed(() => side.value === "sell" && Number(fill.value.qty) > heldQty.value);
 const fillValue = computed(() => {
     const qty = Number(fill.value.qty);
     const price = Number(fill.value.price);
@@ -347,17 +312,13 @@ const manageStatus = ref("");
 const archiving = ref(false);
 
 watch(inst, (i) => {
-    target.value =
-        i?.target_profit_pct == null ? "" : String(i.target_profit_pct);
+    target.value = i?.target_profit_pct == null ? "" : String(i.target_profit_pct);
 });
 
 async function saveTarget(): Promise<void> {
     const raw = target.value.trim();
     try {
-        await api.setTargetProfit(
-            symbol.value,
-            raw === "" ? null : Number(raw),
-        );
+        await api.setTargetProfit(symbol.value, raw === "" ? null : Number(raw));
         await load();
     } catch (e) {
         manageStatus.value = String(e);
@@ -378,8 +339,7 @@ async function refreshNow(): Promise<void> {
 async function archive(): Promise<void> {
     if (!archiving.value) {
         archiving.value = true;
-        manageStatus.value =
-            "Archiving clears prices and headlines; fills and decisions stay.";
+        manageStatus.value = "Archiving clears prices and headlines; fills and decisions stay.";
         window.setTimeout(() => (archiving.value = false), 5000);
         return;
     }
@@ -406,9 +366,7 @@ const gone = (): void => void router.push("/archived");
 <template>
     <div v-if="error" class="error-band">
         Something failed: {{ error }}
-        <button class="d-btn d-btn-xs" type="button" @click="load()">
-            Retry
-        </button>
+        <button class="d-btn d-btn-xs" type="button" @click="load()">Retry</button>
     </div>
 
     <div v-else-if="a && inst" class="pg dossier">
@@ -419,24 +377,19 @@ const gone = (): void => void router.push("/archived");
         <header class="pg-top">
             <div class="pg-main">
                 <div class="pg-eyebrow">
-                    {{ isFund ? "Fund · AMFI" : "Stock · NSE"
-                    }}{{ archived ? " · archived" : "" }}
+                    {{ isFund ? "Fund · AMFI" : "Stock · NSE" }}{{ archived ? " · archived" : "" }}
                 </div>
                 <h1 class="pg-title">{{ inst.name || inst.symbol }}</h1>
                 <div class="pg-sub">
-                    <span v-if="showSymbol" class="sym">{{
-                        inst.symbol
-                    }}</span>
+                    <span v-if="showSymbol" class="sym">{{ inst.symbol }}</span>
                     <template v-if="position">
-                        <span v-if="showSymbol"> · </span
-                        >{{ units(position.qty) }}
+                        <span v-if="showSymbol"> · </span>{{ units(position.qty) }}
                         {{ isFund ? "units" : "shares" }} · average
                         {{ money(position.avg_cost) }}</template
                     >
                     <template v-if="priceTime">
                         <span v-if="showSymbol || position"> · </span
-                        >{{ isFund ? "last NAV" : "last price" }}
-                        {{ priceTime }} IST</template
+                        >{{ isFund ? "last NAV" : "last price" }} {{ priceTime }} IST</template
                     >
                 </div>
             </div>
@@ -444,11 +397,7 @@ const gone = (): void => void router.push("/archived");
                 <div class="price">
                     <b class="num">{{ ltp === null ? "—" : money(ltp) }}</b>
                     <span class="delta">
-                        <span
-                            v-if="change !== null"
-                            class="num"
-                            :class="tone(change)"
-                        >
+                        <span v-if="change !== null" class="num" :class="tone(change)">
                             {{ signed(change) }} <em>today</em>
                         </span>
                         <span v-if="costPct !== null" class="num hint"
@@ -464,11 +413,7 @@ const gone = (): void => void router.push("/archived");
                         aria-label="Refresh this instrument"
                         @click="refreshNow"
                     >
-                        <RefreshCw
-                            :size="14"
-                            :stroke-width="1.75"
-                            aria-hidden="true"
-                        />
+                        <RefreshCw :size="14" :stroke-width="1.75" aria-hidden="true" />
                         <span class="acts-label">Refresh</span>
                     </button>
                     <button
@@ -478,11 +423,7 @@ const gone = (): void => void router.push("/archived");
                         :aria-expanded="recording"
                         @click="recording = !recording"
                     >
-                        <Plus
-                            :size="14"
-                            :stroke-width="1.75"
-                            aria-hidden="true"
-                        />
+                        <Plus :size="14" :stroke-width="1.75" aria-hidden="true" />
                         <span class="acts-label">Record a fill</span>
                     </button>
                 </div>
@@ -501,11 +442,7 @@ const gone = (): void => void router.push("/archived");
                 :analysis="a"
                 :bars="chart ?? undefined"
                 :compact="compact"
-                :empty="
-                    chart
-                        ? 'No bars for this range — the exchange returned none.'
-                        : undefined
-                "
+                :empty="chart ? 'No bars for this range — the exchange returned none.' : undefined"
             />
             <div class="ranges">
                 <AppSegment
@@ -528,28 +465,19 @@ const gone = (): void => void router.push("/archived");
             <div>
                 <h3>Position</h3>
                 <div class="kv2">
-                    <span>Shares</span
-                    ><b class="num">{{
-                        position ? units(position.qty) : "—"
-                    }}</b>
+                    <span>Shares</span><b class="num">{{ position ? units(position.qty) : "—" }}</b>
                 </div>
                 <div class="kv2">
                     <span>Average cost</span
-                    ><b class="num">{{
-                        position ? money(position.avg_cost) : "—"
-                    }}</b>
+                    ><b class="num">{{ position ? money(position.avg_cost) : "—" }}</b>
                 </div>
                 <div class="kv2">
                     <span>Invested</span
-                    ><b class="num">{{
-                        invested === null ? "—" : money(invested)
-                    }}</b>
+                    ><b class="num">{{ invested === null ? "—" : money(invested) }}</b>
                 </div>
                 <div class="kv2">
                     <span>Market value</span
-                    ><b class="num">{{
-                        value === null ? "—" : money(value)
-                    }}</b>
+                    ><b class="num">{{ value === null ? "—" : money(value) }}</b>
                 </div>
                 <div class="kv2">
                     <span>Unrealised</span>
@@ -587,19 +515,14 @@ const gone = (): void => void router.push("/archived");
                     </label>
                     <button class="d-btn d-btn-xs" type="submit">Save</button>
                 </form>
-                <p class="hint">
-                    Blank uses the pot's minimum; the band's maximum always
-                    wins.
-                </p>
+                <p class="hint">Blank uses the pot's minimum; the band's maximum always wins.</p>
             </div>
 
             <div>
                 <h3>The plan</h3>
                 <div class="kv2">
                     <span>Stop</span
-                    ><b class="num">{{
-                        position?.stop == null ? "—" : money(position.stop)
-                    }}</b>
+                    ><b class="num">{{ position?.stop == null ? "—" : money(position.stop) }}</b>
                 </div>
                 <div class="kv2">
                     <span>Target</span
@@ -609,13 +532,10 @@ const gone = (): void => void router.push("/archived");
                 </div>
                 <div class="kv2">
                     <span>Reward : risk</span>
-                    <b class="num">{{
-                        rr === null ? "—" : `${rr.toFixed(1)} : 1`
-                    }}</b>
+                    <b class="num">{{ rr === null ? "—" : `${rr.toFixed(1)} : 1` }}</b>
                 </div>
                 <div class="kv2">
-                    <span>Price data</span
-                    ><b class="num">{{ a.bar_count }} / 200 bars</b>
+                    <span>Price data</span><b class="num">{{ a.bar_count }} / 200 bars</b>
                 </div>
                 <div class="kv2">
                     <span>Rule check</span>
@@ -638,8 +558,7 @@ const gone = (): void => void router.push("/archived");
                         rel="noreferrer noopener"
                         >{{ h.title
                         }}<span class="src"
-                            >{{ h.publisher ?? "—" }} ·
-                            {{ day(h.published_at) }}</span
+                            >{{ h.publisher ?? "—" }} · {{ day(h.published_at) }}</span
                         ></a
                     >
                 </template>
@@ -661,11 +580,7 @@ const gone = (): void => void router.push("/archived");
                 <span class="r">
                     {{ trades.length }}
                     {{ trades.length === 1 ? "fill" : "fills" }} ·
-                    {{
-                        position
-                            ? `${units(position.qty)} held`
-                            : "nothing held"
-                    }}
+                    {{ position ? `${units(position.qty)} held` : "nothing held" }}
                 </span>
             </div>
 
@@ -687,11 +602,9 @@ const gone = (): void => void router.push("/archived");
                         <tr>
                             <td class="num when">{{ dayTime(t.traded_at) }}</td>
                             <td>
-                                <span
-                                    class="pill"
-                                    :class="t.side === 'buy' ? 'p-b' : 'p-s'"
-                                    >{{ t.side.toUpperCase() }}</span
-                                >
+                                <span class="pill" :class="t.side === 'buy' ? 'p-b' : 'p-s'">{{
+                                    t.side.toUpperCase()
+                                }}</span>
                             </td>
                             <td class="r num">{{ units(t.qty) }}</td>
                             <td class="r num">{{ money(t.price) }}</td>
@@ -700,11 +613,7 @@ const gone = (): void => void router.push("/archived");
                                 {{ vsClose(t).text }}
                             </td>
                             <td class="r hint hide-sm">
-                                {{
-                                    t.mode === "trade"
-                                        ? "short-term"
-                                        : "long-term"
-                                }}
+                                {{ t.mode === "trade" ? "short-term" : "long-term" }}
                             </td>
                             <td class="r">
                                 <button
@@ -719,10 +628,7 @@ const gone = (): void => void router.push("/archived");
                         </tr>
                         <tr v-if="editing === t.id">
                             <td colspan="8">
-                                <form
-                                    class="edit-form"
-                                    @submit.prevent="saveEdit(t.id)"
-                                >
+                                <form class="edit-form" @submit.prevent="saveEdit(t.id)">
                                     <label class="fld"
                                         ><span>Quantity</span
                                         ><input
@@ -741,14 +647,8 @@ const gone = (): void => void router.push("/archived");
                                             min="0"
                                             step="any"
                                     /></label>
-                                    <AppDateField
-                                        v-model="edit.at"
-                                        :max="today()"
-                                    />
-                                    <button
-                                        class="d-btn d-btn-xs d-btn-primary"
-                                        type="submit"
-                                    >
+                                    <AppDateField v-model="edit.at" :max="today()" />
+                                    <button class="d-btn d-btn-xs d-btn-primary" type="submit">
                                         Save
                                     </button>
                                     <button
@@ -764,18 +664,11 @@ const gone = (): void => void router.push("/archived");
                                         :data-armed="armed === t.id"
                                         @click="deleteFill(t.id)"
                                     >
-                                        {{
-                                            armed === t.id
-                                                ? "Delete? Click again"
-                                                : "Delete fill"
-                                        }}
+                                        {{ armed === t.id ? "Delete? Click again" : "Delete fill" }}
                                     </button>
-                                    <span
-                                        v-if="fillStatus"
-                                        class="hint"
-                                        role="status"
-                                        >{{ fillStatus }}</span
-                                    >
+                                    <span v-if="fillStatus" class="hint" role="status">{{
+                                        fillStatus
+                                    }}</span>
                                 </form>
                             </td>
                         </tr>
@@ -792,11 +685,9 @@ const gone = (): void => void router.push("/archived");
                 <div v-for="t in trades" :key="t.id" class="row">
                     <span class="num when">{{ day(t.traded_at) }}</span>
                     <span class="who">
-                        <span
-                            class="pill"
-                            :class="t.side === 'buy' ? 'p-b' : 'p-s'"
-                            >{{ t.side.toUpperCase() }}</span
-                        >
+                        <span class="pill" :class="t.side === 'buy' ? 'p-b' : 'p-s'">{{
+                            t.side.toUpperCase()
+                        }}</span>
                         {{ units(t.qty) }} @ {{ money(t.price) }}
                     </span>
                     <b class="num">{{ money(t.qty * t.price) }}</b>
@@ -804,8 +695,8 @@ const gone = (): void => void router.push("/archived");
             </div>
             <div class="panel-foot">
                 <span class="hint"
-                    >A fill moves the position, the trade and the cash together,
-                    in one transaction.</span
+                    >A fill moves the position, the trade and the cash together, in one
+                    transaction.</span
                 >
             </div>
         </section>
@@ -813,9 +704,7 @@ const gone = (): void => void router.push("/archived");
         <section class="panel">
             <div class="panel-head">
                 <h2>Decisions</h2>
-                <span class="r"
-                    >{{ signals.length }} recorded · {{ pending }} pending</span
-                >
+                <span class="r">{{ signals.length }} recorded · {{ pending }} pending</span>
             </div>
             <table v-if="signals.length" class="dec only-desk">
                 <thead>
@@ -847,11 +736,9 @@ const gone = (): void => void router.push("/archived");
                             </span>
                         </td>
                         <td>
-                            <span
-                                class="pill"
-                                :class="s.action === 'SELL' ? 'p-s' : 'p-b'"
-                                >{{ s.action }}</span
-                            >
+                            <span class="pill" :class="s.action === 'SELL' ? 'p-s' : 'p-b'">{{
+                                s.action
+                            }}</span>
                         </td>
                         <td class="r num">
                             {{
@@ -899,18 +786,12 @@ const gone = (): void => void router.push("/archived");
                                 : `${s.qty === null ? "—" : units(s.qty)} @ ${s.entry === null ? "—" : money(s.entry)}`
                         }}
                     </span>
-                    <span class="num sym">{{
-                        (s.plan_id ?? "").slice(-6) || "—"
-                    }}</span>
+                    <span class="num sym">{{ (s.plan_id ?? "").slice(-6) || "—" }}</span>
                 </div>
             </div>
             <div class="panel-foot">
-                <span class="hint"
-                    >A pending leg is signed off in Decisions.</span
-                >
-                <RouterLink to="/decisions" class="link"
-                    >Open decisions</RouterLink
-                >
+                <span class="hint">A pending leg is signed off in Decisions.</span>
+                <RouterLink to="/decisions" class="link">Open decisions</RouterLink>
             </div>
         </section>
 
@@ -933,11 +814,7 @@ const gone = (): void => void router.push("/archived");
                 </p>
                 <div class="manage-acts">
                     <template v-if="archived">
-                        <button
-                            class="d-btn d-btn-xs d-btn-primary"
-                            type="button"
-                            @click="restore"
-                        >
+                        <button class="d-btn d-btn-xs d-btn-primary" type="button" @click="restore">
                             Restore
                         </button>
                     </template>
@@ -985,11 +862,7 @@ const gone = (): void => void router.push("/archived");
                     <span class="kbd">esc</span>
                 </header>
                 <div class="fill-body">
-                    <div
-                        class="dseg"
-                        role="radiogroup"
-                        aria-label="Buy or sell"
-                    >
+                    <div class="dseg" role="radiogroup" aria-label="Buy or sell">
                         <button
                             type="button"
                             :class="{ on: side === 'buy' }"
@@ -1025,11 +898,8 @@ const gone = (): void => void router.push("/archived");
                                           : 'Qty'
                                 "
                             />
-                            <em
-                                v-if="side === 'sell' && position"
-                                class="fld-hint"
-                                >max {{ units(position.qty) }}
-                                {{ isFund ? "units" : "shares" }}</em
+                            <em v-if="side === 'sell' && position" class="fld-hint"
+                                >max {{ units(position.qty) }} {{ isFund ? "units" : "shares" }}</em
                             >
                         </label>
                         <label class="fld">
@@ -1044,10 +914,7 @@ const gone = (): void => void router.push("/archived");
                                 :placeholder="isFund ? 'NAV' : 'Price'"
                             />
                         </label>
-                        <AppDateField
-                            v-model="atIso"
-                            :max="today()"
-                        />
+                        <AppDateField v-model="atIso" :max="today()" />
                         <label v-if="klass === 'stock'" class="fld">
                             <span>Book</span>
                             <select v-model="fill.mode" name="mode">
@@ -1058,19 +925,15 @@ const gone = (): void => void router.push("/archived");
                     </div>
                     <p v-if="oversell" class="fill-err" role="alert">
                         <span aria-hidden="true">!</span>
-                        You hold {{ units(position?.qty ?? 0) }}
-                        {{ isFund ? "units" : "shares" }} — a sell cannot be
-                        more than that.
+                        You hold {{ units(position?.qty ?? 0) }} {{ isFund ? "units" : "shares" }} —
+                        a sell cannot be more than that.
                     </p>
                     <p v-if="fillValue !== null" class="fill-sum">
                         <template v-if="side === 'sell' && position">
                             <span>Available</span>
                             <b>{{ units(position.qty) }}</b>
                             <span>·</span>
-                            <span
-                                >Proceeds at
-                                {{ money(Number(fill.price)) }}</span
-                            >
+                            <span>Proceeds at {{ money(Number(fill.price)) }}</span>
                         </template>
                         <template v-else>
                             <span>Cost at {{ money(Number(fill.price)) }}</span>
@@ -1079,9 +942,7 @@ const gone = (): void => void router.push("/archived");
                     </p>
                 </div>
                 <footer class="fill-foot">
-                    <span v-if="tradeStatus" class="hint" role="status">{{
-                        tradeStatus
-                    }}</span>
+                    <span v-if="tradeStatus" class="hint" role="status">{{ tradeStatus }}</span>
                     <button
                         class="d-btn d-btn-sm d-btn-ghost"
                         type="button"
@@ -1094,28 +955,15 @@ const gone = (): void => void router.push("/archived");
                         type="submit"
                         :disabled="oversell || !fill.qty || !fill.price"
                     >
-                        {{
-                            tradeStatus === "Recording…"
-                                ? "Recording…"
-                                : "Record fill"
-                        }}
+                        {{ tradeStatus === "Recording…" ? "Recording…" : "Record fill" }}
                     </button>
                 </footer>
             </form>
         </dialog>
 
         <div class="actbar">
-            <button
-                class="d-btn d-btn-xs"
-                type="button"
-                :disabled="archived"
-                @click="refreshNow"
-            >
-                <RefreshCw
-                    :size="14"
-                    :stroke-width="1.75"
-                    aria-hidden="true"
-                />Refresh
+            <button class="d-btn d-btn-xs" type="button" :disabled="archived" @click="refreshNow">
+                <RefreshCw :size="14" :stroke-width="1.75" aria-hidden="true" />Refresh
             </button>
             <button
                 class="d-btn d-btn-xs d-btn-primary grow"
@@ -1124,11 +972,7 @@ const gone = (): void => void router.push("/archived");
                 :aria-expanded="recording"
                 @click="recording = !recording"
             >
-                <Plus
-                    :size="14"
-                    :stroke-width="1.75"
-                    aria-hidden="true"
-                />Record a fill
+                <Plus :size="14" :stroke-width="1.75" aria-hidden="true" />Record a fill
             </button>
         </div>
     </div>
