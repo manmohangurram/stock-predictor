@@ -173,6 +173,15 @@ func RecordOn(tx *sql.Tx, instrumentID string, side Side, qty, price float64, no
 			}
 		}
 
+		// A fill is a holding: discovery writes active = 0 for a symbol it has only met, and the
+		// ledger shows active instruments only.
+		if _, err := tx.Exec(
+			"UPDATE instruments SET active = 1, archived_at = NULL WHERE id = ? AND active = 0",
+			instrumentID,
+		); err != nil {
+			return err
+		}
+
 		if err := insertTrade(tx, instrumentID, side, qty, price, nil, stamp, note, mode); err != nil {
 			return err
 		}
