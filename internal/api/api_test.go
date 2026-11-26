@@ -205,6 +205,48 @@ func TestApprovingASignalRecordsTheFillAndItAppearsImmediately(t *testing.T) {
 	}
 }
 
+// Discovery writes a symbol it has only met as an inactive instrument, which the ledger does not
+// show. Buying it must put it back in the book, or the fill appears in the fills and the holding
+// appears nowhere.
+func TestBuyingADiscoveredSymbolPutsItInTheBook(t *testing.T) {
+	pool, r, id := setup(t)
+	if _, err := pool.Exec("UPDATE instruments SET active = 0 WHERE id = ?", id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rules.EnsureMonth(pool, models.ModeTrade, "", 100_000, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	signalUUID := ids.New()
+	_, err := pool.Exec(
+		`INSERT INTO signals (id, instrument_id, action, qty, entry, valid_until, reason_json,
+            created_at, status, mode)
+         VALUES (?, ?, 'BUY', 10, 100, '2030-01-01T00:00:00Z', '{}', ?, 'pending', 'trade')`,
+		signalUUID, id, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, body := do(t, r, http.MethodPost, "/api/signals/"+signalUUID+"/approve",
+		map[string]any{"qty": 10, "price": 100}, nil)
+	if code != http.StatusOK {
+		t.Fatalf("%d %s", code, body)
+	}
+	code, body = do(t, r, http.MethodGet, "/api/dashboard?mode=trade", nil, nil)
+	if code != http.StatusOK {
+		t.Fatalf("%d %s", code, body)
+	}
+	var d struct {
+		Positions []struct {
+			Qty float64 `json:"qty"`
+		} `json:"positions"`
+	}
+	if err := json.Unmarshal(body, &d); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Positions) != 1 || d.Positions[0].Qty != 10 {
+		t.Fatalf("the holding is not in the book: %s", body)
+	}
+}
+
 func TestAFullySoldHoldingStaysVisibleUntilArchived(t *testing.T) {
 	pool, r, id := setup(t)
 	if err := trades.Record(pool, id, trades.SideBuy, 10, 100, nil, nil, models.ModeLong); err != nil {
