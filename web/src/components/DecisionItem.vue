@@ -17,7 +17,9 @@ const emit = defineEmits<{ reload: [] }>();
 
 const first = computed(() => props.legs[0]);
 const pending = computed(() => first.value.status === "pending");
-const isFundPlan = computed(() => first.value.plan_scope === "fund");
+const isFundPlan = computed(
+    () => first.value.plan_scope === "fund" || first.value.class === "mutual_fund",
+);
 
 const form = ref<"none" | "approve" | "reject">("none");
 const status = ref("");
