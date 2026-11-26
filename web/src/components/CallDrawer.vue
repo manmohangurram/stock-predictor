@@ -24,12 +24,9 @@ onMounted(async () => {
 });
 
 async function onClick(event: MouseEvent): Promise<void> {
-    const btn = (event.target as HTMLElement).closest<HTMLButtonElement>(
-        "button.ccopy",
-    );
+    const btn = (event.target as HTMLElement).closest<HTMLButtonElement>("button.ccopy");
     if (!btn) return;
-    const text =
-        btn.closest(".crawcol")?.querySelector("pre")?.textContent ?? "";
+    const text = btn.closest(".crawcol")?.querySelector("pre")?.textContent ?? "";
     try {
         await navigator.clipboard.writeText(text);
         btn.textContent = "Copied";
@@ -42,9 +39,7 @@ async function onClick(event: MouseEvent): Promise<void> {
 
 <template>
     <div class="call-sheet" @click="onClick">
-        <p v-if="failure" class="empty">
-            Could not read call {{ id }}: {{ failure }}
-        </p>
+        <p v-if="failure" class="empty">Could not read call {{ id }}: {{ failure }}</p>
         <p v-else-if="!detail" class="empty">Reading the stored exchange…</p>
         <div v-else v-html="renderParsed(detail as never, compact)" />
     </div>

@@ -6,8 +6,8 @@ const route = useRoute();
 </script>
 
 <template>
-  <RouterView v-if="route.path === '/login'" />
-  <AppShell v-else>
-    <RouterView />
-  </AppShell>
+    <RouterView v-if="route.path === '/login'" />
+    <AppShell v-else>
+        <RouterView />
+    </AppShell>
 </template>

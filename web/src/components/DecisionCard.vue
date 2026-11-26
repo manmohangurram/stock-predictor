@@ -37,9 +37,7 @@ const horizon = computed(() => (props.mode === "trade" ? "SHORT" : "LONG"));
 
 const prose = computed(() => {
     const s = first.value;
-    return props.plan
-        ? (s.plan_rationale ?? "")
-        : (s.rationale ?? s.reasons[0] ?? "");
+    return props.plan ? (s.plan_rationale ?? "") : (s.rationale ?? s.reasons[0] ?? "");
 });
 
 const needs = computed(() => debitOf(props.legs));
@@ -59,9 +57,7 @@ function open(kind: "approve" | "reject"): void {
             props.legs.map((l) => [
                 l.id,
                 {
-                    qty: String(
-                        isFund.value ? (l.amount ?? "") : (l.qty ?? ""),
-                    ),
+                    qty: String(isFund.value ? (l.amount ?? "") : (l.qty ?? "")),
                     price: String(l.entry ?? ""),
                 },
             ]),
@@ -78,9 +74,7 @@ const typed = computed(() =>
             const price = Number(f.price);
             const amount = Number(f.qty);
             const qty =
-                isFund.value && amount > 0 && price > 0
-                    ? floorUnits(amount / price)
-                    : amount;
+                isFund.value && amount > 0 && price > 0 ? floorUnits(amount / price) : amount;
             return {
                 ...l,
                 qty,
@@ -94,9 +88,7 @@ const typed = computed(() =>
 function legQty(l: SignalRow): string {
     if (isFund.value) return money(legValue(l));
     if (l.qty === null || l.qty <= 0) return "—";
-    return l.entry === null
-        ? units(l.qty)
-        : `${units(l.qty)} @ ${money(l.entry)}`;
+    return l.entry === null ? units(l.qty) : `${units(l.qty)} @ ${money(l.entry)}`;
 }
 
 const rr = (l: SignalRow): string | null => {
@@ -113,9 +105,7 @@ async function post(): Promise<void> {
             const price = Number(f.price);
             const amount = Number(f.qty);
             const qty =
-                isFund.value && amount > 0 && price > 0
-                    ? floorUnits(amount / price)
-                    : amount;
+                isFund.value && amount > 0 && price > 0 ? floorUnits(amount / price) : amount;
             return { id: l.id, qty, price };
         });
         if (props.plan) {
@@ -140,10 +130,7 @@ async function reject(): Promise<void> {
     busy.value = true;
     failure.value = "";
     try {
-        await api.rejectSignal(
-            first.value.id,
-            reason.value.trim() || undefined,
-        );
+        await api.rejectSignal(first.value.id, reason.value.trim() || undefined);
         form.value = "none";
         emit("reload");
     } catch (e) {
@@ -173,15 +160,9 @@ const posted = computed(() => {
                 >{{ first.status.toUpperCase() }}</span
             >
             <b>{{ title }}</b>
-            <span class="tag" :class="{ short: horizon === 'SHORT' }">{{
-                horizon
-            }}</span>
-            <span v-if="plan && planCode" class="planid"
-                >plan {{ planCode }}</span
-            >
-            <span v-if="plan && planCode" class="dotsep" aria-hidden="true"
-                >·</span
-            >
+            <span class="tag" :class="{ short: horizon === 'SHORT' }">{{ horizon }}</span>
+            <span v-if="plan && planCode" class="planid">plan {{ planCode }}</span>
+            <span v-if="plan && planCode" class="dotsep" aria-hidden="true">·</span>
             <span class="when">{{ dayTime(first.created_at) }}</span>
             <RouterLink
                 v-if="first.conversation_id"
@@ -196,35 +177,26 @@ const posted = computed(() => {
                 v-html="renderConfidence(first.confidence)"
             />
             <span class="aside">
-                <template v-if="!pending">{{
-                    approved ? "posted" : ""
-                }}</template>
+                <template v-if="!pending">{{ approved ? "posted" : "" }}</template>
                 <template v-else-if="free <= 0 && needs > 0"
                     >needs {{ money(needs) }} · no free cash</template
                 >
                 <template v-else-if="short > 0"
-                    >needs {{ money(needs) }} · short
-                    {{ money(short) }}</template
+                    >needs {{ money(needs) }} · short {{ money(short) }}</template
                 >
-                <template v-else
-                    >needs {{ money(needs) }} · free {{ money(free) }}</template
-                >
+                <template v-else>needs {{ money(needs) }} · free {{ money(free) }}</template>
             </span>
         </div>
 
         <div class="legs">
             <div v-for="l in legs" :key="l.id" class="leg">
-                <span
-                    class="pill"
-                    :class="l.action === 'SELL' ? 'p-s' : 'p-b'"
-                    >{{ l.action }}</span
-                >
+                <span class="pill" :class="l.action === 'SELL' ? 'p-s' : 'p-b'">{{
+                    l.action
+                }}</span>
                 <div class="legbody">
                     <div class="legtop">
                         <b>{{ l.name || l.symbol }}</b>
-                        <span v-if="l.symbol !== l.name" class="sym">{{
-                            l.symbol
-                        }}</span>
+                        <span v-if="l.symbol !== l.name" class="sym">{{ l.symbol }}</span>
                         <span class="qty num">{{ legQty(l) }}</span>
                     </div>
                     <div class="legmeta">
@@ -233,16 +205,10 @@ const posted = computed(() => {
                         </template>
                         <template v-else>
                             <span
-                                >stop
-                                <b>{{
-                                    l.stop === null ? "—" : money(l.stop)
-                                }}</b></span
+                                >stop <b>{{ l.stop === null ? "—" : money(l.stop) }}</b></span
                             >
                             <span
-                                >target
-                                <b>{{
-                                    l.target === null ? "—" : money(l.target)
-                                }}</b></span
+                                >target <b>{{ l.target === null ? "—" : money(l.target) }}</b></span
                             >
                             <span v-if="rr(l)" class="up">{{ rr(l) }}</span>
                         </template>
@@ -252,15 +218,12 @@ const posted = computed(() => {
         </div>
 
         <p v-if="prose || !pending" class="why">
-            <b>{{
-                pending ? "Why" : approved ? "Result" : "Why rejected"
-            }}</b><template v-if="pending">{{ prose }}</template
+            <b>{{ pending ? "Why" : approved ? "Result" : "Why rejected" }}</b><template
+                v-if="pending"
+                >{{ prose }}</template
             ><template v-else-if="approved"
-                >{{ posted }} — position, trade row and cash moved
-                together.</template
-            ><template v-else>{{
-                first.status_reason ?? "No reason was given."
-            }}</template>
+                >{{ posted }} — position, trade row and cash moved together.</template
+            ><template v-else>{{ first.status_reason ?? "No reason was given." }}</template>
         </p>
 
         <div v-if="pending" class="acts">
@@ -281,9 +244,7 @@ const posted = computed(() => {
                 {{ form === "reject" ? "Cancel" : "Reject" }}
             </button>
             <span class="hint">{{
-                plan
-                    ? "Every leg posts together, or none does"
-                    : "One move, one transaction"
+                plan ? "Every leg posts together, or none does" : "One move, one transaction"
             }}</span>
         </div>
 
@@ -299,11 +260,7 @@ const posted = computed(() => {
                             type="number"
                             min="0"
                             step="any"
-                            :aria-label="
-                                isFund
-                                    ? 'Amount in rupees'
-                                    : `${l.symbol} quantity`
-                            "
+                            :aria-label="isFund ? 'Amount in rupees' : `${l.symbol} quantity`"
                         />
                     </label>
                     <label class="sf">
@@ -323,11 +280,7 @@ const posted = computed(() => {
                 <span>Debit total</span>
                 <b class="num">{{ money(typed) }}</b>
             </div>
-            <button
-                class="d-btn d-btn-xs d-btn-primary"
-                type="submit"
-                :disabled="busy"
-            >
+            <button class="d-btn d-btn-xs d-btn-primary" type="submit" :disabled="busy">
                 {{ busy ? "Submitting…" : "Submit" }}
             </button>
             <p v-if="failure" class="hint failure" role="alert">
@@ -335,11 +288,7 @@ const posted = computed(() => {
             </p>
         </form>
 
-        <form
-            v-if="form === 'reject'"
-            class="rejectbar"
-            @submit.prevent="reject"
-        >
+        <form v-if="form === 'reject'" class="rejectbar" @submit.prevent="reject">
             <label class="sf grow">
                 <span>Reason (optional)</span>
                 <input

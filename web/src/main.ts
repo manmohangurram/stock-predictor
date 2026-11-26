@@ -12,7 +12,6 @@ import LogsView from "./views/LogsView.vue";
 import LoginView from "./views/LoginView.vue";
 import SettingsView from "./views/SettingsView.vue";
 
-
 /**
  * Vue owns the app element and the URL. Until the last page is ported, every route renders through
  * `LegacyView`, which hands the markup to the plain renderers in `renderer.ts`.
@@ -26,10 +25,10 @@ const router = createRouter({
     { path: "/calls", component: CallsView },
     { path: "/archived", component: ArchivedView },
     { path: "/login", component: LoginView },
-  { path: "/settings", component: SettingsView },
+    { path: "/settings", component: SettingsView },
     { path: "/settings/access", component: AccessView },
     { path: "/settings/logs", component: LogsView },
-  { path: "/settings/:tab", component: SettingsView },
+    { path: "/settings/:tab", component: SettingsView },
     // Anything else is the ledger: an unknown URL lands somewhere useful.
     { path: "/:pathMatch(.*)*", redirect: "/" },
   ],

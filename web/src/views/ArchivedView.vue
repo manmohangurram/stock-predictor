@@ -34,11 +34,7 @@ const funds = computed(() => rows.value.filter((r) => r.class !== "stock"));
 type Filter = "all" | "stock" | "fund";
 const filter = ref<Filter>("all");
 const visible = computed(() =>
-    filter.value === "all"
-        ? rows.value
-        : filter.value === "stock"
-          ? stocks.value
-          : funds.value,
+    filter.value === "all" ? rows.value : filter.value === "stock" ? stocks.value : funds.value,
 );
 const empty = computed(() =>
     filter.value === "all"
@@ -68,14 +64,9 @@ function realised(r: ArchivedInstrument): { text: string; tone: string } {
 
 /** The phone row says how the round trip ended, not a price it no longer has. */
 const phoneTail = (r: ArchivedInstrument): string =>
-    Math.abs(r.net_invested) > 0.0005
-        ? r.last_fill
-            ? histDate(r.last_fill)
-            : "—"
-        : "closed out";
+    Math.abs(r.net_invested) > 0.0005 ? (r.last_fill ? histDate(r.last_fill) : "—") : "closed out";
 
-const visit = (symbol: string): void =>
-    void router.push(`/i/${encodeURIComponent(symbol)}`);
+const visit = (symbol: string): void => void router.push(`/i/${encodeURIComponent(symbol)}`);
 </script>
 
 <template>
@@ -97,15 +88,13 @@ const visit = (symbol: string): void =>
             <div class="pg-side">
                 <div class="pg-kpis">
                     <div>
-                        <span>Instruments</span
-                        ><b class="num">{{ rows.length }}</b>
+                        <span>Instruments</span><b class="num">{{ rows.length }}</b>
                     </div>
                     <div>
                         <span>Fills kept</span><b class="num">{{ fills }}</b>
                     </div>
                     <div>
-                        <span>Realised</span
-                        ><b class="num" :class="totalTone">{{ totalText }}</b>
+                        <span>Realised</span><b class="num" :class="totalTone">{{ totalText }}</b>
                     </div>
                 </div>
             </div>
@@ -117,20 +106,14 @@ const visit = (symbol: string): void =>
                     <span class="desk-only">Closed positions</span>
                     <span class="only-mobile">Closed</span>
                 </h2>
-                <div
-                    class="mseg"
-                    role="group"
-                    aria-label="Filter archived positions"
-                >
+                <div class="mseg" role="group" aria-label="Filter archived positions">
                     <button
                         type="button"
                         :class="{ on: filter === 'all' }"
                         :aria-pressed="filter === 'all'"
                         @click="filter = 'all'"
                     >
-                        All<span class="count desk-only">{{
-                            rows.length
-                        }}</span>
+                        All<span class="count desk-only">{{ rows.length }}</span>
                     </button>
                     <button
                         type="button"
@@ -138,9 +121,7 @@ const visit = (symbol: string): void =>
                         :aria-pressed="filter === 'stock'"
                         @click="filter = 'stock'"
                     >
-                        Stocks<span class="count desk-only">{{
-                            stocks.length
-                        }}</span>
+                        Stocks<span class="count desk-only">{{ stocks.length }}</span>
                     </button>
                     <button
                         type="button"
@@ -148,9 +129,7 @@ const visit = (symbol: string): void =>
                         :aria-pressed="filter === 'fund'"
                         @click="filter = 'fund'"
                     >
-                        Funds<span class="count desk-only">{{
-                            funds.length
-                        }}</span>
+                        Funds<span class="count desk-only">{{ funds.length }}</span>
                     </button>
                 </div>
             </div>
@@ -187,21 +166,16 @@ const visit = (symbol: string): void =>
                         @keydown.enter="visit(r.symbol)"
                     >
                         <td class="hold">
-                            <b>{{ r.name || r.symbol }}</b
-                            ><span
+                            <b>{{ r.name || r.symbol }}</b><span
                                 v-if="r.name && r.name !== r.symbol"
                                 class="sym"
                                 >{{ r.symbol }}</span
                             >
                         </td>
                         <td>
-                            <span
-                                class="tag"
-                                :class="{ fund: r.class !== 'stock' }"
-                                >{{
-                                    r.class === "stock" ? "STOCK" : "FUND"
-                                }}</span
-                            >
+                            <span class="tag" :class="{ fund: r.class !== 'stock' }">{{
+                                r.class === "stock" ? "STOCK" : "FUND"
+                            }}</span>
                         </td>
                         <td class="r num">{{ r.fills }}</td>
                         <td class="r num">{{ r.decisions }}</td>
@@ -242,8 +216,7 @@ const visit = (symbol: string): void =>
                     <div>
                         <div class="nm">{{ r.name }}</div>
                         <div class="sy">
-                            {{ r.symbol }} · {{ r.fills }}
-                            {{ r.fills === 1 ? "fill" : "fills" }} ·
+                            {{ r.symbol }} · {{ r.fills }} {{ r.fills === 1 ? "fill" : "fills" }} ·
                             {{ phoneTail(r) }}
                         </div>
                     </div>
@@ -254,12 +227,7 @@ const visit = (symbol: string): void =>
                         <div class="hint">realised</div>
                     </div>
                 </div>
-                <AppEmpty
-                    v-if="!visible.length"
-                    compact
-                    :icon="Archive"
-                    :text="empty"
-                />
+                <AppEmpty v-if="!visible.length" compact :icon="Archive" :text="empty" />
             </div>
         </section>
     </template>

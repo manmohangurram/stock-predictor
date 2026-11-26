@@ -51,9 +51,7 @@ const limit = computed(() => {
     const n = Number(route.query.limit);
     return [25, 50, 100].includes(n) ? n : 25;
 });
-const offset = computed(() =>
-    Math.max(0, Number(route.query.offset ?? 0) || 0),
-);
+const offset = computed(() => Math.max(0, Number(route.query.offset ?? 0) || 0));
 const filters = computed<Filters>(() => ({
     prompt: (route.query.prompt as string) || undefined,
     channel: (route.query.channel as string) || undefined,
@@ -64,23 +62,15 @@ const filters = computed<Filters>(() => ({
 const filtered = computed(() => Object.values(filters.value).some(Boolean));
 
 const tokens = computed(() =>
-    rows.value.reduce(
-        (n, r) => n + (r.prompt_tokens ?? 0) + (r.completion_tokens ?? 0),
-        0,
-    ),
+    rows.value.reduce((n, r) => n + (r.prompt_tokens ?? 0) + (r.completion_tokens ?? 0), 0),
 );
-const openReview = computed(
-    () => rows.value.filter((r) => r.decision_status === "pending").length,
-);
+const openReview = computed(() => rows.value.filter((r) => r.decision_status === "pending").length);
 const runsToday = computed(() => {
     const today = new Date().toDateString();
-    return runs.value.filter(
-        (r) => new Date(r.started_at).toDateString() === today,
-    ).length;
+    return runs.value.filter((r) => new Date(r.started_at).toDateString() === today).length;
 });
 
-const tokenText = (n: number): string =>
-    n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+const tokenText = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 const rangeText = computed(() => {
     if (total.value === 0) return "0 of 0";
@@ -114,10 +104,7 @@ async function load(): Promise<void> {
 
 /** Set one filter in the URL, from the top: page 2 of the old filter is not page 2 of the new one. */
 function setFilter(name: keyof Filters, value: string): void {
-    const q = { ...route.query, offset: undefined } as Record<
-        string,
-        string | undefined
-    >;
+    const q = { ...route.query, offset: undefined } as Record<string, string | undefined>;
     if (value) q[name] = value;
     else delete q[name];
     void router.push({ path: "/calls", query: q });
@@ -206,9 +193,7 @@ function onVisible(): void {
 onMounted(async () => {
     auto.value = window.localStorage.getItem("calls.autoRefresh") !== "off";
     const stored = Number(window.localStorage.getItem("calls.autoEvery"));
-    every.value = (INTERVALS as readonly number[]).includes(stored)
-        ? stored
-        : 5;
+    every.value = (INTERVALS as readonly number[]).includes(stored) ? stored : 5;
     arm();
     document.addEventListener("visibilitychange", onVisible);
     await load();
@@ -234,37 +219,28 @@ watch(() => route.fullPath, load);
                     What ran, when it runs next, and what each call answered
                 </div>
                 <div class="pg-sub only-mobile">
-                    {{ runsToday }} runs · {{ total }} calls ·
-                    {{ openReview }} open
+                    {{ runsToday }} runs · {{ total }} calls · {{ openReview }} open
                 </div>
             </div>
             <div class="pg-side">
                 <div class="pg-kpis">
                     <div>
-                        <span>Runs today</span
-                        ><b class="num">{{ runsToday }}</b>
+                        <span>Runs today</span><b class="num">{{ runsToday }}</b>
                     </div>
                     <div>
                         <span>Calls</span><b class="num">{{ total }}</b>
                     </div>
                     <div>
-                        <span>Tokens</span
-                        ><b class="num">{{ tokenText(tokens) }}</b>
+                        <span>Tokens</span><b class="num">{{ tokenText(tokens) }}</b>
                     </div>
                     <div>
-                        <span>Open review</span
-                        ><b class="num">{{ openReview }}</b>
+                        <span>Open review</span><b class="num">{{ openReview }}</b>
                     </div>
                 </div>
             </div>
         </header>
 
-        <ScheduleStrip
-            :prompts="prompts"
-            :now="now"
-            :running="running"
-            @reload="load()"
-        />
+        <ScheduleStrip :prompts="prompts" :now="now" :running="running" @reload="load()" />
 
         <section class="panel">
             <div class="panel-head">
@@ -299,13 +275,7 @@ watch(() => route.fullPath, load);
                 />
                 <FilterMenu
                     label="Review"
-                    :options="[
-                        'pending',
-                        'approved',
-                        'rejected',
-                        'blocked',
-                        'none',
-                    ]"
+                    :options="['pending', 'approved', 'rejected', 'blocked', 'none']"
                     :model-value="filters.review"
                     @update:model-value="setFilter('review', $event)"
                 />
@@ -318,24 +288,13 @@ watch(() => route.fullPath, load);
                     Clear
                 </button>
                 <div class="tick">
-                    <label
-                        class="tick-toggle"
-                        title="Reload this list on a timer"
-                    >
-                        <input
-                            v-model="auto"
-                            type="checkbox"
-                            @change="remember"
-                        />
+                    <label class="tick-toggle" title="Reload this list on a timer">
+                        <input v-model="auto" type="checkbox" @change="remember" />
                         <span class="tick-dot" aria-hidden="true"></span>
                         <span class="tick-word">Auto-refresh</span>
                     </label>
                     <span class="tick-sep" aria-hidden="true">·</span>
-                    <select
-                        v-model.number="every"
-                        aria-label="Refresh interval"
-                        @change="remember"
-                    >
+                    <select v-model.number="every" aria-label="Refresh interval" @change="remember">
                         <option v-for="s in INTERVALS" :key="s" :value="s">
                             {{ s === 60 ? "1 min" : `${s}s` }}
                         </option>
@@ -372,12 +331,8 @@ watch(() => route.fullPath, load);
                     >
                         <span class="num when">{{ dayTime(r.ts) }}</span>
                         <span class="mono prompt">{{ promptName(r) }}</span>
-                        <span class="sym">{{
-                            titleCase(r.endpoint)
-                        }}</span>
-                        <span class="hint res" :class="resultTone(r)">{{
-                            resultText(r)
-                        }}</span>
+                        <span class="sym">{{ titleCase(r.endpoint) }}</span>
+                        <span class="hint res" :class="resultTone(r)">{{ resultText(r) }}</span>
                         <span class="toks">{{ rowTokens(r) }}</span>
                         <ChevronRight
                             class="chev"
@@ -459,17 +414,9 @@ watch(() => route.fullPath, load);
                         <select
                             :value="String(limit)"
                             aria-label="Calls per page"
-                            @change="
-                                pageSize(
-                                    ($event.target as HTMLSelectElement).value,
-                                )
-                            "
+                            @change="pageSize(($event.target as HTMLSelectElement).value)"
                         >
-                            <option
-                                v-for="n in [25, 50, 100]"
-                                :key="n"
-                                :value="n"
-                            >
+                            <option v-for="n in [25, 50, 100]" :key="n" :value="n">
                                 {{ n }} per page
                             </option>
                         </select>

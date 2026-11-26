@@ -19,11 +19,7 @@ const props = defineProps<{
 const emit = defineEmits<{ reload: [] }>();
 
 const due = (iso: string | null): string =>
-    !iso
-        ? "—"
-        : Date.parse(iso) <= Date.parse(props.now) + 1000
-          ? "due now"
-          : dayTime(iso);
+    !iso ? "—" : Date.parse(iso) <= Date.parse(props.now) + 1000 ? "due now" : dayTime(iso);
 
 const took = (r: NonNullable<ScheduledPrompt["last"]>): string => {
     if (!r.finished_at) return "running";
@@ -44,8 +40,7 @@ const statusOf = (p: ScheduledPrompt): string =>
               p.last.status,
           );
 
-const resultOf = (p: ScheduledPrompt): string =>
-    p.last?.error ?? p.last?.summary ?? "—";
+const resultOf = (p: ScheduledPrompt): string => p.last?.error ?? p.last?.summary ?? "—";
 
 const untilFinished = async (what: string): Promise<void> => {
     for (let i = 0; i < 40; i++) {
@@ -74,10 +69,7 @@ async function start(what: string): Promise<void> {
     runningWhat.value = what;
     status.value = "";
     try {
-        await api.runNow(
-            what,
-            what === "decide" ? symbol.value.trim() || undefined : undefined,
-        );
+        await api.runNow(what, what === "decide" ? symbol.value.trim() || undefined : undefined);
         status.value = `${what.replace("_", " ")} started`;
         emit("reload");
         void untilFinished(what);
@@ -103,18 +95,14 @@ async function start(what: string): Promise<void> {
             </div>
             <h4>{{ p.label }}</h4>
             <div class="kv2 desk-only">
-                <span>Last ran</span
-                ><b>{{ p.last ? dayTime(p.last.at) : "—" }}</b>
+                <span>Last ran</span><b>{{ p.last ? dayTime(p.last.at) : "—" }}</b>
             </div>
             <div class="kv2 desk-only">
                 <span>Next due</span><b>{{ due(p.next_due_at) }}</b>
             </div>
             <div class="kv2 only-mobile">
                 <span>Last / next</span>
-                <b
-                    >{{ p.last ? dayTime(p.last.at) : "—" }} ·
-                    {{ due(p.next_due_at) }}</b
-                >
+                <b>{{ p.last ? dayTime(p.last.at) : "—" }} · {{ due(p.next_due_at) }}</b>
             </div>
             <div class="kv2">
                 <span>Result</span>
@@ -147,12 +135,7 @@ async function start(what: string): Promise<void> {
                     <option value="poll">A poll</option>
                     <option value="decide">One instrument</option>
                 </select>
-                <input
-                    v-model="symbol"
-                    name="symbol"
-                    placeholder="INFY.NS"
-                    aria-label="Symbol"
-                />
+                <input v-model="symbol" name="symbol" placeholder="INFY.NS" aria-label="Symbol" />
                 <button
                     class="d-btn d-btn-sm d-btn-primary"
                     type="submit"

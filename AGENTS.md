@@ -103,7 +103,7 @@ files directly when you need exact wording.
   one DeepSeek `/v1/tools/search` read by `trending_v1`. Deduped by symbol, the exchange winning.
   Each candidate is then asked with its own search results as `{{web}}`. The search query carries
   the window as operators — `after:YYYY-MM-DD lang:en` — and a result older than three days, undated
-  or untitled is dropped anyway (the API *does* support `after:`/`before:`/`lang:`/`site:`).
+  or untitled is dropped anyway (the API _does_ support `after:`/`before:`/`lang:`/`site:`).
 - The proxy is chosen only by the database: `internal/httpx` is the one client builder and calls
   `.no_proxy()` first, so `HTTP_PROXY` can never win.
 
@@ -115,7 +115,6 @@ fixed, capture it at **1440 and 390**, in **light and dark**, and put the images
 numbers, input widths, overflow — rather than describing it. A passing build, a green CI and a
 type-check say nothing about how it looks; a screenshot that has not been taken is a claim you cannot
 make. If a screenshot cannot be produced, say so plainly instead of implying the visual was checked.
-
 
 Before any UI change, load `ui-ux-design-pro` (`/skill:ui-ux-design-pro`, or read its `SKILL.md`
 and the reference it points at). It carries the token architecture, the type scale and the
@@ -167,7 +166,7 @@ follow for reference:
 - `main.ts` — routing, the 60-second refresh, nothing else.
 
 A list that is paged is filtered on the server: `/api/calls` takes `prompt`, `call`, `model` and
-`review`, and `x-total-count` is the *filtered* total, because a pager that counts the whole record
+`review`, and `x-total-count` is the _filtered_ total, because a pager that counts the whole record
 is worse than no filter. The `WHERE 1 = 1` anchor in that handler is load-bearing — without it the
 first clause lands in the JOIN's `ON`, where it silently filters nothing.
 
@@ -184,7 +183,6 @@ github/gh-stack` once, then `gh stack init`, `gh stack add`, `gh stack push`, `g
 bottom PR targets `main` and each one above it targets the branch below. One large PR for a
 multi-layer feature is a policy violation, not a shortcut. A stack merges bottom-up; a red step
 blocks everything above it.
-
 
 **Never commit straight to `main`.** Every piece of work — a fix, a page, a migration — lands as a
 pull request that passes the gates below. Open the PR as soon as the first commit exists, so CI runs
@@ -232,7 +230,14 @@ go vet ./...                                 # must be warning-free
 go test ./...                                # no network
 go test ./internal/rules/ -bench . -run XXX  # indicators, prompt render, bar upsert
 cd web && npx vitest run && npm run build
+cd web && npm run format:check                # Prettier; `npm run format` writes
 ```
+
+**The front end is formatted by Prettier** (`web/.prettierrc.json`: 100 columns, 4 spaces in
+markup and styles, 2 in scripts). `web/UI_STANDARDS.md` and every other `.md` are excluded — prose
+is written by hand, not reflowed by a tool. CI does not check the formatting (deliberately, per the
+operator): run `npm run format` before pushing and `npm run format:check` when in doubt, and keep
+the diff of a formatting pass to its own PR.
 
 **Audit findings are fixed by updating dependencies**, not by ignoring them: bump the module
 (`go get <module>@latest && go mod tidy`), and if a pin blocks the fix, say which pin and when it
@@ -241,7 +246,7 @@ condition**, the same rule the old `.cargo/audit.toml` entry followed.
 
 Indexes answer a query that exists. Every one was checked with `EXPLAIN QUERY PLAN` against the
 real statements; three were dead (`runs_by_started`, `idx_api_calls_conversation`,
-`idx_signals_status`) and are dropped. `runs_running` is a *partial* index — only running rows —
+`idx_signals_status`) and are dropped. `runs_running` is a _partial_ index — only running rows —
 because `runs` only grows and the audit page asks "anything running?" on every load.
 
 Budgets to keep (Go, measured on the dev machine): `rules.ComputeIndicators` ~2.7 µs per 250 bars,
@@ -253,7 +258,7 @@ lever; the static prompt block is a prefix so DeepSeek's context cache can hit i
 Request count: one per page (`/api/dashboard` carries recent trades, `/analysis` carries signals
 and fills), and the dashboard answers 304 when its version tag is unchanged.
 
-A **run** (`internal/runs`, table `runs`) is one unit of scheduler work that *decides* something —
+A **run** (`internal/runs`, table `runs`) is one unit of scheduler work that _decides_ something —
 stock plan, fund plan, short-term pass, or a run you started by hand. A scheduled poll writes no
 row: at 15-minute ticks that was ninety-six "nothing happened" rows a day, and the calls it made are
 already in `api_calls`. `GET /api/schedule` computes "last ran" and "next due" from the same markers
@@ -261,7 +266,7 @@ the scheduler uses (`stock_plan_last`, `mf_plan_last`, the NSE window, `poll_sec
 not re-implement those rules.
 
 A **run** (`internal/runs`, table `runs`) is one unit of scheduler work — poll, stock plan, fund
-plan, short-term pass — opened *before* the work and closed after it, because `api_calls` rows only
+plan, short-term pass — opened _before_ the work and closed after it, because `api_calls` rows only
 exist once a reply lands and therefore cannot show "running". Orphans left running by a killed
 process are closed at boot. `AppState.manual` is the channel the API uses to ask the **loop** to run
 something: the loop owns the market clients, so a manual run is the same code as a scheduled one.

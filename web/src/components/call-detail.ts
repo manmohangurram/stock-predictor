@@ -34,8 +34,7 @@ function decisionCard(reply: string, when: string, names: Record<string, string>
     const legs = r.moves
       .map((m) => {
         const buy = m.action === "BUY";
-        const value =
-          m.amount ?? (m.qty !== null && m.price !== null ? m.qty * m.price : null);
+        const value = m.amount ?? (m.qty !== null && m.price !== null ? m.qty * m.price : null);
         const figs = [
           m.amount !== null ? figure("Amount", money(m.amount)) : "",
           m.qty === null ? "" : figure("Qty", units(m.qty)),
@@ -273,7 +272,15 @@ export function renderExchangeDetail(d: CallDetail): string {
 
 /** One answer row: the action, what it is against, and the numbers that make it mean something. */
 function parsedTable(
-  legs: { action: string; symbol: string; qty: number | null; price: number | null; stop: number | null; target: number | null; amount: number | null }[],
+  legs: {
+    action: string;
+    symbol: string;
+    qty: number | null;
+    price: number | null;
+    stop: number | null;
+    target: number | null;
+    amount: number | null;
+  }[],
   names: Record<string, string>,
   fallback: string | null,
 ): string {
@@ -397,19 +404,13 @@ export function renderParsed(d: CallDetail, compact = false): string {
   if (r.confidence) fields.push(["Confidence", r.confidence]);
   if (d.validator_verdict) fields.push(["Review", d.validator_verdict]);
   fields.push(["Template", d.prompt_template ?? "—"]);
-  fields.push([
-    "Tokens",
-    `${d.prompt_tokens ?? 0} in · ${d.completion_tokens ?? 0} out`,
-  ]);
+  fields.push(["Tokens", `${d.prompt_tokens ?? 0} in · ${d.completion_tokens ?? 0} out`]);
   const fieldHtml = fields
     .map(
-      ([k, v]) =>
-        `<div class="pfield"><span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b></div>`,
+      ([k, v]) => `<div class="pfield"><span>${escapeHtml(k)}</span><b>${escapeHtml(v)}</b></div>`,
     )
     .join("");
-  const why = r.rationale
-    ? `<p class="cwhy">${escapeHtml(r.rationale)}</p>`
-    : "";
+  const why = r.rationale ? `<p class="cwhy">${escapeHtml(r.rationale)}</p>` : "";
 
   const parsed = legs.length > 0 || r.verdict !== null || cands.length > 0;
   const unparsed = parsed

@@ -5,7 +5,9 @@ export const money = (n: number, decimals = 2): string =>
   }).format(n);
 
 export const units = (n: number): string =>
-  Number.isInteger(n) ? String(n) : new Intl.NumberFormat("en-IN", { maximumFractionDigits: 3 }).format(n);
+  Number.isInteger(n)
+    ? String(n)
+    : new Intl.NumberFormat("en-IN", { maximumFractionDigits: 3 }).format(n);
 
 export const clock = (iso: string | null): string => {
   if (!iso) return "—";
@@ -42,7 +44,11 @@ export const dayTime = (iso: string | null): string => {
   const d = new Date(iso);
   if (Number.isNaN(d.valueOf())) return "—";
   const dPart = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
-  const tPart = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const tPart = d.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
   return `${dPart} ${tPart}`;
 };
 
@@ -50,15 +56,17 @@ export const dayTime = (iso: string | null): string => {
  * An identifier shown as a label: `plan_stock_v1` → "Plan stock v1". Underscores become spaces and
  * the first letter is capitalised; the rest of the word is left alone, so `chat+search` survives.
  */
-export const humanLabel = (raw: string): string =>
-  titleCase(raw.replace(/_/g, " "));
+export const humanLabel = (raw: string): string => titleCase(raw.replace(/_/g, " "));
 
 /** "decide" → "Decide": a label, not an identifier. Keeps the rest of the word as it was. */
 export const titleCase = (s: string): string =>
   s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
 
 export const escapeHtml = (s: string): string =>
-  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+  );
 
 /** Today as a date input wants it: `YYYY-MM-DD`, local. */
 export function today(): string {

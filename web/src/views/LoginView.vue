@@ -38,11 +38,7 @@ async function submit(): Promise<void> {
     error.value = "";
     if (!username.value.trim()) return fail("Enter the username.");
     if (password.value.length < (mode.value === "setup" ? 10 : 1)) {
-        return fail(
-            mode.value === "setup"
-                ? "Use at least 10 characters."
-                : "Enter the password.",
-        );
+        return fail(mode.value === "setup" ? "Use at least 10 characters." : "Enter the password.");
     }
     if (mode.value === "setup" && password.value !== confirm.value) {
         return fail("The two passwords do not match.");
@@ -53,10 +49,7 @@ async function submit(): Promise<void> {
             username: username.value.trim(),
             password: password.value,
         };
-        const res =
-            mode.value === "setup"
-                ? await api.authSetup(body)
-                : await api.authLogin(body);
+        const res = mode.value === "setup" ? await api.authSetup(body) : await api.authLogin(body);
         auth.set(res.access_token);
         await router.push("/");
     } catch (e) {
@@ -82,16 +75,12 @@ async function submit(): Promise<void> {
             </div>
 
             <div class="signin-pitch">
-                <h2>
-                    A book, a fund purse, and the decision behind every fill.
-                </h2>
+                <h2>A book, a fund purse, and the decision behind every fill.</h2>
                 <p class="wide-copy">
-                    Local SQLite. NSE and AMFI. The model proposes; you sign off
-                    each leg before anything posts.
+                    Local SQLite. NSE and AMFI. The model proposes; you sign off each leg before
+                    anything posts.
                 </p>
-                <p class="narrow-copy">
-                    Local SQLite · NSE and AMFI · you sign off each leg
-                </p>
+                <p class="narrow-copy">Local SQLite · NSE and AMFI · you sign off each leg</p>
                 <div class="facts">
                     <div><b>5</b>destinations</div>
                     <div><b>8</b>settings tabs</div>
@@ -125,11 +114,7 @@ async function submit(): Promise<void> {
                         label="Password"
                         :type="reveal ? 'text' : 'password'"
                         v-model="password"
-                        :autocomplete="
-                            mode === 'setup'
-                                ? 'new-password'
-                                : 'current-password'
-                        "
+                        :autocomplete="mode === 'setup' ? 'new-password' : 'current-password'"
                         :placeholder="mode === 'setup' ? '10+ characters' : ''"
                         autofocus
                     >
@@ -137,9 +122,7 @@ async function submit(): Promise<void> {
                             <button
                                 class="trail"
                                 type="button"
-                                :aria-label="
-                                    reveal ? 'Hide password' : 'Show password'
-                                "
+                                :aria-label="reveal ? 'Hide password' : 'Show password'"
                                 :aria-pressed="reveal"
                                 @click="reveal = !reveal"
                             >
@@ -149,12 +132,7 @@ async function submit(): Promise<void> {
                                     :stroke-width="1.8"
                                     aria-hidden="true"
                                 />
-                                <Eye
-                                    v-else
-                                    :size="15"
-                                    :stroke-width="1.8"
-                                    aria-hidden="true"
-                                />
+                                <Eye v-else :size="15" :stroke-width="1.8" aria-hidden="true" />
                             </button>
                         </template>
                     </SettingField>
@@ -169,23 +147,13 @@ async function submit(): Promise<void> {
 
                     <div class="authhint">
                         <span>
-                            <Lock
-                                :size="11"
-                                :stroke-width="1.9"
-                                aria-hidden="true"
-                            />
+                            <Lock :size="11" :stroke-width="1.9" aria-hidden="true" />
                             Session cookie · 30 days
                         </span>
                         <span v-if="username.trim()">{{ username.trim() }}</span>
                     </div>
 
-                    <div
-                        v-if="error"
-                        ref="band"
-                        class="error-band"
-                        role="alert"
-                        tabindex="-1"
-                    >
+                    <div v-if="error" ref="band" class="error-band" role="alert" tabindex="-1">
                         {{ error }}
                     </div>
 
@@ -194,17 +162,11 @@ async function submit(): Promise<void> {
                         type="submit"
                         :disabled="busy || !ready"
                     >
-                        {{
-                            mode === "setup"
-                                ? "Create the admin and sign in"
-                                : "Sign in"
-                        }}
+                        {{ mode === "setup" ? "Create the admin and sign in" : "Sign in" }}
                     </button>
 
                     <div class="authfoot">
-                        <span class="wide-copy"
-                            >Local only · no reset link</span
-                        >
+                        <span class="wide-copy">Local only · no reset link</span>
                         <span class="narrow-copy">Session · 30 days</span>
                         <span class="wide-copy mono">SQLite</span>
                         <span class="narrow-copy">Local only</span>
@@ -249,11 +211,7 @@ async function submit(): Promise<void> {
     width: 420px;
     height: 420px;
     border-radius: 50%;
-    background: radial-gradient(
-        circle,
-        rgb(140 166 255 / 0.22),
-        transparent 65%
-    );
+    background: radial-gradient(circle, rgb(140 166 255 / 0.22), transparent 65%);
     pointer-events: none;
 }
 

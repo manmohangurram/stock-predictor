@@ -23,8 +23,7 @@ function limits(values: Record<string, string>, mode: "long" | "trade") {
 }
 
 export type PatchResult =
-  | { patch: Parameters<typeof import("./api").api.putSettings>[0] }
-  | { error: string };
+  { patch: Parameters<typeof import("./api").api.putSettings>[0] } | { error: string };
 
 export function patchFor(tab: Tab, values: Record<string, string>): PatchResult {
   switch (tab) {
@@ -38,7 +37,9 @@ export function patchFor(tab: Tab, values: Record<string, string>): PatchResult 
         },
       };
     case "risk":
-      return { patch: { limits_long: limits(values, "long"), limits_trade: limits(values, "trade") } };
+      return {
+        patch: { limits_long: limits(values, "long"), limits_trade: limits(values, "trade") },
+      };
     case "model": {
       const key = text(values.llm_key);
       return {
@@ -63,7 +64,10 @@ export function patchFor(tab: Tab, values: Record<string, string>): PatchResult 
     case "cadence": {
       const lakh = num(values.scan_min_turnover);
       if (!Number.isInteger(lakh)) {
-        return { error: "Turnover floor: enter a whole number of lakh (1 lakh is 1,00,000; 100 lakh is 1 crore)." };
+        return {
+          error:
+            "Turnover floor: enter a whole number of lakh (1 lakh is 1,00,000; 100 lakh is 1 crore).",
+        };
       }
       return {
         patch: {
@@ -129,6 +133,11 @@ export function seed(tab: Tab, s: Settings): Record<string, string> {
         scan_locked_pct: String(s.runtime.scan_locked_pct),
       };
     case "network":
-      return { proxy: "", proxy_user: s.runtime.proxy_user ?? "", proxy_bypass: s.runtime.proxy_bypass ?? "", proxy_pass: "" };
+      return {
+        proxy: "",
+        proxy_user: s.runtime.proxy_user ?? "",
+        proxy_bypass: s.runtime.proxy_bypass ?? "",
+        proxy_pass: "",
+      };
   }
 }

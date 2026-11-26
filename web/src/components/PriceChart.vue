@@ -39,9 +39,7 @@ const spark = computed(() => {
     const H = 240;
     const x = (i: number): number => (i * W) / (closes.length - 1);
     const y = (v: number): number => H - ((v - bottom) * H) / span;
-    const line = closes
-        .map((c, i) => `${x(i).toFixed(1)},${y(c).toFixed(1)}`)
-        .join(" ");
+    const line = closes.map((c, i) => `${x(i).toFixed(1)},${y(c).toFixed(1)}`).join(" ");
     return {
         area: `0,${H} ${line} ${W},${H}`,
         line,
@@ -64,8 +62,7 @@ const geo = computed(() => {
     // A fund's exit is a NAV: the return the owner asked for, on what they paid.
     const priced =
         a.value.position && a.value.instrument.target_profit_pct !== null
-            ? a.value.position.avg_cost *
-              (1 + a.value.instrument.target_profit_pct / 100)
+            ? a.value.position.avg_cost * (1 + a.value.instrument.target_profit_pct / 100)
             : null;
     const target = fund ? priced : null;
     const refs = fund
@@ -85,19 +82,12 @@ const geo = computed(() => {
     // The gutter is the widest tick, not a fixed 68 units the stretched card turns into ~88px.
     const widest = Math.max(...ticks.map((v) => money(v, 0).length));
     const padLeft = widest * 6 + 14;
-    const x = (i: number): number =>
-        padLeft + (i * (w - padLeft - right)) / (closes.length - 1);
-    const y = (v: number): number =>
-        top + ((hi - v) * (h - top - bottom)) / span;
+    const x = (i: number): number => padLeft + (i * (w - padLeft - right)) / (closes.length - 1);
+    const y = (v: number): number => top + ((hi - v) * (h - top - bottom)) / span;
     const path = closes
-        .map(
-            (c, i) =>
-                `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(c).toFixed(1)}`,
-        )
+        .map((c, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(c).toFixed(1)}`)
         .join(" ");
-    const marks = [0, 0.25, 0.5, 0.75, 1].map((f) =>
-        Math.round(f * (closes.length - 1)),
-    );
+    const marks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * (closes.length - 1)));
     return { closes, fund, target, x, y, path, ticks, marks, padLeft };
 });
 
@@ -114,12 +104,9 @@ const refs = computed(() => {
         y: g.y(v).toFixed(1),
     });
     if (g.fund)
-        return g.target === null
-            ? []
-            : [at(g.target, "TARGET", "var(--stamp-oxide)", "4 4")];
+        return g.target === null ? [] : [at(g.target, "TARGET", "var(--stamp-oxide)", "4 4")];
     const out = [];
-    if (avgCost.value !== null)
-        out.push(at(avgCost.value, "AVG", "var(--ink-secondary)", "4 4"));
+    if (avgCost.value !== null) out.push(at(avgCost.value, "AVG", "var(--ink-secondary)", "4 4"));
     const ind = a.value.indicators;
     if (ind) {
         out.push(at(ind.sma50, "SMA50", "var(--ink-tertiary)", "1 4"));
@@ -130,8 +117,7 @@ const refs = computed(() => {
     const sorted = [...out].sort((p, q) => Number(p.y) - Number(q.y));
     for (let i = 1; i < sorted.length; i++) {
         const prev = Number(sorted[i - 1].y);
-        if (Number(sorted[i].y) - prev < gap)
-            sorted[i].y = (prev + gap).toFixed(1);
+        if (Number(sorted[i].y) - prev < gap) sorted[i].y = (prev + gap).toFixed(1);
     }
     const over = Number(sorted[sorted.length - 1].y) - (h - 4);
     if (over > 0) for (const r of sorted) r.y = (Number(r.y) - over).toFixed(1);
@@ -142,23 +128,11 @@ const refs = computed(() => {
 <template>
     <AppEmpty v-if="!geo" compact :icon="LineChart" :text="emptyText" />
     <figure v-else-if="compact && spark" class="spark">
-        <svg
-            viewBox="0 0 1000 240"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-        >
+        <svg viewBox="0 0 1000 240" preserveAspectRatio="none" aria-hidden="true">
             <defs>
                 <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                        offset="0"
-                        stop-color="var(--brand)"
-                        stop-opacity=".22"
-                    />
-                    <stop
-                        offset="1"
-                        stop-color="var(--brand)"
-                        stop-opacity="0"
-                    />
+                    <stop offset="0" stop-color="var(--brand)" stop-opacity=".22" />
+                    <stop offset="1" stop-color="var(--brand)" stop-opacity="0" />
                 </linearGradient>
             </defs>
             <polygon :points="spark.area" fill="url(#spark-fill)" />
@@ -195,16 +169,8 @@ const refs = computed(() => {
         >
             <defs>
                 <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                        offset="0"
-                        stop-color="var(--brand)"
-                        stop-opacity=".22"
-                    />
-                    <stop
-                        offset="1"
-                        stop-color="var(--brand)"
-                        stop-opacity="0"
-                    />
+                    <stop offset="0" stop-color="var(--brand)" stop-opacity=".22" />
+                    <stop offset="1" stop-color="var(--brand)" stop-opacity="0" />
                 </linearGradient>
             </defs>
             <template v-for="(v, n) in geo.ticks" :key="`g${n}`">
@@ -287,13 +253,7 @@ const refs = computed(() => {
                 <text
                     :x="geo.x(i).toFixed(1)"
                     :y="h - 10"
-                    :text-anchor="
-                        n === 0
-                            ? 'start'
-                            : n === geo.marks.length - 1
-                              ? 'end'
-                              : 'middle'
-                    "
+                    :text-anchor="n === 0 ? 'start' : n === geo.marks.length - 1 ? 'end' : 'middle'"
                     font-size="10"
                     font-family="var(--font-ledger)"
                     fill="var(--ink-tertiary)"
@@ -302,24 +262,17 @@ const refs = computed(() => {
                 </text>
             </template>
         </svg>
-        <figcaption
-            class="chart-cap"
-            :style="{ paddingLeft: (geo.padLeft / w) * 100 + '%' }"
-        >
+        <figcaption class="chart-cap" :style="{ paddingLeft: (geo.padLeft / w) * 100 + '%' }">
             <span><i class="k-line"></i>Close</span>
-            <span v-if="avgCost !== null"
-                ><i class="k-dash"></i>avg cost {{ money(avgCost) }}</span
-            >
+            <span v-if="avgCost !== null"><i class="k-dash"></i>avg cost {{ money(avgCost) }}</span>
             <span v-if="geo.fund && geo.target !== null"
                 ><i class="k-dash"></i>target {{ money(geo.target) }}</span
             >
             <span v-if="!geo.fund && a.indicators"
-                ><i class="k-dot"></i>SMA50
-                {{ money(a.indicators.sma50, 0) }}</span
+                ><i class="k-dot"></i>SMA50 {{ money(a.indicators.sma50, 0) }}</span
             >
             <span v-if="!geo.fund && a.indicators"
-                ><i class="k-dot ox"></i>SMA200
-                {{ money(a.indicators.sma200, 0) }}</span
+                ><i class="k-dot ox"></i>SMA200 {{ money(a.indicators.sma200, 0) }}</span
             >
         </figcaption>
     </figure>
