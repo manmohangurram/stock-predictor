@@ -1,3 +1,24 @@
+## v1.1.2
+
+A stock you bought is in the book, whatever else the app knew about it first — and the front end
+is formatted by a tool instead of by hand.
+
+### Fixed
+
+- **A bought instrument comes back into the book.** Discovery creates a symbol it has only met as
+  an instrument with `active = 0`, so a candidate does not clutter the book before anyone owns it.
+  A fill never flipped that back: the position was written, but the ledger shows active instruments
+  only, so the fill appeared in recent fills while the holding appeared nowhere. Approving a
+  short-term decision on a discovered name was exactly that path. A buy now reactivates the
+  instrument, and migration `0034` brings back every instrument that already holds units.
+
+### Changed
+
+- **The front end is formatted by Prettier.** The Vue app had been written by hand in three indent
+  widths, so a one-line edit could look like a rewrite. The config is 100 columns, 4 spaces in
+  markup and styles and 2 in scripts; markdown is excluded, because `UI_STANDARDS.md` and the docs
+  are prose. `npm run format` writes, `npm run format:check` checks, and CI does not run it.
+
 ## v1.1.1
 
 The short-term list is ordered by the money that moved, so the evidence a plan reads goes to the
