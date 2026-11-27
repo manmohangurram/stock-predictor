@@ -10,8 +10,8 @@ func TestTheNextSlotIsTheBoundaryNotTheInterval(t *testing.T) {
 	if got := UntilNextSlot(ist(2026, 11, 17, 9, 0)); got != 5*time.Minute {
 		t.Fatalf("%v", got)
 	}
-	// Inside the first slot -> 11:15.
-	if got := UntilNextSlot(ist(2026, 11, 17, 10, 0)); got != 75*time.Minute {
+	// Inside the first slot -> 10:05.
+	if got := UntilNextSlot(ist(2026, 11, 17, 10, 0)); got != 5*time.Minute {
 		t.Fatalf("%v", got)
 	}
 	if got := UntilNextSlot(ist(2026, 11, 17, 13, 16)); got != 19*time.Hour+49*time.Minute {
@@ -31,7 +31,7 @@ func TestASlotDueNowIsZero(t *testing.T) {
 	if got := UntilNextSlot(ist(2026, 11, 17, 9, 5)); got != 0 {
 		t.Fatalf("%v", got)
 	}
-	if got := UntilNextSlot(ist(2026, 11, 17, 11, 15)); got != 0 {
+	if got := UntilNextSlot(ist(2026, 11, 17, 10, 5)); got != 0 {
 		t.Fatalf("%v", got)
 	}
 }

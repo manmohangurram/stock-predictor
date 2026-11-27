@@ -240,10 +240,9 @@ func CandidateBlock(pool *sql.DB, m market.MarketSource, transport llm.Transport
 		if err != nil || !ok {
 			continue
 		}
-		if !hasBarsToday(pool, id, now) {
-			if _, _, err := store.Refresh(pool, id, g.symbol, m); err != nil {
-				continue
-			}
+		// Every ask re-reads the price: a plan written at 10:05 must not quote the 09:05 scan.
+		if _, _, err := store.Refresh(pool, id, g.symbol, m); err != nil {
+			continue
 		}
 		var knownName *string
 		var name string
@@ -463,18 +462,8 @@ func scanNote(why string) string {
 	return "scan's note, unverified — do not take a price from it: " + why
 }
 
-// hasBarsToday is the evidence cache: a candidate whose prices were fetched since the open needs
-// no second chart request for the same slot.
-func hasBarsToday(pool *sql.DB, instrumentID string, now time.Time) bool {
-	var ts string
-	if err := pool.QueryRow(
-		"SELECT ts FROM bars WHERE instrument_id = ? ORDER BY ts DESC LIMIT 1", instrumentID,
-	).Scan(&ts); err != nil {
-		return false
-	}
-	return len(ts) >= 10 && ts[:10] == schedule.ISTDay(now)
-}
-
+// loadCandidates reads the day's list once it has been asked: the names are fixed for the day, the
+// prices are not, and the evidence block re-reads those on every ask.
 func loadCandidates(pool *sql.DB, day string) ([]candidate, error) {
 	rows, err := pool.Query(
 		`SELECT symbol, source, why, ltp, change_pct, previous_close, turnover

@@ -18,8 +18,9 @@ func TestTheSessionHasThreeSlotsAndNothingOutsideIt(t *testing.T) {
 		{ist(2026, 11, 11, 9, 5), "2026-11-11T09", true},
 		{ist(2026, 11, 11, 9, 4), "", false},
 		{ist(2026, 11, 11, 9, 15), "2026-11-11T09", true},
-		{ist(2026, 11, 11, 10, 59), "2026-11-11T09", true},
-		{ist(2026, 11, 11, 11, 15), "2026-11-11T11", true},
+		{ist(2026, 11, 11, 10, 4), "2026-11-11T09", true},
+		{ist(2026, 11, 11, 10, 5), "2026-11-11T10", true},
+		{ist(2026, 11, 11, 11, 15), "2026-11-11T10", true},
 		{ist(2026, 11, 11, 13, 20), "2026-11-11T13", true},
 		{ist(2026, 11, 11, 15, 30), "", false},
 		{ist(2026, 11, 11, 9, 0), "", false},
@@ -34,7 +35,7 @@ func TestTheSessionHasThreeSlotsAndNothingOutsideIt(t *testing.T) {
 }
 
 func TestASlotIsUniquePerDayAndSlotNotPerTick(t *testing.T) {
-	a, _ := TradeSlot(ist(2026, 11, 11, 11, 16))
+	a, _ := TradeSlot(ist(2026, 11, 11, 10, 6))
 	b, _ := TradeSlot(ist(2026, 11, 11, 12, 55))
 	if a != b {
 		t.Fatalf("the same slot, however many ticks: %q %q", a, b)

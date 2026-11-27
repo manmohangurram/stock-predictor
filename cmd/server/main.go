@@ -343,17 +343,19 @@ func buildDeps(pool *sql.DB, cfg *config.Config) (*engine.EngineDeps, error) {
 		SweepGlances:   trend.SweepGlances,
 		NewsSearch:     market.FetchGoogleNews,
 	}
-	deps.DailyList = func(pool *sql.DB, m market.MarketSource, now time.Time) (string, error) {
+	deps.DailyList = func(pool *sql.DB, m market.MarketSource, now time.Time) (string, []string, error) {
 		picks, err := benchmark.DailyList(pool, m, now)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		settings, err := rules.GetSettings(pool)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		movers, steady := []string{}, []string{}
+		symbols := []string{}
 		for _, p := range picks {
+			symbols = append(symbols, p.Symbol)
 			if p.Slice == "steady" {
 				steady = append(steady, p.Line(settings.Currency))
 			} else {
@@ -371,7 +373,7 @@ func buildDeps(pool *sql.DB, cfg *config.Config) (*engine.EngineDeps, error) {
 		if out == "" {
 			out = "no candidate cleared the five-session filter today\n"
 		}
-		return out, nil
+		return out, symbols, nil
 	}
 	deps.Fundamentals = func(d *engine.EngineDeps, symbol string, year int) string {
 		client, err := httpx.ClientWith(&d.Runtime, 15, "Mozilla/5.0 stock-predictor")

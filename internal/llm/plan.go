@@ -54,6 +54,20 @@ type Move struct {
 	Target     *float64      `json:"target"`
 	Why        string        `json:"why"`
 	ValidUntil *string       `json:"valid_until"`
+	Confidence *string       `json:"confidence"`
+}
+
+// The model's own word for how sure it is. Anything that is not one of the three is no answer, and
+// the decision shows no gauge rather than a made-up one.
+func (m Move) ConfidenceWord() *string {
+	if m.Confidence == nil {
+		return nil
+	}
+	switch word := strings.ToLower(strings.TrimSpace(*m.Confidence)); word {
+	case "low", "medium", "high":
+		return &word
+	}
+	return nil
 }
 
 type Plan struct {

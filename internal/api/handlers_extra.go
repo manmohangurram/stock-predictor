@@ -752,7 +752,7 @@ func scheduleView(c *gin.Context, st *AppState) {
 			entry("plan_stock", "Stock plan", "once a day, at 09:05 IST", dailyNext(stockRan)),
 			entry("plan_fund", "Fund plan", "once a day, at 09:05 IST", dailyNext(fundRan)),
 			entry("plan_trade", "Trade plan",
-				"in session — 09:05, 11:15, 13:15 IST", tradeNext(now)),
+				"in session — 09:05, 10:05, 13:15 IST", tradeNext(now)),
 		},
 	})
 }
