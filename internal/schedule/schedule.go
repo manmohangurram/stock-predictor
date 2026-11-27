@@ -18,12 +18,13 @@ func InStockWindow(now time.Time) bool {
 	return mins >= 9*60 && mins <= 16*60
 }
 
-// The trade plan's slots: inside the session, at 09:05, 11:15 and 13:15 IST. The first one is
-// five minutes before the open, which is as early as a plan can be read and acted on.
+// The trade plan's slots: inside the session, at 09:05, 10:05 and 13:15 IST. The first one is
+// before the open, which is as early as a plan can be read and acted on; the second sits where the
+// session's median high forms, and the third is an exit check rather than a new entry.
 //
-// The slot id is what the marker stores — 2026-11-11T11 — so a retry inside the same slot is
-// free, and a new slot is a new question. Outside the session there is no slot: a trade that
-// cannot be entered is not worth a call.
+// The slot id is what the marker stores — 2026-11-11T10 — so a retry inside the same slot is free,
+// and a new slot is a new question. Outside the session there is no slot: a trade that cannot be
+// entered is not worth a call.
 func TradeSlot(now time.Time) (string, bool) {
 	ist := now.Add(330 * time.Minute)
 	if ist.Weekday() == time.Saturday || ist.Weekday() == time.Sunday {
@@ -32,10 +33,10 @@ func TradeSlot(now time.Time) (string, bool) {
 	mins := ist.Hour()*60 + ist.Minute()
 	var slotHour int
 	switch {
-	case mins >= 545 && mins <= 674: // 09:05–11:14
+	case mins >= 545 && mins <= 604: // 09:05–10:04
 		slotHour = 9
-	case mins >= 675 && mins <= 794: // 11:15–13:14
-		slotHour = 11
+	case mins >= 605 && mins <= 794: // 10:05–13:14
+		slotHour = 10
 	case mins >= 795 && mins <= 929: // 13:15–15:29
 		slotHour = 13
 	default:
@@ -71,7 +72,7 @@ func NextDailySlot(now time.Time) time.Time {
 	return at
 }
 
-// UntilNextSlot is the time to the next boundary — 09:05, 11:15 or 13:15 IST — so the loop can
+// UntilNextSlot is the time to the next boundary — 09:05, 10:05 or 13:15 IST — so the loop can
 // wake on the slot instead of wherever a fixed interval happens to land. Zero when one is due now.
 func UntilNextSlot(now time.Time) time.Duration {
 	ist := now.In(time.FixedZone("IST", 330*60))
@@ -80,7 +81,7 @@ func UntilNextSlot(now time.Time) time.Duration {
 		if d.Weekday() == time.Saturday || d.Weekday() == time.Sunday {
 			continue
 		}
-		for _, hm := range [][2]int{{9, 5}, {11, 15}, {13, 15}} {
+		for _, hm := range [][2]int{{9, 5}, {10, 5}, {13, 15}} {
 			at := time.Date(d.Year(), d.Month(), d.Day(), hm[0], hm[1], 0, 0, d.Location())
 			if at.Equal(ist) {
 				return 0

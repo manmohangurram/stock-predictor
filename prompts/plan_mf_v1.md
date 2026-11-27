@@ -59,18 +59,33 @@ Reply with JSON and nothing else.
 A plan:
 
 ```json
-{"moves":[
-  {"action":"SELL","symbol":"0P00012ALS.BO","amount":19000,
-   "why":"midcap has outrun its category for two years and now duplicates the smallcap holding"},
-  {"action":"BUY","symbol":"120503","amount":19000,
-   "why":"broad index at 0.2% expense; it fills the large-cap gap the book has never had"}
-],"rationale":"One sentence on what the book gains over the next year, and what would prove this wrong."}
+{
+  "moves": [
+    {
+      "action": "SELL",
+      "symbol": "0P00012ALS.BO",
+      "amount": 19000,
+      "why": "midcap has outrun its category for two years and now duplicates the smallcap holding"
+    },
+    {
+      "action": "BUY",
+      "symbol": "120503",
+      "amount": 19000,
+      "confidence": "medium",
+      "why": "broad index at 0.2% expense; it fills the large-cap gap the book has never had"
+    }
+  ],
+  "rationale": "One sentence on what the book gains over the next year, and what would prove this wrong."
+}
 ```
 
 Or a pass:
 
 ```json
-{"moves":[],"pass_reason":"Every fund still earns its place, and nothing on today's list beats what is already held."}
+{
+  "moves": [],
+  "pass_reason": "Every fund still earns its place, and nothing on today's list beats what is already held."
+}
 ```
 
 The contract, exactly:
@@ -80,6 +95,9 @@ The contract, exactly:
   it is affordable, not on whether it contains a sale.
 - A **buy** carries `symbol`, `amount` in rupees and `why`. No `stop`, no `target` — a fund has no
   price to stop at.
+- `confidence` is your own word about that move — `low`, `medium` or `high`. It is shown next to the
+  decision, so it is a promise about the evidence, not a forecast. Omit it rather than dress up a
+  guess.
 - A **sell** names a fund in the book, with an `amount` no greater than its current value.
 - A symbol appears **once**.
 - The plan must be affordable: buys may cost no more than the fund purse **plus** anything this

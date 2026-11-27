@@ -17,6 +17,7 @@ import {
 import { clock, day, dayTime, money, today, units } from "../format";
 import DeleteInstrument from "../components/DeleteInstrument.vue";
 import PriceChart from "../components/PriceChart.vue";
+import { renderConfidence } from "../components/confidence";
 import AppDateField from "../components/ui/AppDateField.vue";
 import AppEmpty from "../components/ui/AppEmpty.vue";
 import AppSegment from "../components/ui/AppSegment.vue";
@@ -715,6 +716,7 @@ const gone = (): void => void router.push("/archived");
                         <th scope="col" class="r">Qty @ price</th>
                         <th scope="col" class="r hide-sm">Stop</th>
                         <th scope="col" class="r hide-sm">Target</th>
+                        <th scope="col" class="r hide-sm">Conf</th>
                         <th scope="col" class="r hide-sm">Plan</th>
                     </tr>
                 </thead>
@@ -753,6 +755,14 @@ const gone = (): void => void router.push("/archived");
                         <td class="r num hide-sm">
                             {{ s.target === null ? "—" : money(s.target) }}
                         </td>
+                        <td class="r hide-sm">
+                            <span
+                                v-if="s.confidence"
+                                class="conf"
+                                v-html="renderConfidence(s.confidence)"
+                            />
+                            <template v-else>—</template>
+                        </td>
                         <td class="r sym hide-sm">
                             {{ (s.plan_id ?? "").slice(-6) || "—" }}
                         </td>
@@ -787,6 +797,11 @@ const gone = (): void => void router.push("/archived");
                         }}
                     </span>
                     <span class="num sym">{{ (s.plan_id ?? "").slice(-6) || "—" }}</span>
+                    <span
+                        v-if="s.confidence"
+                        class="conf"
+                        v-html="renderConfidence(s.confidence)"
+                    />
                 </div>
             </div>
             <div class="panel-foot">

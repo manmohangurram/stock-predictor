@@ -36,7 +36,7 @@ type EngineDeps struct {
 
 	CandidateBlock func(pool *sql.DB, m market.MarketSource, t llm.Transport, now time.Time) string
 	SweepGlances   func(pool *sql.DB) (int64, error)
-	DailyList      func(pool *sql.DB, m market.MarketSource, now time.Time) (string, error)
+	DailyList      func(pool *sql.DB, m market.MarketSource, now time.Time) (string, []string, error)
 	NewsSearch     func(client *http.Client, name string, limit int) ([]models.Headline, error)
 	Fundamentals   func(deps *EngineDeps, symbol string, year int) string
 }
@@ -313,7 +313,7 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		return skip("skipped: the daily call cap was reached")
 	}
 
-	var candidates string
+	var candidates, fundamentals string
 	switch {
 	case scope.IsTrade():
 		if deps.CandidateBlock != nil {
@@ -326,12 +326,13 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		}
 	default:
 		if deps.DailyList != nil {
-			list, derr := deps.DailyList(deps.Pool, deps.Market, now)
+			list, symbols, derr := deps.DailyList(deps.Pool, deps.Market, now)
 			if derr != nil {
 				slog.Warn("nifty 100 list unavailable", "error", derr)
 				candidates = fmt.Sprintf("the benchmark list could not be built today (%v)\n", derr)
 			} else {
 				candidates = list
+				fundamentals = planFundamentals(deps, symbols, book, now)
 			}
 		} else {
 			candidates = "no candidate cleared a positive five-session return today\n"
@@ -363,7 +364,8 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 			settings.LimitsLong.MinProfitPct, settings.LimitsLong.MaxProfitPct)
 	}
 	rendered, err := llm.RenderPlan(scope, llm.BookBlock(book, settings.Currency),
-		llm.CapLine(available, settings.Currency), limits, candidates, available, settings.Currency)
+		llm.CapLine(available, settings.Currency), limits, candidates, fundamentals, available,
+		settings.Currency)
 	if err != nil {
 		return false, "", err
 	}
@@ -499,10 +501,11 @@ func planBookWith(deps *EngineDeps, now time.Time, scope llm.Scope, run *string,
 		err := deps.Pool.QueryRow(
 			`INSERT INTO signals (id, instrument_id, action, qty, entry, stop, target, valid_until,
                 reason_json, created_at, confidence, mode, kind, status, plan_id, conversation_id)
-             SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'plan', 'pending', ?, ?
+             SELECT ?, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'plan', 'pending', ?, ?
              FROM instruments WHERE symbol = ? RETURNING id`,
 			ids.New(), string(m.Action), m.Qty, m.Price, m.Stop, m.Target, tstamp.From(validUntil),
-			reasonJSON, tstamp.From(now), string(moveMode), planID, conversation, m.Symbol,
+			reasonJSON, tstamp.From(now), m.ConfidenceWord(), string(moveMode), planID, conversation,
+			m.Symbol,
 		).Scan(&id)
 		if err == sql.ErrNoRows {
 			why := fmt.Sprintf("%s is not in the book, so the plan cannot be stored", m.Symbol)
@@ -1916,6 +1919,37 @@ func shortCard(instrument models.Instrument, daily, intraday []models.Bar, now t
 	}
 	card := rules.ComputeShortContext(daily, intraday, now)
 	return card.Render()
+}
+
+// The numbers behind the picks and the holdings. The stock plan is asked for a six-month judgement
+// and the mandate demands financials; without them its only compliant answer is a pass.
+func planFundamentals(deps *EngineDeps, symbols []string, book []llm.HoldingLine, now time.Time) string {
+	if deps.Fundamentals == nil {
+		return "no financials today"
+	}
+	seen := map[string]bool{}
+	lines := []string{}
+	add := func(symbol, prefix string, limit int) {
+		if len(lines) >= limit || seen[symbol] {
+			return
+		}
+		seen[symbol] = true
+		text := strings.TrimSpace(deps.Fundamentals(deps, symbol, now.Year()))
+		if text == "" || text == "unavailable" {
+			return
+		}
+		lines = append(lines, symbol+prefix+": "+strings.ReplaceAll(text, "\n", "; "))
+	}
+	for _, symbol := range symbols {
+		add(symbol, "", 10)
+	}
+	for _, h := range book {
+		add(h.Symbol, " (held)", 14)
+	}
+	if len(lines) == 0 {
+		return "no financials were available for today's names — say so rather than assume them"
+	}
+	return strings.Join(lines, "\n")
 }
 
 func loadHoldings(pool *sql.DB, mode models.Mode) ([]llm.HoldingLine, error) {

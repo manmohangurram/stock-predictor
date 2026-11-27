@@ -1,3 +1,34 @@
+## v1.2.0
+
+A decision says how sure the model was, the long-term plan finally gets the numbers it kept asking
+for, and the short-term book asks twice in the morning instead of once.
+
+### Added
+
+- **A confidence on every plan move.** The model now names `low`, `medium` or `high` for each move,
+  and the gauge that has had nothing to draw since the plan rewrite draws again — on the decision
+  cards and in the instrument page's decisions table. The fund scan stores none: a ranking is not a
+  judgement.
+- **Financials in the long-term plan.** `plan_stock_v1` is asked for a six-month judgement, while
+  `RenderPlan` filled only the book, the cash, the limits and the candidates. The mandate demands
+  financials and forbids inventing them, so the only compliant answer was a pass — which is exactly
+  what every run said. Revenue growth, profit growth and net margin now arrive for the ten
+  benchmark picks and the held names, cached, once a day.
+
+### Changed
+
+- **The short-term plan asks at 09:05 and 10:05**, not 09:05 and 11:15, with 13:15 kept for exits.
+  Measured over 2,940 sessions of 15-minute bars on 49 Nifty-50 names: the only positive drift of
+  the day is 09:15–09:45 (+0.09% on the universe), and the median day's high is 10:15–10:30, with
+  58% of highs already in before 11:00.
+- **Every ask re-reads the price.** The candidate block refreshed a name only if it had no price for
+  today, so a plan written at 11:15 quoted the 09:05 scan. It refreshes on every ask now.
+- **The sign-off opens on the price you can see.** A decision written at 09:05 posts yesterday's
+  close unless the price is edited by hand; each leg now shows `now 1,151.30` beside its stop and
+  target, and the approve sheet prefills that live quote from the exchange.
+- **A decision's name links to its instrument page**, so the stock behind a decision is one click
+  from the review screen.
+
 ## v1.1.3
 
 A fund decision you can act on: the daily fund scan names the money it would put in, so the card

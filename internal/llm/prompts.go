@@ -142,7 +142,7 @@ func hex(b []byte) string {
 
 // The book call: the whole book, the cash, today's candidates, and room for up to three
 // moves.
-func RenderPlan(scope Scope, book, cap, limits, candidates string, cash float64, currency string) (RenderedPrompt, error) {
+func RenderPlan(scope Scope, book, cap, limits, candidates, fundamentals string, cash float64, currency string) (RenderedPrompt, error) {
 	name := scope.Template()
 	t, err := Template(name)
 	if err != nil {
@@ -155,6 +155,7 @@ func RenderPlan(scope Scope, book, cap, limits, candidates string, cash float64,
 		"{{currency}}", currency,
 		"{{limits}}", limits,
 		"{{candidates}}", candidates,
+		"{{fundamentals}}", fundamentals,
 	).Replace(t)
 	hash, err := TemplateHash(name)
 	if err != nil {

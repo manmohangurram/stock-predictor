@@ -4,11 +4,12 @@
  * argument: approve opens a sign-off sheet with an editable fill per leg, because the price a
  * proposal named is rarely the price you get, and half a swap is worse than none.
  */
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { api, type Mode, type SignalRow } from "../api";
 import { dayTime, floorUnits, money, units } from "../format";
 import { renderConfidence } from "../components/confidence";
 import { debitOf, legValue, rewardRisk } from "../lib/decision";
+import { livePrice } from "../lib/live";
 
 const props = defineProps<{
     legs: SignalRow[];
@@ -50,6 +51,16 @@ const fills = ref<Record<string, { qty: string; price: string }>>({});
 const reason = ref("");
 const failure = ref("");
 const busy = ref(false);
+/** The exchange's price now, per symbol: a decision written before the open carries yesterday's. */
+const live = ref<Record<string, number>>({});
+
+onMounted(async () => {
+    if (!pending.value || isFund.value) return;
+    for (const l of props.legs) {
+        const price = await livePrice(l.symbol);
+        if (price !== null) live.value[l.symbol] = price;
+    }
+});
 
 function open(kind: "approve" | "reject"): void {
     form.value = form.value === kind ? "none" : kind;
@@ -60,7 +71,7 @@ function open(kind: "approve" | "reject"): void {
                 l.id,
                 {
                     qty: String(isFund.value ? (l.amount ?? "") : (l.qty ?? "")),
-                    price: String(l.entry ?? ""),
+                    price: String(live.value[l.symbol] ?? l.entry ?? ""),
                 },
             ]),
         );
@@ -197,7 +208,9 @@ const posted = computed(() => {
                 }}</span>
                 <div class="legbody">
                     <div class="legtop">
-                        <b>{{ l.name || l.symbol }}</b>
+                        <RouterLink class="sym-link" :to="`/i/${encodeURIComponent(l.symbol)}`"
+                            ><b>{{ l.name || l.symbol }}</b></RouterLink
+                        >
                         <span v-if="l.symbol !== l.name" class="sym">{{ l.symbol }}</span>
                         <span class="qty num">{{ legQty(l) }}</span>
                     </div>
@@ -211,6 +224,9 @@ const posted = computed(() => {
                             >
                             <span
                                 >target <b>{{ l.target === null ? "—" : money(l.target) }}</b></span
+                            >
+                            <span v-if="live[l.symbol] !== undefined" class="now"
+                                >now <b>{{ money(live[l.symbol]) }}</b></span
                             >
                             <span v-if="rr(l)" class="up">{{ rr(l) }}</span>
                         </template>
@@ -394,7 +410,13 @@ const posted = computed(() => {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    flex-wrap: wrap;
+}
+.sym-link {
+    color: inherit;
+    text-decoration: none;
+}
+.sym-link:hover b {
+    color: var(--brand);
 }
 .legtop b {
     font-size: 12.5px;
